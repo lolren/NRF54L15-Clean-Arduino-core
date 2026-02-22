@@ -1,0 +1,83 @@
+menu.clean_upload=Upload Method
+menu.clean_cpu=CPU Frequency
+menu.clean_power=Power Profile
+menu.clean_ble=BLE Support
+menu.clean_antenna=Antenna
+menu.clean_serial=Serial Routing
+
+xiao_nrf54l15.name=XIAO nRF54L15 (Nrf54L15-Clean-Implementation)
+
+xiao_nrf54l15.vid.0=0x2886
+xiao_nrf54l15.pid.0=0x0066
+xiao_nrf54l15.upload_port.0.vid=0x2886
+xiao_nrf54l15.upload_port.0.pid=0x0066
+
+xiao_nrf54l15.upload.tool=nrf54upload
+xiao_nrf54l15.upload.protocol=cmsis-dap
+xiao_nrf54l15.upload.maximum_size=491520
+xiao_nrf54l15.upload.maximum_data_size=65536
+xiao_nrf54l15.upload.wait_for_upload_port=true
+xiao_nrf54l15.upload.use_1200bps_touch=false
+xiao_nrf54l15.upload.disable_flushing=true
+xiao_nrf54l15.upload.runner=auto
+xiao_nrf54l15.upload.target=nrf54l
+xiao_nrf54l15.upload.uid=
+xiao_nrf54l15.upload.openocd_script={runtime.platform.path}/tools/openocd/nrf54l15.cfg
+xiao_nrf54l15.upload.openocd_speed=4000
+xiao_nrf54l15.upload.openocd_bin={runtime.tools.openocd-0.11.0-arduino2.path}/bin/openocd
+
+xiao_nrf54l15.serial.disableDTR=false
+xiao_nrf54l15.serial.disableRTS=false
+
+xiao_nrf54l15.build.mcu=cortex-m33
+xiao_nrf54l15.build.f_cpu=64000000L
+xiao_nrf54l15.build.board=XIAO_NRF54L15_CLEAN
+xiao_nrf54l15.build.core=nrf54l15
+xiao_nrf54l15.build.variant=xiao_nrf54l15
+xiao_nrf54l15.build.cpu_flags=-DARDUINO_NRF54_CPU_64M
+xiao_nrf54l15.build.power_flags=
+xiao_nrf54l15.build.ble_flags=-DNRF54L15_CLEAN_BLE_ENABLED=1
+xiao_nrf54l15.build.antenna_flags=
+xiao_nrf54l15.build.serial_flags=
+xiao_nrf54l15.build.extra_flags=-DARDUINO_NRF54L15 -DNRF54L15_XXAA -DARDUINO_XIAO_NRF54L15 {build.cpu_flags} {build.power_flags} {build.ble_flags} {build.antenna_flags} {build.serial_flags}
+
+xiao_nrf54l15.menu.clean_cpu.cpu64=64 MHz (Default)
+xiao_nrf54l15.menu.clean_cpu.cpu64.build.f_cpu=64000000L
+xiao_nrf54l15.menu.clean_cpu.cpu64.build.cpu_flags=-DARDUINO_NRF54_CPU_64M
+
+xiao_nrf54l15.menu.clean_cpu.cpu128=128 MHz (Turbo)
+xiao_nrf54l15.menu.clean_cpu.cpu128.build.f_cpu=128000000L
+xiao_nrf54l15.menu.clean_cpu.cpu128.build.cpu_flags=-DARDUINO_NRF54_CPU_128M
+
+xiao_nrf54l15.menu.clean_power.balanced=Balanced (Default)
+xiao_nrf54l15.menu.clean_power.balanced.build.power_flags=
+
+xiao_nrf54l15.menu.clean_power.low=Low Power (WFI Idle)
+xiao_nrf54l15.menu.clean_power.low.build.power_flags=-DNRF54L15_CLEAN_POWER_LOW
+
+xiao_nrf54l15.menu.clean_ble.on=Enabled (Default)
+xiao_nrf54l15.menu.clean_ble.on.build.ble_flags=-DNRF54L15_CLEAN_BLE_ENABLED=1
+
+xiao_nrf54l15.menu.clean_ble.off=Disabled
+xiao_nrf54l15.menu.clean_ble.off.build.ble_flags=-DNRF54L15_CLEAN_BLE_ENABLED=0 -DNRF54L15_CLEAN_BLE_DISABLED
+
+xiao_nrf54l15.menu.clean_antenna.ceramic=On-board Ceramic (Default)
+xiao_nrf54l15.menu.clean_antenna.ceramic.build.antenna_flags=
+
+xiao_nrf54l15.menu.clean_antenna.external=External U.FL
+xiao_nrf54l15.menu.clean_antenna.external.build.antenna_flags=-DNRF54L15_CLEAN_ANTENNA_EXTERNAL
+
+xiao_nrf54l15.menu.clean_serial.bridge=USB Bridge on Serial (Default)
+xiao_nrf54l15.menu.clean_serial.bridge.build.serial_flags=
+
+xiao_nrf54l15.menu.clean_serial.header=Header UART on Serial
+xiao_nrf54l15.menu.clean_serial.header.build.serial_flags=-DNRF54L15_CLEAN_SERIAL_ROUTE_HEADER
+
+xiao_nrf54l15.menu.clean_upload.auto=Auto (Recommended)
+xiao_nrf54l15.menu.clean_upload.auto.upload.runner=auto
+
+xiao_nrf54l15.menu.clean_upload.pyocd=pyOCD (CMSIS-DAP)
+xiao_nrf54l15.menu.clean_upload.pyocd.upload.runner=pyocd
+
+xiao_nrf54l15.menu.clean_upload.openocd=OpenOCD
+xiao_nrf54l15.menu.clean_upload.openocd.upload.runner=openocd

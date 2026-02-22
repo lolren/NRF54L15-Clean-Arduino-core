@@ -1,0 +1,172 @@
+/*
+ * Linker Script for nRF54L15
+ *
+ * Memory Layout:
+ * - FLASH: 512 KB (0x00000000 - 0x00080000)
+ * - RAM:   64 KB  (0x20000000 - 0x20010000)
+ *
+ * Licensed under the Apache License 2.0
+ */
+
+/* Entry Point */
+ENTRY(Reset_Handler)
+
+/* Memory Regions */
+MEMORY
+{
+    FLASH (rx)      : ORIGIN = 0x00000000, LENGTH = 512K
+    RAM (rwx)       : ORIGIN = 0x20000000, LENGTH = 64K
+}
+
+/* Stack and Heap Sizes */
+__stack_size__ = 4K;
+__heap_size__ = 4K;
+
+/* Section Definitions */
+SECTIONS
+{
+    /*
+     * The startup code goes into FLASH
+     */
+    .isr_vector :
+    {
+        . = ALIGN(4);
+        KEEP(*(.isr_vector))     /* Startup code */
+        . = ALIGN(4);
+    } >FLASH
+
+    /*
+     * The program code and other data goes into FLASH
+     */
+    .text :
+    {
+        . = ALIGN(4);
+        *(.text)                 /* .text sections (code) */
+        *(.text*)                /* .text* sections (code) */
+        *(.glue_7)               /* glue arm to thumb code */
+        *(.glue_7t)              /* glue thumb to arm code */
+        *(.eh_frame)             /* exception handling */
+
+        KEEP (*(.init))
+        KEEP (*(.fini))
+
+        . = ALIGN(4);
+        _etext = .;              /* End of code section */
+    } >FLASH
+
+    /*
+     * C/C++ runtime constructor/destructor tables.
+     * __libc_init_array() consumes these symbols at startup.
+     */
+    .preinit_array :
+    {
+        . = ALIGN(4);
+        PROVIDE_HIDDEN(__preinit_array_start = .);
+        KEEP(*(.preinit_array))
+        KEEP(*(.preinit_array*))
+        PROVIDE_HIDDEN(__preinit_array_end = .);
+        . = ALIGN(4);
+    } >FLASH
+
+    .init_array :
+    {
+        . = ALIGN(4);
+        PROVIDE_HIDDEN(__init_array_start = .);
+        KEEP(*(SORT(.init_array.*)))
+        KEEP(*(.init_array))
+        PROVIDE_HIDDEN(__init_array_end = .);
+        . = ALIGN(4);
+    } >FLASH
+
+    .fini_array :
+    {
+        . = ALIGN(4);
+        PROVIDE_HIDDEN(__fini_array_start = .);
+        KEEP(*(SORT(.fini_array.*)))
+        KEEP(*(.fini_array))
+        PROVIDE_HIDDEN(__fini_array_end = .);
+        . = ALIGN(4);
+    } >FLASH
+
+    /*
+     * Read-only data (constants, strings, etc.)
+     */
+    .rodata :
+    {
+        . = ALIGN(4);
+        *(.rodata)               /* .rodata sections (constants, strings, etc.) */
+        *(.rodata*)              /* .rodata* sections */
+        . = ALIGN(4);
+    } >FLASH
+
+    /*
+     * ARM sections
+     */
+    .ARM.extab :
+    {
+        *(.ARM.extab* .gnu.linkonce.armextab.*)
+    } >FLASH
+
+    .ARM :
+    {
+        __exidx_start = .;
+        *(.ARM.exidx*)
+        __exidx_end = .;
+    } >FLASH
+
+    /*
+     * Initialized data sections into RAM, load from FLASH
+     */
+    .data :
+    {
+        . = ALIGN(4);
+        _sdata = .;              /* Start of data section in RAM */
+        *(.data)                 /* .data sections */
+        *(.data*)                /* .data* sections */
+
+        . = ALIGN(4);
+        _edata = .;              /* End of data section in RAM */
+    } >RAM AT>FLASH
+
+    _sidata = LOADADDR(.data);   /* Start of data section in FLASH */
+
+    /*
+     * Uninitialized data section into RAM
+     */
+    .bss :
+    {
+        . = ALIGN(4);
+        _sbss = .;               /* Start of bss section */
+        __bss_start__ = _sbss;
+        *(.bss)
+        *(.bss*)
+        *(COMMON)
+
+        . = ALIGN(4);
+        _ebss = .;               /* End of bss section */
+        __bss_end__ = _ebss;
+    } >RAM
+
+    /*
+     * User stack and heap
+     */
+    ._user_heap_stack :
+    {
+        . = ALIGN(8);
+        PROVIDE ( __heap_start__ = . );
+        PROVIDE ( end = . );
+        PROVIDE ( _end = . );
+        . = . + __heap_size__;
+        PROVIDE ( __heap_end__ = . );
+        . = . + __stack_size__;
+        . = ALIGN(8);
+    } >RAM
+    /*
+     * Symbols for startup code
+     */
+    __stack_start__ = ORIGIN(RAM) + LENGTH(RAM);
+    __stack_end__ = __stack_start__ - __stack_size__;
+
+
+    . = ALIGN(4);
+}

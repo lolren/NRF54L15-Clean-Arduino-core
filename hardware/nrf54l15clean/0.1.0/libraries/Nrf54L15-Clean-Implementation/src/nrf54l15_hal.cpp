@@ -1,0 +1,4558 @@
+#include "nrf54l15_hal.h"
+
+#include <Arduino.h>
+#include <string.h>
+
+namespace {
+
+using namespace nrf54l15;
+
+uint32_t gpioBaseForPort(uint8_t port) {
+  switch (port) {
+    case 0:
+      return GPIO_P0_BASE;
+    case 1:
+      return GPIO_P1_BASE;
+    case 2:
+      return GPIO_P2_BASE;
+    default:
+      return 0;
+  }
+}
+
+bool waitForEvent(uint32_t base, uint32_t eventOffset, uint32_t spinLimit) {
+  while (spinLimit-- > 0) {
+    if (reg32(base + eventOffset) != 0U) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool waitForEventOrError(uint32_t base, uint32_t eventOffset,
+                         uint32_t errorOffset, uint32_t spinLimit) {
+  while (spinLimit-- > 0) {
+    if (reg32(base + eventOffset) != 0U) {
+      return true;
+    }
+    if (reg32(base + errorOffset) != 0U) {
+      return false;
+    }
+  }
+  return false;
+}
+
+void clearEvent(uint32_t base, uint32_t eventOffset) {
+  reg32(base + eventOffset) = 0;
+}
+
+bool waitForNonZero(volatile uint32_t* reg, uint32_t spinLimit) {
+  if (reg == nullptr) {
+    return false;
+  }
+  while (spinLimit-- > 0U) {
+    if (*reg != 0U) {
+      return true;
+    }
+  }
+  return false;
+}
+
+double adcGainValue(xiao_nrf54l15::AdcGain gain) {
+  using xiao_nrf54l15::AdcGain;
+  switch (gain) {
+    case AdcGain::k2:
+      return 2.0;
+    case AdcGain::k1:
+      return 1.0;
+    case AdcGain::k2over3:
+      return 2.0 / 3.0;
+    case AdcGain::k2over4:
+      return 2.0 / 4.0;
+    case AdcGain::k2over5:
+      return 2.0 / 5.0;
+    case AdcGain::k2over6:
+      return 2.0 / 6.0;
+    case AdcGain::k2over7:
+      return 2.0 / 7.0;
+    case AdcGain::k2over8:
+    default:
+      return 2.0 / 8.0;
+  }
+}
+
+uint8_t adcResolutionBits(xiao_nrf54l15::AdcResolution resolution) {
+  return static_cast<uint8_t>(8U + (static_cast<uint8_t>(resolution) * 2U));
+}
+
+uint32_t spimPrescaler(uint32_t coreHz, uint32_t targetHz, uint32_t minDivisor) {
+  if (targetHz == 0U) {
+    targetHz = 1000000U;
+  }
+
+  uint32_t divisor = coreHz / targetHz;
+  if ((coreHz % targetHz) != 0U) {
+    ++divisor;
+  }
+
+  if (divisor < minDivisor) {
+    divisor = minDivisor;
+  }
+  if ((divisor & 1U) != 0U) {
+    ++divisor;
+  }
+  if (divisor > 126U) {
+    divisor = 126U;
+  }
+
+  return divisor;
+}
+
+void clearTwimState(uint32_t base) {
+  clearEvent(base, twim::EVENTS_STOPPED);
+  clearEvent(base, twim::EVENTS_ERROR);
+  clearEvent(base, twim::EVENTS_LASTRX);
+  clearEvent(base, twim::EVENTS_LASTTX);
+  clearEvent(base, twim::EVENTS_DMA_RX_END);
+  clearEvent(base, twim::EVENTS_DMA_TX_END);
+  reg32(base + twim::ERRORSRC) = twim::ERRORSRC_ALL;
+}
+
+uint32_t absDiffU32(uint32_t a, uint32_t b) {
+  return (a >= b) ? (a - b) : (b - a);
+}
+
+uint32_t timerCompareEventOffset(uint8_t channel) {
+  return timer::EVENTS_COMPARE + (static_cast<uint32_t>(channel) * sizeof(uint32_t));
+}
+
+uint32_t timerCaptureTaskOffset(uint8_t channel) {
+  return timer::TASKS_CAPTURE + (static_cast<uint32_t>(channel) * sizeof(uint32_t));
+}
+
+uint32_t timerCcOffset(uint8_t channel) {
+  return timer::CC + (static_cast<uint32_t>(channel) * sizeof(uint32_t));
+}
+
+uint32_t timerOneShotOffset(uint8_t channel) {
+  return timer::ONESHOTEN + (static_cast<uint32_t>(channel) * sizeof(uint32_t));
+}
+
+uint32_t timerCompareIntMask(uint8_t channel) {
+  return (1UL << (16U + static_cast<uint32_t>(channel)));
+}
+
+struct PwmTiming {
+  uint8_t prescaler;
+  uint16_t countertop;
+  uint32_t actualHz;
+};
+
+bool computePwmTiming(uint32_t targetHz, PwmTiming* timing) {
+  if (timing == nullptr || targetHz == 0U) {
+    return false;
+  }
+
+  uint32_t bestError = 0xFFFFFFFFUL;
+  PwmTiming best{0, 0, 0};
+  bool found = false;
+
+  for (uint8_t prescaler = 0; prescaler <= 7U; ++prescaler) {
+    const uint32_t pwmClk = 16000000UL >> prescaler;
+    if (pwmClk == 0U) {
+      continue;
+    }
+
+    uint32_t top = (pwmClk + (targetHz / 2U)) / targetHz;
+    if (top < 3U) {
+      top = 3U;
+    }
+    if (top > 32767U) {
+      continue;
+    }
+
+    const uint32_t actualHz = pwmClk / top;
+    const uint32_t error = absDiffU32(actualHz, targetHz);
+
+    if (!found || error < bestError) {
+      found = true;
+      bestError = error;
+      best.prescaler = prescaler;
+      best.countertop = static_cast<uint16_t>(top);
+      best.actualHz = actualHz;
+      if (error == 0U) {
+        break;
+      }
+    }
+  }
+
+  if (!found) {
+    return false;
+  }
+
+  *timing = best;
+  return true;
+}
+
+uint32_t pwmTaskSeqStartOffset(uint8_t sequence) {
+  return pwm::TASKS_DMA_SEQ_START + (static_cast<uint32_t>(sequence) * 8U);
+}
+
+uint32_t pwmEventSeqStartedOffset(uint8_t sequence) {
+  return pwm::EVENTS_SEQSTARTED + (static_cast<uint32_t>(sequence) * sizeof(uint32_t));
+}
+
+uint32_t pwmEventSeqEndOffset(uint8_t sequence) {
+  return pwm::EVENTS_SEQEND + (static_cast<uint32_t>(sequence) * sizeof(uint32_t));
+}
+
+uint32_t pwmEventDmaSeqEndOffset(uint8_t sequence) {
+  return pwm::EVENTS_DMA_SEQ_END + (static_cast<uint32_t>(sequence) * 0x0CU);
+}
+
+uint32_t pwmDmaSeqPtrOffset(uint8_t sequence) {
+  return pwm::DMA_SEQ_PTR + (static_cast<uint32_t>(sequence) * 8U);
+}
+
+uint32_t pwmDmaSeqMaxCntOffset(uint8_t sequence) {
+  return pwm::DMA_SEQ_MAXCNT + (static_cast<uint32_t>(sequence) * 8U);
+}
+
+uint32_t gpioteInEventOffset(uint8_t channel) {
+  return gpiote::EVENTS_IN + (static_cast<uint32_t>(channel) * sizeof(uint32_t));
+}
+
+uint32_t gpioteTaskOutOffset(uint8_t channel) {
+  return gpiote::TASKS_OUT + (static_cast<uint32_t>(channel) * sizeof(uint32_t));
+}
+
+uint32_t gpioteTaskSetOffset(uint8_t channel) {
+  return gpiote::TASKS_SET + (static_cast<uint32_t>(channel) * sizeof(uint32_t));
+}
+
+uint32_t gpioteTaskClrOffset(uint8_t channel) {
+  return gpiote::TASKS_CLR + (static_cast<uint32_t>(channel) * sizeof(uint32_t));
+}
+
+uint32_t gpioteConfigOffset(uint8_t channel) {
+  return gpiote::CONFIG + (static_cast<uint32_t>(channel) * sizeof(uint32_t));
+}
+
+constexpr uint32_t kBleAccessAddress = 0x8E89BED6UL;
+constexpr uint32_t kBleAdvertisingCrcInit = 0x555555UL;
+constexpr uint32_t kBleCrcPolynomial = 0x00065BUL;
+constexpr uint8_t kBlePduScanReq = 0x03U;
+constexpr uint8_t kBlePduScanRsp = 0x04U;
+constexpr uint8_t kBlePduConnectInd = 0x05U;
+constexpr uint8_t kBlePduLlControl = 0x03U;
+constexpr uint8_t kBlePduDataStartOrComplete = 0x02U;
+constexpr uint8_t kBleLlCtrlTerminateInd = 0x02U;
+constexpr uint8_t kBleLlCtrlEncReq = 0x03U;
+constexpr uint8_t kBleLlCtrlEncRsp = 0x04U;
+constexpr uint8_t kBleLlCtrlStartEncReq = 0x05U;
+constexpr uint8_t kBleLlCtrlStartEncRsp = 0x06U;
+constexpr uint8_t kBleLlCtrlConnectionUpdateInd = 0x00U;
+constexpr uint8_t kBleLlCtrlChannelMapInd = 0x01U;
+constexpr uint8_t kBleLlCtrlUnknownRsp = 0x07U;
+constexpr uint8_t kBleLlCtrlFeatureReq = 0x08U;
+constexpr uint8_t kBleLlCtrlFeatureRsp = 0x09U;
+constexpr uint8_t kBleLlCtrlPauseEncReq = 0x0AU;
+constexpr uint8_t kBleLlCtrlPauseEncRsp = 0x0BU;
+constexpr uint8_t kBleLlCtrlVersionInd = 0x0CU;
+constexpr uint8_t kBleLlCtrlRejectInd = 0x0DU;
+constexpr uint8_t kBleLlCtrlSlaveFeatureReq = 0x0EU;
+constexpr uint8_t kBleLlCtrlConnectionParamReq = 0x0FU;
+constexpr uint8_t kBleLlCtrlConnectionParamRsp = 0x10U;
+constexpr uint8_t kBleLlCtrlRejectExtInd = 0x11U;
+constexpr uint8_t kBleLlCtrlPingReq = 0x12U;
+constexpr uint8_t kBleLlCtrlPingRsp = 0x13U;
+constexpr uint8_t kBleLlCtrlLengthReq = 0x14U;
+constexpr uint8_t kBleLlCtrlLengthRsp = 0x15U;
+constexpr uint8_t kBleLlCtrlPhyReq = 0x16U;
+constexpr uint8_t kBleLlCtrlPhyRsp = 0x17U;
+constexpr uint8_t kBleLlCtrlPhyUpdateInd = 0x18U;
+constexpr uint8_t kBleLlCtrlMinUsedChannelsInd = 0x19U;
+constexpr uint8_t kBleLlErrorUnsupportedLlParamValue = 0x20U;
+constexpr uint8_t kBleLlErrorUnsupportedRemoteFeature = 0x1AU;
+
+constexpr uint16_t kBleL2capCidAtt = 0x0004U;
+constexpr uint16_t kBleL2capCidLeSignaling = 0x0005U;
+constexpr uint16_t kBleL2capCidSmp = 0x0006U;
+constexpr uint8_t kBleL2capHeaderLen = 4U;
+constexpr uint8_t kBleDataPduMaxPayload = 27U;
+constexpr uint16_t kBleDefaultAttMtu = 23U;
+constexpr uint8_t kL2capSigCodeCommandRejectRsp = 0x01U;
+constexpr uint8_t kL2capSigCodeConnParamUpdateReq = 0x12U;
+constexpr uint8_t kL2capSigCodeConnParamUpdateRsp = 0x13U;
+constexpr uint16_t kL2capCmdRejectReasonCmdNotUnderstood = 0x0000U;
+constexpr uint16_t kL2capConnParamResultRejected = 0x0001U;
+
+constexpr uint8_t kSmpCodePairingRequest = 0x01U;
+constexpr uint8_t kSmpCodePairingResponse = 0x02U;
+constexpr uint8_t kSmpCodePairingConfirm = 0x03U;
+constexpr uint8_t kSmpCodePairingRandom = 0x04U;
+constexpr uint8_t kSmpCodePairingFailed = 0x05U;
+constexpr uint8_t kSmpCodeSecurityRequest = 0x0BU;
+constexpr uint8_t kSmpReasonPairingNotSupported = 0x05U;
+
+constexpr uint8_t kAttOpErrorRsp = 0x01U;
+constexpr uint8_t kAttOpExchangeMtuReq = 0x02U;
+constexpr uint8_t kAttOpExchangeMtuRsp = 0x03U;
+constexpr uint8_t kAttOpFindInfoReq = 0x04U;
+constexpr uint8_t kAttOpFindInfoRsp = 0x05U;
+constexpr uint8_t kAttOpFindByTypeValueReq = 0x06U;
+constexpr uint8_t kAttOpFindByTypeValueRsp = 0x07U;
+constexpr uint8_t kAttOpReadByTypeReq = 0x08U;
+constexpr uint8_t kAttOpReadByTypeRsp = 0x09U;
+constexpr uint8_t kAttOpReadReq = 0x0AU;
+constexpr uint8_t kAttOpReadRsp = 0x0BU;
+constexpr uint8_t kAttOpReadBlobReq = 0x0CU;
+constexpr uint8_t kAttOpReadBlobRsp = 0x0DU;
+constexpr uint8_t kAttOpReadMultipleReq = 0x0EU;
+constexpr uint8_t kAttOpReadMultipleRsp = 0x0FU;
+constexpr uint8_t kAttOpReadByGroupTypeReq = 0x10U;
+constexpr uint8_t kAttOpReadByGroupTypeRsp = 0x11U;
+constexpr uint8_t kAttOpWriteReq = 0x12U;
+constexpr uint8_t kAttOpWriteRsp = 0x13U;
+constexpr uint8_t kAttOpHandleValueNtf = 0x1BU;
+constexpr uint8_t kAttOpHandleValueInd = 0x1DU;
+constexpr uint8_t kAttOpHandleValueCfm = 0x1EU;
+constexpr uint8_t kAttOpWriteCmd = 0x52U;
+
+constexpr uint8_t kAttErrInvalidHandle = 0x01U;
+constexpr uint8_t kAttErrReadNotPermitted = 0x02U;
+constexpr uint8_t kAttErrWriteNotPermitted = 0x03U;
+constexpr uint8_t kAttErrInvalidPdu = 0x04U;
+constexpr uint8_t kAttErrRequestNotSupported = 0x06U;
+constexpr uint8_t kAttErrInvalidOffset = 0x07U;
+constexpr uint8_t kAttErrInvalidAttrValueLen = 0x0DU;
+constexpr uint8_t kAttErrUnsupportedGroupType = 0x10U;
+constexpr uint8_t kAttErrAttributeNotFound = 0x0AU;
+
+constexpr uint16_t kUuidPrimaryService = 0x2800U;
+constexpr uint16_t kUuidCharacteristic = 0x2803U;
+constexpr uint16_t kUuidClientCharacteristicConfig = 0x2902U;
+constexpr uint16_t kUuidGapService = 0x1800U;
+constexpr uint16_t kUuidGattService = 0x1801U;
+constexpr uint16_t kUuidBatteryService = 0x180FU;
+constexpr uint16_t kUuidDeviceName = 0x2A00U;
+constexpr uint16_t kUuidAppearance = 0x2A01U;
+constexpr uint16_t kUuidPpcp = 0x2A04U;
+constexpr uint16_t kUuidServiceChanged = 0x2A05U;
+constexpr uint16_t kUuidBatteryLevel = 0x2A19U;
+
+constexpr uint16_t kHandleGapService = 0x0001U;
+constexpr uint16_t kHandleGapDeviceNameDecl = 0x0002U;
+constexpr uint16_t kHandleGapDeviceNameValue = 0x0003U;
+constexpr uint16_t kHandleGapAppearanceDecl = 0x0004U;
+constexpr uint16_t kHandleGapAppearanceValue = 0x0005U;
+constexpr uint16_t kHandleGapPpcpDecl = 0x0006U;
+constexpr uint16_t kHandleGapPpcpValue = 0x0007U;
+constexpr uint16_t kHandleGattService = 0x0008U;
+constexpr uint16_t kHandleGattServiceChangedDecl = 0x0009U;
+constexpr uint16_t kHandleGattServiceChangedValue = 0x000AU;
+constexpr uint16_t kHandleGattServiceChangedCccd = 0x000BU;
+constexpr uint16_t kHandleBatteryService = 0x0010U;
+constexpr uint16_t kHandleBatteryLevelDecl = 0x0011U;
+constexpr uint16_t kHandleBatteryLevelValue = 0x0012U;
+constexpr uint16_t kHandleBatteryLevelCccd = 0x0013U;
+
+constexpr uint8_t kGattCharacteristicPropRead = 0x02U;
+constexpr uint8_t kGattCharacteristicPropNotify = 0x10U;
+constexpr uint8_t kGattCharacteristicPropIndicate = 0x20U;
+constexpr uint8_t kAttrReadInvalidHandleLen = 0xFFU;
+constexpr uint8_t kAttrReadInvalidOffsetLen = 0xFEU;
+
+struct BlePrimaryServiceRecord {
+  uint16_t startHandle;
+  uint16_t endHandle;
+  uint16_t uuid16;
+};
+
+struct BleCharacteristicRecord {
+  uint16_t declarationHandle;
+  uint8_t properties;
+  uint16_t valueHandle;
+  uint16_t uuid16;
+};
+
+struct BleAttributeUuidRecord {
+  uint16_t handle;
+  uint16_t uuid16;
+};
+
+constexpr BlePrimaryServiceRecord kBlePrimaryServices[] = {
+    {kHandleGapService, kHandleGapPpcpValue, kUuidGapService},
+    {kHandleGattService, kHandleGattServiceChangedCccd, kUuidGattService},
+    {kHandleBatteryService, kHandleBatteryLevelCccd, kUuidBatteryService},
+};
+
+constexpr BleCharacteristicRecord kBleCharacteristics[] = {
+    {kHandleGapDeviceNameDecl, kGattCharacteristicPropRead,
+     kHandleGapDeviceNameValue, kUuidDeviceName},
+    {kHandleGapAppearanceDecl, kGattCharacteristicPropRead,
+     kHandleGapAppearanceValue, kUuidAppearance},
+    {kHandleGapPpcpDecl, kGattCharacteristicPropRead,
+     kHandleGapPpcpValue, kUuidPpcp},
+    {kHandleGattServiceChangedDecl, kGattCharacteristicPropIndicate,
+     kHandleGattServiceChangedValue, kUuidServiceChanged},
+    {kHandleBatteryLevelDecl, static_cast<uint8_t>(kGattCharacteristicPropRead |
+                                                   kGattCharacteristicPropNotify),
+     kHandleBatteryLevelValue, kUuidBatteryLevel},
+};
+
+constexpr BleAttributeUuidRecord kBleAttributeUuids[] = {
+    {kHandleGapService, kUuidPrimaryService},
+    {kHandleGapDeviceNameDecl, kUuidCharacteristic},
+    {kHandleGapDeviceNameValue, kUuidDeviceName},
+    {kHandleGapAppearanceDecl, kUuidCharacteristic},
+    {kHandleGapAppearanceValue, kUuidAppearance},
+    {kHandleGapPpcpDecl, kUuidCharacteristic},
+    {kHandleGapPpcpValue, kUuidPpcp},
+    {kHandleGattService, kUuidPrimaryService},
+    {kHandleGattServiceChangedDecl, kUuidCharacteristic},
+    {kHandleGattServiceChangedValue, kUuidServiceChanged},
+    {kHandleGattServiceChangedCccd, kUuidClientCharacteristicConfig},
+    {kHandleBatteryService, kUuidPrimaryService},
+    {kHandleBatteryLevelDecl, kUuidCharacteristic},
+    {kHandleBatteryLevelValue, kUuidBatteryLevel},
+    {kHandleBatteryLevelCccd, kUuidClientCharacteristicConfig},
+};
+
+uint8_t bleChannelToFrequency(xiao_nrf54l15::BleAdvertisingChannel channel) {
+  switch (channel) {
+    case xiao_nrf54l15::BleAdvertisingChannel::k37:
+      return 2U;
+    case xiao_nrf54l15::BleAdvertisingChannel::k38:
+      return 26U;
+    case xiao_nrf54l15::BleAdvertisingChannel::k39:
+    default:
+      return 80U;
+  }
+}
+
+uint8_t bleChannelToIndex(xiao_nrf54l15::BleAdvertisingChannel channel) {
+  switch (channel) {
+    case xiao_nrf54l15::BleAdvertisingChannel::k37:
+      return 37U;
+    case xiao_nrf54l15::BleAdvertisingChannel::k38:
+      return 38U;
+    case xiao_nrf54l15::BleAdvertisingChannel::k39:
+    default:
+      return 39U;
+  }
+}
+
+uint8_t bleDataChannelToFrequency(uint8_t dataChannel) {
+  if (dataChannel > 36U) {
+    return 4U;
+  }
+  if (dataChannel <= 10U) {
+    return static_cast<uint8_t>(4U + (2U * dataChannel));
+  }
+  return static_cast<uint8_t>(6U + (2U * dataChannel));
+}
+
+uint16_t readLe16(const uint8_t* p) {
+  return static_cast<uint16_t>(p[0]) |
+         (static_cast<uint16_t>(p[1]) << 8U);
+}
+
+uint32_t readLe24(const uint8_t* p) {
+  return static_cast<uint32_t>(p[0]) |
+         (static_cast<uint32_t>(p[1]) << 8U) |
+         (static_cast<uint32_t>(p[2]) << 16U);
+}
+
+uint32_t readLe32(const uint8_t* p) {
+  return static_cast<uint32_t>(p[0]) |
+         (static_cast<uint32_t>(p[1]) << 8U) |
+         (static_cast<uint32_t>(p[2]) << 16U) |
+         (static_cast<uint32_t>(p[3]) << 24U);
+}
+
+void writeLe16(uint8_t* p, uint16_t v) {
+  if (p == nullptr) {
+    return;
+  }
+  p[0] = static_cast<uint8_t>(v & 0xFFU);
+  p[1] = static_cast<uint8_t>((v >> 8U) & 0xFFU);
+}
+
+uint8_t bitCount37(const uint8_t map[5]) {
+  if (map == nullptr) {
+    return 0U;
+  }
+
+  uint8_t count = 0;
+  for (uint8_t ch = 0; ch < 37U; ++ch) {
+    if ((map[ch >> 3U] & (1U << (ch & 7U))) != 0U) {
+      ++count;
+    }
+  }
+  return count;
+}
+
+uint8_t remapChannelByIndex(const uint8_t map[5], uint8_t usedIndex) {
+  uint8_t channel = 0;
+  for (uint8_t byte = 0; byte < 5U; ++byte) {
+    uint8_t bits = map[byte];
+    for (uint8_t bit = 0; bit < 8U; ++bit) {
+      if (channel >= 37U) {
+        break;
+      }
+      if ((bits & 0x01U) != 0U) {
+        if (usedIndex == 0U) {
+          return channel;
+        }
+        --usedIndex;
+      }
+      bits >>= 1U;
+      ++channel;
+    }
+  }
+  return 0U;
+}
+
+bool timeReachedUs(uint32_t now, uint32_t target) {
+  return static_cast<int32_t>(now - target) >= 0;
+}
+
+bool llEventInstantReached(uint16_t currentEventCounter, uint16_t instant) {
+  return static_cast<uint16_t>(currentEventCounter - instant) < 0x8000U;
+}
+
+uint32_t bleDataWhiteValue(uint8_t channelIndex) {
+  const uint32_t iv = static_cast<uint32_t>(0x40U | (channelIndex & 0x3FU));
+  const uint32_t poly = 0x89UL;  // x^7 + x^4 + 1
+  return ((poly << RADIO_DATAWHITE_POLY_Pos) & RADIO_DATAWHITE_POLY_Msk) |
+         ((iv << RADIO_DATAWHITE_IV_Pos) & RADIO_DATAWHITE_IV_Msk);
+}
+
+uint32_t bleAccessAddressBase(uint32_t accessAddress) {
+  return (accessAddress << 8U);
+}
+
+uint32_t bleAccessAddressPrefix(uint32_t accessAddress) {
+  return ((accessAddress >> 24U) & 0xFFU);
+}
+
+int8_t radioRssiDbm(NRF_RADIO_Type* radio) {
+  if (radio == nullptr) {
+    return 0;
+  }
+  const uint8_t raw =
+      static_cast<uint8_t>((radio->RSSISAMPLE & RADIO_RSSISAMPLE_RSSISAMPLE_Msk) >>
+                           RADIO_RSSISAMPLE_RSSISAMPLE_Pos);
+  return -static_cast<int8_t>(raw);
+}
+
+void clearRadioCoreEvents(NRF_RADIO_Type* radio) {
+  if (radio == nullptr) {
+    return;
+  }
+
+  radio->EVENTS_READY = 0U;
+  radio->EVENTS_TXREADY = 0U;
+  radio->EVENTS_RXREADY = 0U;
+  radio->EVENTS_ADDRESS = 0U;
+  radio->EVENTS_PAYLOAD = 0U;
+  radio->EVENTS_END = 0U;
+  radio->EVENTS_PHYEND = 0U;
+  radio->EVENTS_DISABLED = 0U;
+  radio->EVENTS_CRCOK = 0U;
+  radio->EVENTS_CRCERROR = 0U;
+  radio->EVENTS_RXADDRESS = 0U;
+}
+
+bool bleAddressEqual(const uint8_t* a, const uint8_t* b) {
+  if (a == nullptr || b == nullptr) {
+    return false;
+  }
+  return memcmp(a, b, 6U) == 0;
+}
+
+uint16_t clampBleRangeStart(uint16_t start) {
+  if (start == 0U) {
+    return 1U;
+  }
+  return start;
+}
+
+uint8_t minU8(uint8_t a, uint8_t b) { return (a < b) ? a : b; }
+
+uint16_t minU16(uint16_t a, uint16_t b) { return (a < b) ? a : b; }
+
+bool inHandleRange(uint16_t handle, uint16_t start, uint16_t end) {
+  return (handle >= start) && (handle <= end);
+}
+
+}  // namespace
+
+namespace xiao_nrf54l15 {
+
+bool ClockControl::startHfxo(bool waitForTuned, uint32_t spinLimit) {
+  (void)waitForTuned;
+  (void)spinLimit;
+
+  // This Arduino core does not expose the legacy CLOCK task/event block used by
+  // some nRF5x parts. Clock control is owned by the underlying runtime.
+  return true;
+}
+
+void ClockControl::stopHfxo() {
+  // No-op for this core; see startHfxo().
+}
+
+bool Gpio::configure(const Pin& pin, GpioDirection direction, GpioPull pull) {
+  if (!isConnected(pin)) {
+    return false;
+  }
+
+  const uint32_t base = gpioBaseForPort(pin.port);
+  if (base == 0U) {
+    return false;
+  }
+
+  const uint32_t bit = (1UL << pin.pin);
+  const uint32_t cnfAddr = base + gpio::PIN_CNF +
+                           (static_cast<uint32_t>(pin.pin) * sizeof(uint32_t));
+
+  uint32_t cnf = reg32(cnfAddr);
+  cnf &= ~(gpio::PIN_CNF_DIR_Msk | gpio::PIN_CNF_INPUT_Msk |
+           gpio::PIN_CNF_PULL_Msk);
+
+  if (direction == GpioDirection::kOutput) {
+    cnf |= gpio::PIN_CNF_DIR_Msk;
+    // Disconnect input buffer while pin is output.
+    cnf |= gpio::PIN_CNF_INPUT_Msk;
+    reg32(base + gpio::DIRSET) = bit;
+  } else {
+    // Input buffer connected for reads.
+    cnf &= ~gpio::PIN_CNF_INPUT_Msk;
+    reg32(base + gpio::DIRCLR) = bit;
+  }
+
+  cnf |= ((static_cast<uint32_t>(pull) << gpio::PIN_CNF_PULL_Pos) &
+          gpio::PIN_CNF_PULL_Msk);
+
+  reg32(cnfAddr) = cnf;
+  return true;
+}
+
+bool Gpio::write(const Pin& pin, bool high) {
+  if (!isConnected(pin)) {
+    return false;
+  }
+
+  const uint32_t base = gpioBaseForPort(pin.port);
+  if (base == 0U) {
+    return false;
+  }
+
+  const uint32_t bit = (1UL << pin.pin);
+  reg32(base + (high ? gpio::OUTSET : gpio::OUTCLR)) = bit;
+  return true;
+}
+
+bool Gpio::read(const Pin& pin, bool* high) {
+  if (!isConnected(pin) || high == nullptr) {
+    return false;
+  }
+
+  const uint32_t base = gpioBaseForPort(pin.port);
+  if (base == 0U) {
+    return false;
+  }
+
+  const uint32_t bit = (1UL << pin.pin);
+  *high = (reg32(base + gpio::IN) & bit) != 0U;
+  return true;
+}
+
+bool Gpio::toggle(const Pin& pin) {
+  bool state = false;
+  if (!read(pin, &state)) {
+    return false;
+  }
+  return write(pin, !state);
+}
+
+bool Gpio::setDriveS0D1(const Pin& pin) {
+  if (!isConnected(pin)) {
+    return false;
+  }
+
+  const uint32_t base = gpioBaseForPort(pin.port);
+  if (base == 0U) {
+    return false;
+  }
+
+  const uint32_t cnfAddr = base + gpio::PIN_CNF +
+                           (static_cast<uint32_t>(pin.pin) * sizeof(uint32_t));
+  uint32_t cnf = reg32(cnfAddr);
+
+  cnf &= ~(gpio::PIN_CNF_DRIVE0_Msk | gpio::PIN_CNF_DRIVE1_Msk);
+  cnf |= (gpio::DRIVE0_S0 << gpio::PIN_CNF_DRIVE0_Pos);
+  cnf |= (gpio::DRIVE1_D1 << gpio::PIN_CNF_DRIVE1_Pos);
+
+  reg32(cnfAddr) = cnf;
+  return true;
+}
+
+Spim::Spim(uint32_t base, uint32_t coreClockHz)
+    : base_(base), coreClockHz_(coreClockHz), cs_(kPinDisconnected) {}
+
+bool Spim::begin(const Pin& sck, const Pin& mosi, const Pin& miso,
+                 const Pin& cs, uint32_t hz, SpiMode mode, bool lsbFirst) {
+  if (!isConnected(sck) || !isConnected(mosi) || !isConnected(miso)) {
+    return false;
+  }
+
+  cs_ = cs;
+
+  if (!Gpio::configure(sck, GpioDirection::kOutput, GpioPull::kDisabled) ||
+      !Gpio::configure(mosi, GpioDirection::kOutput, GpioPull::kDisabled) ||
+      !Gpio::configure(miso, GpioDirection::kInput, GpioPull::kDisabled)) {
+    return false;
+  }
+
+  if (isConnected(cs_) &&
+      (!Gpio::configure(cs_, GpioDirection::kOutput, GpioPull::kDisabled) ||
+       !Gpio::write(cs_, true))) {
+    return false;
+  }
+
+  reg32(base_ + spim::ENABLE) = spim::ENABLE_DISABLED;
+
+  reg32(base_ + spim::PSEL_SCK) = make_psel(sck.port, sck.pin);
+  reg32(base_ + spim::PSEL_MOSI) = make_psel(mosi.port, mosi.pin);
+  reg32(base_ + spim::PSEL_MISO) = make_psel(miso.port, miso.pin);
+  reg32(base_ + spim::PSEL_DCX) = PSEL_DISCONNECTED;
+  reg32(base_ + spim::PSEL_CSN) = PSEL_DISCONNECTED;
+
+  const uint32_t minDivisor = (base_ == SPIM00_BASE) ? 4U : 2U;
+  reg32(base_ + spim::PRESCALER) = spimPrescaler(coreClockHz_, hz, minDivisor);
+
+  uint32_t config = 0;
+  if (lsbFirst) {
+    config |= spim::CONFIG_ORDER_LSB_FIRST;
+  }
+
+  if (mode == SpiMode::kMode1 || mode == SpiMode::kMode3) {
+    config |= spim::CONFIG_CPHA_TRAILING;
+  }
+  if (mode == SpiMode::kMode2 || mode == SpiMode::kMode3) {
+    config |= spim::CONFIG_CPOL_ACTIVE_LOW;
+  }
+
+  reg32(base_ + spim::CONFIG) = config;
+  reg32(base_ + spim::ORC) = 0xFF;
+  reg32(base_ + spim::ENABLE) = spim::ENABLE_ENABLED;
+
+  return true;
+}
+
+void Spim::end() {
+  reg32(base_ + spim::ENABLE) = spim::ENABLE_DISABLED;
+  reg32(base_ + spim::PSEL_SCK) = PSEL_DISCONNECTED;
+  reg32(base_ + spim::PSEL_MOSI) = PSEL_DISCONNECTED;
+  reg32(base_ + spim::PSEL_MISO) = PSEL_DISCONNECTED;
+  reg32(base_ + spim::PSEL_CSN) = PSEL_DISCONNECTED;
+}
+
+bool Spim::transfer(const uint8_t* tx, uint8_t* rx, size_t len,
+                    uint32_t spinLimit) {
+  if (len == 0U) {
+    return true;
+  }
+  if (len > 0xFFFFU) {
+    return false;
+  }
+
+  uint8_t txFallback = 0xFF;
+  uint8_t rxFallback = 0;
+
+  const uint8_t* txPtr = (tx != nullptr) ? tx : &txFallback;
+  uint8_t* rxPtr = (rx != nullptr) ? rx : &rxFallback;
+
+  const uint32_t txLen = (tx != nullptr) ? static_cast<uint32_t>(len) : 0U;
+  const uint32_t rxLen = (rx != nullptr) ? static_cast<uint32_t>(len) : 0U;
+
+  clearEvent(base_, spim::EVENTS_STARTED);
+  clearEvent(base_, spim::EVENTS_END);
+  clearEvent(base_, spim::EVENTS_STOPPED);
+
+  reg32(base_ + spim::DMA_TX_PTR) =
+      static_cast<uint32_t>(reinterpret_cast<uintptr_t>(txPtr));
+  reg32(base_ + spim::DMA_TX_MAXCNT) = txLen;
+
+  reg32(base_ + spim::DMA_RX_PTR) =
+      static_cast<uint32_t>(reinterpret_cast<uintptr_t>(rxPtr));
+  reg32(base_ + spim::DMA_RX_MAXCNT) = rxLen;
+
+  if (isConnected(cs_)) {
+    Gpio::write(cs_, false);
+  }
+
+  reg32(base_ + spim::TASKS_START) = 1;
+  const bool endOk = waitForEvent(base_, spim::EVENTS_END, spinLimit);
+
+  reg32(base_ + spim::TASKS_STOP) = 1;
+  const bool stopOk = waitForEvent(base_, spim::EVENTS_STOPPED, spinLimit);
+
+  if (isConnected(cs_)) {
+    Gpio::write(cs_, true);
+  }
+
+  return endOk && stopOk;
+}
+
+Twim::Twim(uint32_t base) : base_(base) {}
+
+bool Twim::begin(const Pin& scl, const Pin& sda, TwimFrequency frequency) {
+  if (!isConnected(scl) || !isConnected(sda)) {
+    return false;
+  }
+
+  // Per datasheet, configure SCL/SDA for input and S0D1 drive before enabling TWIM.
+  if (!Gpio::configure(scl, GpioDirection::kInput, GpioPull::kDisabled) ||
+      !Gpio::configure(sda, GpioDirection::kInput, GpioPull::kDisabled) ||
+      !Gpio::setDriveS0D1(scl) || !Gpio::setDriveS0D1(sda)) {
+    return false;
+  }
+
+  reg32(base_ + twim::ENABLE) = twim::ENABLE_DISABLED;
+
+  reg32(base_ + twim::PSEL_SCL) = make_psel(scl.port, scl.pin);
+  reg32(base_ + twim::PSEL_SDA) = make_psel(sda.port, sda.pin);
+  reg32(base_ + twim::FREQUENCY) = static_cast<uint32_t>(frequency);
+
+  reg32(base_ + twim::ENABLE) = twim::ENABLE_ENABLED;
+  return true;
+}
+
+void Twim::end() {
+  reg32(base_ + twim::ENABLE) = twim::ENABLE_DISABLED;
+  reg32(base_ + twim::PSEL_SCL) = PSEL_DISCONNECTED;
+  reg32(base_ + twim::PSEL_SDA) = PSEL_DISCONNECTED;
+}
+
+bool Twim::write(uint8_t address7, const uint8_t* data, size_t len,
+                 uint32_t spinLimit) {
+  if (len > 0xFFFFU) {
+    return false;
+  }
+
+  uint8_t dummy = 0;
+  const uint8_t* tx = (data != nullptr) ? data : &dummy;
+
+  clearTwimState(base_);
+  reg32(base_ + twim::ADDRESS) = (address7 & 0x7FU);
+
+  reg32(base_ + twim::DMA_TX_PTR) =
+      static_cast<uint32_t>(reinterpret_cast<uintptr_t>(tx));
+  reg32(base_ + twim::DMA_TX_MAXCNT) = static_cast<uint32_t>(len);
+
+  reg32(base_ + twim::TASKS_DMA_TX_START) = 1;
+  const uint32_t doneEvent = (len > 0U) ? twim::EVENTS_LASTTX
+                                        : twim::EVENTS_DMA_TX_END;
+  const bool writeOk = waitForEventOrError(base_, doneEvent, twim::EVENTS_ERROR,
+                                           spinLimit);
+
+  reg32(base_ + twim::TASKS_STOP) = 1;
+  const bool stopOk = waitForEvent(base_, twim::EVENTS_STOPPED, spinLimit);
+
+  const bool hadError = (reg32(base_ + twim::EVENTS_ERROR) != 0U);
+  reg32(base_ + twim::ERRORSRC) = twim::ERRORSRC_ALL;
+
+  return writeOk && stopOk && !hadError;
+}
+
+bool Twim::read(uint8_t address7, uint8_t* data, size_t len,
+                uint32_t spinLimit) {
+  if (data == nullptr || len == 0U || len > 0xFFFFU) {
+    return false;
+  }
+
+  clearTwimState(base_);
+  reg32(base_ + twim::ADDRESS) = (address7 & 0x7FU);
+
+  reg32(base_ + twim::DMA_RX_PTR) =
+      static_cast<uint32_t>(reinterpret_cast<uintptr_t>(data));
+  reg32(base_ + twim::DMA_RX_MAXCNT) = static_cast<uint32_t>(len);
+
+  reg32(base_ + twim::TASKS_DMA_RX_START) = 1;
+  const bool readOk = waitForEventOrError(base_, twim::EVENTS_LASTRX,
+                                          twim::EVENTS_ERROR, spinLimit);
+
+  reg32(base_ + twim::TASKS_STOP) = 1;
+  const bool stopOk = waitForEvent(base_, twim::EVENTS_STOPPED, spinLimit);
+
+  const bool hadError = (reg32(base_ + twim::EVENTS_ERROR) != 0U);
+  reg32(base_ + twim::ERRORSRC) = twim::ERRORSRC_ALL;
+
+  return readOk && stopOk && !hadError;
+}
+
+bool Twim::writeRead(uint8_t address7, const uint8_t* tx, size_t txLen,
+                     uint8_t* rx, size_t rxLen, uint32_t spinLimit) {
+  if (txLen == 0U) {
+    return read(address7, rx, rxLen, spinLimit);
+  }
+  if (rxLen == 0U) {
+    return write(address7, tx, txLen, spinLimit);
+  }
+  if (tx == nullptr || rx == nullptr || txLen > 0xFFFFU || rxLen > 0xFFFFU) {
+    return false;
+  }
+
+  clearTwimState(base_);
+  reg32(base_ + twim::ADDRESS) = (address7 & 0x7FU);
+
+  reg32(base_ + twim::DMA_TX_PTR) =
+      static_cast<uint32_t>(reinterpret_cast<uintptr_t>(tx));
+  reg32(base_ + twim::DMA_TX_MAXCNT) = static_cast<uint32_t>(txLen);
+
+  reg32(base_ + twim::DMA_RX_PTR) =
+      static_cast<uint32_t>(reinterpret_cast<uintptr_t>(rx));
+  reg32(base_ + twim::DMA_RX_MAXCNT) = static_cast<uint32_t>(rxLen);
+
+  reg32(base_ + twim::TASKS_DMA_TX_START) = 1;
+  const bool writePhaseOk = waitForEventOrError(base_, twim::EVENTS_LASTTX,
+                                                 twim::EVENTS_ERROR, spinLimit);
+
+  if (!writePhaseOk) {
+    reg32(base_ + twim::TASKS_STOP) = 1;
+    waitForEvent(base_, twim::EVENTS_STOPPED, spinLimit);
+    reg32(base_ + twim::ERRORSRC) = twim::ERRORSRC_ALL;
+    return false;
+  }
+
+  reg32(base_ + twim::TASKS_DMA_RX_START) = 1;
+  const bool readPhaseOk = waitForEventOrError(base_, twim::EVENTS_LASTRX,
+                                                twim::EVENTS_ERROR, spinLimit);
+
+  reg32(base_ + twim::TASKS_STOP) = 1;
+  const bool stopOk = waitForEvent(base_, twim::EVENTS_STOPPED, spinLimit);
+
+  const bool hadError = (reg32(base_ + twim::EVENTS_ERROR) != 0U);
+  reg32(base_ + twim::ERRORSRC) = twim::ERRORSRC_ALL;
+
+  return writePhaseOk && readPhaseOk && stopOk && !hadError;
+}
+
+Uarte::Uarte(uint32_t base) : base_(base) {}
+
+bool Uarte::begin(const Pin& txd, const Pin& rxd, UarteBaud baud,
+                  bool hwFlowControl, const Pin& cts, const Pin& rts) {
+  if (!isConnected(txd) || !isConnected(rxd)) {
+    return false;
+  }
+  if (hwFlowControl && (!isConnected(cts) || !isConnected(rts))) {
+    return false;
+  }
+
+  if (!Gpio::configure(txd, GpioDirection::kOutput, GpioPull::kDisabled) ||
+      !Gpio::configure(rxd, GpioDirection::kInput, GpioPull::kDisabled)) {
+    return false;
+  }
+  Gpio::write(txd, true);
+
+  if (hwFlowControl) {
+    if (!Gpio::configure(cts, GpioDirection::kInput, GpioPull::kDisabled) ||
+        !Gpio::configure(rts, GpioDirection::kOutput, GpioPull::kDisabled)) {
+      return false;
+    }
+    Gpio::write(rts, true);
+  }
+
+  reg32(base_ + uarte::ENABLE) = uarte::ENABLE_DISABLED;
+
+  reg32(base_ + uarte::PSEL_TXD) = make_psel(txd.port, txd.pin);
+  reg32(base_ + uarte::PSEL_RXD) = make_psel(rxd.port, rxd.pin);
+  reg32(base_ + uarte::PSEL_CTS) =
+      hwFlowControl ? make_psel(cts.port, cts.pin) : PSEL_DISCONNECTED;
+  reg32(base_ + uarte::PSEL_RTS) =
+      hwFlowControl ? make_psel(rts.port, rts.pin) : PSEL_DISCONNECTED;
+
+  uint32_t config = reg32(base_ + uarte::CONFIG);
+  if (hwFlowControl) {
+    config |= uarte::CONFIG_HWFC_Msk;
+  } else {
+    config &= ~uarte::CONFIG_HWFC_Msk;
+  }
+  reg32(base_ + uarte::CONFIG) = config;
+
+  reg32(base_ + uarte::BAUDRATE) = static_cast<uint32_t>(baud);
+  reg32(base_ + uarte::ENABLE) = uarte::ENABLE_ENABLED;
+
+  return true;
+}
+
+void Uarte::end() {
+  reg32(base_ + uarte::ENABLE) = uarte::ENABLE_DISABLED;
+  reg32(base_ + uarte::PSEL_TXD) = PSEL_DISCONNECTED;
+  reg32(base_ + uarte::PSEL_RXD) = PSEL_DISCONNECTED;
+  reg32(base_ + uarte::PSEL_CTS) = PSEL_DISCONNECTED;
+  reg32(base_ + uarte::PSEL_RTS) = PSEL_DISCONNECTED;
+}
+
+bool Uarte::write(const uint8_t* data, size_t len, uint32_t spinLimit) {
+  if (data == nullptr) {
+    return false;
+  }
+  if (len == 0U) {
+    return true;
+  }
+  if (len > 0xFFFFU) {
+    return false;
+  }
+
+  clearEvent(base_, uarte::EVENTS_DMA_TX_END);
+  clearEvent(base_, uarte::EVENTS_TXSTOPPED);
+  clearEvent(base_, uarte::EVENTS_ERROR);
+  reg32(base_ + uarte::ERRORSRC) = uarte::ERRORSRC_ALL;
+
+  reg32(base_ + uarte::DMA_TX_PTR) =
+      static_cast<uint32_t>(reinterpret_cast<uintptr_t>(data));
+  reg32(base_ + uarte::DMA_TX_MAXCNT) = static_cast<uint32_t>(len);
+
+  reg32(base_ + uarte::TASKS_DMA_TX_START) = 1;
+  const bool txOk = waitForEvent(base_, uarte::EVENTS_DMA_TX_END, spinLimit);
+
+  reg32(base_ + uarte::TASKS_DMA_TX_STOP) = 1;
+  const bool stopped =
+      waitForEvent(base_, uarte::EVENTS_TXSTOPPED, spinLimit);
+
+  return txOk && stopped;
+}
+
+size_t Uarte::read(uint8_t* data, size_t len, uint32_t spinLimit) {
+  if (data == nullptr || len == 0U || len > 0xFFFFU) {
+    return 0;
+  }
+
+  clearEvent(base_, uarte::EVENTS_DMA_RX_END);
+  clearEvent(base_, uarte::EVENTS_RXTO);
+  clearEvent(base_, uarte::EVENTS_ERROR);
+  reg32(base_ + uarte::ERRORSRC) = uarte::ERRORSRC_ALL;
+
+  reg32(base_ + uarte::DMA_RX_PTR) =
+      static_cast<uint32_t>(reinterpret_cast<uintptr_t>(data));
+  reg32(base_ + uarte::DMA_RX_MAXCNT) = static_cast<uint32_t>(len);
+
+  reg32(base_ + uarte::TASKS_DMA_RX_START) = 1;
+
+  bool rxDone = false;
+  while (spinLimit-- > 0U) {
+    if (reg32(base_ + uarte::EVENTS_DMA_RX_END) != 0U) {
+      rxDone = true;
+      break;
+    }
+    if (reg32(base_ + uarte::EVENTS_ERROR) != 0U) {
+      break;
+    }
+  }
+
+  reg32(base_ + uarte::TASKS_DMA_RX_STOP) = 1;
+  waitForEvent(base_, uarte::EVENTS_RXTO, 2000000UL);
+
+  const size_t amount = static_cast<size_t>(reg32(base_ + uarte::DMA_RX_AMOUNT));
+  if (!rxDone && reg32(base_ + uarte::EVENTS_ERROR) != 0U) {
+    reg32(base_ + uarte::ERRORSRC) = uarte::ERRORSRC_ALL;
+  }
+
+  return amount;
+}
+
+Timer::Timer(uint32_t base, uint32_t pclkHz, uint8_t channelCount)
+    : base_(base),
+      pclkHz_(pclkHz),
+      channelCount_(channelCount),
+      prescaler_(4),
+      callbacks_{},
+      callbackContext_{} {
+  if (channelCount_ > 8U) {
+    channelCount_ = 8U;
+  }
+}
+
+bool Timer::begin(TimerBitWidth bitWidth, uint8_t prescaler, bool counterMode) {
+  if (channelCount_ == 0U || prescaler > 9U) {
+    return false;
+  }
+
+  stop();
+  clear();
+
+  reg32(base_ + timer::MODE) = counterMode ? timer::MODE_COUNTER : timer::MODE_TIMER;
+  reg32(base_ + timer::BITMODE) = static_cast<uint32_t>(bitWidth);
+  reg32(base_ + timer::PRESCALER) = static_cast<uint32_t>(prescaler);
+  prescaler_ = prescaler;
+
+  reg32(base_ + timer::SHORTS) = 0;
+  reg32(base_ + timer::INTENCLR) = 0xFFFFFFFFUL;
+
+  for (uint8_t ch = 0; ch < channelCount_; ++ch) {
+    clearEvent(base_, timerCompareEventOffset(ch));
+    reg32(base_ + timerOneShotOffset(ch)) = 0;
+  }
+
+  return true;
+}
+
+bool Timer::setFrequency(uint32_t targetHz) {
+  if (targetHz == 0U || pclkHz_ == 0U) {
+    return false;
+  }
+
+  uint8_t bestPrescaler = 0;
+  uint32_t bestError = 0xFFFFFFFFUL;
+  bool found = false;
+
+  for (uint8_t prescaler = 0; prescaler <= 9U; ++prescaler) {
+    const uint32_t hz = pclkHz_ >> prescaler;
+    if (hz == 0U) {
+      continue;
+    }
+    const uint32_t error = absDiffU32(hz, targetHz);
+    if (!found || error < bestError) {
+      found = true;
+      bestError = error;
+      bestPrescaler = prescaler;
+      if (error == 0U) {
+        break;
+      }
+    }
+  }
+
+  if (!found) {
+    return false;
+  }
+
+  reg32(base_ + timer::PRESCALER) = bestPrescaler;
+  prescaler_ = bestPrescaler;
+  return true;
+}
+
+uint32_t Timer::timerHz() const {
+  if (prescaler_ > 31U) {
+    return 0;
+  }
+  return pclkHz_ >> prescaler_;
+}
+
+uint32_t Timer::ticksFromMicros(uint32_t us) const {
+  const uint32_t hz = timerHz();
+  if (hz == 0U || us == 0U) {
+    return 0U;
+  }
+
+  const uint64_t ticks =
+      (static_cast<uint64_t>(hz) * static_cast<uint64_t>(us) + 999999ULL) /
+      1000000ULL;
+  return static_cast<uint32_t>(ticks);
+}
+
+void Timer::start() { reg32(base_ + timer::TASKS_START) = 1; }
+
+void Timer::stop() { reg32(base_ + timer::TASKS_STOP) = 1; }
+
+void Timer::clear() { reg32(base_ + timer::TASKS_CLEAR) = 1; }
+
+bool Timer::setCompare(uint8_t channel, uint32_t ccValue, bool autoClear,
+                       bool autoStop, bool oneShot, bool enableInterruptFlag) {
+  if (channel >= channelCount_) {
+    return false;
+  }
+
+  reg32(base_ + timerCcOffset(channel)) = ccValue;
+  reg32(base_ + timerOneShotOffset(channel)) = oneShot ? 1U : 0U;
+
+  uint32_t shorts = reg32(base_ + timer::SHORTS);
+  const uint32_t clearMask = (1UL << channel);
+  const uint32_t stopMask = (1UL << (16U + channel));
+
+  if (autoClear) {
+    shorts |= clearMask;
+  } else {
+    shorts &= ~clearMask;
+  }
+
+  if (autoStop) {
+    shorts |= stopMask;
+  } else {
+    shorts &= ~stopMask;
+  }
+
+  reg32(base_ + timer::SHORTS) = shorts;
+  clearEvent(base_, timerCompareEventOffset(channel));
+  enableInterrupt(channel, enableInterruptFlag);
+
+  return true;
+}
+
+uint32_t Timer::capture(uint8_t channel) {
+  if (channel >= channelCount_) {
+    return 0U;
+  }
+  reg32(base_ + timerCaptureTaskOffset(channel)) = 1;
+  return reg32(base_ + timerCcOffset(channel));
+}
+
+bool Timer::pollCompare(uint8_t channel, bool clearEventFlag) {
+  if (channel >= channelCount_) {
+    return false;
+  }
+
+  const uint32_t offset = timerCompareEventOffset(channel);
+  const bool fired = (reg32(base_ + offset) != 0U);
+  if (fired && clearEventFlag) {
+    clearEvent(base_, offset);
+  }
+  return fired;
+}
+
+void Timer::enableInterrupt(uint8_t channel, bool enable) {
+  if (channel >= channelCount_) {
+    return;
+  }
+
+  const uint32_t mask = timerCompareIntMask(channel);
+  reg32(base_ + (enable ? timer::INTENSET : timer::INTENCLR)) = mask;
+}
+
+bool Timer::attachCompareCallback(uint8_t channel, CompareCallback callback,
+                                  void* context) {
+  if (channel >= channelCount_) {
+    return false;
+  }
+  callbacks_[channel] = callback;
+  callbackContext_[channel] = context;
+  return true;
+}
+
+void Timer::service() {
+  for (uint8_t ch = 0; ch < channelCount_; ++ch) {
+    const uint32_t eventOffset = timerCompareEventOffset(ch);
+    if (reg32(base_ + eventOffset) == 0U) {
+      continue;
+    }
+
+    clearEvent(base_, eventOffset);
+    if (callbacks_[ch] != nullptr) {
+      callbacks_[ch](ch, callbackContext_[ch]);
+    }
+  }
+}
+
+Pwm::Pwm(uint32_t base)
+    : base_(base),
+      outPin_(kPinDisconnected),
+      dutyPermille_(500),
+      countertop_(1000),
+      prescaler_(0),
+      activeHigh_(true),
+      configured_(false),
+      sequence_{0, 0, 0, 0} {}
+
+bool Pwm::beginSingle(const Pin& outPin, uint32_t frequencyHz, uint16_t dutyPermille,
+                      bool activeHigh) {
+  if (!isConnected(outPin)) {
+    return false;
+  }
+
+  outPin_ = outPin;
+  dutyPermille_ = (dutyPermille > 1000U) ? 1000U : dutyPermille;
+  activeHigh_ = activeHigh;
+
+  if (!Gpio::configure(outPin_, GpioDirection::kOutput, GpioPull::kDisabled)) {
+    return false;
+  }
+  Gpio::write(outPin_, activeHigh_ ? false : true);
+
+  reg32(base_ + pwm::ENABLE) = pwm::ENABLE_DISABLED;
+  reg32(base_ + pwm::SHORTS) = 0;
+
+  for (uint8_t ch = 0; ch < 4U; ++ch) {
+    reg32(base_ + pwm::PSEL_OUT + (static_cast<uint32_t>(ch) * sizeof(uint32_t))) =
+        PSEL_DISCONNECTED;
+  }
+  reg32(base_ + pwm::PSEL_OUT) = make_psel(outPin_.port, outPin_.pin);
+
+  reg32(base_ + pwm::MODE) = pwm::MODE_UP;
+
+  if (!configureClockAndTop(frequencyHz)) {
+    return false;
+  }
+
+  reg32(base_ + pwm::DECODER) =
+      (pwm::DECODER_LOAD_COMMON << 0U) | (pwm::DECODER_MODE_REFRESHCOUNT << 8U);
+  reg32(base_ + pwm::LOOP) = 0;
+
+  // Keep the channel idle level in the "off" state between periods/stops.
+  reg32(base_ + pwm::IDLEOUT) = activeHigh_ ? 0U : 1U;
+
+  reg32(base_ + pwm::SEQ_REFRESH + 0U) = 0;
+  reg32(base_ + pwm::SEQ_REFRESH + sizeof(uint32_t)) = 0;
+  reg32(base_ + pwm::SEQ_ENDDELAY + 0U) = 0;
+  reg32(base_ + pwm::SEQ_ENDDELAY + sizeof(uint32_t)) = 0;
+
+  updateSequenceWord();
+
+  for (uint8_t seq = 0; seq < 2U; ++seq) {
+    reg32(base_ + pwmDmaSeqPtrOffset(seq)) =
+        static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&sequence_[0]));
+    reg32(base_ + pwmDmaSeqMaxCntOffset(seq)) = 2U;  // One 16-bit value in bytes.
+  }
+
+  reg32(base_ + pwm::ENABLE) = pwm::ENABLE_ENABLED;
+  configured_ = true;
+  return true;
+}
+
+bool Pwm::setDutyPermille(uint16_t dutyPermille) {
+  dutyPermille_ = (dutyPermille > 1000U) ? 1000U : dutyPermille;
+  if (!configured_) {
+    return false;
+  }
+  updateSequenceWord();
+  return true;
+}
+
+bool Pwm::setFrequency(uint32_t frequencyHz) {
+  if (!configured_) {
+    return false;
+  }
+
+  if (!configureClockAndTop(frequencyHz)) {
+    return false;
+  }
+
+  updateSequenceWord();
+  return true;
+}
+
+bool Pwm::start(uint8_t sequence, uint32_t spinLimit) {
+  if (!configured_ || sequence > 1U) {
+    return false;
+  }
+
+  uint32_t shorts = 0;
+  if (sequence == 0U) {
+    shorts |= (1UL << 2U);  // LOOPSDONE -> TASKS_DMA.SEQ[0].START
+    shorts |= (1UL << 6U);  // DMA_SEQ0 bus error -> STOP
+  } else {
+    shorts |= (1UL << 3U);  // LOOPSDONE -> TASKS_DMA.SEQ[1].START
+    shorts |= (1UL << 7U);  // DMA_SEQ1 bus error -> STOP
+  }
+  reg32(base_ + pwm::SHORTS) = shorts;
+
+  clearEvent(base_, pwm::EVENTS_STOPPED);
+  clearEvent(base_, pwm::EVENTS_LOOPSDONE);
+  clearEvent(base_, pwm::EVENTS_PWMPERIODEND);
+  clearEvent(base_, pwmEventSeqStartedOffset(sequence));
+  clearEvent(base_, pwmEventSeqEndOffset(sequence));
+  clearEvent(base_, pwmEventDmaSeqEndOffset(sequence));
+
+  reg32(base_ + pwmTaskSeqStartOffset(sequence)) = 1;
+  return waitForEvent(base_, pwmEventSeqStartedOffset(sequence), spinLimit);
+}
+
+bool Pwm::stop(uint32_t spinLimit) {
+  if (!configured_) {
+    return false;
+  }
+
+  clearEvent(base_, pwm::EVENTS_STOPPED);
+  reg32(base_ + pwm::TASKS_STOP) = 1;
+  reg32(base_ + pwm::SHORTS) = 0;
+
+  return waitForEvent(base_, pwm::EVENTS_STOPPED, spinLimit);
+}
+
+void Pwm::end() {
+  if (configured_) {
+    stop(200000UL);
+  }
+
+  reg32(base_ + pwm::ENABLE) = pwm::ENABLE_DISABLED;
+  reg32(base_ + pwm::SHORTS) = 0;
+
+  for (uint8_t ch = 0; ch < 4U; ++ch) {
+    reg32(base_ + pwm::PSEL_OUT + (static_cast<uint32_t>(ch) * sizeof(uint32_t))) =
+        PSEL_DISCONNECTED;
+  }
+
+  configured_ = false;
+}
+
+bool Pwm::pollPeriodEnd(bool clearEventFlag) {
+  const bool fired = (reg32(base_ + pwm::EVENTS_PWMPERIODEND) != 0U);
+  if (fired && clearEventFlag) {
+    clearEvent(base_, pwm::EVENTS_PWMPERIODEND);
+  }
+  return fired;
+}
+
+bool Pwm::configureClockAndTop(uint32_t frequencyHz) {
+  PwmTiming timing{};
+  if (!computePwmTiming(frequencyHz, &timing)) {
+    return false;
+  }
+
+  prescaler_ = timing.prescaler;
+  countertop_ = timing.countertop;
+
+  reg32(base_ + pwm::PRESCALER) = prescaler_;
+  reg32(base_ + pwm::COUNTERTOP) = countertop_;
+  return true;
+}
+
+void Pwm::updateSequenceWord() {
+  if (countertop_ < 3U) {
+    countertop_ = 3U;
+  }
+
+  uint32_t pulse = (static_cast<uint32_t>(countertop_) * dutyPermille_ + 500U) / 1000U;
+  if (pulse > countertop_) {
+    pulse = countertop_;
+  }
+
+  uint16_t word = static_cast<uint16_t>(pulse & 0x7FFFU);
+  if (!activeHigh_) {
+    word |= 0x8000U;
+  }
+
+  sequence_[0] = word;
+  sequence_[1] = word;
+  sequence_[2] = word;
+  sequence_[3] = word;
+}
+
+Gpiote::Gpiote(uint32_t base, uint8_t channelCount)
+    : base_(base), channelCount_(channelCount), callbacks_{}, callbackContext_{} {
+  if (channelCount_ > 8U) {
+    channelCount_ = 8U;
+  }
+}
+
+bool Gpiote::configureEvent(uint8_t channel, const Pin& pin, GpiotePolarity polarity,
+                            bool enableInterruptFlag) {
+  if (channel >= channelCount_ || !isConnected(pin)) {
+    return false;
+  }
+
+  if (!Gpio::configure(pin, GpioDirection::kInput, GpioPull::kDisabled)) {
+    return false;
+  }
+
+  uint32_t config = 0;
+  config |= (gpiote::MODE_EVENT << gpiote::CONFIG_MODE_Pos);
+  config |= (static_cast<uint32_t>(pin.pin) << gpiote::CONFIG_PSEL_Pos);
+  config |= (static_cast<uint32_t>(pin.port) << gpiote::CONFIG_PORT_Pos);
+  config |= (static_cast<uint32_t>(polarity) << gpiote::CONFIG_POLARITY_Pos);
+
+  reg32(base_ + gpioteConfigOffset(channel)) = config;
+  clearEvent(base_, gpioteInEventOffset(channel));
+
+  if (enableInterruptFlag) {
+    enableInterrupt(channel, true);
+  }
+  return true;
+}
+
+bool Gpiote::configureTask(uint8_t channel, const Pin& pin, GpiotePolarity polarity,
+                           bool initialHigh) {
+  if (channel >= channelCount_ || !isConnected(pin)) {
+    return false;
+  }
+
+  if (!Gpio::configure(pin, GpioDirection::kOutput, GpioPull::kDisabled)) {
+    return false;
+  }
+  Gpio::write(pin, initialHigh);
+
+  uint32_t config = 0;
+  config |= (gpiote::MODE_TASK << gpiote::CONFIG_MODE_Pos);
+  config |= (static_cast<uint32_t>(pin.pin) << gpiote::CONFIG_PSEL_Pos);
+  config |= (static_cast<uint32_t>(pin.port) << gpiote::CONFIG_PORT_Pos);
+  config |= (static_cast<uint32_t>(polarity) << gpiote::CONFIG_POLARITY_Pos);
+  if (initialHigh) {
+    config |= (1UL << gpiote::CONFIG_OUTINIT_Pos);
+  }
+
+  reg32(base_ + gpioteConfigOffset(channel)) = config;
+  return true;
+}
+
+void Gpiote::disableChannel(uint8_t channel) {
+  if (channel >= channelCount_) {
+    return;
+  }
+  reg32(base_ + gpioteConfigOffset(channel)) = 0;
+  enableInterrupt(channel, false);
+  clearEvent(base_, gpioteInEventOffset(channel));
+}
+
+bool Gpiote::triggerTaskOut(uint8_t channel) {
+  if (channel >= channelCount_) {
+    return false;
+  }
+  reg32(base_ + gpioteTaskOutOffset(channel)) = 1;
+  return true;
+}
+
+bool Gpiote::triggerTaskSet(uint8_t channel) {
+  if (channel >= channelCount_) {
+    return false;
+  }
+  reg32(base_ + gpioteTaskSetOffset(channel)) = 1;
+  return true;
+}
+
+bool Gpiote::triggerTaskClr(uint8_t channel) {
+  if (channel >= channelCount_) {
+    return false;
+  }
+  reg32(base_ + gpioteTaskClrOffset(channel)) = 1;
+  return true;
+}
+
+bool Gpiote::pollInEvent(uint8_t channel, bool clearEventFlag) {
+  if (channel >= channelCount_) {
+    return false;
+  }
+
+  const uint32_t offset = gpioteInEventOffset(channel);
+  const bool fired = (reg32(base_ + offset) != 0U);
+  if (fired && clearEventFlag) {
+    clearEvent(base_, offset);
+  }
+  return fired;
+}
+
+bool Gpiote::pollPortEvent(bool clearEventFlag) {
+  const bool fired = (reg32(base_ + gpiote::EVENTS_PORT_NONSECURE) != 0U);
+  if (fired && clearEventFlag) {
+    clearEvent(base_, gpiote::EVENTS_PORT_NONSECURE);
+  }
+  return fired;
+}
+
+void Gpiote::enableInterrupt(uint8_t channel, bool enable) {
+  if (channel >= channelCount_) {
+    return;
+  }
+
+  const uint32_t mask = (1UL << channel);
+  reg32(base_ + (enable ? gpiote::INTENSET0 : gpiote::INTENCLR0)) = mask;
+}
+
+bool Gpiote::attachInCallback(uint8_t channel, InCallback callback, void* context) {
+  if (channel >= channelCount_) {
+    return false;
+  }
+  callbacks_[channel] = callback;
+  callbackContext_[channel] = context;
+  return true;
+}
+
+void Gpiote::service() {
+  for (uint8_t ch = 0; ch < channelCount_; ++ch) {
+    const uint32_t offset = gpioteInEventOffset(ch);
+    if (reg32(base_ + offset) == 0U) {
+      continue;
+    }
+
+    clearEvent(base_, offset);
+    if (callbacks_[ch] != nullptr) {
+      callbacks_[ch](ch, callbackContext_[ch]);
+    }
+  }
+}
+
+Saadc::Saadc(uint32_t base)
+    : base_(base),
+      resolution_(AdcResolution::k12bit),
+      gain_(AdcGain::k2over8),
+      configured_(false) {}
+
+bool Saadc::begin(AdcResolution resolution, uint32_t spinLimit) {
+  resolution_ = resolution;
+  configured_ = false;
+
+  reg32(base_ + saadc::ENABLE) = saadc::ENABLE_DISABLED;
+
+  reg32(base_ + saadc::RESOLUTION) = static_cast<uint32_t>(resolution_);
+  reg32(base_ + saadc::OVERSAMPLE) = saadc::OVERSAMPLE_BYPASS;
+  reg32(base_ + saadc::SAMPLERATE) =
+      (saadc::SAMPLERATE_MODE_TASK << saadc::SAMPLERATE_MODE_Pos);
+  reg32(base_ + saadc::NOISESHAPE) = saadc::NOISESHAPE_DISABLED;
+
+  reg32(base_ + saadc::ENABLE) = saadc::ENABLE_ENABLED;
+
+  clearEvent(base_, saadc::EVENTS_CALIBRATEDONE);
+  reg32(base_ + saadc::TASKS_CALIBRATEOFFSET) = 1;
+
+  return waitForEvent(base_, saadc::EVENTS_CALIBRATEDONE, spinLimit);
+}
+
+void Saadc::end() {
+  reg32(base_ + saadc::ENABLE) = saadc::ENABLE_DISABLED;
+  configured_ = false;
+}
+
+bool Saadc::configureSingleEnded(uint8_t channel, const Pin& pin, AdcGain gain,
+                                 uint16_t tacq, uint8_t tconv) {
+  if (channel > 7U || !isConnected(pin) || saadcInputForPin(pin) < 0) {
+    return false;
+  }
+
+  if (tacq < 1U) {
+    tacq = 1U;
+  }
+  if (tacq > 319U) {
+    tacq = 319U;
+  }
+  if (tconv < 1U) {
+    tconv = 1U;
+  }
+  if (tconv > 7U) {
+    tconv = 7U;
+  }
+
+  // Keep this HAL simple and deterministic: one active channel at a time.
+  for (uint8_t i = 0; i < 8U; ++i) {
+    reg32(base_ + saadc::CH_PSELP +
+          (static_cast<uint32_t>(i) * saadc::CH_STRIDE)) = 0;
+    reg32(base_ + saadc::CH_PSELN +
+          (static_cast<uint32_t>(i) * saadc::CH_STRIDE)) = 0;
+  }
+
+  uint32_t psel = 0;
+  psel |= (static_cast<uint32_t>(pin.pin) << saadc::CH_PSEL_PIN_Pos);
+  psel |= (static_cast<uint32_t>(pin.port) << saadc::CH_PSEL_PORT_Pos);
+  psel |= (saadc::CH_PSEL_CONNECT_ANALOG << saadc::CH_PSEL_CONNECT_Pos);
+
+  reg32(base_ + saadc::CH_PSELP +
+        (static_cast<uint32_t>(channel) * saadc::CH_STRIDE)) = psel;
+  reg32(base_ + saadc::CH_PSELN +
+        (static_cast<uint32_t>(channel) * saadc::CH_STRIDE)) =
+      (saadc::CH_PSEL_CONNECT_NC << saadc::CH_PSEL_CONNECT_Pos);
+
+  uint32_t config = 0;
+  config |= (static_cast<uint32_t>(gain) << saadc::CH_CONFIG_GAIN_Pos);
+  config |= (0U << saadc::CH_CONFIG_BURST_Pos);
+  config |= (saadc::REFSEL_INTERNAL << saadc::CH_CONFIG_REFSEL_Pos);
+  config |= (saadc::MODE_SINGLE_ENDED << saadc::CH_CONFIG_MODE_Pos);
+  config |= (static_cast<uint32_t>(tacq) << saadc::CH_CONFIG_TACQ_Pos);
+  config |= (static_cast<uint32_t>(tconv) << saadc::CH_CONFIG_TCONV_Pos);
+
+  reg32(base_ + saadc::CH_CONFIG +
+        (static_cast<uint32_t>(channel) * saadc::CH_STRIDE)) = config;
+
+  gain_ = gain;
+  configured_ = true;
+  return true;
+}
+
+bool Saadc::sampleRaw(int16_t* outRaw, uint32_t spinLimit) const {
+  if (!configured_ || outRaw == nullptr) {
+    return false;
+  }
+
+  int16_t sample = 0;
+
+  clearEvent(base_, saadc::EVENTS_STARTED);
+  clearEvent(base_, saadc::EVENTS_END);
+  clearEvent(base_, saadc::EVENTS_STOPPED);
+
+  reg32(base_ + saadc::RESULT_PTR) =
+      static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&sample));
+  reg32(base_ + saadc::RESULT_MAXCNT) = 2;
+
+  reg32(base_ + saadc::TASKS_START) = 1;
+  if (!waitForEvent(base_, saadc::EVENTS_STARTED, spinLimit)) {
+    return false;
+  }
+
+  reg32(base_ + saadc::TASKS_SAMPLE) = 1;
+  if (!waitForEvent(base_, saadc::EVENTS_END, spinLimit)) {
+    return false;
+  }
+
+  reg32(base_ + saadc::TASKS_STOP) = 1;
+  if (!waitForEvent(base_, saadc::EVENTS_STOPPED, spinLimit)) {
+    return false;
+  }
+
+  if (reg32(base_ + saadc::RESULT_AMOUNT) < 2U) {
+    return false;
+  }
+
+  *outRaw = sample;
+  return true;
+}
+
+bool Saadc::sampleMilliVolts(int32_t* outMilliVolts, uint32_t spinLimit) const {
+  if (outMilliVolts == nullptr) {
+    return false;
+  }
+
+  int16_t raw = 0;
+  if (!sampleRaw(&raw, spinLimit)) {
+    return false;
+  }
+
+  if (raw < 0) {
+    raw = 0;
+  }
+
+  const uint32_t bits = adcResolutionBits(resolution_);
+  const uint32_t scale = (1UL << bits);
+  const double gain = adcGainValue(gain_);
+
+  // Internal reference is 0.9 V; convert using datasheet transfer equation.
+  const double mv =
+      (static_cast<double>(raw) * 900.0) / (gain * static_cast<double>(scale));
+
+  *outMilliVolts = static_cast<int32_t>(mv + 0.5);
+  return true;
+}
+
+PowerManager::PowerManager(uint32_t powerBase, uint32_t resetBase,
+                           uint32_t regulatorsBase)
+    : power_(reinterpret_cast<NRF_POWER_Type*>(static_cast<uintptr_t>(powerBase))),
+      reset_(reinterpret_cast<NRF_RESET_Type*>(static_cast<uintptr_t>(resetBase))),
+      regulators_(reinterpret_cast<NRF_REGULATORS_Type*>(
+          static_cast<uintptr_t>(regulatorsBase))) {}
+
+void PowerManager::setLatencyMode(PowerLatencyMode mode) {
+  if (mode == PowerLatencyMode::kConstantLatency) {
+    power_->TASKS_CONSTLAT = POWER_TASKS_CONSTLAT_TASKS_CONSTLAT_Trigger;
+  } else {
+    power_->TASKS_LOWPWR = POWER_TASKS_LOWPWR_TASKS_LOWPWR_Trigger;
+  }
+}
+
+bool PowerManager::isConstantLatency() const {
+  return (power_->CONSTLATSTAT & 0x1UL) != 0U;
+}
+
+bool PowerManager::setRetention(uint8_t index, uint8_t value) {
+  if (index >= 2U) {
+    return false;
+  }
+  power_->GPREGRET[index] = static_cast<uint32_t>(value);
+  return true;
+}
+
+bool PowerManager::getRetention(uint8_t index, uint8_t* value) const {
+  if (index >= 2U || value == nullptr) {
+    return false;
+  }
+  *value = static_cast<uint8_t>(power_->GPREGRET[index] & POWER_GPREGRET_GPREGRET_Msk);
+  return true;
+}
+
+uint32_t PowerManager::resetReason() const { return reset_->RESETREAS; }
+
+void PowerManager::clearResetReason(uint32_t mask) { reset_->RESETREAS = mask; }
+
+bool PowerManager::enableMainDcdc(bool enable) {
+  regulators_->VREGMAIN.DCDCEN =
+      enable ? REGULATORS_VREGMAIN_DCDCEN_VAL_Enabled
+             : REGULATORS_VREGMAIN_DCDCEN_VAL_Disabled;
+  const bool isEnabled = (regulators_->VREGMAIN.DCDCEN &
+                          REGULATORS_VREGMAIN_DCDCEN_VAL_Msk) != 0U;
+  return (isEnabled == enable);
+}
+
+[[noreturn]] void PowerManager::systemOff() {
+  regulators_->SYSTEMOFF = REGULATORS_SYSTEMOFF_SYSTEMOFF_Enter;
+  __asm volatile("dsb 0xF" ::: "memory");
+  while (true) {
+    __asm volatile("wfi");
+  }
+}
+
+Grtc::Grtc(uint32_t base, uint8_t compareChannelCount)
+    : grtc_(reinterpret_cast<NRF_GRTC_Type*>(static_cast<uintptr_t>(base))),
+      compareChannelCount_(compareChannelCount) {
+  if (compareChannelCount_ > 12U) {
+    compareChannelCount_ = 12U;
+  }
+}
+
+bool Grtc::begin(GrtcClockSource clockSource) {
+  uint32_t clkcfg = grtc_->CLKCFG;
+  clkcfg &= ~GRTC_CLKCFG_CLKSEL_Msk;
+  clkcfg |= (static_cast<uint32_t>(clockSource) << GRTC_CLKCFG_CLKSEL_Pos) &
+            GRTC_CLKCFG_CLKSEL_Msk;
+  grtc_->CLKCFG = clkcfg;
+
+  uint32_t mode = grtc_->MODE;
+  mode &= ~(GRTC_MODE_AUTOEN_Msk | GRTC_MODE_SYSCOUNTEREN_Msk);
+  mode |= (GRTC_MODE_AUTOEN_Default << GRTC_MODE_AUTOEN_Pos);
+  mode |= (GRTC_MODE_SYSCOUNTEREN_Enabled << GRTC_MODE_SYSCOUNTEREN_Pos);
+  grtc_->MODE = mode;
+
+  for (uint8_t ch = 0; ch < compareChannelCount_; ++ch) {
+    grtc_->CC[ch].CCEN = (GRTC_CC_CCEN_ACTIVE_Disable << GRTC_CC_CCEN_ACTIVE_Pos);
+    grtc_->EVENTS_COMPARE[ch] = 0U;
+  }
+
+  grtc_->TASKS_START = GRTC_TASKS_START_TASKS_START_Trigger;
+  return true;
+}
+
+void Grtc::end() {
+  stop();
+  for (uint8_t ch = 0; ch < compareChannelCount_; ++ch) {
+    grtc_->CC[ch].CCEN = (GRTC_CC_CCEN_ACTIVE_Disable << GRTC_CC_CCEN_ACTIVE_Pos);
+    grtc_->EVENTS_COMPARE[ch] = 0U;
+  }
+}
+
+void Grtc::start() { grtc_->TASKS_START = GRTC_TASKS_START_TASKS_START_Trigger; }
+
+void Grtc::stop() { grtc_->TASKS_STOP = GRTC_TASKS_STOP_TASKS_STOP_Trigger; }
+
+void Grtc::clear() { grtc_->TASKS_CLEAR = GRTC_TASKS_CLEAR_TASKS_CLEAR_Trigger; }
+
+uint64_t Grtc::counter() const {
+  for (uint8_t i = 0; i < 32U; ++i) {
+    const uint32_t hi0 = grtc_->SYSCOUNTER[0].SYSCOUNTERH;
+    const uint32_t lo = grtc_->SYSCOUNTER[0].SYSCOUNTERL;
+    const uint32_t hi1 = grtc_->SYSCOUNTER[0].SYSCOUNTERH;
+
+    if ((hi0 & GRTC_SYSCOUNTER_SYSCOUNTERH_BUSY_Msk) != 0U ||
+        (hi1 & GRTC_SYSCOUNTER_SYSCOUNTERH_BUSY_Msk) != 0U ||
+        (hi1 & GRTC_SYSCOUNTER_SYSCOUNTERH_OVERFLOW_Msk) != 0U) {
+      continue;
+    }
+
+    const uint32_t high0 = (hi0 & GRTC_SYSCOUNTER_SYSCOUNTERH_VALUE_Msk);
+    const uint32_t high1 = (hi1 & GRTC_SYSCOUNTER_SYSCOUNTERH_VALUE_Msk);
+    if (high0 != high1) {
+      continue;
+    }
+
+    return (static_cast<uint64_t>(high1) << 32U) | static_cast<uint64_t>(lo);
+  }
+
+  // Fall back to best-effort read if hardware did not provide a clean sample.
+  const uint32_t hi = grtc_->SYSCOUNTER[0].SYSCOUNTERH &
+                      GRTC_SYSCOUNTER_SYSCOUNTERH_VALUE_Msk;
+  const uint32_t lo = grtc_->SYSCOUNTER[0].SYSCOUNTERL;
+  return (static_cast<uint64_t>(hi) << 32U) | static_cast<uint64_t>(lo);
+}
+
+bool Grtc::setWakeLeadLfclk(uint8_t cycles) {
+  if (cycles == 0U) {
+    cycles = 1U;
+  }
+  grtc_->WAKETIME = static_cast<uint32_t>(cycles);
+  return true;
+}
+
+bool Grtc::setCompareOffsetUs(uint8_t channel, uint32_t offsetUs,
+                              bool enableChannel) {
+  if (channel >= compareChannelCount_) {
+    return false;
+  }
+  if (offsetUs == 0U) {
+    offsetUs = 1U;
+  }
+
+  grtc_->EVENTS_COMPARE[channel] = 0U;
+  grtc_->CC[channel].CCEN = (GRTC_CC_CCEN_ACTIVE_Disable << GRTC_CC_CCEN_ACTIVE_Pos);
+
+  uint32_t value = offsetUs;
+  if (value > (GRTC_CC_CCADD_VALUE_Msk >> GRTC_CC_CCADD_VALUE_Pos)) {
+    value = (GRTC_CC_CCADD_VALUE_Msk >> GRTC_CC_CCADD_VALUE_Pos);
+  }
+
+  grtc_->CC[channel].CCADD =
+      ((value << GRTC_CC_CCADD_VALUE_Pos) & GRTC_CC_CCADD_VALUE_Msk) |
+      ((GRTC_CC_CCADD_REFERENCE_SYSCOUNTER << GRTC_CC_CCADD_REFERENCE_Pos) &
+       GRTC_CC_CCADD_REFERENCE_Msk);
+
+  if (enableChannel) {
+    grtc_->CC[channel].CCEN = (GRTC_CC_CCEN_ACTIVE_Enable << GRTC_CC_CCEN_ACTIVE_Pos);
+  }
+
+  return true;
+}
+
+bool Grtc::setCompareAbsoluteUs(uint8_t channel, uint64_t timestampUs,
+                                bool enableChannel) {
+  if (channel >= compareChannelCount_) {
+    return false;
+  }
+
+  const uint32_t lo = static_cast<uint32_t>(timestampUs & 0xFFFFFFFFULL);
+  const uint32_t hi = static_cast<uint32_t>((timestampUs >> 32U) & 0xFFFFFUL);
+
+  grtc_->EVENTS_COMPARE[channel] = 0U;
+  grtc_->CC[channel].CCEN = (GRTC_CC_CCEN_ACTIVE_Disable << GRTC_CC_CCEN_ACTIVE_Pos);
+  grtc_->CC[channel].CCL = lo;
+  grtc_->CC[channel].CCH = (hi << GRTC_CC_CCH_CCH_Pos) & GRTC_CC_CCH_CCH_Msk;
+
+  if (enableChannel) {
+    grtc_->CC[channel].CCEN = (GRTC_CC_CCEN_ACTIVE_Enable << GRTC_CC_CCEN_ACTIVE_Pos);
+  }
+
+  return true;
+}
+
+bool Grtc::enableCompareChannel(uint8_t channel, bool enable) {
+  if (channel >= compareChannelCount_) {
+    return false;
+  }
+  grtc_->CC[channel].CCEN = (enable ? GRTC_CC_CCEN_ACTIVE_Enable
+                                     : GRTC_CC_CCEN_ACTIVE_Disable)
+                            << GRTC_CC_CCEN_ACTIVE_Pos;
+  return true;
+}
+
+void Grtc::enableCompareInterrupt(uint8_t channel, bool enable) {
+  if (channel >= compareChannelCount_) {
+    return;
+  }
+  const uint32_t mask = (1UL << static_cast<uint32_t>(channel));
+  if (enable) {
+    grtc_->INTENSET0 = mask;
+  } else {
+    grtc_->INTENCLR0 = mask;
+  }
+}
+
+bool Grtc::pollCompare(uint8_t channel, bool clearEventFlag) {
+  if (channel >= compareChannelCount_) {
+    return false;
+  }
+
+  const bool fired = (grtc_->EVENTS_COMPARE[channel] != 0U);
+  if (fired && clearEventFlag) {
+    grtc_->EVENTS_COMPARE[channel] = 0U;
+  }
+  return fired;
+}
+
+bool Grtc::clearCompareEvent(uint8_t channel) {
+  if (channel >= compareChannelCount_) {
+    return false;
+  }
+  grtc_->EVENTS_COMPARE[channel] = 0U;
+  return true;
+}
+
+TempSensor::TempSensor(uint32_t base)
+    : temp_(reinterpret_cast<NRF_TEMP_Type*>(static_cast<uintptr_t>(base))) {}
+
+bool TempSensor::sampleQuarterDegreesC(int32_t* outQuarterDegreesC,
+                                       uint32_t spinLimit) const {
+  if (outQuarterDegreesC == nullptr) {
+    return false;
+  }
+
+  temp_->EVENTS_DATARDY = 0U;
+  temp_->TASKS_START = TEMP_TASKS_START_TASKS_START_Trigger;
+  const bool ready = waitForNonZero(&temp_->EVENTS_DATARDY, spinLimit);
+  temp_->TASKS_STOP = TEMP_TASKS_STOP_TASKS_STOP_Trigger;
+  if (!ready) {
+    return false;
+  }
+
+  *outQuarterDegreesC = temp_->TEMP;
+  temp_->EVENTS_DATARDY = 0U;
+  return true;
+}
+
+bool TempSensor::sampleMilliDegreesC(int32_t* outMilliDegreesC,
+                                     uint32_t spinLimit) const {
+  if (outMilliDegreesC == nullptr) {
+    return false;
+  }
+
+  int32_t quarter = 0;
+  if (!sampleQuarterDegreesC(&quarter, spinLimit)) {
+    return false;
+  }
+
+  *outMilliDegreesC = quarter * 250;
+  return true;
+}
+
+Watchdog::Watchdog(uint32_t base)
+    : wdt_(reinterpret_cast<NRF_WDT_Type*>(static_cast<uintptr_t>(base))),
+      defaultReloadRegister_(0),
+      allowStop_(false) {}
+
+bool Watchdog::configure(uint32_t timeoutMs, uint8_t reloadRegister, bool runInSleep,
+                         bool runInDebugHalt, bool allowStop) {
+  if (reloadRegister > 7U || timeoutMs == 0U) {
+    return false;
+  }
+  if (isRunning()) {
+    return false;
+  }
+
+  uint64_t cycles64 =
+      (static_cast<uint64_t>(timeoutMs) * 32768ULL + 999ULL) / 1000ULL;
+  if (cycles64 < WDT_CRV_CRV_Min) {
+    cycles64 = WDT_CRV_CRV_Min;
+  }
+  if (cycles64 > WDT_CRV_CRV_Max) {
+    cycles64 = WDT_CRV_CRV_Max;
+  }
+
+  uint32_t cfg = 0;
+  cfg |= ((runInSleep ? WDT_CONFIG_SLEEP_Run : WDT_CONFIG_SLEEP_Pause)
+          << WDT_CONFIG_SLEEP_Pos);
+  cfg |= ((runInDebugHalt ? WDT_CONFIG_HALT_Run : WDT_CONFIG_HALT_Pause)
+          << WDT_CONFIG_HALT_Pos);
+  cfg |= ((allowStop ? WDT_CONFIG_STOPEN_Enable : WDT_CONFIG_STOPEN_Disable)
+          << WDT_CONFIG_STOPEN_Pos);
+
+  wdt_->CRV = static_cast<uint32_t>(cycles64);
+  wdt_->RREN = (1UL << reloadRegister);
+  wdt_->CONFIG = cfg;
+  if (allowStop) {
+    wdt_->TSEN = WDT_TSEN_TSEN_Enable;
+  }
+
+  defaultReloadRegister_ = reloadRegister;
+  allowStop_ = allowStop;
+  return true;
+}
+
+void Watchdog::start() { wdt_->TASKS_START = WDT_TASKS_START_TASKS_START_Trigger; }
+
+bool Watchdog::stop(uint32_t spinLimit) {
+  if (!allowStop_) {
+    return false;
+  }
+
+  wdt_->EVENTS_STOPPED = 0U;
+  wdt_->TASKS_STOP = WDT_TASKS_STOP_TASKS_STOP_Trigger;
+  return waitForNonZero(&wdt_->EVENTS_STOPPED, spinLimit);
+}
+
+bool Watchdog::feed(uint8_t reloadRegister) {
+  if (reloadRegister > 7U) {
+    reloadRegister = defaultReloadRegister_;
+  }
+  wdt_->RR[reloadRegister] = WDT_RR_RR_Reload;
+  return true;
+}
+
+bool Watchdog::isRunning() const {
+  return (wdt_->RUNSTATUS & WDT_RUNSTATUS_RUNSTATUSWDT_Msk) != 0U;
+}
+
+uint32_t Watchdog::requestStatus() const { return wdt_->REQSTATUS; }
+
+Pdm::Pdm(uint32_t base)
+    : pdm_(reinterpret_cast<NRF_PDM_Type*>(static_cast<uintptr_t>(base))),
+      configured_(false) {}
+
+bool Pdm::begin(const Pin& clk, const Pin& din, bool mono, uint8_t prescalerDiv,
+                uint8_t ratio, PdmEdge edge) {
+  if (!isConnected(clk) || !isConnected(din)) {
+    return false;
+  }
+  if (prescalerDiv < PDM_PRESCALER_DIVISOR_Min) {
+    prescalerDiv = PDM_PRESCALER_DIVISOR_Min;
+  }
+  if (prescalerDiv > PDM_PRESCALER_DIVISOR_Max) {
+    prescalerDiv = PDM_PRESCALER_DIVISOR_Max;
+  }
+  if (ratio > PDM_RATIO_RATIO_Max) {
+    ratio = PDM_RATIO_RATIO_Ratio64;
+  }
+
+  if (!Gpio::configure(clk, GpioDirection::kOutput, GpioPull::kDisabled) ||
+      !Gpio::configure(din, GpioDirection::kInput, GpioPull::kDisabled)) {
+    return false;
+  }
+
+  pdm_->ENABLE = PDM_ENABLE_ENABLE_Disabled;
+  pdm_->TASKS_STOP = PDM_TASKS_STOP_TASKS_STOP_Trigger;
+  pdm_->EVENTS_STOPPED = 0U;
+
+  pdm_->PSEL.CLK = make_psel(clk.port, clk.pin);
+  pdm_->PSEL.DIN = make_psel(din.port, din.pin);
+
+  uint32_t mode = 0;
+  mode |= ((mono ? PDM_MODE_OPERATION_Mono : PDM_MODE_OPERATION_Stereo)
+           << PDM_MODE_OPERATION_Pos);
+  mode |= ((static_cast<uint32_t>(edge) << PDM_MODE_EDGE_Pos) & PDM_MODE_EDGE_Msk);
+  pdm_->MODE = mode;
+
+  pdm_->GAINL = PDM_GAINL_GAINL_DefaultGain;
+  pdm_->GAINR = PDM_GAINR_GAINR_DefaultGain;
+  pdm_->RATIO = ((static_cast<uint32_t>(ratio) << PDM_RATIO_RATIO_Pos) &
+                 PDM_RATIO_RATIO_Msk);
+  pdm_->PRESCALER = (static_cast<uint32_t>(prescalerDiv) << PDM_PRESCALER_DIVISOR_Pos);
+  pdm_->DMA.TERMINATEONBUSERROR = PDM_DMA_TERMINATEONBUSERROR_ENABLE_Enabled;
+
+  pdm_->ENABLE = PDM_ENABLE_ENABLE_Enabled;
+  configured_ = true;
+  return true;
+}
+
+void Pdm::end() {
+  if (!configured_) {
+    return;
+  }
+
+  pdm_->TASKS_STOP = PDM_TASKS_STOP_TASKS_STOP_Trigger;
+  waitForNonZero(&pdm_->EVENTS_STOPPED, 300000UL);
+
+  pdm_->ENABLE = PDM_ENABLE_ENABLE_Disabled;
+  pdm_->PSEL.CLK = PSEL_DISCONNECTED;
+  pdm_->PSEL.DIN = PSEL_DISCONNECTED;
+  configured_ = false;
+}
+
+bool Pdm::capture(int16_t* samples, size_t sampleCount, uint32_t spinLimit) {
+  if (!configured_ || samples == nullptr || sampleCount == 0U) {
+    return false;
+  }
+
+  const uintptr_t ptr = reinterpret_cast<uintptr_t>(samples);
+  if ((ptr & 0x3U) != 0U) {
+    return false;
+  }
+
+  const uint32_t bytes = static_cast<uint32_t>(sampleCount * sizeof(int16_t));
+  if (bytes > PDM_SAMPLE_MAXCNT_BUFFSIZE_Max) {
+    return false;
+  }
+
+  pdm_->EVENTS_STARTED = 0U;
+  pdm_->EVENTS_END = 0U;
+  pdm_->EVENTS_STOPPED = 0U;
+  pdm_->EVENTS_DMA.BUSERROR = 0U;
+
+  pdm_->SAMPLE.PTR = static_cast<uint32_t>(ptr);
+  pdm_->SAMPLE.MAXCNT = bytes;
+
+  pdm_->TASKS_START = PDM_TASKS_START_TASKS_START_Trigger;
+  if (!waitForNonZero(&pdm_->EVENTS_STARTED, spinLimit)) {
+    return false;
+  }
+
+  bool endSeen = false;
+  uint32_t spins = spinLimit;
+  while (spins-- > 0U) {
+    if (pdm_->EVENTS_END != 0U) {
+      endSeen = true;
+      break;
+    }
+    if (pdm_->EVENTS_DMA.BUSERROR != 0U) {
+      break;
+    }
+  }
+
+  pdm_->TASKS_STOP = PDM_TASKS_STOP_TASKS_STOP_Trigger;
+  const bool stopped = waitForNonZero(&pdm_->EVENTS_STOPPED, 300000UL);
+  const bool busError = (pdm_->EVENTS_DMA.BUSERROR != 0U);
+  pdm_->EVENTS_DMA.BUSERROR = 0U;
+
+  return endSeen && stopped && !busError;
+}
+
+BleRadio::BleRadio(uint32_t radioBase, uint32_t ficrBase)
+    : radio_(reinterpret_cast<NRF_RADIO_Type*>(static_cast<uintptr_t>(radioBase))),
+      ficr_(reinterpret_cast<NRF_FICR_Type*>(static_cast<uintptr_t>(ficrBase))),
+      initialized_(false),
+      addressType_(BleAddressType::kRandomStatic),
+      pduType_(BleAdvPduType::kAdvNonConnInd),
+      useChSel2_(true),
+      externalAntenna_(false),
+      address_{0},
+      advData_{0},
+      advDataLen_(0),
+      scanRspData_{0},
+      scanRspDataLen_(0),
+      txPacket_{0},
+      scanRspPacket_{0},
+      rxPacket_{0},
+      connectionTxPayload_{0},
+      connected_(false),
+      connectionPeerAddress_{0},
+      connectionPeerAddressRandom_(false),
+      connectionAccessAddress_(0),
+      connectionCrcInit_(0),
+      connectionIntervalUnits_(0),
+      connectionLatency_(0),
+      connectionTimeoutUnits_(0),
+      connectionChannelMap_{0},
+      connectionChannelCount_(0),
+      connectionHop_(0),
+      connectionSca_(0),
+      connectionChanUse_(0),
+      connectionExpectedRxSn_(0),
+      connectionTxSn_(0),
+      connectionEventCounter_(0),
+      connectionNextEventUs_(0),
+      connectionAttMtu_(kBleDefaultAttMtu),
+      connectionLastTxLlid_(0x01U),
+      connectionLastTxLength_(0),
+      connectionUpdatePending_(false),
+      connectionUpdateInstant_(0U),
+      connectionPendingIntervalUnits_(0U),
+      connectionPendingLatency_(0U),
+      connectionPendingTimeoutUnits_(0U),
+      connectionChannelMapPending_(false),
+      connectionChannelMapInstant_(0U),
+      connectionPendingChannelMap_{0},
+      connectionPendingChannelCount_(0U),
+      connectionServiceChangedIndicationsEnabled_(false),
+      connectionServiceChangedIndicationPending_(false),
+      connectionServiceChangedIndicationAwaitingConfirm_(false),
+      connectionBatteryNotificationsEnabled_(false),
+      connectionBatteryNotificationPending_(false),
+      scanCycleStartIndex_(0U),
+      gapDeviceName_{0},
+      gapDeviceNameLen_(0),
+      gapAppearance_(0),
+      gapPpcpIntervalMin_(24U),
+      gapPpcpIntervalMax_(40U),
+      gapPpcpLatency_(0U),
+      gapPpcpTimeout_(500U),
+      gapBatteryLevel_(100U) {}
+
+bool BleRadio::begin(int8_t txPowerDbm) {
+  connected_ = false;
+
+#if defined(NRF54L15_CLEAN_BLE_ENABLED) && (NRF54L15_CLEAN_BLE_ENABLED == 0)
+  (void)txPowerDbm;
+  initialized_ = false;
+  return false;
+#endif
+
+  if (!selectExternalAntenna(false)) {
+    return false;
+  }
+
+  if (!configureBle1M()) {
+    return false;
+  }
+  if (!setTxPowerDbm(txPowerDbm)) {
+    return false;
+  }
+
+  uint8_t fallbackAddress[6] = {0xC0, 0x54, 0x15, 0x00, 0x00, 0x00};
+  if (!loadAddressFromFicr(true)) {
+    if (!setDeviceAddress(fallbackAddress, BleAddressType::kRandomStatic)) {
+      return false;
+    }
+  }
+
+  if (advDataLen_ == 0U) {
+    if (!setAdvertisingName("XIAO-nRF54L15", true)) {
+      return false;
+    }
+  } else if (!buildAdvertisingPacket()) {
+    return false;
+  }
+
+  if (scanRspDataLen_ == 0U) {
+    if (!setScanResponseName("XIAO-nRF54L15")) {
+      return false;
+    }
+  } else if (!buildScanResponsePacket()) {
+    return false;
+  }
+
+  if (gapDeviceNameLen_ == 0U) {
+    if (!setGattDeviceName("XIAO-nRF54L15")) {
+      return false;
+    }
+  }
+
+  initialized_ = true;
+  return true;
+}
+
+void BleRadio::end() {
+  if (radio_ == nullptr) {
+    connected_ = false;
+    initialized_ = false;
+    return;
+  }
+
+  radio_->SHORTS = 0U;
+  radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
+  waitDisabled(120000UL);
+  clearRadioCoreEvents(radio_);
+  connected_ = false;
+  initialized_ = false;
+}
+
+bool BleRadio::setTxPowerDbm(int8_t dbm) {
+  if (radio_ == nullptr) {
+    return false;
+  }
+  const uint32_t regValue = txPowerRegFromDbm(dbm);
+  radio_->TXPOWER = ((regValue << RADIO_TXPOWER_TXPOWER_Pos) &
+                     RADIO_TXPOWER_TXPOWER_Msk);
+  return true;
+}
+
+bool BleRadio::selectExternalAntenna(bool external) {
+  if (!Gpio::configure(kPinRfSwitchCtl, GpioDirection::kOutput,
+                       GpioPull::kDisabled)) {
+    return false;
+  }
+  if (!Gpio::write(kPinRfSwitchCtl, external)) {
+    return false;
+  }
+
+  externalAntenna_ = external;
+  return true;
+}
+
+bool BleRadio::loadAddressFromFicr(bool forceRandomStatic) {
+  if (ficr_ == nullptr) {
+    return false;
+  }
+
+  const uint32_t lo = ficr_->DEVICEADDR[0];
+  const uint32_t hi = ficr_->DEVICEADDR[1];
+
+  uint8_t address[6];
+  address[0] = static_cast<uint8_t>(lo & 0xFFU);
+  address[1] = static_cast<uint8_t>((lo >> 8U) & 0xFFU);
+  address[2] = static_cast<uint8_t>((lo >> 16U) & 0xFFU);
+  address[3] = static_cast<uint8_t>((lo >> 24U) & 0xFFU);
+  address[4] = static_cast<uint8_t>(hi & 0xFFU);
+  address[5] = static_cast<uint8_t>((hi >> 8U) & 0xFFU);
+
+  BleAddressType type = ((ficr_->DEVICEADDRTYPE & 0x1UL) != 0U)
+                            ? BleAddressType::kRandomStatic
+                            : BleAddressType::kPublic;
+  if (forceRandomStatic) {
+    type = BleAddressType::kRandomStatic;
+  }
+
+  return setDeviceAddress(address, type);
+}
+
+bool BleRadio::setDeviceAddress(const uint8_t address[6], BleAddressType type) {
+  if (address == nullptr) {
+    return false;
+  }
+
+  memcpy(address_, address, sizeof(address_));
+  if (type == BleAddressType::kRandomStatic) {
+    address_[5] = static_cast<uint8_t>((address_[5] & 0x3FU) | 0xC0U);
+  }
+  addressType_ = type;
+  return buildAdvertisingPacket() && buildScanResponsePacket();
+}
+
+bool BleRadio::setAdvertisingPduType(BleAdvPduType type) {
+  const uint8_t raw = static_cast<uint8_t>(type);
+  if (raw > 0x0FU) {
+    return false;
+  }
+  pduType_ = type;
+  return buildAdvertisingPacket();
+}
+
+bool BleRadio::setAdvertisingChannelSelectionAlgorithm2(bool enabled) {
+  useChSel2_ = enabled;
+  return buildAdvertisingPacket();
+}
+
+bool BleRadio::setAdvertisingData(const uint8_t* data, size_t len) {
+  if (len > sizeof(advData_)) {
+    return false;
+  }
+  if (len > 0U && data == nullptr) {
+    return false;
+  }
+
+  if (len > 0U) {
+    memcpy(advData_, data, len);
+  }
+  advDataLen_ = len;
+  return buildAdvertisingPacket();
+}
+
+bool BleRadio::setAdvertisingName(const char* name, bool includeFlags) {
+  if (name == nullptr) {
+    return false;
+  }
+
+  uint8_t payload[31];
+  size_t used = 0;
+
+  if (includeFlags) {
+    payload[used++] = 2U;
+    payload[used++] = 0x01U;
+    payload[used++] = 0x06U;
+  }
+
+  const size_t nameLen = strlen(name);
+  if (used >= sizeof(payload)) {
+    return false;
+  }
+
+  const size_t remaining = sizeof(payload) - used;
+  if (remaining < 2U) {
+    return false;
+  }
+
+  size_t copyLen = nameLen;
+  uint8_t adType = 0x09U;  // Complete local name.
+  if ((copyLen + 2U) > remaining) {
+    copyLen = remaining - 2U;
+    adType = 0x08U;  // Shortened local name.
+  }
+
+  payload[used++] = static_cast<uint8_t>(copyLen + 1U);
+  payload[used++] = adType;
+  if (copyLen > 0U) {
+    memcpy(&payload[used], name, copyLen);
+    used += copyLen;
+  }
+  const bool ok = setAdvertisingData(payload, used);
+  if (ok && gapDeviceNameLen_ == 0U) {
+    setGattDeviceName(name);
+  }
+  return ok;
+}
+
+bool BleRadio::setGattDeviceName(const char* name) {
+  if (name == nullptr) {
+    return false;
+  }
+
+  const size_t len = strlen(name);
+  if (len > sizeof(gapDeviceName_)) {
+    return false;
+  }
+  if (len > 0U) {
+    memcpy(gapDeviceName_, name, len);
+  }
+  gapDeviceNameLen_ = static_cast<uint8_t>(len);
+  return true;
+}
+
+bool BleRadio::setGattBatteryLevel(uint8_t percent) {
+  if (percent > 100U) {
+    return false;
+  }
+  if (gapBatteryLevel_ != percent) {
+    gapBatteryLevel_ = percent;
+    if (connected_ && connectionBatteryNotificationsEnabled_) {
+      connectionBatteryNotificationPending_ = true;
+    }
+    return true;
+  }
+  gapBatteryLevel_ = percent;
+  return true;
+}
+
+bool BleRadio::buildAdvertisingPacket() {
+  const size_t payloadLen = sizeof(address_) + advDataLen_;
+  if (payloadLen > 37U) {
+    return false;
+  }
+
+  uint8_t header = static_cast<uint8_t>(pduType_) & 0x0FU;
+  if (useChSel2_) {
+    header |= (1U << 5U);
+  }
+  if (addressType_ == BleAddressType::kRandomStatic) {
+    header |= (1U << 6U);
+  }
+
+  txPacket_[0] = header;
+  txPacket_[1] = static_cast<uint8_t>(payloadLen & 0x3FU);
+
+  memcpy(&txPacket_[2], address_, sizeof(address_));
+  if (advDataLen_ > 0U) {
+    memcpy(&txPacket_[2 + sizeof(address_)], advData_, advDataLen_);
+  }
+
+  return true;
+}
+
+bool BleRadio::setScanResponseData(const uint8_t* data, size_t len) {
+  if (len > sizeof(scanRspData_)) {
+    return false;
+  }
+  if (len > 0U && data == nullptr) {
+    return false;
+  }
+
+  if (len > 0U) {
+    memcpy(scanRspData_, data, len);
+  }
+  scanRspDataLen_ = len;
+  return buildScanResponsePacket();
+}
+
+bool BleRadio::setScanResponseName(const char* name) {
+  if (name == nullptr) {
+    return false;
+  }
+
+  uint8_t payload[31];
+  size_t used = 0;
+
+  const size_t nameLen = strlen(name);
+  if (nameLen + 2U > sizeof(payload)) {
+    payload[used++] = static_cast<uint8_t>(sizeof(payload) - 1U);
+    payload[used++] = 0x08U;  // Shortened local name.
+    memcpy(&payload[used], name, sizeof(payload) - used);
+    used = sizeof(payload);
+  } else {
+    payload[used++] = static_cast<uint8_t>(nameLen + 1U);
+    payload[used++] = 0x09U;  // Complete local name.
+    memcpy(&payload[used], name, nameLen);
+    used += nameLen;
+  }
+
+  return setScanResponseData(payload, used);
+}
+
+bool BleRadio::buildScanResponsePacket() {
+  const size_t payloadLen = sizeof(address_) + scanRspDataLen_;
+  if (payloadLen > 37U) {
+    return false;
+  }
+
+  uint8_t header = kBlePduScanRsp;
+  if (addressType_ == BleAddressType::kRandomStatic) {
+    header |= (1U << 6U);
+  }
+
+  scanRspPacket_[0] = header;
+  scanRspPacket_[1] = static_cast<uint8_t>(payloadLen & 0x3FU);
+  memcpy(&scanRspPacket_[2], address_, sizeof(address_));
+  if (scanRspDataLen_ > 0U) {
+    memcpy(&scanRspPacket_[2 + sizeof(address_)], scanRspData_, scanRspDataLen_);
+  }
+
+  return true;
+}
+
+bool BleRadio::advertiseOnce(BleAdvertisingChannel channel, uint32_t spinLimit) {
+  if (!initialized_ || radio_ == nullptr || connected_) {
+    return false;
+  }
+  if (!setAdvertisingChannel(channel)) {
+    return false;
+  }
+
+  clearRadioCoreEvents(radio_);
+  radio_->PACKETPTR =
+      static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&txPacket_[0]));
+
+  radio_->SHORTS =
+      ((RADIO_SHORTS_TXREADY_START_Enabled << RADIO_SHORTS_TXREADY_START_Pos) &
+       RADIO_SHORTS_TXREADY_START_Msk) |
+      ((RADIO_SHORTS_PHYEND_DISABLE_Enabled << RADIO_SHORTS_PHYEND_DISABLE_Pos) &
+       RADIO_SHORTS_PHYEND_DISABLE_Msk);
+
+  radio_->TASKS_TXEN = RADIO_TASKS_TXEN_TASKS_TXEN_Trigger;
+  const bool ok = waitDisabled(spinLimit);
+  if (!ok) {
+    radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
+    waitDisabled(spinLimit / 2U + 1U);
+  }
+
+  radio_->SHORTS = 0U;
+  clearRadioCoreEvents(radio_);
+  return ok;
+}
+
+bool BleRadio::advertiseEvent(uint32_t interChannelDelayUs, uint32_t spinLimit) {
+  if (!advertiseOnce(BleAdvertisingChannel::k37, spinLimit)) {
+    return false;
+  }
+  if (interChannelDelayUs > 0U) {
+    delayMicroseconds(interChannelDelayUs);
+  }
+
+  if (!advertiseOnce(BleAdvertisingChannel::k38, spinLimit)) {
+    return false;
+  }
+  if (interChannelDelayUs > 0U) {
+    delayMicroseconds(interChannelDelayUs);
+  }
+
+  return advertiseOnce(BleAdvertisingChannel::k39, spinLimit);
+}
+
+bool BleRadio::advertiseInteractOnce(BleAdvertisingChannel channel,
+                                     BleAdvInteraction* interaction,
+                                     uint32_t requestListenSpinLimit,
+                                     uint32_t spinLimit) {
+  if (interaction != nullptr) {
+    interaction->channel = channel;
+    interaction->receivedScanRequest = false;
+    interaction->scanResponseTransmitted = false;
+    interaction->receivedConnectInd = false;
+    interaction->peerAddressRandom = false;
+    interaction->rssiDbm = 0;
+    memset(interaction->peerAddress, 0, sizeof(interaction->peerAddress));
+  }
+
+  const bool txOk = advertiseOnce(channel, spinLimit);
+  if (!txOk) {
+    return false;
+  }
+
+  return handleRequestAndMaybeRespond(channel, interaction,
+                                      requestListenSpinLimit, spinLimit);
+}
+
+bool BleRadio::advertiseInteractEvent(BleAdvInteraction* interaction,
+                                      uint32_t interChannelDelayUs,
+                                      uint32_t requestListenSpinLimit,
+                                      uint32_t spinLimit) {
+  BleAdvInteraction tmp{};
+  bool allOk = true;
+  if (interaction != nullptr) {
+    interaction->channel = BleAdvertisingChannel::k37;
+    interaction->receivedScanRequest = false;
+    interaction->scanResponseTransmitted = false;
+    interaction->receivedConnectInd = false;
+    interaction->peerAddressRandom = false;
+    interaction->rssiDbm = 0;
+    memset(interaction->peerAddress, 0, sizeof(interaction->peerAddress));
+  }
+
+  const BleAdvertisingChannel channels[] = {
+      BleAdvertisingChannel::k37,
+      BleAdvertisingChannel::k38,
+      BleAdvertisingChannel::k39,
+  };
+
+  for (size_t i = 0; i < 3U; ++i) {
+    tmp = {};
+    const bool ok = advertiseInteractOnce(channels[i], &tmp,
+                                          requestListenSpinLimit, spinLimit);
+    allOk = allOk && ok;
+
+    if (interaction != nullptr) {
+      if (tmp.receivedConnectInd || tmp.receivedScanRequest) {
+        *interaction = tmp;
+      }
+    }
+
+    if (tmp.receivedConnectInd) {
+      // Stop advertising this event immediately if a connection indication
+      // was observed.
+      break;
+    }
+
+    if ((i < 2U) && (interChannelDelayUs > 0U)) {
+      delayMicroseconds(interChannelDelayUs);
+    }
+  }
+
+  return allOk;
+}
+
+bool BleRadio::isConnected() const { return connected_; }
+
+bool BleRadio::getConnectionInfo(BleConnectionInfo* info) const {
+  if (info == nullptr || !connected_) {
+    return false;
+  }
+
+  memcpy(info->peerAddress, connectionPeerAddress_, sizeof(info->peerAddress));
+  info->peerAddressRandom = connectionPeerAddressRandom_;
+  info->accessAddress = connectionAccessAddress_;
+  info->crcInit = connectionCrcInit_;
+  info->intervalUnits = connectionIntervalUnits_;
+  info->latency = connectionLatency_;
+  info->supervisionTimeoutUnits = connectionTimeoutUnits_;
+  memcpy(info->channelMap, connectionChannelMap_, sizeof(info->channelMap));
+  info->channelCount = connectionChannelCount_;
+  info->hopIncrement = connectionHop_;
+  info->sleepClockAccuracy = connectionSca_;
+  return true;
+}
+
+bool BleRadio::disconnect(uint32_t spinLimit) {
+  if (!initialized_ || radio_ == nullptr) {
+    return false;
+  }
+
+  radio_->SHORTS = 0U;
+  radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
+  waitDisabled(spinLimit);
+  connected_ = false;
+  connectionLastTxLlid_ = 0x01U;
+  connectionLastTxLength_ = 0U;
+  connectionAttMtu_ = kBleDefaultAttMtu;
+  connectionUpdatePending_ = false;
+  connectionUpdateInstant_ = 0U;
+  connectionPendingIntervalUnits_ = 0U;
+  connectionPendingLatency_ = 0U;
+  connectionPendingTimeoutUnits_ = 0U;
+  connectionChannelMapPending_ = false;
+  connectionChannelMapInstant_ = 0U;
+  memset(connectionPendingChannelMap_, 0, sizeof(connectionPendingChannelMap_));
+  connectionPendingChannelCount_ = 0U;
+  connectionServiceChangedIndicationsEnabled_ = false;
+  connectionServiceChangedIndicationPending_ = false;
+  connectionServiceChangedIndicationAwaitingConfirm_ = false;
+  connectionBatteryNotificationsEnabled_ = false;
+  connectionBatteryNotificationPending_ = false;
+  restoreAdvertisingLinkDefaults();
+  clearRadioCoreEvents(radio_);
+  return true;
+}
+
+bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit) {
+  if (event != nullptr) {
+    event->eventStarted = false;
+    event->packetReceived = false;
+    event->crcOk = false;
+    event->emptyAckTransmitted = false;
+    event->packetIsNew = false;
+    event->terminateInd = false;
+    event->llControlPacket = false;
+    event->attPacket = false;
+    event->txPacketSent = false;
+    event->eventCounter = connectionEventCounter_;
+    event->dataChannel = 0;
+    event->rssiDbm = 0;
+    event->llid = 0;
+    event->llControlOpcode = 0;
+    event->attOpcode = 0;
+    event->payloadLength = 0;
+    event->txLlid = 0x01U;
+    event->txPayloadLength = 0;
+    event->payload = nullptr;
+    event->txPayload = nullptr;
+  }
+
+  if (!initialized_ || radio_ == nullptr || !connected_) {
+    return false;
+  }
+
+  const uint32_t nowUs = micros();
+  if (!timeReachedUs(nowUs, connectionNextEventUs_)) {
+    return false;
+  }
+
+  updateNextConnectionEventTime();
+
+  if (connectionUpdatePending_ &&
+      llEventInstantReached(connectionEventCounter_, connectionUpdateInstant_)) {
+    if ((connectionPendingIntervalUnits_ >= 6U) && (connectionPendingIntervalUnits_ <= 3200U) &&
+        (connectionPendingTimeoutUnits_ >= 10U)) {
+      connectionIntervalUnits_ = connectionPendingIntervalUnits_;
+      connectionLatency_ = connectionPendingLatency_;
+      connectionTimeoutUnits_ = connectionPendingTimeoutUnits_;
+    }
+    connectionUpdatePending_ = false;
+  }
+  if (connectionChannelMapPending_ &&
+      llEventInstantReached(connectionEventCounter_, connectionChannelMapInstant_)) {
+    if (connectionPendingChannelCount_ >= 2U) {
+      memcpy(connectionChannelMap_, connectionPendingChannelMap_,
+             sizeof(connectionChannelMap_));
+      connectionChannelCount_ = connectionPendingChannelCount_;
+    }
+    connectionChannelMapPending_ = false;
+  }
+
+  const uint8_t dataChannel = selectNextDataChannel();
+  if (!setDataChannel(dataChannel)) {
+    return false;
+  }
+
+  if (event != nullptr) {
+    event->eventStarted = true;
+    event->eventCounter = connectionEventCounter_;
+    event->dataChannel = dataChannel;
+  }
+
+  clearRadioCoreEvents(radio_);
+  memset(rxPacket_, 0, sizeof(rxPacket_));
+  radio_->PACKETPTR =
+      static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&rxPacket_[0]));
+  radio_->SHORTS =
+      ((RADIO_SHORTS_RXREADY_START_Enabled << RADIO_SHORTS_RXREADY_START_Pos) &
+       RADIO_SHORTS_RXREADY_START_Msk) |
+      ((RADIO_SHORTS_ADDRESS_RSSISTART_Enabled
+        << RADIO_SHORTS_ADDRESS_RSSISTART_Pos) &
+       RADIO_SHORTS_ADDRESS_RSSISTART_Msk) |
+      ((RADIO_SHORTS_PHYEND_DISABLE_Enabled << RADIO_SHORTS_PHYEND_DISABLE_Pos) &
+       RADIO_SHORTS_PHYEND_DISABLE_Msk);
+  radio_->TASKS_RXEN = RADIO_TASKS_RXEN_TASKS_RXEN_Trigger;
+
+  const bool endSeen = waitForEnd(spinLimit);
+  if (!endSeen) {
+    radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
+    waitDisabled(spinLimit / 2U + 1U);
+    radio_->SHORTS = 0U;
+    clearRadioCoreEvents(radio_);
+    return true;
+  }
+
+  bool disabled = waitDisabled(spinLimit / 2U + 1U);
+  if (!disabled) {
+    radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
+    disabled = waitDisabled(spinLimit / 2U + 1U);
+  }
+  radio_->SHORTS = 0U;
+  if (!disabled) {
+    clearRadioCoreEvents(radio_);
+    return false;
+  }
+
+  const uint32_t crcStatus =
+      (radio_->CRCSTATUS & RADIO_CRCSTATUS_CRCSTATUS_Msk) >>
+      RADIO_CRCSTATUS_CRCSTATUS_Pos;
+  const bool crcOk = (crcStatus == RADIO_CRCSTATUS_CRCSTATUS_CRCOk);
+
+  if (event != nullptr) {
+    event->packetReceived = true;
+    event->crcOk = crcOk;
+    event->rssiDbm = radioRssiDbm(radio_);
+    event->payload = &rxPacket_[2];
+  }
+
+  if (!crcOk) {
+    clearRadioCoreEvents(radio_);
+    return true;
+  }
+
+  const uint8_t hdr0 = rxPacket_[0];
+  const uint8_t llid = hdr0 & 0x03U;
+  const uint8_t nesn = (hdr0 >> 2U) & 0x01U;
+  const uint8_t sn = (hdr0 >> 3U) & 0x01U;
+  const uint8_t length = rxPacket_[1];
+
+  const bool peerAckedLastTx = (nesn != connectionTxSn_);
+  const bool snMatchesExpected = (sn == connectionExpectedRxSn_);
+  const bool canConsumeNewPayload =
+      snMatchesExpected && ((connectionLastTxLength_ == 0U) || peerAckedLastTx);
+
+  bool packetIsNew = false;
+  if (canConsumeNewPayload) {
+    connectionExpectedRxSn_ ^= 0x01U;
+    packetIsNew = true;
+  }
+  if (peerAckedLastTx) {
+    connectionTxSn_ ^= 0x01U;
+  }
+
+  bool terminateInd = false;
+  if ((llid == kBlePduLlControl) && (length >= 2U) &&
+      (rxPacket_[2] == kBleLlCtrlTerminateInd)) {
+    terminateInd = true;
+  }
+
+  if (event != nullptr) {
+    event->packetIsNew = packetIsNew;
+    event->terminateInd = terminateInd;
+    event->llid = llid;
+    event->payloadLength = length;
+    if (llid == kBlePduLlControl && length >= 1U) {
+      event->llControlPacket = true;
+      event->llControlOpcode = rxPacket_[2];
+    }
+    if (llid == kBlePduDataStartOrComplete && length >= 5U) {
+      const uint16_t l2capLen = readLe16(&rxPacket_[2]);
+      const uint16_t cid = readLe16(&rxPacket_[4]);
+      const uint8_t availableAttLen = (length > kBleL2capHeaderLen)
+                                          ? static_cast<uint8_t>(length - kBleL2capHeaderLen)
+                                          : 0U;
+      if (cid == kBleL2capCidAtt && l2capLen > 0U && availableAttLen > 0U) {
+        event->attPacket = true;
+        event->attOpcode = rxPacket_[2 + kBleL2capHeaderLen];
+      }
+    }
+  }
+
+  uint8_t txLlid = 0x01U;
+  uint8_t txLength = 0U;
+  if (packetIsNew) {
+    if (llid == kBlePduLlControl && length >= 1U) {
+      uint8_t responseLength = 0U;
+      if (buildLlControlResponse(&rxPacket_[2], length, connectionTxPayload_,
+                                 &responseLength, &terminateInd) &&
+          responseLength > 0U) {
+        txLlid = kBlePduLlControl;
+        txLength = responseLength;
+      }
+    } else if (llid == kBlePduDataStartOrComplete && length >= kBleL2capHeaderLen) {
+      uint8_t responseLength = 0U;
+      if (buildL2capResponse(&rxPacket_[2], length, connectionTxPayload_,
+                             &responseLength) &&
+          responseLength > 0U) {
+        txLlid = kBlePduDataStartOrComplete;
+        txLength = responseLength;
+      }
+    }
+
+    // If no request/response payload is pending, allow one queued Service Changed
+    // indication to be emitted (after CCCD indication enable).
+    if ((txLength == 0U) &&
+        connectionServiceChangedIndicationsEnabled_ &&
+        connectionServiceChangedIndicationPending_ &&
+        !connectionServiceChangedIndicationAwaitingConfirm_) {
+      // L2CAP ATT frame:
+      //   len=7, cid=0x0004, ATT Handle Value Indication (0x1D),
+      //   handle=0x000A, start=0x0001, end=0xFFFF.
+      writeLe16(&connectionTxPayload_[0], 7U);
+      writeLe16(&connectionTxPayload_[2], kBleL2capCidAtt);
+      connectionTxPayload_[4] = kAttOpHandleValueInd;
+      writeLe16(&connectionTxPayload_[5], kHandleGattServiceChangedValue);
+      writeLe16(&connectionTxPayload_[7], 0x0001U);
+      writeLe16(&connectionTxPayload_[9], 0xFFFFU);
+      txLlid = kBlePduDataStartOrComplete;
+      txLength = 11U;
+      connectionServiceChangedIndicationPending_ = false;
+      connectionServiceChangedIndicationAwaitingConfirm_ = true;
+    }
+
+    // If no indication/response payload is pending, allow one queued Battery
+    // Level notification to be emitted (after CCCD notify enable).
+    if ((txLength == 0U) &&
+        connectionBatteryNotificationsEnabled_ &&
+        connectionBatteryNotificationPending_) {
+      // L2CAP ATT frame:
+      //   len=4, cid=0x0004, ATT Handle Value Notification (0x1B),
+      //   handle=0x0012, value=<battery %>.
+      writeLe16(&connectionTxPayload_[0], 4U);
+      writeLe16(&connectionTxPayload_[2], kBleL2capCidAtt);
+      connectionTxPayload_[4] = kAttOpHandleValueNtf;
+      writeLe16(&connectionTxPayload_[5], kHandleBatteryLevelValue);
+      connectionTxPayload_[7] = gapBatteryLevel_;
+      txLlid = kBlePduDataStartOrComplete;
+      txLength = 8U;
+      connectionBatteryNotificationPending_ = false;
+    }
+
+    connectionLastTxLlid_ = txLlid;
+    connectionLastTxLength_ = txLength;
+  } else {
+    txLlid = connectionLastTxLlid_;
+    txLength = connectionLastTxLength_;
+  }
+
+  txPacket_[0] = static_cast<uint8_t>((txLlid & 0x03U) |
+                                      ((connectionExpectedRxSn_ & 0x01U) << 2U) |
+                                      ((connectionTxSn_ & 0x01U) << 3U));
+  txPacket_[1] = txLength;
+  if (txLength > 0U) {
+    memcpy(&txPacket_[2], connectionTxPayload_, txLength);
+  }
+
+  clearRadioCoreEvents(radio_);
+  radio_->PACKETPTR =
+      static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&txPacket_[0]));
+  radio_->SHORTS =
+      ((RADIO_SHORTS_TXREADY_START_Enabled << RADIO_SHORTS_TXREADY_START_Pos) &
+       RADIO_SHORTS_TXREADY_START_Msk) |
+      ((RADIO_SHORTS_PHYEND_DISABLE_Enabled << RADIO_SHORTS_PHYEND_DISABLE_Pos) &
+       RADIO_SHORTS_PHYEND_DISABLE_Msk);
+  radio_->TASKS_TXEN = RADIO_TASKS_TXEN_TASKS_TXEN_Trigger;
+  const bool txOk = waitDisabled(spinLimit / 2U + 1U);
+  radio_->SHORTS = 0U;
+
+  if (event != nullptr) {
+    event->txPacketSent = txOk;
+    event->txLlid = txLlid;
+    event->txPayloadLength = txLength;
+    event->txPayload = (txLength > 0U) ? &connectionTxPayload_[0] : nullptr;
+    event->emptyAckTransmitted = txOk && (txLlid == 0x01U) && (txLength == 0U);
+    event->terminateInd = terminateInd;
+  }
+
+  if (terminateInd) {
+    connected_ = false;
+    restoreAdvertisingLinkDefaults();
+  }
+
+  clearRadioCoreEvents(radio_);
+  return true;
+}
+
+bool BleRadio::scanOnce(BleAdvertisingChannel channel, BleScanPacket* packet,
+                        uint32_t spinLimit) {
+  if (!initialized_ || radio_ == nullptr || connected_) {
+    return false;
+  }
+  if (!setAdvertisingChannel(channel)) {
+    return false;
+  }
+
+  clearRadioCoreEvents(radio_);
+  memset(rxPacket_, 0, sizeof(rxPacket_));
+  radio_->PACKETPTR =
+      static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&rxPacket_[0]));
+
+  radio_->SHORTS =
+      ((RADIO_SHORTS_RXREADY_START_Enabled << RADIO_SHORTS_RXREADY_START_Pos) &
+       RADIO_SHORTS_RXREADY_START_Msk) |
+      ((RADIO_SHORTS_ADDRESS_RSSISTART_Enabled
+        << RADIO_SHORTS_ADDRESS_RSSISTART_Pos) &
+       RADIO_SHORTS_ADDRESS_RSSISTART_Msk) |
+      ((RADIO_SHORTS_PHYEND_DISABLE_Enabled << RADIO_SHORTS_PHYEND_DISABLE_Pos) &
+       RADIO_SHORTS_PHYEND_DISABLE_Msk);
+
+  radio_->TASKS_RXEN = RADIO_TASKS_RXEN_TASKS_RXEN_Trigger;
+
+  const bool endSeen = waitForEnd(spinLimit);
+  if (!endSeen) {
+    radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
+    waitDisabled(spinLimit / 2U + 1U);
+    radio_->SHORTS = 0U;
+    clearRadioCoreEvents(radio_);
+    return false;
+  }
+
+  const bool disabled = waitDisabled(spinLimit / 2U + 1U);
+  const uint32_t crcStatus =
+      (radio_->CRCSTATUS & RADIO_CRCSTATUS_CRCSTATUS_Msk) >>
+      RADIO_CRCSTATUS_CRCSTATUS_Pos;
+  const bool crcOk = (crcStatus == RADIO_CRCSTATUS_CRCSTATUS_CRCOk);
+
+  radio_->SHORTS = 0U;
+  if (!disabled || !crcOk) {
+    clearRadioCoreEvents(radio_);
+    return false;
+  }
+
+  const uint8_t payloadLen = static_cast<uint8_t>(rxPacket_[1] & 0x3FU);
+  if (packet != nullptr) {
+    packet->channel = channel;
+    packet->rssiDbm = radioRssiDbm(radio_);
+    packet->pduHeader = rxPacket_[0];
+    packet->length = payloadLen;
+    packet->payload = &rxPacket_[2];
+  }
+
+  clearRadioCoreEvents(radio_);
+  return true;
+}
+
+bool BleRadio::scanCycle(BleScanPacket* packet, uint32_t perChannelSpinLimit) {
+  static constexpr BleAdvertisingChannel kChannels[3] = {
+      BleAdvertisingChannel::k37,
+      BleAdvertisingChannel::k38,
+      BleAdvertisingChannel::k39,
+  };
+
+  const uint32_t firstPassSpin = perChannelSpinLimit;
+  const uint32_t secondPassSpin =
+      (perChannelSpinLimit > 1U) ? (perChannelSpinLimit / 2U) : perChannelSpinLimit;
+
+  for (uint8_t pass = 0U; pass < 2U; ++pass) {
+    const uint32_t dwell = (pass == 0U) ? firstPassSpin : secondPassSpin;
+    for (uint8_t i = 0U; i < 3U; ++i) {
+      const uint8_t idx = static_cast<uint8_t>((scanCycleStartIndex_ + i) % 3U);
+      if (scanOnce(kChannels[idx], packet, dwell)) {
+        scanCycleStartIndex_ = static_cast<uint8_t>((idx + 1U) % 3U);
+        return true;
+      }
+    }
+  }
+
+  scanCycleStartIndex_ = static_cast<uint8_t>((scanCycleStartIndex_ + 1U) % 3U);
+  return false;
+}
+
+bool BleRadio::handleRequestAndMaybeRespond(BleAdvertisingChannel channel,
+                                            BleAdvInteraction* interaction,
+                                            uint32_t requestListenSpinLimit,
+                                            uint32_t spinLimit) {
+  if (!initialized_ || radio_ == nullptr) {
+    return false;
+  }
+  if (!setAdvertisingChannel(channel)) {
+    return false;
+  }
+
+  clearRadioCoreEvents(radio_);
+  memset(rxPacket_, 0, sizeof(rxPacket_));
+  radio_->PACKETPTR =
+      static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&rxPacket_[0]));
+  radio_->SHORTS =
+      ((RADIO_SHORTS_RXREADY_START_Enabled << RADIO_SHORTS_RXREADY_START_Pos) &
+       RADIO_SHORTS_RXREADY_START_Msk) |
+      ((RADIO_SHORTS_ADDRESS_RSSISTART_Enabled
+        << RADIO_SHORTS_ADDRESS_RSSISTART_Pos) &
+       RADIO_SHORTS_ADDRESS_RSSISTART_Msk) |
+      ((RADIO_SHORTS_PHYEND_DISABLE_Enabled << RADIO_SHORTS_PHYEND_DISABLE_Pos) &
+       RADIO_SHORTS_PHYEND_DISABLE_Msk);
+
+  radio_->TASKS_RXEN = RADIO_TASKS_RXEN_TASKS_RXEN_Trigger;
+
+  const bool endSeen = waitForEnd(requestListenSpinLimit);
+  if (!endSeen) {
+    radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
+    waitDisabled(spinLimit / 2U + 1U);
+    radio_->SHORTS = 0U;
+    clearRadioCoreEvents(radio_);
+    return true;
+  }
+
+  const uint32_t crcStatus =
+      (radio_->CRCSTATUS & RADIO_CRCSTATUS_CRCSTATUS_Msk) >>
+      RADIO_CRCSTATUS_CRCSTATUS_Pos;
+  const bool crcOk = (crcStatus == RADIO_CRCSTATUS_CRCSTATUS_CRCOk);
+  const uint8_t hdr = rxPacket_[0];
+  const uint8_t pduType = static_cast<uint8_t>(hdr & 0x0FU);
+  const uint8_t length = static_cast<uint8_t>(rxPacket_[1] & 0x3FU);
+  const bool rxAddrRandom = ((hdr >> 7U) & 0x1U) != 0U;
+  const uint8_t* payload = &rxPacket_[2];
+
+  bool disabled = waitDisabled(spinLimit / 2U + 1U);
+  if (!disabled) {
+    radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
+    disabled = waitDisabled(spinLimit / 2U + 1U);
+  }
+  radio_->SHORTS = 0U;
+  if (!disabled) {
+    clearRadioCoreEvents(radio_);
+    return false;
+  }
+
+  bool hasScanReq = false;
+  bool hasConnectInd = false;
+  bool connectAccepted = false;
+  bool addressMatch = false;
+  const bool connectable = (pduType_ == BleAdvPduType::kAdvInd);
+  if (crcOk && length >= 12U) {
+    const uint8_t* scannerOrInitiator = payload;
+    const uint8_t* advertiserAddress = &payload[6];
+    addressMatch = bleAddressEqual(advertiserAddress, &address_[0]) &&
+                   (rxAddrRandom ==
+                    (addressType_ == BleAddressType::kRandomStatic));
+
+    if (addressMatch && pduType == kBlePduScanReq) {
+      hasScanReq = true;
+      if (interaction != nullptr) {
+        memcpy(&interaction->peerAddress[0], scannerOrInitiator, 6U);
+      }
+    } else if (addressMatch && pduType == kBlePduConnectInd && connectable &&
+               (length >= 34U)) {
+      hasConnectInd = true;
+      if (interaction != nullptr) {
+        memcpy(&interaction->peerAddress[0], scannerOrInitiator, 6U);
+      }
+      connectAccepted = startConnectionFromConnectInd(payload, length, rxAddrRandom);
+    }
+  }
+
+  if (interaction != nullptr) {
+    interaction->channel = channel;
+    interaction->rssiDbm = radioRssiDbm(radio_);
+    interaction->peerAddressRandom = rxAddrRandom;
+    interaction->receivedScanRequest = hasScanReq;
+    interaction->receivedConnectInd = hasConnectInd;
+  }
+
+  bool txScanRspOk = false;
+  const bool scannable = (pduType_ == BleAdvPduType::kAdvInd) ||
+                         (pduType_ == BleAdvPduType::kAdvScanInd);
+  if (hasScanReq && scannable && !connectAccepted) {
+    clearRadioCoreEvents(radio_);
+    radio_->PACKETPTR =
+        static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&scanRspPacket_[0]));
+    radio_->SHORTS =
+        ((RADIO_SHORTS_TXREADY_START_Enabled << RADIO_SHORTS_TXREADY_START_Pos) &
+         RADIO_SHORTS_TXREADY_START_Msk) |
+        ((RADIO_SHORTS_PHYEND_DISABLE_Enabled
+          << RADIO_SHORTS_PHYEND_DISABLE_Pos) &
+         RADIO_SHORTS_PHYEND_DISABLE_Msk);
+
+    radio_->TASKS_TXEN = RADIO_TASKS_TXEN_TASKS_TXEN_Trigger;
+    txScanRspOk = waitDisabled(spinLimit);
+    radio_->SHORTS = 0U;
+  }
+
+  if (interaction != nullptr) {
+    interaction->scanResponseTransmitted = txScanRspOk;
+    if (hasConnectInd && !connectAccepted) {
+      interaction->receivedConnectInd = false;
+    }
+  }
+
+  clearRadioCoreEvents(radio_);
+  return true;
+}
+
+bool BleRadio::startConnectionFromConnectInd(const uint8_t* payload, uint8_t length,
+                                             bool peerAddressRandom) {
+  if (!initialized_ || radio_ == nullptr || payload == nullptr || length < 34U) {
+    return false;
+  }
+
+  memcpy(connectionPeerAddress_, payload, sizeof(connectionPeerAddress_));
+  connectionPeerAddressRandom_ = peerAddressRandom;
+
+  const uint8_t* llData = &payload[12];
+  connectionAccessAddress_ = readLe32(&llData[0]);
+  connectionCrcInit_ = readLe24(&llData[4]);
+
+  const uint8_t winSize = llData[7];
+  const uint16_t winOffset = readLe16(&llData[8]);
+  connectionIntervalUnits_ = readLe16(&llData[10]);
+  connectionLatency_ = readLe16(&llData[12]);
+  connectionTimeoutUnits_ = readLe16(&llData[14]);
+  memcpy(connectionChannelMap_, &llData[16], sizeof(connectionChannelMap_));
+  connectionChannelMap_[4] &= 0x1FU;
+  connectionSca_ = (llData[21] >> 5U) & 0x07U;
+  connectionHop_ = llData[21] & 0x1FU;
+
+  connectionChannelCount_ = bitCount37(connectionChannelMap_);
+  if (connectionIntervalUnits_ < 6U || connectionIntervalUnits_ > 3200U) {
+    return false;
+  }
+  if (connectionTimeoutUnits_ < 10U) {
+    return false;
+  }
+  if (connectionChannelCount_ < 2U) {
+    return false;
+  }
+  if (connectionHop_ < 5U || connectionHop_ > 16U) {
+    return false;
+  }
+  if (connectionAccessAddress_ == kBleAccessAddress) {
+    return false;
+  }
+
+  connectionChanUse_ = 0U;
+  connectionExpectedRxSn_ = 0U;
+  connectionTxSn_ = 0U;
+  connectionEventCounter_ = 0U;
+  connectionAttMtu_ = kBleDefaultAttMtu;
+  connectionLastTxLlid_ = 0x01U;
+  connectionLastTxLength_ = 0U;
+  connectionUpdatePending_ = false;
+  connectionUpdateInstant_ = 0U;
+  connectionPendingIntervalUnits_ = 0U;
+  connectionPendingLatency_ = 0U;
+  connectionPendingTimeoutUnits_ = 0U;
+  connectionChannelMapPending_ = false;
+  connectionChannelMapInstant_ = 0U;
+  memset(connectionPendingChannelMap_, 0, sizeof(connectionPendingChannelMap_));
+  connectionPendingChannelCount_ = 0U;
+  connectionServiceChangedIndicationsEnabled_ = false;
+  connectionServiceChangedIndicationPending_ = false;
+  connectionServiceChangedIndicationAwaitingConfirm_ = false;
+  connectionBatteryNotificationsEnabled_ = false;
+  connectionBatteryNotificationPending_ = false;
+  memset(connectionTxPayload_, 0, sizeof(connectionTxPayload_));
+
+  radio_->BASE0 = bleAccessAddressBase(connectionAccessAddress_);
+  radio_->PREFIX0 = (radio_->PREFIX0 & ~RADIO_PREFIX0_AP0_Msk) |
+                    ((bleAccessAddressPrefix(connectionAccessAddress_)
+                      << RADIO_PREFIX0_AP0_Pos) &
+                     RADIO_PREFIX0_AP0_Msk);
+  radio_->CRCINIT = (connectionCrcInit_ & RADIO_CRCINIT_CRCINIT_Msk);
+  radio_->TXADDRESS =
+      (0UL << RADIO_TXADDRESS_TXADDRESS_Pos) & RADIO_TXADDRESS_TXADDRESS_Msk;
+  radio_->RXADDRESSES =
+      (RADIO_RXADDRESSES_ADDR0_Enabled << RADIO_RXADDRESSES_ADDR0_Pos) &
+      RADIO_RXADDRESSES_ADDR0_Msk;
+
+  const uint32_t nowUs = micros();
+  const uint32_t offsetUs = static_cast<uint32_t>(winOffset) * 1250UL;
+  // Use WinOffset as anchor estimate. If zero, schedule near-term first event.
+  connectionNextEventUs_ = nowUs + ((offsetUs > 0U) ? offsetUs : 1500UL);
+  if (winSize > 0U) {
+    // Window size currently not used for precise scheduling in this clean HAL.
+    (void)winSize;
+  }
+
+  connected_ = true;
+  return true;
+}
+
+bool BleRadio::buildAttErrorResponse(uint8_t requestOpcode, uint16_t handle,
+                                     uint8_t errorCode, uint8_t* outAttResponse,
+                                     uint16_t* outAttResponseLength) const {
+  if (outAttResponse == nullptr || outAttResponseLength == nullptr) {
+    return false;
+  }
+
+  outAttResponse[0] = kAttOpErrorRsp;
+  outAttResponse[1] = requestOpcode;
+  writeLe16(&outAttResponse[2], handle);
+  outAttResponse[4] = errorCode;
+  *outAttResponseLength = 5U;
+  return true;
+}
+
+uint8_t BleRadio::readAttributeValue(uint16_t handle, uint16_t offset,
+                                     uint8_t* outValue, uint8_t maxLen) const {
+  if (outValue == nullptr) {
+    return kAttrReadInvalidHandleLen;
+  }
+
+  uint8_t fullValue[31] = {0};
+  uint8_t fullLen = 0U;
+
+  switch (handle) {
+    case kHandleGapService:
+      writeLe16(&fullValue[0], kUuidGapService);
+      fullLen = 2U;
+      break;
+    case kHandleGapDeviceNameDecl:
+      fullValue[0] = kGattCharacteristicPropRead;
+      writeLe16(&fullValue[1], kHandleGapDeviceNameValue);
+      writeLe16(&fullValue[3], kUuidDeviceName);
+      fullLen = 5U;
+      break;
+    case kHandleGapDeviceNameValue:
+      if (gapDeviceNameLen_ > 0U) {
+        memcpy(fullValue, gapDeviceName_, gapDeviceNameLen_);
+      }
+      fullLen = gapDeviceNameLen_;
+      break;
+    case kHandleGapAppearanceDecl:
+      fullValue[0] = kGattCharacteristicPropRead;
+      writeLe16(&fullValue[1], kHandleGapAppearanceValue);
+      writeLe16(&fullValue[3], kUuidAppearance);
+      fullLen = 5U;
+      break;
+    case kHandleGapAppearanceValue:
+      writeLe16(&fullValue[0], gapAppearance_);
+      fullLen = 2U;
+      break;
+    case kHandleGapPpcpDecl:
+      fullValue[0] = kGattCharacteristicPropRead;
+      writeLe16(&fullValue[1], kHandleGapPpcpValue);
+      writeLe16(&fullValue[3], kUuidPpcp);
+      fullLen = 5U;
+      break;
+    case kHandleGapPpcpValue:
+      writeLe16(&fullValue[0], gapPpcpIntervalMin_);
+      writeLe16(&fullValue[2], gapPpcpIntervalMax_);
+      writeLe16(&fullValue[4], gapPpcpLatency_);
+      writeLe16(&fullValue[6], gapPpcpTimeout_);
+      fullLen = 8U;
+      break;
+    case kHandleGattService:
+      writeLe16(&fullValue[0], kUuidGattService);
+      fullLen = 2U;
+      break;
+    case kHandleGattServiceChangedDecl:
+      fullValue[0] = kGattCharacteristicPropIndicate;
+      writeLe16(&fullValue[1], kHandleGattServiceChangedValue);
+      writeLe16(&fullValue[3], kUuidServiceChanged);
+      fullLen = 5U;
+      break;
+    case kHandleGattServiceChangedValue:
+      writeLe16(&fullValue[0], 0x0001U);
+      writeLe16(&fullValue[2], 0xFFFFU);
+      fullLen = 4U;
+      break;
+    case kHandleGattServiceChangedCccd:
+      writeLe16(&fullValue[0],
+                connectionServiceChangedIndicationsEnabled_ ? 0x0002U : 0x0000U);
+      fullLen = 2U;
+      break;
+    case kHandleBatteryService:
+      writeLe16(&fullValue[0], kUuidBatteryService);
+      fullLen = 2U;
+      break;
+    case kHandleBatteryLevelDecl:
+      fullValue[0] = static_cast<uint8_t>(kGattCharacteristicPropRead |
+                                          kGattCharacteristicPropNotify);
+      writeLe16(&fullValue[1], kHandleBatteryLevelValue);
+      writeLe16(&fullValue[3], kUuidBatteryLevel);
+      fullLen = 5U;
+      break;
+    case kHandleBatteryLevelValue:
+      fullValue[0] = gapBatteryLevel_;
+      fullLen = 1U;
+      break;
+    case kHandleBatteryLevelCccd:
+      writeLe16(&fullValue[0], connectionBatteryNotificationsEnabled_ ? 0x0001U : 0x0000U);
+      fullLen = 2U;
+      break;
+    default:
+      return kAttrReadInvalidHandleLen;
+  }
+
+  if (offset > fullLen) {
+    return kAttrReadInvalidOffsetLen;
+  }
+  const uint8_t remaining = static_cast<uint8_t>(fullLen - offset);
+  const uint8_t toCopy = minU8(remaining, maxLen);
+  if (toCopy > 0U) {
+    memcpy(outValue, &fullValue[offset], toCopy);
+  }
+  return toCopy;
+}
+
+bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLength,
+                                uint8_t* outAttResponse,
+                                uint16_t* outAttResponseLength) {
+  if (attRequest == nullptr || outAttResponse == nullptr ||
+      outAttResponseLength == nullptr || requestLength == 0U) {
+    return false;
+  }
+
+  const uint16_t maxAttResponseLen = minU16(
+      connectionAttMtu_, static_cast<uint16_t>(kBleDataPduMaxPayload - kBleL2capHeaderLen));
+  if (maxAttResponseLen < 1U) {
+    return false;
+  }
+  const uint8_t maxAttValueLen =
+      static_cast<uint8_t>((maxAttResponseLen > 1U) ? (maxAttResponseLen - 1U) : 0U);
+
+  const uint8_t opcode = attRequest[0];
+  *outAttResponseLength = 0U;
+
+  switch (opcode) {
+    case kAttOpExchangeMtuReq: {
+      if (requestLength < 3U) {
+        return buildAttErrorResponse(opcode, 0U, kAttErrInvalidPdu, outAttResponse,
+                                     outAttResponseLength);
+      }
+
+      const uint16_t clientRxMtu = readLe16(&attRequest[1]);
+      const uint16_t serverRxMtu =
+          minU16(kBleDefaultAttMtu,
+                 static_cast<uint16_t>(kBleDataPduMaxPayload - kBleL2capHeaderLen));
+      const uint16_t negotiatedMtu = minU16(clientRxMtu, serverRxMtu);
+      connectionAttMtu_ = (negotiatedMtu >= 23U) ? negotiatedMtu : 23U;
+
+      outAttResponse[0] = kAttOpExchangeMtuRsp;
+      writeLe16(&outAttResponse[1], serverRxMtu);
+      *outAttResponseLength = 3U;
+      return true;
+    }
+
+    case kAttOpFindInfoReq: {
+      if (requestLength < 5U) {
+        return buildAttErrorResponse(opcode, 0U, kAttErrInvalidPdu, outAttResponse,
+                                     outAttResponseLength);
+      }
+
+      const uint16_t start = clampBleRangeStart(readLe16(&attRequest[1]));
+      const uint16_t end = readLe16(&attRequest[3]);
+      if (start > end) {
+        return buildAttErrorResponse(opcode, start, kAttErrInvalidHandle, outAttResponse,
+                                     outAttResponseLength);
+      }
+
+      outAttResponse[0] = kAttOpFindInfoRsp;
+      outAttResponse[1] = 0x01U;  // 16-bit UUID format.
+      uint16_t used = 2U;
+      const uint16_t maxRecords = static_cast<uint16_t>((maxAttResponseLen - 2U) / 4U);
+      uint16_t recordCount = 0U;
+      for (size_t i = 0; i < (sizeof(kBleAttributeUuids) / sizeof(kBleAttributeUuids[0]));
+           ++i) {
+        const BleAttributeUuidRecord& record = kBleAttributeUuids[i];
+        if (!inHandleRange(record.handle, start, end)) {
+          continue;
+        }
+        if (recordCount >= maxRecords) {
+          break;
+        }
+        writeLe16(&outAttResponse[used], record.handle);
+        writeLe16(&outAttResponse[used + 2U], record.uuid16);
+        used += 4U;
+        ++recordCount;
+      }
+
+      if (recordCount == 0U) {
+        return buildAttErrorResponse(opcode, start, kAttErrAttributeNotFound,
+                                     outAttResponse, outAttResponseLength);
+      }
+      *outAttResponseLength = used;
+      return true;
+    }
+
+    case kAttOpFindByTypeValueReq: {
+      if (requestLength < 9U) {
+        return buildAttErrorResponse(opcode, 0U, kAttErrInvalidPdu, outAttResponse,
+                                     outAttResponseLength);
+      }
+
+      const uint16_t rawStart = readLe16(&attRequest[1]);
+      const uint16_t end = readLe16(&attRequest[3]);
+      const uint16_t attrType = readLe16(&attRequest[5]);
+      if (rawStart == 0U || rawStart > end) {
+        return buildAttErrorResponse(opcode, rawStart, kAttErrInvalidHandle,
+                                     outAttResponse, outAttResponseLength);
+      }
+
+      const uint16_t valueLen = static_cast<uint16_t>(requestLength - 7U);
+      if (attrType != kUuidPrimaryService || valueLen != 2U) {
+        return buildAttErrorResponse(opcode, rawStart, kAttErrAttributeNotFound,
+                                     outAttResponse, outAttResponseLength);
+      }
+
+      const uint16_t serviceUuid = readLe16(&attRequest[7]);
+      outAttResponse[0] = kAttOpFindByTypeValueRsp;
+      uint16_t used = 1U;
+      const uint16_t maxRecords = static_cast<uint16_t>((maxAttResponseLen - 1U) / 4U);
+      uint16_t recordCount = 0U;
+      for (size_t i = 0; i < (sizeof(kBlePrimaryServices) / sizeof(kBlePrimaryServices[0]));
+           ++i) {
+        const BlePrimaryServiceRecord& service = kBlePrimaryServices[i];
+        if (service.uuid16 != serviceUuid) {
+          continue;
+        }
+        if (!inHandleRange(service.startHandle, rawStart, end)) {
+          continue;
+        }
+        if (recordCount >= maxRecords) {
+          break;
+        }
+        writeLe16(&outAttResponse[used], service.startHandle);
+        writeLe16(&outAttResponse[used + 2U], service.endHandle);
+        used += 4U;
+        ++recordCount;
+      }
+
+      if (recordCount == 0U) {
+        return buildAttErrorResponse(opcode, rawStart, kAttErrAttributeNotFound,
+                                     outAttResponse, outAttResponseLength);
+      }
+      *outAttResponseLength = used;
+      return true;
+    }
+
+    case kAttOpReadByGroupTypeReq: {
+      if (requestLength < 7U) {
+        return buildAttErrorResponse(opcode, 0U, kAttErrInvalidPdu, outAttResponse,
+                                     outAttResponseLength);
+      }
+
+      const uint16_t rawStart = readLe16(&attRequest[1]);
+      const uint16_t end = readLe16(&attRequest[3]);
+      if (rawStart == 0U || rawStart > end) {
+        return buildAttErrorResponse(opcode, rawStart, kAttErrInvalidHandle,
+                                     outAttResponse, outAttResponseLength);
+      }
+
+      const uint16_t groupTypeLen = static_cast<uint16_t>(requestLength - 5U);
+      if (groupTypeLen != 2U) {
+        if (groupTypeLen == 16U) {
+          return buildAttErrorResponse(opcode, rawStart, kAttErrUnsupportedGroupType,
+                                       outAttResponse, outAttResponseLength);
+        }
+        return buildAttErrorResponse(opcode, rawStart, kAttErrInvalidPdu,
+                                     outAttResponse, outAttResponseLength);
+      }
+
+      const uint16_t start = rawStart;
+      const uint16_t groupType = readLe16(&attRequest[5]);
+      if (groupType != kUuidPrimaryService) {
+        return buildAttErrorResponse(opcode, start, kAttErrUnsupportedGroupType,
+                                     outAttResponse, outAttResponseLength);
+      }
+
+      outAttResponse[0] = kAttOpReadByGroupTypeRsp;
+      outAttResponse[1] = 6U;
+      uint16_t used = 2U;
+      const uint16_t maxRecords = static_cast<uint16_t>((maxAttResponseLen - 2U) / 6U);
+      uint16_t recordCount = 0U;
+      for (size_t i = 0; i < (sizeof(kBlePrimaryServices) / sizeof(kBlePrimaryServices[0]));
+           ++i) {
+        const BlePrimaryServiceRecord& service = kBlePrimaryServices[i];
+        if (!inHandleRange(service.startHandle, start, end)) {
+          continue;
+        }
+        if (recordCount >= maxRecords) {
+          break;
+        }
+        writeLe16(&outAttResponse[used], service.startHandle);
+        writeLe16(&outAttResponse[used + 2U], service.endHandle);
+        writeLe16(&outAttResponse[used + 4U], service.uuid16);
+        used += 6U;
+        ++recordCount;
+      }
+
+      if (recordCount == 0U) {
+        return buildAttErrorResponse(opcode, start, kAttErrAttributeNotFound,
+                                     outAttResponse, outAttResponseLength);
+      }
+      *outAttResponseLength = used;
+      return true;
+    }
+
+    case kAttOpReadByTypeReq: {
+      if (requestLength < 7U) {
+        return buildAttErrorResponse(opcode, 0U, kAttErrInvalidPdu, outAttResponse,
+                                     outAttResponseLength);
+      }
+
+      const uint16_t start = clampBleRangeStart(readLe16(&attRequest[1]));
+      const uint16_t end = readLe16(&attRequest[3]);
+      const uint16_t type = readLe16(&attRequest[5]);
+      if (start > end) {
+        return buildAttErrorResponse(opcode, start, kAttErrInvalidHandle, outAttResponse,
+                                     outAttResponseLength);
+      }
+
+      outAttResponse[0] = kAttOpReadByTypeRsp;
+      uint16_t used = 2U;
+      uint8_t entryLen = 0U;
+      uint16_t recordCount = 0U;
+
+      if (type == kUuidCharacteristic) {
+        entryLen = 7U;
+        outAttResponse[1] = entryLen;
+        const uint16_t maxRecords =
+            static_cast<uint16_t>((maxAttResponseLen - 2U) / entryLen);
+        for (size_t i = 0; i < (sizeof(kBleCharacteristics) / sizeof(kBleCharacteristics[0]));
+             ++i) {
+          const BleCharacteristicRecord& ch = kBleCharacteristics[i];
+          if (!inHandleRange(ch.declarationHandle, start, end)) {
+            continue;
+          }
+          if (recordCount >= maxRecords) {
+            break;
+          }
+          writeLe16(&outAttResponse[used], ch.declarationHandle);
+          outAttResponse[used + 2U] = ch.properties;
+          writeLe16(&outAttResponse[used + 3U], ch.valueHandle);
+          writeLe16(&outAttResponse[used + 5U], ch.uuid16);
+          used += entryLen;
+          ++recordCount;
+        }
+      } else if (type == kUuidPrimaryService) {
+        entryLen = 4U;
+        outAttResponse[1] = entryLen;
+        const uint16_t maxRecords =
+            static_cast<uint16_t>((maxAttResponseLen - 2U) / entryLen);
+        for (size_t i = 0; i < (sizeof(kBlePrimaryServices) / sizeof(kBlePrimaryServices[0]));
+             ++i) {
+          const BlePrimaryServiceRecord& service = kBlePrimaryServices[i];
+          if (!inHandleRange(service.startHandle, start, end)) {
+            continue;
+          }
+          if (recordCount >= maxRecords) {
+            break;
+          }
+          writeLe16(&outAttResponse[used], service.startHandle);
+          writeLe16(&outAttResponse[used + 2U], service.uuid16);
+          used += entryLen;
+          ++recordCount;
+        }
+      } else {
+        uint16_t handles[6] = {0U, 0U, 0U, 0U, 0U, 0U};
+        uint8_t handleCount = 0U;
+        if (type == kUuidDeviceName) {
+          handles[handleCount++] = kHandleGapDeviceNameValue;
+        } else if (type == kUuidAppearance) {
+          handles[handleCount++] = kHandleGapAppearanceValue;
+        } else if (type == kUuidPpcp) {
+          handles[handleCount++] = kHandleGapPpcpValue;
+        } else if (type == kUuidServiceChanged) {
+          handles[handleCount++] = kHandleGattServiceChangedValue;
+        } else if (type == kUuidClientCharacteristicConfig) {
+          handles[handleCount++] = kHandleGattServiceChangedCccd;
+          handles[handleCount++] = kHandleBatteryLevelCccd;
+        } else if (type == kUuidBatteryLevel) {
+          handles[handleCount++] = kHandleBatteryLevelValue;
+        }
+
+        for (uint8_t i = 0U; i < handleCount; ++i) {
+          const uint16_t handle = handles[i];
+          if (!inHandleRange(handle, start, end)) {
+            continue;
+          }
+          uint8_t temp[31] = {0};
+          const uint8_t vlen = readAttributeValue(handle, 0U, temp, maxAttValueLen);
+          if (vlen == kAttrReadInvalidHandleLen || vlen == kAttrReadInvalidOffsetLen) {
+            continue;
+          }
+
+          const uint8_t candidateEntryLen = static_cast<uint8_t>(2U + vlen);
+          if (candidateEntryLen == 2U) {
+            continue;
+          }
+          if (entryLen == 0U) {
+            entryLen = candidateEntryLen;
+            outAttResponse[1] = entryLen;
+          }
+          if (candidateEntryLen != entryLen) {
+            continue;
+          }
+          if ((used + entryLen) > maxAttResponseLen) {
+            break;
+          }
+
+          writeLe16(&outAttResponse[used], handle);
+          if (vlen > 0U) {
+            memcpy(&outAttResponse[used + 2U], temp, vlen);
+          }
+          used += entryLen;
+          ++recordCount;
+        }
+      }
+
+      if (recordCount == 0U) {
+        return buildAttErrorResponse(opcode, start, kAttErrAttributeNotFound,
+                                     outAttResponse, outAttResponseLength);
+      }
+      *outAttResponseLength = used;
+      return true;
+    }
+
+    case kAttOpReadReq: {
+      if (requestLength < 3U) {
+        return buildAttErrorResponse(opcode, 0U, kAttErrInvalidPdu, outAttResponse,
+                                     outAttResponseLength);
+      }
+      const uint16_t handle = readLe16(&attRequest[1]);
+      if (handle == 0U) {
+        return buildAttErrorResponse(opcode, handle, kAttErrInvalidHandle,
+                                     outAttResponse, outAttResponseLength);
+      }
+      outAttResponse[0] = kAttOpReadRsp;
+      const uint8_t vlen =
+          readAttributeValue(handle, 0U, &outAttResponse[1], maxAttValueLen);
+      if (vlen == kAttrReadInvalidHandleLen) {
+        return buildAttErrorResponse(opcode, handle, kAttErrInvalidHandle,
+                                     outAttResponse, outAttResponseLength);
+      }
+      if (vlen == kAttrReadInvalidOffsetLen) {
+        return buildAttErrorResponse(opcode, handle, kAttErrInvalidOffset,
+                                     outAttResponse, outAttResponseLength);
+      }
+      *outAttResponseLength = static_cast<uint16_t>(1U + vlen);
+      return true;
+    }
+
+    case kAttOpReadBlobReq: {
+      if (requestLength < 5U) {
+        return buildAttErrorResponse(opcode, 0U, kAttErrInvalidPdu, outAttResponse,
+                                     outAttResponseLength);
+      }
+      const uint16_t handle = readLe16(&attRequest[1]);
+      const uint16_t offset = readLe16(&attRequest[3]);
+      if (handle == 0U) {
+        return buildAttErrorResponse(opcode, handle, kAttErrInvalidHandle,
+                                     outAttResponse, outAttResponseLength);
+      }
+
+      outAttResponse[0] = kAttOpReadBlobRsp;
+      const uint8_t vlen =
+          readAttributeValue(handle, offset, &outAttResponse[1], maxAttValueLen);
+      if (vlen == kAttrReadInvalidHandleLen) {
+        return buildAttErrorResponse(opcode, handle, kAttErrInvalidHandle,
+                                     outAttResponse, outAttResponseLength);
+      }
+      if (vlen == kAttrReadInvalidOffsetLen) {
+        return buildAttErrorResponse(opcode, handle, kAttErrInvalidOffset,
+                                     outAttResponse, outAttResponseLength);
+      }
+      *outAttResponseLength = static_cast<uint16_t>(1U + vlen);
+      return true;
+    }
+
+    case kAttOpReadMultipleReq: {
+      if (requestLength < 5U || ((requestLength & 0x01U) == 0U)) {
+        return buildAttErrorResponse(opcode, 0U, kAttErrInvalidPdu, outAttResponse,
+                                     outAttResponseLength);
+      }
+
+      outAttResponse[0] = kAttOpReadMultipleRsp;
+      uint16_t used = 1U;
+      const uint16_t handleCount = static_cast<uint16_t>((requestLength - 1U) / 2U);
+      for (uint16_t i = 0U; i < handleCount; ++i) {
+        const uint16_t handle = readLe16(&attRequest[1U + (i * 2U)]);
+        if (handle == 0U) {
+          return buildAttErrorResponse(opcode, handle, kAttErrInvalidHandle,
+                                       outAttResponse, outAttResponseLength);
+        }
+
+        if (used >= maxAttResponseLen) {
+          break;
+        }
+
+        const uint8_t chunkMax = static_cast<uint8_t>(maxAttResponseLen - used);
+        const uint8_t vlen = readAttributeValue(handle, 0U, &outAttResponse[used], chunkMax);
+        if (vlen == kAttrReadInvalidHandleLen) {
+          return buildAttErrorResponse(opcode, handle, kAttErrInvalidHandle,
+                                       outAttResponse, outAttResponseLength);
+        }
+        if (vlen == kAttrReadInvalidOffsetLen) {
+          return buildAttErrorResponse(opcode, handle, kAttErrInvalidOffset,
+                                       outAttResponse, outAttResponseLength);
+        }
+        used = static_cast<uint16_t>(used + vlen);
+      }
+
+      if (used <= 1U) {
+        return buildAttErrorResponse(opcode, 0U, kAttErrAttributeNotFound,
+                                     outAttResponse, outAttResponseLength);
+      }
+      *outAttResponseLength = used;
+      return true;
+    }
+
+    case kAttOpHandleValueCfm: {
+      // Confirmation for ATT Handle Value Indication. This opcode has no response.
+      if (requestLength == 1U) {
+        connectionServiceChangedIndicationAwaitingConfirm_ = false;
+      }
+      *outAttResponseLength = 0U;
+      return false;
+    }
+
+    case kAttOpWriteReq: {
+      if (requestLength < 3U) {
+        return buildAttErrorResponse(opcode, 0U, kAttErrInvalidPdu, outAttResponse,
+                                     outAttResponseLength);
+      }
+      const uint16_t handle = readLe16(&attRequest[1]);
+      if ((handle == kHandleGattServiceChangedCccd) ||
+          (handle == kHandleBatteryLevelCccd)) {
+        const uint16_t valueLen = static_cast<uint16_t>(requestLength - 3U);
+        if (valueLen != 2U) {
+          return buildAttErrorResponse(opcode, handle, kAttErrInvalidAttrValueLen,
+                                       outAttResponse, outAttResponseLength);
+        }
+        const uint16_t cccd = readLe16(&attRequest[3]);
+        const uint16_t allowedMask =
+            (handle == kHandleGattServiceChangedCccd) ? 0x0002U : 0x0001U;
+        if ((cccd & ~allowedMask) != 0U) {
+          return buildAttErrorResponse(opcode, handle, kAttErrWriteNotPermitted,
+                                       outAttResponse, outAttResponseLength);
+        }
+        if (handle == kHandleGattServiceChangedCccd) {
+          const bool enableIndication = ((cccd & 0x0002U) != 0U);
+          if (enableIndication && !connectionServiceChangedIndicationsEnabled_) {
+            connectionServiceChangedIndicationPending_ = true;
+          }
+          if (!enableIndication) {
+            connectionServiceChangedIndicationPending_ = false;
+            connectionServiceChangedIndicationAwaitingConfirm_ = false;
+          }
+          connectionServiceChangedIndicationsEnabled_ = enableIndication;
+        } else {
+          const bool enableNotify = ((cccd & 0x0001U) != 0U);
+          connectionBatteryNotificationsEnabled_ = enableNotify;
+          connectionBatteryNotificationPending_ = enableNotify;
+        }
+        outAttResponse[0] = kAttOpWriteRsp;
+        *outAttResponseLength = 1U;
+        return true;
+      }
+
+      return buildAttErrorResponse(opcode, handle, kAttErrWriteNotPermitted,
+                                   outAttResponse, outAttResponseLength);
+    }
+
+    case kAttOpWriteCmd: {
+      if (requestLength >= 5U) {
+        const uint16_t handle = readLe16(&attRequest[1]);
+        if ((handle == kHandleGattServiceChangedCccd) ||
+            (handle == kHandleBatteryLevelCccd)) {
+          const uint16_t valueLen = static_cast<uint16_t>(requestLength - 3U);
+          if (valueLen == 2U) {
+            const uint16_t cccd = readLe16(&attRequest[3]);
+            const uint16_t allowedMask =
+                (handle == kHandleGattServiceChangedCccd) ? 0x0002U : 0x0001U;
+            if ((cccd & ~allowedMask) == 0U) {
+              if (handle == kHandleGattServiceChangedCccd) {
+                const bool enableIndication = ((cccd & 0x0002U) != 0U);
+                if (enableIndication && !connectionServiceChangedIndicationsEnabled_) {
+                  connectionServiceChangedIndicationPending_ = true;
+                }
+                if (!enableIndication) {
+                  connectionServiceChangedIndicationPending_ = false;
+                  connectionServiceChangedIndicationAwaitingConfirm_ = false;
+                }
+                connectionServiceChangedIndicationsEnabled_ = enableIndication;
+              } else {
+                const bool enableNotify = ((cccd & 0x0001U) != 0U);
+                connectionBatteryNotificationsEnabled_ = enableNotify;
+                connectionBatteryNotificationPending_ = enableNotify;
+              }
+            }
+          }
+        }
+      }
+      // Write command has no ATT response.
+      *outAttResponseLength = 0U;
+      return false;
+    }
+
+    default:
+      return buildAttErrorResponse(opcode, 0U, kAttErrRequestNotSupported,
+                                   outAttResponse, outAttResponseLength);
+  }
+}
+
+bool BleRadio::buildL2capResponse(const uint8_t* l2capPayload,
+                                  uint8_t l2capPayloadLength,
+                                  uint8_t* outPayload,
+                                  uint8_t* outPayloadLength) {
+  if (l2capPayload == nullptr || l2capPayloadLength < kBleL2capHeaderLen) {
+    return false;
+  }
+
+  const uint16_t cid = readLe16(&l2capPayload[2]);
+  if (cid == kBleL2capCidAtt) {
+    return buildL2capAttResponse(l2capPayload, l2capPayloadLength, outPayload,
+                                 outPayloadLength);
+  }
+  if (cid == kBleL2capCidLeSignaling) {
+    return buildL2capSignalingResponse(l2capPayload, l2capPayloadLength,
+                                       outPayload, outPayloadLength);
+  }
+  if (cid == kBleL2capCidSmp) {
+    return buildL2capSmpResponse(l2capPayload, l2capPayloadLength,
+                                 outPayload, outPayloadLength);
+  }
+  return false;
+}
+
+bool BleRadio::buildL2capSignalingResponse(const uint8_t* l2capPayload,
+                                           uint8_t l2capPayloadLength,
+                                           uint8_t* outPayload,
+                                           uint8_t* outPayloadLength) {
+  if (l2capPayload == nullptr || outPayload == nullptr || outPayloadLength == nullptr ||
+      l2capPayloadLength < kBleL2capHeaderLen) {
+    return false;
+  }
+
+  const uint16_t declaredL2capLength = readLe16(&l2capPayload[0]);
+  const uint16_t cid = readLe16(&l2capPayload[2]);
+  if (cid != kBleL2capCidLeSignaling) {
+    return false;
+  }
+
+  const uint16_t available = static_cast<uint16_t>(l2capPayloadLength - kBleL2capHeaderLen);
+  const uint16_t sigLength = minU16(declaredL2capLength, available);
+  if (sigLength < 4U) {
+    return false;
+  }
+
+  const uint8_t code = l2capPayload[kBleL2capHeaderLen + 0U];
+  const uint8_t identifier = l2capPayload[kBleL2capHeaderLen + 1U];
+  const uint16_t commandLength = readLe16(&l2capPayload[kBleL2capHeaderLen + 2U]);
+
+  uint8_t outSigLen = 0U;
+  if ((4U + commandLength) > sigLength) {
+    // Truncated signaling command payload; return generic reject.
+    outPayload[kBleL2capHeaderLen + 0U] = kL2capSigCodeCommandRejectRsp;
+    outPayload[kBleL2capHeaderLen + 1U] = identifier;
+    writeLe16(&outPayload[kBleL2capHeaderLen + 2U], 2U);
+    writeLe16(&outPayload[kBleL2capHeaderLen + 4U], kL2capCmdRejectReasonCmdNotUnderstood);
+    outSigLen = 6U;
+  } else if (code == kL2capSigCodeCommandRejectRsp ||
+             code == kL2capSigCodeConnParamUpdateRsp) {
+    // Response opcodes do not require another response.
+    return false;
+  } else if (code == kL2capSigCodeConnParamUpdateReq) {
+    if (commandLength != 8U) {
+      outPayload[kBleL2capHeaderLen + 0U] = kL2capSigCodeCommandRejectRsp;
+      outPayload[kBleL2capHeaderLen + 1U] = identifier;
+      writeLe16(&outPayload[kBleL2capHeaderLen + 2U], 2U);
+      writeLe16(&outPayload[kBleL2capHeaderLen + 4U], kL2capCmdRejectReasonCmdNotUnderstood);
+      outSigLen = 6U;
+    } else {
+      const uint8_t* req = &l2capPayload[kBleL2capHeaderLen + 4U];
+      const uint16_t intervalMin = readLe16(&req[0]);
+      const uint16_t intervalMax = readLe16(&req[2]);
+      const uint16_t latency = readLe16(&req[4]);
+      const uint16_t timeout = readLe16(&req[6]);
+      (void)intervalMin;
+      (void)intervalMax;
+      (void)latency;
+      (void)timeout;
+
+      // This device is currently operating in peripheral/slave role only, so
+      // it cannot drive the central-side LL update procedure required by this
+      // signaling request. Reply with "rejected" deterministically.
+      outPayload[kBleL2capHeaderLen + 0U] = kL2capSigCodeConnParamUpdateRsp;
+      outPayload[kBleL2capHeaderLen + 1U] = identifier;
+      writeLe16(&outPayload[kBleL2capHeaderLen + 2U], 2U);
+      writeLe16(&outPayload[kBleL2capHeaderLen + 4U], kL2capConnParamResultRejected);
+      outSigLen = 6U;
+    }
+  } else {
+    outPayload[kBleL2capHeaderLen + 0U] = kL2capSigCodeCommandRejectRsp;
+    outPayload[kBleL2capHeaderLen + 1U] = identifier;
+    writeLe16(&outPayload[kBleL2capHeaderLen + 2U], 2U);
+    writeLe16(&outPayload[kBleL2capHeaderLen + 4U], kL2capCmdRejectReasonCmdNotUnderstood);
+    outSigLen = 6U;
+  }
+
+  if ((kBleL2capHeaderLen + outSigLen) > kBleDataPduMaxPayload) {
+    return false;
+  }
+
+  writeLe16(&outPayload[0], outSigLen);
+  writeLe16(&outPayload[2], kBleL2capCidLeSignaling);
+  *outPayloadLength = static_cast<uint8_t>(kBleL2capHeaderLen + outSigLen);
+  return true;
+}
+
+bool BleRadio::buildL2capSmpResponse(const uint8_t* l2capPayload,
+                                     uint8_t l2capPayloadLength,
+                                     uint8_t* outPayload,
+                                     uint8_t* outPayloadLength) {
+  if (l2capPayload == nullptr || outPayload == nullptr || outPayloadLength == nullptr ||
+      l2capPayloadLength < kBleL2capHeaderLen) {
+    return false;
+  }
+
+  const uint16_t declaredL2capLength = readLe16(&l2capPayload[0]);
+  const uint16_t cid = readLe16(&l2capPayload[2]);
+  if (cid != kBleL2capCidSmp) {
+    return false;
+  }
+
+  const uint16_t available = static_cast<uint16_t>(l2capPayloadLength - kBleL2capHeaderLen);
+  const uint16_t smpLength = minU16(declaredL2capLength, available);
+  if (smpLength < 1U) {
+    return false;
+  }
+
+  const uint8_t smpCode = l2capPayload[kBleL2capHeaderLen];
+  switch (smpCode) {
+    case kSmpCodePairingRequest:
+    case kSmpCodePairingResponse:
+    case kSmpCodePairingConfirm:
+    case kSmpCodePairingRandom:
+    case kSmpCodeSecurityRequest:
+      break;
+    case kSmpCodePairingFailed:
+      return false;
+    default:
+      break;
+  }
+
+  if ((kBleL2capHeaderLen + 2U) > kBleDataPduMaxPayload) {
+    return false;
+  }
+
+  writeLe16(&outPayload[0], 2U);
+  writeLe16(&outPayload[2], kBleL2capCidSmp);
+  outPayload[kBleL2capHeaderLen + 0U] = kSmpCodePairingFailed;
+  outPayload[kBleL2capHeaderLen + 1U] = kSmpReasonPairingNotSupported;
+  *outPayloadLength = static_cast<uint8_t>(kBleL2capHeaderLen + 2U);
+  return true;
+}
+
+bool BleRadio::buildL2capAttResponse(const uint8_t* l2capPayload,
+                                     uint8_t l2capPayloadLength,
+                                     uint8_t* outPayload,
+                                     uint8_t* outPayloadLength) {
+  if (l2capPayload == nullptr || outPayload == nullptr || outPayloadLength == nullptr ||
+      l2capPayloadLength < kBleL2capHeaderLen) {
+    return false;
+  }
+
+  const uint16_t declaredL2capLength = readLe16(&l2capPayload[0]);
+  const uint16_t cid = readLe16(&l2capPayload[2]);
+  if (cid != kBleL2capCidAtt) {
+    return false;
+  }
+
+  const uint16_t available = static_cast<uint16_t>(l2capPayloadLength - kBleL2capHeaderLen);
+  const uint16_t attRequestLength = minU16(declaredL2capLength, available);
+  if (attRequestLength == 0U) {
+    return false;
+  }
+
+  uint16_t attResponseLength = 0U;
+  if (!buildAttResponse(&l2capPayload[kBleL2capHeaderLen], attRequestLength,
+                        &outPayload[kBleL2capHeaderLen], &attResponseLength) ||
+      attResponseLength == 0U) {
+    return false;
+  }
+
+  if (attResponseLength > (kBleDataPduMaxPayload - kBleL2capHeaderLen)) {
+    return false;
+  }
+
+  writeLe16(&outPayload[0], attResponseLength);
+  writeLe16(&outPayload[2], kBleL2capCidAtt);
+  *outPayloadLength =
+      static_cast<uint8_t>(kBleL2capHeaderLen + static_cast<uint8_t>(attResponseLength));
+  return true;
+}
+
+bool BleRadio::buildLlControlResponse(const uint8_t* payload, uint8_t length,
+                                      uint8_t* outPayload, uint8_t* outLength,
+                                      bool* terminateInd) {
+  if (terminateInd != nullptr) {
+    *terminateInd = false;
+  }
+  if (payload == nullptr || outPayload == nullptr || outLength == nullptr || length == 0U) {
+    return false;
+  }
+
+  const uint8_t opcode = payload[0];
+  *outLength = 0U;
+
+  switch (opcode) {
+    case kBleLlCtrlTerminateInd:
+      if (terminateInd != nullptr) {
+        *terminateInd = true;
+      }
+      return false;
+
+    case kBleLlCtrlConnectionUpdateInd:
+      if (length >= 12U) {
+        const uint16_t interval = readLe16(&payload[4]);
+        const uint16_t latency = readLe16(&payload[6]);
+        const uint16_t timeout = readLe16(&payload[8]);
+        const uint16_t instant = readLe16(&payload[10]);
+        bool valid = true;
+        if (interval < 6U || interval > 3200U) {
+          valid = false;
+        }
+        if (latency > 499U) {
+          valid = false;
+        }
+        if (timeout < 10U || timeout > 3200U) {
+          valid = false;
+        }
+        const uint32_t timeoutMs = static_cast<uint32_t>(timeout) * 10UL;
+        const uint32_t requiredMs =
+            ((1UL + static_cast<uint32_t>(latency)) *
+             static_cast<uint32_t>(interval) * 5UL) /
+            2UL;
+        if (timeoutMs <= requiredMs) {
+          valid = false;
+        }
+        const uint16_t instantDelta =
+            static_cast<uint16_t>(instant - connectionEventCounter_);
+        const bool instantInFuture = (instantDelta != 0U) && (instantDelta < 0x8000U);
+        if (!instantInFuture) {
+          valid = false;
+        }
+        if (valid) {
+          connectionPendingIntervalUnits_ = interval;
+          connectionPendingLatency_ = latency;
+          connectionPendingTimeoutUnits_ = timeout;
+          connectionUpdateInstant_ = instant;
+          connectionUpdatePending_ = true;
+        }
+      }
+      return false;
+
+    case kBleLlCtrlChannelMapInd:
+      if (length >= 8U) {
+        uint8_t map[5] = {payload[1], payload[2], payload[3], payload[4], payload[5]};
+        const uint16_t instant = readLe16(&payload[6]);
+        map[4] &= 0x1FU;
+        const uint8_t count = bitCount37(map);
+        const uint16_t instantDelta =
+            static_cast<uint16_t>(instant - connectionEventCounter_);
+        const bool instantInFuture = (instantDelta != 0U) && (instantDelta < 0x8000U);
+        if (count >= 2U && instantInFuture) {
+          memcpy(connectionPendingChannelMap_, map, sizeof(connectionPendingChannelMap_));
+          connectionPendingChannelCount_ = count;
+          connectionChannelMapInstant_ = instant;
+          connectionChannelMapPending_ = true;
+        }
+      }
+      return false;
+
+    case kBleLlCtrlEncReq:
+    case kBleLlCtrlStartEncReq:
+    case kBleLlCtrlPauseEncReq:
+      outPayload[0] = kBleLlCtrlRejectExtInd;
+      outPayload[1] = opcode;
+      outPayload[2] = kBleLlErrorUnsupportedRemoteFeature;
+      *outLength = 3U;
+      return true;
+
+    case kBleLlCtrlConnectionParamReq:
+      if (length >= 24U) {
+        const uint16_t intervalMin = readLe16(&payload[1]);
+        const uint16_t intervalMax = readLe16(&payload[3]);
+        const uint16_t latency = readLe16(&payload[5]);
+        const uint16_t timeout = readLe16(&payload[7]);
+
+        bool valid = true;
+        if (intervalMin < 6U || intervalMax > 3200U || intervalMin > intervalMax) {
+          valid = false;
+        }
+        if (timeout < 10U || latency > 499U) {
+          valid = false;
+        }
+        // Supervision timeout constraint per Core spec:
+        // timeout*10ms > (1 + latency) * intervalMax*1.25ms*2
+        const uint32_t timeoutMs = static_cast<uint32_t>(timeout) * 10UL;
+        const uint32_t requiredMs =
+            ((1UL + static_cast<uint32_t>(latency)) *
+             static_cast<uint32_t>(intervalMax) * 5UL) /
+            2UL;
+        if (timeoutMs <= requiredMs) {
+          valid = false;
+        }
+
+        if (valid) {
+          // Accept parameter request procedure and mirror proposed parameters.
+          memcpy(outPayload, payload, 24U);
+          outPayload[0] = kBleLlCtrlConnectionParamRsp;
+          *outLength = 24U;
+          return true;
+        }
+      }
+      outPayload[0] = kBleLlCtrlRejectExtInd;
+      outPayload[1] = kBleLlCtrlConnectionParamReq;
+      outPayload[2] = kBleLlErrorUnsupportedLlParamValue;
+      *outLength = 3U;
+      return true;
+
+    case kBleLlCtrlFeatureReq:
+    case kBleLlCtrlSlaveFeatureReq:
+      outPayload[0] = kBleLlCtrlFeatureRsp;
+      memset(&outPayload[1], 0, 8U);
+      *outLength = 9U;
+      return true;
+
+    case kBleLlCtrlVersionInd:
+      outPayload[0] = kBleLlCtrlVersionInd;
+      outPayload[1] = 0x0DU;  // Core spec version 5.4.
+      writeLe16(&outPayload[2], 0x0059U);  // Nordic Semiconductor company ID.
+      writeLe16(&outPayload[4], 0x0001U);  // Implementation subversion.
+      *outLength = 6U;
+      return true;
+
+    case kBleLlCtrlLengthReq:
+      outPayload[0] = kBleLlCtrlLengthRsp;
+      writeLe16(&outPayload[1], kBleDataPduMaxPayload);
+      writeLe16(&outPayload[3], 328U);
+      writeLe16(&outPayload[5], kBleDataPduMaxPayload);
+      writeLe16(&outPayload[7], 328U);
+      *outLength = 9U;
+      return true;
+
+    case kBleLlCtrlPhyReq:
+      outPayload[0] = kBleLlCtrlPhyRsp;
+      outPayload[1] = 0x01U;  // LE 1M TX.
+      outPayload[2] = 0x01U;  // LE 1M RX.
+      *outLength = 3U;
+      return true;
+
+    case kBleLlCtrlPingReq:
+      outPayload[0] = kBleLlCtrlPingRsp;
+      *outLength = 1U;
+      return true;
+
+    case kBleLlCtrlConnectionParamRsp:
+    case kBleLlCtrlEncRsp:
+    case kBleLlCtrlStartEncRsp:
+    case kBleLlCtrlPauseEncRsp:
+    case kBleLlCtrlRejectInd:
+    case kBleLlCtrlRejectExtInd:
+    case kBleLlCtrlPhyUpdateInd:
+    case kBleLlCtrlMinUsedChannelsInd:
+    case kBleLlCtrlUnknownRsp:
+    case kBleLlCtrlFeatureRsp:
+    case kBleLlCtrlLengthRsp:
+    case kBleLlCtrlPhyRsp:
+      return false;
+
+    default:
+      outPayload[0] = kBleLlCtrlUnknownRsp;
+      outPayload[1] = opcode;
+      *outLength = 2U;
+      return true;
+  }
+}
+
+void BleRadio::updateNextConnectionEventTime() {
+  const uint32_t intervalUs = static_cast<uint32_t>(connectionIntervalUnits_) * 1250UL;
+  if (intervalUs == 0U) {
+    connectionNextEventUs_ = micros() + 1250UL;
+    ++connectionEventCounter_;
+    return;
+  }
+
+  connectionNextEventUs_ += intervalUs;
+  ++connectionEventCounter_;
+
+  // Catch up if caller serviced connection late.
+  const uint32_t nowUs = micros();
+  uint8_t guard = 8U;
+  while (guard-- > 0U && timeReachedUs(nowUs, connectionNextEventUs_)) {
+    connectionNextEventUs_ += intervalUs;
+    ++connectionEventCounter_;
+  }
+}
+
+uint8_t BleRadio::selectNextDataChannel() {
+  uint8_t chanNext = static_cast<uint8_t>((connectionChanUse_ + connectionHop_) % 37U);
+  connectionChanUse_ = chanNext;
+
+  if ((connectionChannelMap_[chanNext >> 3U] & (1U << (chanNext & 0x07U))) == 0U) {
+    const uint8_t remapIndex =
+        static_cast<uint8_t>(chanNext % connectionChannelCount_);
+    chanNext = remapChannelByIndex(connectionChannelMap_, remapIndex);
+  }
+
+  return chanNext;
+}
+
+bool BleRadio::setDataChannel(uint8_t dataChannel) {
+  if (radio_ == nullptr || dataChannel > 36U) {
+    return false;
+  }
+
+  const uint8_t freq = bleDataChannelToFrequency(dataChannel);
+  radio_->FREQUENCY =
+      ((static_cast<uint32_t>(freq) << RADIO_FREQUENCY_FREQUENCY_Pos) &
+       RADIO_FREQUENCY_FREQUENCY_Msk) |
+      (0UL << RADIO_FREQUENCY_MAP_Pos);
+  radio_->DATAWHITE = bleDataWhiteValue(dataChannel);
+  return true;
+}
+
+void BleRadio::restoreAdvertisingLinkDefaults() {
+  if (radio_ == nullptr) {
+    return;
+  }
+
+  radio_->BASE0 = bleAccessAddressBase(kBleAccessAddress);
+  radio_->PREFIX0 = (radio_->PREFIX0 & ~RADIO_PREFIX0_AP0_Msk) |
+                    ((bleAccessAddressPrefix(kBleAccessAddress)
+                      << RADIO_PREFIX0_AP0_Pos) &
+                     RADIO_PREFIX0_AP0_Msk);
+  radio_->CRCINIT = (kBleAdvertisingCrcInit & RADIO_CRCINIT_CRCINIT_Msk);
+  radio_->TXADDRESS =
+      (0UL << RADIO_TXADDRESS_TXADDRESS_Pos) & RADIO_TXADDRESS_TXADDRESS_Msk;
+  radio_->RXADDRESSES =
+      (RADIO_RXADDRESSES_ADDR0_Enabled << RADIO_RXADDRESSES_ADDR0_Pos) &
+      RADIO_RXADDRESSES_ADDR0_Msk;
+  connectionAttMtu_ = kBleDefaultAttMtu;
+  connectionLastTxLlid_ = 0x01U;
+  connectionLastTxLength_ = 0U;
+  connectionUpdatePending_ = false;
+  connectionUpdateInstant_ = 0U;
+  connectionPendingIntervalUnits_ = 0U;
+  connectionPendingLatency_ = 0U;
+  connectionPendingTimeoutUnits_ = 0U;
+  connectionChannelMapPending_ = false;
+  connectionChannelMapInstant_ = 0U;
+  memset(connectionPendingChannelMap_, 0, sizeof(connectionPendingChannelMap_));
+  connectionPendingChannelCount_ = 0U;
+  connectionServiceChangedIndicationsEnabled_ = false;
+  connectionServiceChangedIndicationPending_ = false;
+  connectionServiceChangedIndicationAwaitingConfirm_ = false;
+  connectionBatteryNotificationsEnabled_ = false;
+  connectionBatteryNotificationPending_ = false;
+  scanCycleStartIndex_ = 0U;
+  setAdvertisingChannel(BleAdvertisingChannel::k37);
+}
+
+bool BleRadio::configureBle1M() {
+  if (radio_ == nullptr) {
+    return false;
+  }
+
+  connected_ = false;
+
+  radio_->SHORTS = 0U;
+  radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
+  waitDisabled(120000UL);
+  radio_->TASKS_SOFTRESET = RADIO_TASKS_SOFTRESET_TASKS_SOFTRESET_Trigger;
+
+  radio_->MODE = ((RADIO_MODE_MODE_Ble_1Mbit << RADIO_MODE_MODE_Pos) &
+                  RADIO_MODE_MODE_Msk);
+  radio_->TIMING = ((RADIO_TIMING_RU_Fast << RADIO_TIMING_RU_Pos) &
+                    RADIO_TIMING_RU_Msk);
+
+  uint32_t pcnf0 = 0;
+  pcnf0 |= (8UL << RADIO_PCNF0_LFLEN_Pos) & RADIO_PCNF0_LFLEN_Msk;
+  pcnf0 |= (1UL << RADIO_PCNF0_S0LEN_Pos) & RADIO_PCNF0_S0LEN_Msk;
+  pcnf0 |= (0UL << RADIO_PCNF0_S1LEN_Pos) & RADIO_PCNF0_S1LEN_Msk;
+  pcnf0 |= (RADIO_PCNF0_S1INCL_Automatic << RADIO_PCNF0_S1INCL_Pos) &
+           RADIO_PCNF0_S1INCL_Msk;
+  pcnf0 |= (RADIO_PCNF0_PLEN_8bit << RADIO_PCNF0_PLEN_Pos) &
+           RADIO_PCNF0_PLEN_Msk;
+  pcnf0 |= (RADIO_PCNF0_CRCINC_Exclude << RADIO_PCNF0_CRCINC_Pos) &
+           RADIO_PCNF0_CRCINC_Msk;
+  pcnf0 |= (0UL << RADIO_PCNF0_TERMLEN_Pos) & RADIO_PCNF0_TERMLEN_Msk;
+  radio_->PCNF0 = pcnf0;
+
+  uint32_t pcnf1 = 0;
+  pcnf1 |= (255UL << RADIO_PCNF1_MAXLEN_Pos) & RADIO_PCNF1_MAXLEN_Msk;
+  pcnf1 |= (0UL << RADIO_PCNF1_STATLEN_Pos) & RADIO_PCNF1_STATLEN_Msk;
+  pcnf1 |= (3UL << RADIO_PCNF1_BALEN_Pos) & RADIO_PCNF1_BALEN_Msk;
+  pcnf1 |= (RADIO_PCNF1_ENDIAN_Little << RADIO_PCNF1_ENDIAN_Pos) &
+           RADIO_PCNF1_ENDIAN_Msk;
+  pcnf1 |= (RADIO_PCNF1_WHITEEN_Enabled << RADIO_PCNF1_WHITEEN_Pos) &
+           RADIO_PCNF1_WHITEEN_Msk;
+  pcnf1 |= (RADIO_PCNF1_WHITEOFFSET_Include << RADIO_PCNF1_WHITEOFFSET_Pos) &
+           RADIO_PCNF1_WHITEOFFSET_Msk;
+  radio_->PCNF1 = pcnf1;
+
+  radio_->BASE0 = bleAccessAddressBase(kBleAccessAddress);
+  radio_->PREFIX0 = (radio_->PREFIX0 & ~RADIO_PREFIX0_AP0_Msk) |
+                    ((bleAccessAddressPrefix(kBleAccessAddress)
+                      << RADIO_PREFIX0_AP0_Pos) &
+                     RADIO_PREFIX0_AP0_Msk);
+  radio_->TXADDRESS =
+      (0UL << RADIO_TXADDRESS_TXADDRESS_Pos) & RADIO_TXADDRESS_TXADDRESS_Msk;
+  radio_->RXADDRESSES =
+      (RADIO_RXADDRESSES_ADDR0_Enabled << RADIO_RXADDRESSES_ADDR0_Pos) &
+      RADIO_RXADDRESSES_ADDR0_Msk;
+
+  uint32_t crccnf = 0;
+  crccnf |= (RADIO_CRCCNF_LEN_Three << RADIO_CRCCNF_LEN_Pos) &
+            RADIO_CRCCNF_LEN_Msk;
+  crccnf |= (RADIO_CRCCNF_SKIPADDR_Skip << RADIO_CRCCNF_SKIPADDR_Pos) &
+            RADIO_CRCCNF_SKIPADDR_Msk;
+  radio_->CRCCNF = crccnf;
+  radio_->CRCPOLY = (kBleCrcPolynomial & RADIO_CRCPOLY_CRCPOLY_Msk);
+  radio_->CRCINIT = (kBleAdvertisingCrcInit & RADIO_CRCINIT_CRCINIT_Msk);
+
+  radio_->TIFS = 150U;
+  radio_->DATAWHITE = bleDataWhiteValue(37U);
+  clearRadioCoreEvents(radio_);
+  return true;
+}
+
+bool BleRadio::waitDisabled(uint32_t spinLimit) {
+  if (radio_ == nullptr) {
+    return false;
+  }
+
+  while (spinLimit-- > 0U) {
+    if (radio_->EVENTS_DISABLED != 0U) {
+      return true;
+    }
+    const uint32_t state =
+        (radio_->STATE & RADIO_STATE_STATE_Msk) >> RADIO_STATE_STATE_Pos;
+    if (state == RADIO_STATE_STATE_Disabled) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool BleRadio::waitForEnd(uint32_t spinLimit) {
+  if (radio_ == nullptr) {
+    return false;
+  }
+
+  while (spinLimit-- > 0U) {
+    if (radio_->EVENTS_PHYEND != 0U || radio_->EVENTS_END != 0U) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool BleRadio::setAdvertisingChannel(BleAdvertisingChannel channel) {
+  if (radio_ == nullptr) {
+    return false;
+  }
+
+  const uint8_t freq = bleChannelToFrequency(channel);
+  const uint8_t channelIndex = bleChannelToIndex(channel);
+
+  radio_->FREQUENCY =
+      ((static_cast<uint32_t>(freq) << RADIO_FREQUENCY_FREQUENCY_Pos) &
+       RADIO_FREQUENCY_FREQUENCY_Msk) |
+      (0UL << RADIO_FREQUENCY_MAP_Pos);
+
+  radio_->DATAWHITE = bleDataWhiteValue(channelIndex);
+  return true;
+}
+
+uint32_t BleRadio::txPowerRegFromDbm(int8_t dbm) {
+  if (dbm >= 8) {
+    return RADIO_TXPOWER_TXPOWER_Pos8dBm;
+  }
+  if (dbm >= 7) {
+    return RADIO_TXPOWER_TXPOWER_Pos7dBm;
+  }
+  if (dbm >= 6) {
+    return RADIO_TXPOWER_TXPOWER_Pos6dBm;
+  }
+  if (dbm >= 5) {
+    return RADIO_TXPOWER_TXPOWER_Pos5dBm;
+  }
+  if (dbm >= 4) {
+    return RADIO_TXPOWER_TXPOWER_Pos4dBm;
+  }
+  if (dbm >= 3) {
+    return RADIO_TXPOWER_TXPOWER_Pos3dBm;
+  }
+  if (dbm >= 2) {
+    return RADIO_TXPOWER_TXPOWER_Pos2dBm;
+  }
+  if (dbm >= 1) {
+    return RADIO_TXPOWER_TXPOWER_Pos1dBm;
+  }
+  if (dbm >= 0) {
+    return RADIO_TXPOWER_TXPOWER_0dBm;
+  }
+  if (dbm >= -1) {
+    return RADIO_TXPOWER_TXPOWER_Neg1dBm;
+  }
+  if (dbm >= -2) {
+    return RADIO_TXPOWER_TXPOWER_Neg2dBm;
+  }
+  if (dbm >= -3) {
+    return RADIO_TXPOWER_TXPOWER_Neg3dBm;
+  }
+  if (dbm >= -4) {
+    return RADIO_TXPOWER_TXPOWER_Neg4dBm;
+  }
+  if (dbm >= -5) {
+    return RADIO_TXPOWER_TXPOWER_Neg5dBm;
+  }
+  if (dbm >= -6) {
+    return RADIO_TXPOWER_TXPOWER_Neg6dBm;
+  }
+  if (dbm >= -7) {
+    return RADIO_TXPOWER_TXPOWER_Neg7dBm;
+  }
+  if (dbm >= -8) {
+    return RADIO_TXPOWER_TXPOWER_Neg8dBm;
+  }
+  if (dbm >= -9) {
+    return RADIO_TXPOWER_TXPOWER_Neg9dBm;
+  }
+  if (dbm >= -10) {
+    return RADIO_TXPOWER_TXPOWER_Neg10dBm;
+  }
+  if (dbm >= -12) {
+    return RADIO_TXPOWER_TXPOWER_Neg12dBm;
+  }
+  if (dbm >= -14) {
+    return RADIO_TXPOWER_TXPOWER_Neg14dBm;
+  }
+  if (dbm >= -16) {
+    return RADIO_TXPOWER_TXPOWER_Neg16dBm;
+  }
+  if (dbm >= -18) {
+    return RADIO_TXPOWER_TXPOWER_Neg18dBm;
+  }
+  if (dbm >= -20) {
+    return RADIO_TXPOWER_TXPOWER_Neg20dBm;
+  }
+  if (dbm >= -28) {
+    return RADIO_TXPOWER_TXPOWER_Neg28dBm;
+  }
+  if (dbm >= -40) {
+    return RADIO_TXPOWER_TXPOWER_Neg40dBm;
+  }
+  return RADIO_TXPOWER_TXPOWER_Neg46dBm;
+}
+
+}  // namespace xiao_nrf54l15

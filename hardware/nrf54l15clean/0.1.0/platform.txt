@@ -1,0 +1,62 @@
+name=Nrf54L15-Clean-Implementation
+version=0.1.0
+category=Arduino
+
+# Python launcher for upload helper.
+tools.python3.cmd=python3
+tools.python3.cmd.windows=py
+tools.python3.cmd.macosx=python3
+tools.python3.args=
+tools.python3.args.windows=-3
+tools.python3.args.macosx=
+
+# Compiler toolchain (Arduino Board Manager dependency: arduino:arm-none-eabi-gcc).
+compiler.exe.suffix=
+compiler.exe.suffix.windows=.exe
+compiler.path={runtime.tools.arm-none-eabi-gcc.path}/bin/
+compiler.c.cmd=arm-none-eabi-gcc{compiler.exe.suffix}
+compiler.cpp.cmd=arm-none-eabi-g++{compiler.exe.suffix}
+compiler.S.cmd=arm-none-eabi-gcc{compiler.exe.suffix}
+compiler.ar.cmd=arm-none-eabi-ar{compiler.exe.suffix}
+compiler.objcopy.cmd=arm-none-eabi-objcopy{compiler.exe.suffix}
+compiler.size.cmd=arm-none-eabi-size{compiler.exe.suffix}
+
+compiler.warning_flags.none=
+compiler.warning_flags.default=-Wall
+compiler.warning_flags.more=-Wall -Wextra
+compiler.warning_flags.all=-Wall -Wextra -Wshadow -Wdouble-promotion
+compiler.warning_flags={compiler.warning_flags.default}
+
+compiler.c.flags=-c -g3 -Os -ffunction-sections -fdata-sections -MMD -std=gnu17 -mcpu={build.mcu} -mthumb -mfloat-abi=soft {compiler.warning_flags}
+compiler.cpp.flags=-c -g3 -Os -ffunction-sections -fdata-sections -MMD -std=gnu++17 -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-cxa-atexit -fno-sized-deallocation -mcpu={build.mcu} -mthumb -mfloat-abi=soft {compiler.warning_flags}
+compiler.S.flags=-c -g3 -x assembler-with-cpp -mcpu={build.mcu} -mthumb -mfloat-abi=soft
+compiler.c.elf.flags=-Wl,--gc-sections -Wl,-Map,{build.path}/{build.project_name}.map -mcpu={build.mcu} -mthumb -mfloat-abi=soft
+compiler.ar.flags=rcs
+compiler.ldflags=-T{runtime.platform.path}/cores/nrf54l15/nrf54l15_linker_script.ld --specs=nano.specs --specs=nosys.specs
+
+compiler.c.extra_flags=
+compiler.cpp.extra_flags=
+compiler.S.extra_flags=
+compiler.ar.extra_flags=
+compiler.c.elf.extra_flags=
+compiler.libraries.ldflags=
+
+recipe.c.o.pattern="{compiler.path}{compiler.c.cmd}" {compiler.c.flags} -DF_CPU={build.f_cpu} -DARDUINO={runtime.ide.version} -DARDUINO_{build.board} -DARDUINO_ARCH_{build.arch} {compiler.c.extra_flags} {build.extra_flags} {includes} "{source_file}" -o "{object_file}"
+recipe.cpp.o.pattern="{compiler.path}{compiler.cpp.cmd}" {compiler.cpp.flags} -DF_CPU={build.f_cpu} -DARDUINO={runtime.ide.version} -DARDUINO_{build.board} -DARDUINO_ARCH_{build.arch} {compiler.cpp.extra_flags} {build.extra_flags} {includes} "{source_file}" -o "{object_file}"
+recipe.S.o.pattern="{compiler.path}{compiler.S.cmd}" {compiler.S.flags} -DF_CPU={build.f_cpu} -DARDUINO={runtime.ide.version} -DARDUINO_{build.board} -DARDUINO_ARCH_{build.arch} {compiler.S.extra_flags} {build.extra_flags} {includes} "{source_file}" -o "{object_file}"
+recipe.ar.pattern="{compiler.path}{compiler.ar.cmd}" {compiler.ar.flags} {compiler.ar.extra_flags} "{archive_file_path}" "{object_file}"
+recipe.c.combine.pattern="{compiler.path}{compiler.c.cmd}" {compiler.c.elf.flags} {compiler.c.elf.extra_flags} {compiler.ldflags} -o "{build.path}/{build.project_name}.elf" {object_files} -Wl,--start-group "{archive_file_path}" {compiler.libraries.ldflags} -lm -Wl,--end-group
+recipe.objcopy.hex.pattern="{compiler.path}{compiler.objcopy.cmd}" -O ihex "{build.path}/{build.project_name}.elf" "{build.path}/{build.project_name}.hex"
+recipe.objcopy.bin.pattern="{compiler.path}{compiler.objcopy.cmd}" -O binary "{build.path}/{build.project_name}.elf" "{build.path}/{build.project_name}.bin"
+recipe.size.pattern="{compiler.path}{compiler.size.cmd}" -A "{build.path}/{build.project_name}.elf"
+recipe.size.regex=^(?:\.text|\.data|\.rodata)\s+([0-9]+).*
+recipe.size.regex.data=^(?:\.data|\.bss)\s+([0-9]+).*
+
+# Exported binary name in IDE.
+recipe.output.tmp_file={build.project_name}.hex
+recipe.output.save_file={build.project_name}.{build.board}.hex
+
+# Upload helper.
+tools.nrf54upload.path={runtime.platform.path}/tools
+tools.nrf54upload.cmd.path={tools.nrf54upload.path}/upload.py
+tools.nrf54upload.upload.pattern="{tools.python3.cmd}" {tools.python3.args} "{tools.nrf54upload.cmd.path}" --hex "{build.path}/{build.project_name}.hex" --port "{serial.port}" --runner "{upload.runner}" --target "{upload.target}" --openocd-script "{upload.openocd_script}" --openocd-speed "{upload.openocd_speed}" --openocd-bin "{upload.openocd_bin}"

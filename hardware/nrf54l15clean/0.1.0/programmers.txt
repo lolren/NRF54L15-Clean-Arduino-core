@@ -1,0 +1,7 @@
+pyocd.name=pyOCD (CMSIS-DAP)
+pyocd.communication=serial
+pyocd.protocol=cmsis-dap
+
+openocd.name=OpenOCD (CMSIS-DAP)
+openocd.communication=serial
+openocd.protocol=cmsis-dap
