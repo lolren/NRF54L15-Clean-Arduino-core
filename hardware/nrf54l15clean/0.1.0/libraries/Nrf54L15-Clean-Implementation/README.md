@@ -141,9 +141,11 @@ Examples:
     - Discovery boundary-handle validation (`start=0`/invalid ranges -> `Invalid Handle`)
     - Service Changed CCCD writes + Handle Value indication confirmation handling
     - Battery Level CCCD writes + Handle Value notification emission
+    - Prepare Write / Execute Write on selected writable CCCDs
   - L2CAP LE signaling (`CID 0x0005`) fallback handling:
     - Command Reject for unsupported signaling opcodes
     - Connection Parameter Update Request -> rejected response (peripheral-role-only controller path)
+    - LE Credit Based Connection Request -> response with `PSM not supported`
 - Not implemented yet:
   - Full LL procedure/state-machine compliance (full control procedure matrix and deep corner-cases)
   - Security (pairing, encryption, privacy)

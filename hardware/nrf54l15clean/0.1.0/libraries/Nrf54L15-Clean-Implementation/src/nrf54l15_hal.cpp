@@ -284,8 +284,14 @@ constexpr uint16_t kBleDefaultAttMtu = 23U;
 constexpr uint8_t kL2capSigCodeCommandRejectRsp = 0x01U;
 constexpr uint8_t kL2capSigCodeConnParamUpdateReq = 0x12U;
 constexpr uint8_t kL2capSigCodeConnParamUpdateRsp = 0x13U;
+constexpr uint8_t kL2capSigCodeLeCreditConnReq = 0x14U;
+constexpr uint8_t kL2capSigCodeLeCreditConnRsp = 0x15U;
+constexpr uint8_t kL2capSigCodeLeFlowControlCredit = 0x16U;
 constexpr uint16_t kL2capCmdRejectReasonCmdNotUnderstood = 0x0000U;
+constexpr uint16_t kL2capCmdRejectReasonSignalingMtuExceeded = 0x0001U;
 constexpr uint16_t kL2capConnParamResultRejected = 0x0001U;
+constexpr uint16_t kL2capLeCreditConnResultPsmNotSupported = 0x0002U;
+constexpr uint16_t kBleL2capLeSignalingMtu = 23U;
 
 constexpr uint8_t kSmpCodePairingRequest = 0x01U;
 constexpr uint8_t kSmpCodePairingResponse = 0x02U;
@@ -314,6 +320,10 @@ constexpr uint8_t kAttOpReadByGroupTypeReq = 0x10U;
 constexpr uint8_t kAttOpReadByGroupTypeRsp = 0x11U;
 constexpr uint8_t kAttOpWriteReq = 0x12U;
 constexpr uint8_t kAttOpWriteRsp = 0x13U;
+constexpr uint8_t kAttOpPrepareWriteReq = 0x16U;
+constexpr uint8_t kAttOpPrepareWriteRsp = 0x17U;
+constexpr uint8_t kAttOpExecuteWriteReq = 0x18U;
+constexpr uint8_t kAttOpExecuteWriteRsp = 0x19U;
 constexpr uint8_t kAttOpHandleValueNtf = 0x1BU;
 constexpr uint8_t kAttOpHandleValueInd = 0x1DU;
 constexpr uint8_t kAttOpHandleValueCfm = 0x1EU;
@@ -325,6 +335,7 @@ constexpr uint8_t kAttErrWriteNotPermitted = 0x03U;
 constexpr uint8_t kAttErrInvalidPdu = 0x04U;
 constexpr uint8_t kAttErrRequestNotSupported = 0x06U;
 constexpr uint8_t kAttErrInvalidOffset = 0x07U;
+constexpr uint8_t kAttErrPrepareQueueFull = 0x09U;
 constexpr uint8_t kAttErrInvalidAttrValueLen = 0x0DU;
 constexpr uint8_t kAttErrUnsupportedGroupType = 0x10U;
 constexpr uint8_t kAttErrAttributeNotFound = 0x0AU;
@@ -2211,6 +2222,10 @@ BleRadio::BleRadio(uint32_t radioBase, uint32_t ficrBase)
       connectionServiceChangedIndicationAwaitingConfirm_(false),
       connectionBatteryNotificationsEnabled_(false),
       connectionBatteryNotificationPending_(false),
+      connectionPreparedWriteActive_(false),
+      connectionPreparedWriteHandle_(0U),
+      connectionPreparedWriteValue_{0},
+      connectionPreparedWriteMask_(0U),
       scanCycleStartIndex_(0U),
       gapDeviceName_{0},
       gapDeviceNameLen_(0),
@@ -2706,6 +2721,11 @@ bool BleRadio::disconnect(uint32_t spinLimit) {
   connectionServiceChangedIndicationAwaitingConfirm_ = false;
   connectionBatteryNotificationsEnabled_ = false;
   connectionBatteryNotificationPending_ = false;
+  connectionPreparedWriteActive_ = false;
+  connectionPreparedWriteHandle_ = 0U;
+  connectionPreparedWriteValue_[0] = 0U;
+  connectionPreparedWriteValue_[1] = 0U;
+  connectionPreparedWriteMask_ = 0U;
   restoreAdvertisingLinkDefaults();
   clearRadioCoreEvents(radio_);
   return true;
@@ -3248,6 +3268,11 @@ bool BleRadio::startConnectionFromConnectInd(const uint8_t* payload, uint8_t len
   connectionServiceChangedIndicationAwaitingConfirm_ = false;
   connectionBatteryNotificationsEnabled_ = false;
   connectionBatteryNotificationPending_ = false;
+  connectionPreparedWriteActive_ = false;
+  connectionPreparedWriteHandle_ = 0U;
+  connectionPreparedWriteValue_[0] = 0U;
+  connectionPreparedWriteValue_[1] = 0U;
+  connectionPreparedWriteMask_ = 0U;
   memset(connectionTxPayload_, 0, sizeof(connectionTxPayload_));
 
   radio_->BASE0 = bleAccessAddressBase(connectionAccessAddress_);
@@ -3411,6 +3436,41 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
 
   const uint8_t opcode = attRequest[0];
   *outAttResponseLength = 0U;
+  auto clearPreparedWrite = [&]() {
+    connectionPreparedWriteActive_ = false;
+    connectionPreparedWriteHandle_ = 0U;
+    connectionPreparedWriteValue_[0] = 0U;
+    connectionPreparedWriteValue_[1] = 0U;
+    connectionPreparedWriteMask_ = 0U;
+  };
+  auto applyCccdState = [&](uint16_t handle, uint16_t cccd) -> bool {
+    const uint16_t allowedMask =
+        (handle == kHandleGattServiceChangedCccd) ? 0x0002U :
+        (handle == kHandleBatteryLevelCccd) ? 0x0001U : 0xFFFFU;
+    if (allowedMask == 0xFFFFU) {
+      return false;
+    }
+    if ((cccd & ~allowedMask) != 0U) {
+      return false;
+    }
+    if (handle == kHandleGattServiceChangedCccd) {
+      const bool enableIndication = ((cccd & 0x0002U) != 0U);
+      if (enableIndication && !connectionServiceChangedIndicationsEnabled_) {
+        connectionServiceChangedIndicationPending_ = true;
+      }
+      if (!enableIndication) {
+        connectionServiceChangedIndicationPending_ = false;
+        connectionServiceChangedIndicationAwaitingConfirm_ = false;
+      }
+      connectionServiceChangedIndicationsEnabled_ = enableIndication;
+      return true;
+    }
+
+    const bool enableNotify = ((cccd & 0x0001U) != 0U);
+    connectionBatteryNotificationsEnabled_ = enableNotify;
+    connectionBatteryNotificationPending_ = enableNotify;
+    return true;
+  };
 
   switch (opcode) {
     case kAttOpExchangeMtuReq: {
@@ -3798,6 +3858,100 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
       return true;
     }
 
+    case kAttOpPrepareWriteReq: {
+      if (requestLength < 5U) {
+        return buildAttErrorResponse(opcode, 0U, kAttErrInvalidPdu, outAttResponse,
+                                     outAttResponseLength);
+      }
+
+      const uint16_t handle = readLe16(&attRequest[1]);
+      if ((handle != kHandleGattServiceChangedCccd) &&
+          (handle != kHandleBatteryLevelCccd)) {
+        return buildAttErrorResponse(opcode, handle, kAttErrWriteNotPermitted,
+                                     outAttResponse, outAttResponseLength);
+      }
+
+      const uint16_t offset = readLe16(&attRequest[3]);
+      const uint16_t valueLen = static_cast<uint16_t>(requestLength - 5U);
+      if (offset > 1U) {
+        return buildAttErrorResponse(opcode, handle, kAttErrInvalidOffset,
+                                     outAttResponse, outAttResponseLength);
+      }
+      if ((offset + valueLen) > 2U) {
+        return buildAttErrorResponse(opcode, handle, kAttErrInvalidAttrValueLen,
+                                     outAttResponse, outAttResponseLength);
+      }
+
+      if (!connectionPreparedWriteActive_) {
+        clearPreparedWrite();
+        connectionPreparedWriteActive_ = true;
+        connectionPreparedWriteHandle_ = handle;
+      } else if (connectionPreparedWriteHandle_ != handle) {
+        return buildAttErrorResponse(opcode, handle, kAttErrPrepareQueueFull,
+                                     outAttResponse, outAttResponseLength);
+      }
+
+      for (uint16_t i = 0U; i < valueLen; ++i) {
+        const uint16_t pos = static_cast<uint16_t>(offset + i);
+        connectionPreparedWriteValue_[pos] = attRequest[5U + i];
+        connectionPreparedWriteMask_ |= static_cast<uint8_t>(1U << pos);
+      }
+
+      if (requestLength > maxAttResponseLen) {
+        return buildAttErrorResponse(opcode, handle, kAttErrInvalidPdu, outAttResponse,
+                                     outAttResponseLength);
+      }
+      memcpy(outAttResponse, attRequest, requestLength);
+      outAttResponse[0] = kAttOpPrepareWriteRsp;
+      *outAttResponseLength = requestLength;
+      return true;
+    }
+
+    case kAttOpExecuteWriteReq: {
+      if (requestLength != 2U) {
+        return buildAttErrorResponse(opcode, 0U, kAttErrInvalidPdu, outAttResponse,
+                                     outAttResponseLength);
+      }
+
+      const uint8_t flags = attRequest[1];
+      if (flags == 0x00U) {
+        clearPreparedWrite();
+        outAttResponse[0] = kAttOpExecuteWriteRsp;
+        *outAttResponseLength = 1U;
+        return true;
+      }
+      if (flags != 0x01U) {
+        return buildAttErrorResponse(opcode, 0U, kAttErrInvalidPdu, outAttResponse,
+                                     outAttResponseLength);
+      }
+
+      if (connectionPreparedWriteActive_) {
+        const uint16_t handle = connectionPreparedWriteHandle_;
+        if ((handle != kHandleGattServiceChangedCccd) &&
+            (handle != kHandleBatteryLevelCccd)) {
+          clearPreparedWrite();
+          return buildAttErrorResponse(opcode, handle, kAttErrWriteNotPermitted,
+                                       outAttResponse, outAttResponseLength);
+        }
+        if ((connectionPreparedWriteMask_ & 0x03U) != 0x03U) {
+          clearPreparedWrite();
+          return buildAttErrorResponse(opcode, handle, kAttErrInvalidAttrValueLen,
+                                       outAttResponse, outAttResponseLength);
+        }
+        const uint16_t cccd = readLe16(&connectionPreparedWriteValue_[0]);
+        if (!applyCccdState(handle, cccd)) {
+          clearPreparedWrite();
+          return buildAttErrorResponse(opcode, handle, kAttErrWriteNotPermitted,
+                                       outAttResponse, outAttResponseLength);
+        }
+        clearPreparedWrite();
+      }
+
+      outAttResponse[0] = kAttOpExecuteWriteRsp;
+      *outAttResponseLength = 1U;
+      return true;
+    }
+
     case kAttOpHandleValueCfm: {
       // Confirmation for ATT Handle Value Indication. This opcode has no response.
       if (requestLength == 1U) {
@@ -3821,26 +3975,13 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
                                        outAttResponse, outAttResponseLength);
         }
         const uint16_t cccd = readLe16(&attRequest[3]);
-        const uint16_t allowedMask =
-            (handle == kHandleGattServiceChangedCccd) ? 0x0002U : 0x0001U;
-        if ((cccd & ~allowedMask) != 0U) {
+        if (!applyCccdState(handle, cccd)) {
           return buildAttErrorResponse(opcode, handle, kAttErrWriteNotPermitted,
                                        outAttResponse, outAttResponseLength);
         }
-        if (handle == kHandleGattServiceChangedCccd) {
-          const bool enableIndication = ((cccd & 0x0002U) != 0U);
-          if (enableIndication && !connectionServiceChangedIndicationsEnabled_) {
-            connectionServiceChangedIndicationPending_ = true;
-          }
-          if (!enableIndication) {
-            connectionServiceChangedIndicationPending_ = false;
-            connectionServiceChangedIndicationAwaitingConfirm_ = false;
-          }
-          connectionServiceChangedIndicationsEnabled_ = enableIndication;
-        } else {
-          const bool enableNotify = ((cccd & 0x0001U) != 0U);
-          connectionBatteryNotificationsEnabled_ = enableNotify;
-          connectionBatteryNotificationPending_ = enableNotify;
+        if (connectionPreparedWriteActive_ &&
+            connectionPreparedWriteHandle_ == handle) {
+          clearPreparedWrite();
         }
         outAttResponse[0] = kAttOpWriteRsp;
         *outAttResponseLength = 1U;
@@ -3859,23 +4000,10 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
           const uint16_t valueLen = static_cast<uint16_t>(requestLength - 3U);
           if (valueLen == 2U) {
             const uint16_t cccd = readLe16(&attRequest[3]);
-            const uint16_t allowedMask =
-                (handle == kHandleGattServiceChangedCccd) ? 0x0002U : 0x0001U;
-            if ((cccd & ~allowedMask) == 0U) {
-              if (handle == kHandleGattServiceChangedCccd) {
-                const bool enableIndication = ((cccd & 0x0002U) != 0U);
-                if (enableIndication && !connectionServiceChangedIndicationsEnabled_) {
-                  connectionServiceChangedIndicationPending_ = true;
-                }
-                if (!enableIndication) {
-                  connectionServiceChangedIndicationPending_ = false;
-                  connectionServiceChangedIndicationAwaitingConfirm_ = false;
-                }
-                connectionServiceChangedIndicationsEnabled_ = enableIndication;
-              } else {
-                const bool enableNotify = ((cccd & 0x0001U) != 0U);
-                connectionBatteryNotificationsEnabled_ = enableNotify;
-                connectionBatteryNotificationPending_ = enableNotify;
+            if (applyCccdState(handle, cccd)) {
+              if (connectionPreparedWriteActive_ &&
+                  connectionPreparedWriteHandle_ == handle) {
+                clearPreparedWrite();
               }
             }
           }
@@ -3942,24 +4070,32 @@ bool BleRadio::buildL2capSignalingResponse(const uint8_t* l2capPayload,
   const uint16_t commandLength = readLe16(&l2capPayload[kBleL2capHeaderLen + 2U]);
 
   uint8_t outSigLen = 0U;
-  if ((4U + commandLength) > sigLength) {
-    // Truncated signaling command payload; return generic reject.
+  auto writeCommandReject = [&](uint16_t reason, bool includeMtu) {
     outPayload[kBleL2capHeaderLen + 0U] = kL2capSigCodeCommandRejectRsp;
     outPayload[kBleL2capHeaderLen + 1U] = identifier;
+    if (includeMtu) {
+      writeLe16(&outPayload[kBleL2capHeaderLen + 2U], 4U);
+      writeLe16(&outPayload[kBleL2capHeaderLen + 4U], reason);
+      writeLe16(&outPayload[kBleL2capHeaderLen + 6U], kBleL2capLeSignalingMtu);
+      outSigLen = 8U;
+      return;
+    }
     writeLe16(&outPayload[kBleL2capHeaderLen + 2U], 2U);
-    writeLe16(&outPayload[kBleL2capHeaderLen + 4U], kL2capCmdRejectReasonCmdNotUnderstood);
+    writeLe16(&outPayload[kBleL2capHeaderLen + 4U], reason);
     outSigLen = 6U;
+  };
+
+  if ((4U + commandLength) > sigLength) {
+    // Truncated signaling command payload; reject with signaling MTU hint.
+    writeCommandReject(kL2capCmdRejectReasonSignalingMtuExceeded, true);
   } else if (code == kL2capSigCodeCommandRejectRsp ||
-             code == kL2capSigCodeConnParamUpdateRsp) {
+             code == kL2capSigCodeConnParamUpdateRsp ||
+             code == kL2capSigCodeLeCreditConnRsp) {
     // Response opcodes do not require another response.
     return false;
   } else if (code == kL2capSigCodeConnParamUpdateReq) {
     if (commandLength != 8U) {
-      outPayload[kBleL2capHeaderLen + 0U] = kL2capSigCodeCommandRejectRsp;
-      outPayload[kBleL2capHeaderLen + 1U] = identifier;
-      writeLe16(&outPayload[kBleL2capHeaderLen + 2U], 2U);
-      writeLe16(&outPayload[kBleL2capHeaderLen + 4U], kL2capCmdRejectReasonCmdNotUnderstood);
-      outSigLen = 6U;
+      writeCommandReject(kL2capCmdRejectReasonCmdNotUnderstood, false);
     } else {
       const uint8_t* req = &l2capPayload[kBleL2capHeaderLen + 4U];
       const uint16_t intervalMin = readLe16(&req[0]);
@@ -3980,12 +4116,34 @@ bool BleRadio::buildL2capSignalingResponse(const uint8_t* l2capPayload,
       writeLe16(&outPayload[kBleL2capHeaderLen + 4U], kL2capConnParamResultRejected);
       outSigLen = 6U;
     }
+  } else if (code == kL2capSigCodeLeCreditConnReq) {
+    if (commandLength != 10U) {
+      writeCommandReject(kL2capCmdRejectReasonCmdNotUnderstood, false);
+    } else {
+      // LE Credit Based Connection Request:
+      //   [PSM(2), SCID(2), MTU(2), MPS(2), InitialCredits(2)]
+      // Peripheral path currently does not expose dynamic LE CoC channels.
+      // Reply deterministically with "PSM not supported".
+      outPayload[kBleL2capHeaderLen + 0U] = kL2capSigCodeLeCreditConnRsp;
+      outPayload[kBleL2capHeaderLen + 1U] = identifier;
+      writeLe16(&outPayload[kBleL2capHeaderLen + 2U], 10U);
+      writeLe16(&outPayload[kBleL2capHeaderLen + 4U], 0x0000U);  // DCID
+      writeLe16(&outPayload[kBleL2capHeaderLen + 6U], kBleL2capLeSignalingMtu);
+      writeLe16(&outPayload[kBleL2capHeaderLen + 8U], kBleL2capLeSignalingMtu);
+      writeLe16(&outPayload[kBleL2capHeaderLen + 10U], 0x0000U);  // Credits
+      writeLe16(&outPayload[kBleL2capHeaderLen + 12U],
+                kL2capLeCreditConnResultPsmNotSupported);
+      outSigLen = 14U;
+    }
+  } else if (code == kL2capSigCodeLeFlowControlCredit) {
+    if (commandLength != 4U) {
+      writeCommandReject(kL2capCmdRejectReasonCmdNotUnderstood, false);
+    } else {
+      // No LE credit channels are established in this clean peripheral path.
+      writeCommandReject(kL2capCmdRejectReasonCmdNotUnderstood, false);
+    }
   } else {
-    outPayload[kBleL2capHeaderLen + 0U] = kL2capSigCodeCommandRejectRsp;
-    outPayload[kBleL2capHeaderLen + 1U] = identifier;
-    writeLe16(&outPayload[kBleL2capHeaderLen + 2U], 2U);
-    writeLe16(&outPayload[kBleL2capHeaderLen + 4U], kL2capCmdRejectReasonCmdNotUnderstood);
-    outSigLen = 6U;
+    writeCommandReject(kL2capCmdRejectReasonCmdNotUnderstood, false);
   }
 
   if ((kBleL2capHeaderLen + outSigLen) > kBleDataPduMaxPayload) {
@@ -4462,6 +4620,11 @@ void BleRadio::restoreAdvertisingLinkDefaults() {
   connectionServiceChangedIndicationAwaitingConfirm_ = false;
   connectionBatteryNotificationsEnabled_ = false;
   connectionBatteryNotificationPending_ = false;
+  connectionPreparedWriteActive_ = false;
+  connectionPreparedWriteHandle_ = 0U;
+  connectionPreparedWriteValue_[0] = 0U;
+  connectionPreparedWriteValue_[1] = 0U;
+  connectionPreparedWriteMask_ = 0U;
   scanCycleStartIndex_ = 0U;
   setAdvertisingChannel(BleAdvertisingChannel::k37);
 }

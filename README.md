@@ -23,6 +23,8 @@ Open-source Arduino core package for **Seeed XIAO nRF54L15** using a clean regis
   - GATT Battery Level CCCD + notification flow
   - ATT Read Multiple + Find By Type Value support
   - stricter ATT Read By Group Type edge-case error behavior
+  - ATT Prepare/Execute Write path for selected writable CCCDs
+  - L2CAP LE Credit Based Connection Request deterministic response (`PSM not supported`)
   - L2CAP LE signaling fallback responses (`Command Reject`, `Conn Param Update Response`)
   - improved scan cycle robustness
 - Arduino Tools menu options for:

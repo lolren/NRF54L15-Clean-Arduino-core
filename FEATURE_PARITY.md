@@ -97,10 +97,11 @@ Legend:
 | Retransmission gating safety | Partial | New payload consume now gated by TX ACK state. |
 | ATT MTU exchange | Done | Basic negotiation path. |
 | ATT discovery/read family | Partial | Includes Find Info, Read By Type, Read By Group Type, Read, Read Blob, Read Multiple, Find By Type Value, with stricter boundary-handle validation. |
+| ATT queued writes (selected attrs) | Partial | Prepare/Execute Write implemented for selected writable CCCD attributes. |
 | GATT services (GAP/GATT/BAS) | Partial | Minimal static database. |
 | Service Changed indication flow | Done | CCCD write + indication + confirmation handling. |
 | Battery Level notify flow | Done | CCCD write + notification TX when value changes. |
-| L2CAP signaling fallback | Partial | Command reject + conn param update reject response in peripheral-only model. |
+| L2CAP signaling fallback | Partial | Command reject + conn param update reject + LE CoC request deterministic response in peripheral-only model. |
 | SMP handling | Partial | Deterministic Pairing Failed (Not Supported) fallback. |
 
 ## 4. Gaps vs Full Stack Behavior

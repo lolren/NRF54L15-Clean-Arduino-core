@@ -612,6 +612,10 @@ class BleRadio {
   bool connectionServiceChangedIndicationAwaitingConfirm_;
   bool connectionBatteryNotificationsEnabled_;
   bool connectionBatteryNotificationPending_;
+  bool connectionPreparedWriteActive_;
+  uint16_t connectionPreparedWriteHandle_;
+  uint8_t connectionPreparedWriteValue_[2];
+  uint8_t connectionPreparedWriteMask_;
   uint8_t scanCycleStartIndex_;
   uint8_t gapDeviceName_[31];
   uint8_t gapDeviceNameLen_;

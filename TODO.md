@@ -17,9 +17,9 @@ Last updated: 2026-02-22
   - [ ] Expand unknown/reject handling consistency for remote corner-cases.
 - [ ] ATT server parity:
   - [x] Add `Read By Type` behavior edge-cases for mixed-length records and boundary handles.
-  - [ ] Add optional `Write Long` path (`Prepare Write`/`Execute Write`) for selected attributes.
+  - [x] Add optional `Write Long` path (`Prepare Write`/`Execute Write`) for selected attributes.
 - [ ] L2CAP signaling:
-  - [ ] Implement additional LE signaling commands (still peripheral-safe subset first).
+  - [x] Implement additional LE signaling commands (still peripheral-safe subset first).
   - [ ] Improve command reject reason mapping granularity.
 
 ## Priority 2 (BLE security and interoperability)
