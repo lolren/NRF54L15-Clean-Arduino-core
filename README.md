@@ -206,7 +206,7 @@ Channel sounding status:
 - `FEATURE_PARITY.md`
 - `TODO.md`
 - `POWER_PROFILE_MEASUREMENTS.md`
-- `measurements/ble_cli_matrix_latest3/report.md`
+- `docs/BLE_CLI_MATRIX_SUMMARY.md`
 - `scripts/ble_cli_matrix.sh`
 
 ## Local development workflow

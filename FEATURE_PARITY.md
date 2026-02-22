@@ -85,7 +85,7 @@ Legend:
 Validated on 2026-02-22 with connected XIAO nRF54L15 + host BLE adapter using:
 
 - `scripts/ble_cli_matrix.sh`
-- Latest report: `measurements/ble_cli_matrix_latest3/report.md`
+- Summary committed in repo: `docs/BLE_CLI_MATRIX_SUMMARY.md`
 
 Current matrix summary (`latest3`):
 
