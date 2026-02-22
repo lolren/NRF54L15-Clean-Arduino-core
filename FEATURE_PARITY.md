@@ -101,7 +101,7 @@ Legend:
 | GATT services (GAP/GATT/BAS) | Partial | Minimal static database. |
 | Service Changed indication flow | Done | CCCD write + indication + confirmation handling. |
 | Battery Level notify flow | Done | CCCD write + notification TX when value changes. |
-| L2CAP signaling fallback | Partial | Command reject + conn param update reject + LE CoC request deterministic response in peripheral-only model. |
+| L2CAP signaling fallback | Partial | Command reject with granular reasons, conn param update reject, and LE CoC request deterministic response in peripheral-only model. |
 | SMP handling | Partial | Deterministic Pairing Failed (Not Supported) fallback. |
 
 ## 4. Gaps vs Full Stack Behavior

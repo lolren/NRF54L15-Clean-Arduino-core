@@ -20,7 +20,7 @@ Last updated: 2026-02-22
   - [x] Add optional `Write Long` path (`Prepare Write`/`Execute Write`) for selected attributes.
 - [ ] L2CAP signaling:
   - [x] Implement additional LE signaling commands (still peripheral-safe subset first).
-  - [ ] Improve command reject reason mapping granularity.
+  - [x] Improve command reject reason mapping granularity.
 
 ## Priority 2 (BLE security and interoperability)
 

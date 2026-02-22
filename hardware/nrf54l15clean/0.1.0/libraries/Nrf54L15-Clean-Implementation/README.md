@@ -144,6 +144,7 @@ Examples:
     - Prepare Write / Execute Write on selected writable CCCDs
   - L2CAP LE signaling (`CID 0x0005`) fallback handling:
     - Command Reject for unsupported signaling opcodes
+    - Command Reject reason granularity (`Cmd Not Understood`, `Signaling MTU exceeded`, `Invalid CID`)
     - Connection Parameter Update Request -> rejected response (peripheral-role-only controller path)
     - LE Credit Based Connection Request -> response with `PSM not supported`
 - Not implemented yet:

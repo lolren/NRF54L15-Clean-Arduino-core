@@ -289,6 +289,7 @@ constexpr uint8_t kL2capSigCodeLeCreditConnRsp = 0x15U;
 constexpr uint8_t kL2capSigCodeLeFlowControlCredit = 0x16U;
 constexpr uint16_t kL2capCmdRejectReasonCmdNotUnderstood = 0x0000U;
 constexpr uint16_t kL2capCmdRejectReasonSignalingMtuExceeded = 0x0001U;
+constexpr uint16_t kL2capCmdRejectReasonInvalidCid = 0x0002U;
 constexpr uint16_t kL2capConnParamResultRejected = 0x0001U;
 constexpr uint16_t kL2capLeCreditConnResultPsmNotSupported = 0x0002U;
 constexpr uint16_t kBleL2capLeSignalingMtu = 23U;
@@ -4070,24 +4071,35 @@ bool BleRadio::buildL2capSignalingResponse(const uint8_t* l2capPayload,
   const uint16_t commandLength = readLe16(&l2capPayload[kBleL2capHeaderLen + 2U]);
 
   uint8_t outSigLen = 0U;
-  auto writeCommandReject = [&](uint16_t reason, bool includeMtu) {
+  auto writeCommandReject = [&](uint16_t reason) {
     outPayload[kBleL2capHeaderLen + 0U] = kL2capSigCodeCommandRejectRsp;
     outPayload[kBleL2capHeaderLen + 1U] = identifier;
-    if (includeMtu) {
-      writeLe16(&outPayload[kBleL2capHeaderLen + 2U], 4U);
-      writeLe16(&outPayload[kBleL2capHeaderLen + 4U], reason);
-      writeLe16(&outPayload[kBleL2capHeaderLen + 6U], kBleL2capLeSignalingMtu);
-      outSigLen = 8U;
-      return;
-    }
     writeLe16(&outPayload[kBleL2capHeaderLen + 2U], 2U);
     writeLe16(&outPayload[kBleL2capHeaderLen + 4U], reason);
     outSigLen = 6U;
   };
+  auto writeCommandRejectMtu = [&]() {
+    outPayload[kBleL2capHeaderLen + 0U] = kL2capSigCodeCommandRejectRsp;
+    outPayload[kBleL2capHeaderLen + 1U] = identifier;
+    writeLe16(&outPayload[kBleL2capHeaderLen + 2U], 4U);
+    writeLe16(&outPayload[kBleL2capHeaderLen + 4U],
+              kL2capCmdRejectReasonSignalingMtuExceeded);
+    writeLe16(&outPayload[kBleL2capHeaderLen + 6U], kBleL2capLeSignalingMtu);
+    outSigLen = 8U;
+  };
+  auto writeCommandRejectInvalidCid = [&](uint16_t localCid, uint16_t remoteCid) {
+    outPayload[kBleL2capHeaderLen + 0U] = kL2capSigCodeCommandRejectRsp;
+    outPayload[kBleL2capHeaderLen + 1U] = identifier;
+    writeLe16(&outPayload[kBleL2capHeaderLen + 2U], 6U);
+    writeLe16(&outPayload[kBleL2capHeaderLen + 4U], kL2capCmdRejectReasonInvalidCid);
+    writeLe16(&outPayload[kBleL2capHeaderLen + 6U], localCid);
+    writeLe16(&outPayload[kBleL2capHeaderLen + 8U], remoteCid);
+    outSigLen = 10U;
+  };
 
   if ((4U + commandLength) > sigLength) {
     // Truncated signaling command payload; reject with signaling MTU hint.
-    writeCommandReject(kL2capCmdRejectReasonSignalingMtuExceeded, true);
+    writeCommandRejectMtu();
   } else if (code == kL2capSigCodeCommandRejectRsp ||
              code == kL2capSigCodeConnParamUpdateRsp ||
              code == kL2capSigCodeLeCreditConnRsp) {
@@ -4095,7 +4107,7 @@ bool BleRadio::buildL2capSignalingResponse(const uint8_t* l2capPayload,
     return false;
   } else if (code == kL2capSigCodeConnParamUpdateReq) {
     if (commandLength != 8U) {
-      writeCommandReject(kL2capCmdRejectReasonCmdNotUnderstood, false);
+      writeCommandReject(kL2capCmdRejectReasonCmdNotUnderstood);
     } else {
       const uint8_t* req = &l2capPayload[kBleL2capHeaderLen + 4U];
       const uint16_t intervalMin = readLe16(&req[0]);
@@ -4118,7 +4130,7 @@ bool BleRadio::buildL2capSignalingResponse(const uint8_t* l2capPayload,
     }
   } else if (code == kL2capSigCodeLeCreditConnReq) {
     if (commandLength != 10U) {
-      writeCommandReject(kL2capCmdRejectReasonCmdNotUnderstood, false);
+      writeCommandReject(kL2capCmdRejectReasonCmdNotUnderstood);
     } else {
       // LE Credit Based Connection Request:
       //   [PSM(2), SCID(2), MTU(2), MPS(2), InitialCredits(2)]
@@ -4137,13 +4149,15 @@ bool BleRadio::buildL2capSignalingResponse(const uint8_t* l2capPayload,
     }
   } else if (code == kL2capSigCodeLeFlowControlCredit) {
     if (commandLength != 4U) {
-      writeCommandReject(kL2capCmdRejectReasonCmdNotUnderstood, false);
+      writeCommandReject(kL2capCmdRejectReasonCmdNotUnderstood);
     } else {
       // No LE credit channels are established in this clean peripheral path.
-      writeCommandReject(kL2capCmdRejectReasonCmdNotUnderstood, false);
+      // Reject with Invalid CID and include received CID for diagnostics.
+      const uint16_t cidFromPeer = readLe16(&l2capPayload[kBleL2capHeaderLen + 4U]);
+      writeCommandRejectInvalidCid(0x0000U, cidFromPeer);
     }
   } else {
-    writeCommandReject(kL2capCmdRejectReasonCmdNotUnderstood, false);
+    writeCommandReject(kL2capCmdRejectReasonCmdNotUnderstood);
   }
 
   if ((kBleL2capHeaderLen + outSigLen) > kBleDataPduMaxPayload) {

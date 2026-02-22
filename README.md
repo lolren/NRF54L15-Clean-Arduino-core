@@ -25,6 +25,7 @@ Open-source Arduino core package for **Seeed XIAO nRF54L15** using a clean regis
   - stricter ATT Read By Group Type edge-case error behavior
   - ATT Prepare/Execute Write path for selected writable CCCDs
   - L2CAP LE Credit Based Connection Request deterministic response (`PSM not supported`)
+  - L2CAP command reject reason granularity improvements (`Cmd Not Understood`, `Signaling MTU exceeded`, `Invalid CID`)
   - L2CAP LE signaling fallback responses (`Command Reject`, `Conn Param Update Response`)
   - improved scan cycle robustness
 - Arduino Tools menu options for:
