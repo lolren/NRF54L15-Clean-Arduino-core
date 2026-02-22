@@ -52,7 +52,7 @@ Last updated: 2026-02-22
 ## Priority 4 (power optimization)
 
 - [x] Add structured low-power telemetry example (active/sleep duty metrics).
-- [ ] Add configurable peripheral auto-gating policy for idle windows.
+- [x] Add configurable peripheral auto-gating policy for idle windows.
 - [ ] Tune BLE connection event timing to reduce active radio-on windows.
 - [ ] Document measured current profiles per example and Tools menu profile.
 

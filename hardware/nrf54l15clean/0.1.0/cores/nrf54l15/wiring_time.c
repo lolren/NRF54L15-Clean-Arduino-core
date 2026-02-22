@@ -4,6 +4,7 @@
 
 extern uint32_t SystemCoreClock;
 extern void SystemCoreClockUpdate(void);
+extern void nrf54l15_clean_idle_service(void);
 
 static volatile uint32_t g_millis_ticks = 0;
 
@@ -61,6 +62,7 @@ void delay(unsigned long ms)
 {
     const unsigned long start = millis();
     while ((millis() - start) < ms) {
+        nrf54l15_clean_idle_service();
 #if defined(NRF54L15_CLEAN_POWER_LOW)
         __asm volatile("wfi");
 #else

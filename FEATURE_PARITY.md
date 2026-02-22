@@ -80,6 +80,7 @@ Legend:
 | System ON idle via `WFI/WFE` | Done | Low-power examples and power profile option included. |
 | CPU frequency menu (64/128 MHz) | Done | Arduino Tools menu option. |
 | Peripheral duty-cycling patterns | Done | Examples for ADC/SPI/I2C gating. |
+| Configurable peripheral auto-gating policy | Done | Tools menu policy auto-disables idle `SPI`/`Wire` and re-enables on demand. |
 | Low-power duty telemetry | Done | Rolling active-vs-sleep duty metrics example included for tuning. |
 | System OFF wake (button) | Done | Example uses GPIO detect + reset reason. |
 | System OFF wake (timer/GRTC) | Done | Example uses compare wake path. |
@@ -125,7 +126,7 @@ Validated in Arduino CLI with the clean core package (`nrf54l15clean:nrf54l15cle
 
 - BLE examples compile and upload (`pyOCD`) to connected XIAO nRF54L15.
 - Low-power/non-BLE examples compile across BLE-on/BLE-off build options.
-- Tools menu options for CPU, power, BLE, BLE trace, antenna, serial routing, and uploader are active.
+- Tools menu options for CPU, power, peripheral auto-gating, BLE, BLE trace, antenna, serial routing, and uploader are active.
 
 ## 6. Practical Parity Summary
 

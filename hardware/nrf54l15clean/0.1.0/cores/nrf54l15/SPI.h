@@ -98,6 +98,9 @@ public:
     void attachInterrupt();
     void detachInterrupt();
 
+    // Called from core idle path to optionally auto-disable SPI on idle windows.
+    void serviceAutoGate();
+
 private:
     NRF_SPIM_Type* _spim;
     uint8_t _mosi;
@@ -107,6 +110,7 @@ private:
     SPISettings _settings;
     bool _initialized;
     bool _inTransaction;
+    uint32_t _lastActivityUs;
 
     // Configure SPI pins
     void configurePins();

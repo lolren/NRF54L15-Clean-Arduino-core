@@ -104,6 +104,7 @@ The following sketches focus on low-power behavior called out in the nRF54L15 da
 - CPU enters System ON idle using `WFI/WFE` when no work is pending
 - Keep CPU frequency at 64 MHz when full performance is not needed
 - Duty-cycle peripherals so they are enabled only during short active windows
+- Optional core-level peripheral auto-gating for idle windows (SPI/Wire)
 
 Examples:
 
@@ -128,6 +129,9 @@ Examples:
 - `examples/LowPowerTelemetryDutyMetrics/LowPowerTelemetryDutyMetrics.ino`
   - Reports rolling active-vs-sleep duty metrics (microsecond accounting).
   - Pairs duty telemetry with ADC/VBAT duty-cycled sampling windows.
+- `examples/LowPowerAutoGatePolicy/LowPowerAutoGatePolicy.ino`
+  - Demonstrates Tools-menu configurable idle auto-gating on core `SPI`/`Wire`.
+  - Uses transfer windows without explicit `end()` and verifies idle disable via register state.
 
 ## BLE Scope
 

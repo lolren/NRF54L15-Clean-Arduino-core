@@ -55,6 +55,7 @@ public:
     // Target/slave callbacks (Arduino-compatible API)
     void onReceive(void (*callback)(int));
     void onRequest(void (*callback)(void));
+    void serviceAutoGate();
 
     uint8_t getTransmissionAddress() const { return _txAddress; }
 
@@ -95,6 +96,7 @@ private:
     void (*_onRequest)(void);
 
     bool _pendingRepeatedStart;
+    uint32_t _lastActivityUs;
 
     friend void ::TWIM20_IRQHandler(void);
     friend void ::TWIM21_IRQHandler(void);

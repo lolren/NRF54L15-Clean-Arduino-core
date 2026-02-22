@@ -2,6 +2,10 @@
 
 namespace {
 
+#if !defined(NRF54L15_CLEAN_AUTO_GATE_IDLE_US)
+#define NRF54L15_CLEAN_AUTO_GATE_IDLE_US 2000UL
+#endif
+
 static constexpr uint32_t SPIM_TASKS_START      = 0x000UL;
 static constexpr uint32_t SPIM_TASKS_STOP       = 0x004UL;
 static constexpr uint32_t SPIM_EVENTS_STARTED   = 0x100UL;
@@ -103,7 +107,7 @@ SPIClass SPI(NRF_SPIM20, PIN_SPI_MOSI, PIN_SPI_MISO, PIN_SPI_SCK, PIN_SPI_SS);
 
 SPIClass::SPIClass(NRF_SPIM_Type* spim, uint8_t mosi, uint8_t miso, uint8_t sck, uint8_t cs)
     : _spim(spim), _mosi(mosi), _miso(miso), _sck(sck), _cs(cs), _settings(),
-      _initialized(false), _inTransaction(false) {}
+      _initialized(false), _inTransaction(false), _lastActivityUs(0U) {}
 
 void SPIClass::begin() {
     if (_spim == nullptr) {
@@ -134,6 +138,7 @@ void SPIClass::begin() {
 
     _initialized = true;
     _inTransaction = false;
+    _lastActivityUs = micros();
 }
 
 void SPIClass::begin(uint8_t csPin) {
@@ -155,6 +160,7 @@ void SPIClass::end() {
 
     _inTransaction = false;
     _initialized = false;
+    _lastActivityUs = micros();
 }
 
 void SPIClass::beginTransaction(SPISettings settings) {
@@ -165,11 +171,13 @@ void SPIClass::beginTransaction(SPISettings settings) {
     applySettings();
     _inTransaction = true;
     digitalWrite(_cs, LOW);
+    _lastActivityUs = micros();
 }
 
 void SPIClass::endTransaction(void) {
     digitalWrite(_cs, HIGH);
     _inTransaction = false;
+    _lastActivityUs = micros();
 }
 
 uint8_t SPIClass::transfer(uint8_t data) {
@@ -244,6 +252,7 @@ void SPIClass::transfer(const void* tx_buf, void* rx_buf, size_t count) {
     if (autoTransaction) {
         endTransaction();
     }
+    _lastActivityUs = micros();
 }
 
 void SPIClass::setBitOrder(uint8_t order) {
@@ -286,6 +295,20 @@ void SPIClass::notUsingInterrupt(int interruptNumber) {
 
 void SPIClass::attachInterrupt() {}
 void SPIClass::detachInterrupt() {}
+
+void SPIClass::serviceAutoGate() {
+#if defined(NRF54L15_CLEAN_AUTO_GATE) && (NRF54L15_CLEAN_AUTO_GATE != 0)
+    if (!_initialized || _inTransaction) {
+        return;
+    }
+
+    const uint32_t idleUs = static_cast<uint32_t>(NRF54L15_CLEAN_AUTO_GATE_IDLE_US);
+    const uint32_t nowUs = micros();
+    if ((nowUs - _lastActivityUs) >= idleUs) {
+        end();
+    }
+#endif
+}
 
 void SPIClass::configurePins() {
     pinMode(_sck, OUTPUT);

@@ -1,10 +1,13 @@
 #include "Arduino.h"
 
+extern "C" void nrf54l15_clean_idle_service(void);
+
 extern "C" void __attribute__((weak)) init(void) {
     initSysTick();
 }
 extern "C" void __attribute__((weak)) initVariant(void) {}
 extern "C" void __attribute__((weak)) yield(void) {
+    nrf54l15_clean_idle_service();
 #if defined(NRF54L15_CLEAN_POWER_LOW)
     __asm volatile("wfi");
 #else

@@ -6,6 +6,10 @@
 
 namespace {
 
+#if !defined(NRF54L15_CLEAN_AUTO_GATE_IDLE_US)
+#define NRF54L15_CLEAN_AUTO_GATE_IDLE_US 2000UL
+#endif
+
 static constexpr uint32_t PSEL_DISCONNECTED = 0xFFFFFFFFUL;
 
 // Common task/event offsets shared by TWIM/TWIS at this peripheral block.
@@ -256,7 +260,8 @@ TwoWire::TwoWire(NRF_TWIM_Type* twim, uint8_t sda, uint8_t scl)
       _targetDirection(TARGET_DIR_NONE),
       _onReceive(nullptr),
       _onRequest(nullptr),
-      _pendingRepeatedStart(false) {}
+      _pendingRepeatedStart(false),
+      _lastActivityUs(0U) {}
 
 void TwoWire::begin() {
     if (_twim == nullptr) {
@@ -297,6 +302,7 @@ void TwoWire::begin() {
     clearControllerTxState();
     clearReceiveState();
     clearTargetTxState();
+    _lastActivityUs = micros();
 }
 
 void TwoWire::begin(uint8_t address) {
@@ -362,6 +368,7 @@ void TwoWire::begin(uint8_t address) {
 
     _initialized = true;
     _targetRegistered = true;
+    _lastActivityUs = micros();
 }
 
 void TwoWire::begin(int address) {
@@ -398,6 +405,7 @@ void TwoWire::end() {
     _inOnRequestCallback = false;
     clearReceiveState();
     clearTargetTxState();
+    _lastActivityUs = micros();
 }
 
 void TwoWire::setClock(uint32_t freq) {
@@ -406,14 +414,19 @@ void TwoWire::setClock(uint32_t freq) {
         const uintptr_t base = reinterpret_cast<uintptr_t>(_twim);
         reg32(base + T_FREQUENCY) = twim_frequency_reg(_frequency);
     }
+    _lastActivityUs = micros();
 }
 
 void TwoWire::beginTransmission(uint8_t address) {
+    if (!_initialized && !_targetRegistered) {
+        begin();
+    }
     if (_targetRegistered) {
         return;
     }
     _txAddress = static_cast<uint8_t>(address & 0x7FU);
     _txBufferLength = 0;
+    _lastActivityUs = micros();
 }
 
 void TwoWire::beginTransmission(int address) {
@@ -421,6 +434,9 @@ void TwoWire::beginTransmission(int address) {
 }
 
 uint8_t TwoWire::endTransmission(bool sendStop) {
+    if (!_initialized && !_targetRegistered) {
+        begin();
+    }
     if (!_initialized || _targetRegistered || _twim == nullptr) {
         return 4;
     }
@@ -456,6 +472,7 @@ uint8_t TwoWire::endTransmission(bool sendStop) {
     reg32(base + T_TWIM_ERRORSRC) = T_TWIM_ERRORSRC_ALL;
 
     _txBufferLength = 0;
+    _lastActivityUs = micros();
     return end_tx_error_code(writeOk, stopOk, errorsrc);
 }
 
@@ -464,6 +481,9 @@ uint8_t TwoWire::requestFrom(uint8_t address, uint8_t quantity, uint8_t sendStop
 }
 
 uint8_t TwoWire::requestFrom(uint8_t address, size_t quantity, bool sendStop) {
+    if (!_initialized && !_targetRegistered) {
+        begin();
+    }
     if (!_initialized || _targetRegistered || _twim == nullptr || quantity == 0U) {
         return 0;
     }
@@ -503,12 +523,14 @@ uint8_t TwoWire::requestFrom(uint8_t address, size_t quantity, bool sendStop) {
     if (!readOk || !stopOk || hadError) {
         _pendingRepeatedStart = false;
         clearReceiveState();
+        _lastActivityUs = micros();
         return 0;
     }
 
     _rxBufferLength = static_cast<uint8_t>(quantity);
     _rxBufferIndex = 0;
     _peek = -1;
+    _lastActivityUs = micros();
     return _rxBufferLength;
 }
 
@@ -595,6 +617,20 @@ void TwoWire::onReceive(void (*callback)(int)) {
 
 void TwoWire::onRequest(void (*callback)(void)) {
     _onRequest = callback;
+}
+
+void TwoWire::serviceAutoGate() {
+#if defined(NRF54L15_CLEAN_AUTO_GATE) && (NRF54L15_CLEAN_AUTO_GATE != 0)
+    if (!_initialized || _targetRegistered || _pendingRepeatedStart) {
+        return;
+    }
+
+    const uint32_t idleUs = static_cast<uint32_t>(NRF54L15_CLEAN_AUTO_GATE_IDLE_US);
+    const uint32_t nowUs = micros();
+    if ((nowUs - _lastActivityUs) >= idleUs) {
+        end();
+    }
+#endif
 }
 
 int TwoWire::targetWriteRequestedAdapter(struct i2c_target_config* config) {

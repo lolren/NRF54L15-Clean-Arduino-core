@@ -33,6 +33,7 @@ Open-source Arduino core package for **Seeed XIAO nRF54L15** using a clean regis
   - CPU frequency (`64 MHz`, `128 MHz`)
   - BLE support (`Enabled`, `Disabled`)
   - Power profile (`Balanced`, `Low Power/WFI idle`)
+  - Peripheral auto-gating (`Disabled`, `Balanced 2 ms`, `Aggressive 200 us`)
   - Antenna (`Ceramic`, `External U.FL`)
   - Serial routing (`USB bridge on Serial`, `Header UART on Serial`)
 
