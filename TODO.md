@@ -25,6 +25,9 @@ Last updated: 2026-02-22
 ## Priority 2 (BLE security and interoperability)
 
 - [ ] Implement SMP pairing state machine subset (Just Works first).
+  - [x] Add Pairing Request/Response capability negotiation and validation.
+  - [x] Add Pairing Confirm/Random exchange state tracking and deterministic response path.
+  - [ ] Complete confirm verification/key generation and bind SMP success to LL encryption.
 - [ ] Implement LL encryption procedure support.
 - [ ] Key storage policy:
   - [ ] Define bonding storage format.

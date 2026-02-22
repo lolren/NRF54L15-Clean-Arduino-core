@@ -616,6 +616,11 @@ class BleRadio {
   uint16_t connectionPreparedWriteHandle_;
   uint8_t connectionPreparedWriteValue_[2];
   uint8_t connectionPreparedWriteMask_;
+  uint8_t smpPairingState_;
+  uint8_t smpPairingReq_[7];
+  uint8_t smpPairingRsp_[7];
+  uint8_t smpPeerConfirm_[16];
+  uint8_t smpLocalRandom_[16];
   uint8_t scanCycleStartIndex_;
   uint8_t gapDeviceName_[31];
   uint8_t gapDeviceNameLen_;
