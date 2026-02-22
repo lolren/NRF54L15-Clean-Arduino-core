@@ -31,8 +31,11 @@
 #define PIN_BUTTON      (17)
 
 // Routed to SAMD11 USB bridge on XIAO nRF54L15.
-#define PIN_SAMD11_TX   (18)
-#define PIN_SAMD11_RX   (19)
+// Net naming is from the SAMD11 perspective:
+// - SAMD11_TX drives nRF RX (P1.08)
+// - SAMD11_RX receives nRF TX (P1.09)
+#define PIN_SAMD11_TX   (19)
+#define PIN_SAMD11_RX   (18)
 
 #define LED_BUILTIN PIN_LED_BUILTIN
 
@@ -56,8 +59,13 @@ enum {
     A7 = PIN_A7,
 };
 
-#define PIN_WIRE_SDA (PIN_D4)
-#define PIN_WIRE_SCL (PIN_D5)
+// I2C defaults:
+// - Wire  : SDA=D4,  SCL=D5  (XIAO header standard pair)
+// - Wire1 : SDA=D12, SCL=D11 (back-pad alternate pair)
+#define PIN_WIRE_SDA  (PIN_D4)
+#define PIN_WIRE_SCL  (PIN_D5)
+#define PIN_WIRE1_SDA (PIN_D12)
+#define PIN_WIRE1_SCL (PIN_D11)
 
 #define PIN_SERIAL_TX (PIN_D6)
 #define PIN_SERIAL_RX (PIN_D7)
@@ -77,9 +85,22 @@ static inline uint8_t analogInputToDigitalPin(uint8_t p)
     return (p < NUM_ANALOG_INPUTS) ? p : 0xFF;
 }
 
+static const uint8_t SDA  = PIN_WIRE_SDA;
+static const uint8_t SCL  = PIN_WIRE_SCL;
+static const uint8_t SDA1 = PIN_WIRE1_SDA;
+static const uint8_t SCL1 = PIN_WIRE1_SCL;
+static const uint8_t MOSI = PIN_SPI_MOSI;
+static const uint8_t MISO = PIN_SPI_MISO;
+static const uint8_t SCK  = PIN_SPI_SCK;
+static const uint8_t SS   = PIN_SPI_SS;
+
 #define SERIAL_PORT_MONITOR Serial
 #define SERIAL_PORT_USBVIRTUAL Serial
 #define SERIAL_PORT_HARDWARE Serial1
 #define SERIAL_PORT_HARDWARE1 Serial1
+#define SERIAL_PORT_HARDWARE2 Serial2
+
+#define HAVE_HWSERIAL1
+#define HAVE_HWSERIAL2
 
 #endif

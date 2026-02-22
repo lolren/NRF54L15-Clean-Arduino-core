@@ -10,6 +10,7 @@ extern "C" {
 typedef enum {
     XIAO_NRF54L15_ANTENNA_CERAMIC = 0,
     XIAO_NRF54L15_ANTENNA_EXTERNAL = 1,
+    XIAO_NRF54L15_ANTENNA_CONTROL_HIZ = 2,
 } xiao_nrf54l15_antenna_t;
 
 void xiaoNrf54l15SetAntenna(xiao_nrf54l15_antenna_t antenna);

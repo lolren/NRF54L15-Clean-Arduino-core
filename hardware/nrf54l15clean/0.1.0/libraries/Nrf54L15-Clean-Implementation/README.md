@@ -8,8 +8,8 @@ This package uses direct peripheral register access from the nRF54L15 datasheet 
 
 - `ClockControl`: HFXO control wrapper (runtime-managed no-op on this Arduino core).
 - `Gpio`: configure/read/write/toggle and open-drain style drive setup for I2C.
-- `Spim`: SPI master (SPIM21 on XIAO header by default) with EasyDMA transfer.
-- `Twim`: I2C master (TWIM21 on XIAO header by default) with write/read/writeRead.
+- `Spim`: SPI master (SPIM21 on XIAO header by default) with EasyDMA transfer and runtime frequency control.
+- `Twim`: I2C master (TWIM21 on XIAO header by default) with write/read/writeRead and runtime frequency control.
 - `Uarte`: UART (UARTE21) with EasyDMA TX/RX.
 - `Saadc`: single-ended ADC sampling and millivolt conversion.
 - `Timer`: timer/counter setup, compare channels, shortcuts, and callback service.
@@ -19,6 +19,7 @@ This package uses direct peripheral register access from the nRF54L15 datasheet 
 - `Grtc`: global real-time counter setup, SYSCOUNTER readout, compare scheduling, wake timing.
 - `TempSensor`: on-die temperature sampling in quarter-degree and milli-degree units.
 - `Watchdog`: WDT configuration, start/stop (when enabled), feed, and status reads.
+- `BoardControl`: board-level helpers for battery measurement path and antenna switch control.
 - `Pdm`: digital microphone interface setup and blocking capture with EasyDMA.
 - `BleRadio`: register-level BLE 1M link layer + minimal ATT/GATT peripheral path via `RADIO`.
 
@@ -31,6 +32,38 @@ Pin mappings in `src/xiao_nrf54l15_pins.h` are taken from the XIAO nRF54L15 sche
 - Onboard LED `kPinUserLed` (active low)
 - User button `kPinUserButton` (active low)
 - Battery sense `kPinVbatEnable`, `kPinVbatSense`
+
+Default Arduino peripheral pin routes:
+
+- `Wire` : `SDA=D4`, `SCL=D5`
+- `Wire1`: `SDA=D12`, `SCL=D11`
+- `SPI`  : `MOSI=D10`, `MISO=D9`, `SCK=D8`, `SS=D2`
+- `Serial1`/`Serial2` (compat alias): `TX=D6`, `RX=D7`
+
+Compatibility note:
+
+- `Wire1` and `Serial` both use peripheral instance 21 when `Tools -> Serial Routing -> Header UART on Serial` is selected. Avoid using both simultaneously in that mode.
+
+## BoardControl APIs
+
+`BoardControl` is designed for low-power-friendly board-specific control:
+
+```cpp
+int32_t vbatMv = 0;
+uint8_t vbatPct = 0;
+
+BoardControl::sampleBatteryMilliVolts(&vbatMv);
+BoardControl::sampleBatteryPercent(&vbatPct);
+
+BoardControl::setAntennaPath(BoardAntennaPath::kCeramic);
+BoardControl::setAntennaPath(BoardAntennaPath::kExternal);
+BoardControl::setAntennaPath(BoardAntennaPath::kControlHighImpedance);
+```
+
+Notes:
+
+- VBAT sampling enables the divider path only during sampling, then disables it.
+- `kControlHighImpedance` releases RF switch control GPIO drive (`P2.05`) and is useful when you want no active antenna-control drive.
 
 ## Example
 
@@ -71,6 +104,18 @@ new non-BLE parity blocks:
 - Internal TEMP sensor sampling
 - WDT configuration path
 - PDM microphone capture path
+
+`examples/InterruptWatchdogLowPower/InterruptWatchdogLowPower.ino` demonstrates:
+
+- Core `attachInterrupt()` behavior on the user button.
+- HAL watchdog configuration/start/feed behavior.
+- Low-power `WFI` idle loop pattern with periodic watchdog feed.
+
+`examples/BoardBatteryAntennaBusControl/BoardBatteryAntennaBusControl.ino` demonstrates:
+
+- VBAT measurement in millivolts and percent via `BoardControl`.
+- Antenna routing commands (`ceramic`, `external`, `control-high-impedance`).
+- Runtime I2C/SPI bus frequency tuning paths.
 
 BLE examples:
 
@@ -195,3 +240,5 @@ Examples:
 
 - This is a polling/service style HAL for Arduino runtime compatibility.
 - `Timer::service()` and `Gpiote::service()` should be called frequently from `loop()`.
+- For XIAO nRF54L15 USB serial bridge path (`Tools -> Serial Routing -> USB bridge on Serial`),
+  set Serial Monitor baud to the same value used in `Serial.begin(...)`.

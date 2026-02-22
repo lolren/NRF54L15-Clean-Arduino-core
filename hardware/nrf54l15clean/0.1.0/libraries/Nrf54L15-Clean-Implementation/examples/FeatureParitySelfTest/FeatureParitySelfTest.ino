@@ -117,6 +117,27 @@ static bool testWatchdogConfig() {
   return ok && rr0Enabled;
 }
 
+static bool testBoardControl() {
+  bool ok = BoardControl::setAntennaPath(BoardAntennaPath::kCeramic) &&
+            BoardControl::setAntennaPath(BoardAntennaPath::kExternal) &&
+            BoardControl::setAntennaPath(BoardAntennaPath::kControlHighImpedance) &&
+            BoardControl::setAntennaPath(BoardAntennaPath::kCeramic);
+
+  int32_t vbatMilliVolts = -1;
+  uint8_t vbatPercent = 0;
+  const bool batteryOk = BoardControl::sampleBatteryMilliVolts(&vbatMilliVolts) &&
+                         BoardControl::sampleBatteryPercent(&vbatPercent);
+  ok = ok && batteryOk;
+
+  char detail[96];
+  snprintf(detail, sizeof(detail), "vbat=%ldmV pct=%u ant=%u",
+           static_cast<long>(vbatMilliVolts),
+           static_cast<unsigned>(vbatPercent),
+           static_cast<unsigned>(BoardControl::antennaPath()));
+  reportResult("BOARDCTRL", ok, detail);
+  return ok;
+}
+
 static bool testPdm() {
   alignas(4) static int16_t pcm[64] = {};
 
@@ -178,6 +199,7 @@ void setup() {
   testGrtc();
   testTemp();
   testWatchdogConfig();
+  testBoardControl();
   testPdm();
   testBleRadio();
 

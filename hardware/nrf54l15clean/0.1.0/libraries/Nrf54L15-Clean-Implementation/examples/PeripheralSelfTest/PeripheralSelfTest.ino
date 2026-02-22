@@ -116,6 +116,9 @@ static bool testSpi() {
   bool ok = g_spi21.begin(kDefaultSpiSck, kDefaultSpiMosi, kDefaultSpiMiso,
                           kPinDisconnected, 8000000UL, SpiMode::kMode0, false);
   if (ok) {
+    ok = g_spi21.setFrequency(8000000UL);
+  }
+  if (ok) {
     ok = g_spi21.transfer(&tx, &rx, 1, 300000UL);
   }
   g_spi21.end();
@@ -136,6 +139,7 @@ static bool testI2c() {
       g_i2c21.begin(kDefaultI2cScl, kDefaultI2cSda, TwimFrequency::k400k);
   bool ack = false;
   if (beginOk) {
+    (void)g_i2c21.setFrequency(TwimFrequency::k400k);
     ack = g_i2c21.writeRead(0x6A, &reg, 1, &whoami, 1, 300000UL);
   }
   g_i2c21.end();

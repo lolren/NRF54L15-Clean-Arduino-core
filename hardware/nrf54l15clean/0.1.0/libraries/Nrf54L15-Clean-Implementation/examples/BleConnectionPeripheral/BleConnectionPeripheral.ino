@@ -39,9 +39,12 @@ void setup() {
   Gpio::configure(kPinUserLed, GpioDirection::kOutput, GpioPull::kDisabled);
   Gpio::write(kPinUserLed, true);
 
+  static const uint8_t kAddress[6] = {0x21, 0x00, 0x15, 0x54, 0xDE, 0xC0};
   bool ok = g_ble.begin();
   if (ok) {
-    ok = g_ble.setAdvertisingPduType(BleAdvPduType::kAdvInd) &&
+    ok = g_ble.setDeviceAddress(kAddress, BleAddressType::kRandomStatic) &&
+         g_ble.setAdvertisingPduType(BleAdvPduType::kAdvInd) &&
+         g_ble.setAdvertisingChannelSelectionAlgorithm2(false) &&
          g_ble.setAdvertisingName("XIAO54-LINK", true) &&
          g_ble.setScanResponseName("XIAO54-LINK-SCAN") &&
          g_ble.setGattDeviceName("XIAO54-LINK") &&
@@ -51,6 +54,17 @@ void setup() {
   Serial.print("BLE init: ");
   Serial.print(ok ? "OK" : "FAIL");
   Serial.print("\r\n");
+  if (ok) {
+    uint8_t addr[6];
+    BleAddressType type = BleAddressType::kPublic;
+    if (g_ble.getDeviceAddress(addr, &type)) {
+      Serial.print("addr=");
+      printAddress(addr);
+      Serial.print(" type=");
+      Serial.print((type == BleAddressType::kRandomStatic) ? "random" : "public");
+      Serial.print("\r\n");
+    }
+  }
 }
 
 void loop() {
@@ -89,7 +103,7 @@ void loop() {
     }
 
     Gpio::write(kPinUserLed, true);
-    __asm volatile("wfi");
+    delay(1);
     return;
   }
 
@@ -143,6 +157,6 @@ void loop() {
     }
   } else {
     Gpio::write(kPinUserLed, true);
-    __asm volatile("wfi");
+    delay(1);
   }
 }

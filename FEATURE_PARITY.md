@@ -2,137 +2,109 @@
 
 Last updated: 2026-02-22
 
-This document tracks parity against the practical feature surface expected from a production Arduino core for XIAO nRF54L15, while keeping this project strictly clean and OSS:
+This project targets practical Arduino parity for XIAO nRF54L15 using a clean OSS core:
 
 - No Zephyr runtime
 - No nRF Connect SDK runtime
-- No proprietary Nordic SoftDevice dependency
-- Register-level HAL only
+- No proprietary SoftDevice dependency
 
-## 1. Scope Definition
+## Scope definition
 
-Parity target in this document means:
+Parity target here means:
 
-1. Arduino-user-visible behavior parity for core APIs and board features.
-2. Peripheral functionality parity for common embedded workflows (IO, ADC, SPI, I2C, UART, timers, interrupts, low power).
-3. BLE peripheral interoperability parity for mainstream phone/app interactions (connect, discover, read, write CCCD, notify/indicate).
+1. Arduino-user-visible API parity for IO/peripheral workflows.
+2. Board-level parity for XIAO pin mapping, battery path, RF switch control, upload/tool options.
+3. BLE peripheral interoperability parity for common app flows.
 
-It does **not** currently mean full Bluetooth Core conformance parity with a mature full-stack controller+host implementation.
+It does not yet mean full Bluetooth Core conformance parity with mature controller+host stacks.
 
-## 2. Distinction From Zephyr-Based Core
+## Distinction from Zephyr-based implementation
 
-This repository is intentionally different from `lolren/NRF54L15-Arduino-core` (Zephyr-based):
+This clean core differs from `lolren/NRF54L15-Arduino-core` by architecture and dependencies:
 
-- Architecture:
-  - Zephyr-based core: RTOS + Zephyr drivers/network stack.
-  - Clean core: direct register programming with Arduino-style polling/service loops.
-- Dependencies:
-  - Zephyr-based core: requires Zephyr/NCS toolchain/runtime components.
-  - Clean core: Arduino core package + GCC + uploader tools only.
-- BLE model:
-  - Zephyr-based core: Zephyr host/controller stack.
-  - Clean core: minimal custom BLE LL + ATT/GATT path focused on peripheral interoperability.
+- Clean core: register-level, Arduino package only.
+- Zephyr core: RTOS + Zephyr stack and runtime.
 
-## 3. Current Parity Matrix
+## Current parity matrix
 
 Legend:
-- `Done`: implemented and integrated.
-- `Partial`: implemented subset; known limitations remain.
-- `Planned`: not yet implemented.
 
-### 3.1 Core / Arduino API Surface
+- `Done`: implemented and validated.
+- `Partial`: implemented but with known behavior gaps.
+- `Planned`: not implemented.
+
+### Core API surface
 
 | Area | Status | Notes |
 |---|---|---|
-| Digital IO (`pinMode`, `digitalRead`, `digitalWrite`) | Done | GPIO config/read/write/toggle available. |
-| ADC (`analogRead`) | Done | SAADC single-ended path + mV conversion helpers. |
-| PWM (`analogWrite`) | Done | Hardware PWM on XIAO PWM-capable pins; auto-stop behavior integrated. |
-| External interrupts (`attachInterrupt`) | Done | GPIOTE IRQ-backed `RISING`/`FALLING`/`CHANGE`. |
-| UART (`Serial`) | Done | UARTE path with USB bridge/header routing options. |
-| SPI (`SPI`) | Done | SPIM EasyDMA transfers. |
-| I2C master (`Wire`) | Done | TWIM with repeated-start support. |
-| I2C target/slave (`Wire.begin(address)`) | Done | TWIS IRQ path with `onReceive`/`onRequest`. |
-| Timing (`millis`, `micros`, delays) | Done | Core runtime integrated. |
+| GPIO (`pinMode`, `digitalRead`, `digitalWrite`) | Done | Core digital API stable. |
+| Interrupts (`attachInterrupt`/`detachInterrupt`) | Done | GPIOTE-backed `RISING/FALLING/CHANGE`. |
+| ADC (`analogRead`, `analogReadResolution`) | Done | SAADC path integrated; compatibility API preserved. |
+| PWM (`analogWrite`) | Done | Hardware PWM on supported pins with auto-stop behavior. |
+| UART (`Serial`, `Serial1`, `Serial2`) | Done | USB/header routing options + compatibility alias `Serial2`. |
+| SPI (`SPI`) | Done | Transactions + runtime frequency/mode/order behavior. |
+| I2C (`Wire`, `Wire1`) | Done | Repeated-start + target/slave callbacks supported. |
+| Timing (`millis`, `micros`, delays) | Done | Stable runtime timing primitives. |
 
-### 3.2 Peripheral HAL Parity
+### Peripheral HAL blocks
 
-| HAL Block | Status | Notes |
+| HAL block | Status | Notes |
 |---|---|---|
-| GPIO | Done | Direction, pull, output drive, reads/writes. |
-| CLOCK wrapper | Done | Runtime-managed no-op behavior documented. |
-| SPIM | Done | Master transfer path validated. |
-| TWIM/TWIS | Done | Master + target mode available. |
-| UARTE | Done | DMA TX/RX path. |
-| SAADC | Done | Sampling + scaling helpers. |
-| TIMER | Done | Compare/shortcuts/callback service. |
-| PWM | Done | Single-output control + duty/freq update. |
-| GPIOTE | Done | Channel event/task service + IRQ integration. |
-| POWER | Done | Latency mode, reset reason, DCDC, GPREGRET retention. |
-| GRTC | Done | Counter + compare scheduling, wake-oriented usage. |
-| TEMP | Done | On-die temperature sample API. |
-| WDT | Done | Configure/start/feed/status path. |
-| PDM | Done | Blocking capture over EasyDMA. |
+| Clock / GPIO / SPIM / TWIM / UARTE | Done | Core peripheral plumbing complete. |
+| SAADC / TIMER / PWM / GPIOTE | Done | Sampling, timing, waveform, interrupts validated. |
+| Power / GRTC / Temp / WDT / PDM | Done | Includes system-off and watchdog examples. |
+| Board control (VBAT + RF switch) | Done | Divider-enable sampling and antenna route control. |
 
-### 3.3 Low-Power Parity
+### Low-power parity
 
 | Capability | Status | Notes |
 |---|---|---|
-| System ON idle via `WFI/WFE` | Done | Low-power examples and power profile option included. |
-| CPU frequency menu (64/128 MHz) | Done | Arduino Tools menu option. |
-| Peripheral duty-cycling patterns | Done | Examples for ADC/SPI/I2C gating. |
-| Configurable peripheral auto-gating policy | Done | Tools menu policy auto-disables idle `SPI`/`Wire` and re-enables on demand. |
-| BLE TX power menu | Done | Arduino Tools menu sets default BLE TX power without sketch changes. |
-| Low-power duty telemetry | Done | Rolling active-vs-sleep duty metrics example included for tuning. |
-| Measured current profiling workflow | Done | `POWER_PROFILE_MEASUREMENTS.md` defines repeatable capture matrix and procedure. |
-| System OFF wake (button) | Done | Example uses GPIO detect + reset reason. |
-| System OFF wake (timer/GRTC) | Done | Example uses compare wake path. |
+| WFI idle profile | Done | Tools menu + examples available. |
+| CPU freq selection (64/128 MHz) | Done | Tools menu integrated. |
+| Peripheral auto-gating | Done | Tools menu policy + examples. |
+| BLE TX power/timing profile controls | Done | Tools menu integrated. |
+| Structured power measurement workflow | Done | `POWER_PROFILE_MEASUREMENTS.md`. |
 
-### 3.4 BLE Parity (Peripheral Role)
+### BLE parity (peripheral role)
 
 | Capability | Status | Notes |
 |---|---|---|
-| Legacy advertising (37/38/39) | Done | Custom payload + naming helpers. |
-| Passive scan | Done | RSSI + payload parse helpers. |
-| Scannable/connectable ADV interaction | Done | `SCAN_REQ`/`SCAN_RSP`/`CONNECT_IND` handling. |
-| Legacy connection bring-up | Done | Data-channel event scheduling active. |
-| LL control subset responses | Partial | Includes feature/version/length/phy/ping/param handling, legacy encryption control flow (`ENC_REQ/RSP`, `START_ENC_REQ/RSP`, `PAUSE_ENC_REQ/RSP`) in peripheral role, explicit procedure-collision/command-disallowed reject semantics for invalid encryption sequencing, unknown fallback, and explicit response/indication handling for newer known opcodes. |
-| LL malformed control PDU handling | Partial | Strict opcode-length validation for handled procedures, reject responses for malformed requests, and consistent unsupported-feature rejects for selected unsupported requests. |
-| LL instant validation | Partial | Connection update + channel map instant checks implemented. |
-| Retransmission gating safety | Partial | New payload consume now gated by TX ACK state. |
-| Connection event timing optimization | Done | Budgeted RX/TX/disable timing windows + BLE timing profile tool options. |
-| ATT MTU exchange | Done | Basic negotiation path. |
-| ATT discovery/read family | Partial | Includes Find Info, Read By Type, Read By Group Type, Read, Read Blob, Read Multiple, Find By Type Value, with stricter boundary-handle validation. |
-| ATT queued writes (selected attrs) | Partial | Prepare/Execute Write implemented for selected writable CCCD attributes. |
-| GATT services (GAP/GATT/BAS) | Partial | Minimal static database. |
-| Service Changed indication flow | Done | CCCD write + indication + confirmation handling. |
-| Battery Level notify flow | Done | CCCD write + notification TX when value changes. |
-| L2CAP signaling fallback | Partial | Command reject with granular reasons, conn param update reject, and LE CoC request deterministic response in peripheral-only model. |
-| SMP handling | Partial | Includes legacy Just Works capability negotiation, `c1` confirm verify, `s1` STK derivation, and initiator key distribution parsing (`Encryption Information`, `Master Identification`); successful pairing feeds legacy LL encryption/session setup in the clean peripheral path. |
-| Encrypted data path (legacy) | Partial | Software CCM-based RX/TX payload protection + MIC verify/generate is wired for legacy peripheral sequencing; broader interop and full security feature set are still pending. |
-| Bond/key persistence | Partial | Bond record format is defined and persisted in retained `.noinit` RAM by default; callback hooks allow flash-backed load/save/clear policies without a proprietary SDK. |
-| Protocol-level BLE trace switch | Done | Compile-time Tools-menu option enables low-level LL/SMP trace messages for interop debugging. |
+| Advertising / passive scan / connect | Done | Legacy ADV + scan + connect paths stable. |
+| GATT GAP/GATT/BAS minimal server | Partial | Service set is intentionally minimal/static. |
+| ATT discovery/read/write subset | Partial | Core operations implemented and validated. |
+| Battery notifications / Service Changed indications | Done | CCCD flows validated. |
+| LL control handling subset | Partial | Broad subset implemented; full edge-case matrix pending. |
+| SMP legacy pairing flow | Partial | Request/confirm/random and LL encryption entry are implemented, but host CLI pairing does not complete to bonded state yet in repeatable tests. |
+| Bond persistence | Partial | Record format + retention path implemented; full bonded reconnect parity still blocked by pairing completion gap. |
+| Central role / multi-role | Planned | Not implemented. |
+| Extended advertising / periodic advertising | Planned | Not implemented. |
+| Channel sounding / AoA/AoD parity | Planned | Not implemented; tracked as advanced PHY work. |
 
-## 4. Gaps vs Full Stack Behavior
+## CLI validation status (hardware-tested)
 
-These are the major items not yet at full-stack parity:
+Validated on 2026-02-22 with connected XIAO nRF54L15 + host BLE adapter using:
 
-1. Full LL procedure matrix and edge-case state machine coverage.
-2. BLE security completion (pairing/encryption/key distribution/privacy).
-3. Full L2CAP signaling coverage beyond current fallback subset.
-4. Dynamic GATT database model (currently static minimal server model).
-5. Central role and multi-role BLE behavior.
-6. Extended advertising / periodic advertising / coded PHY feature set.
+- `scripts/ble_cli_matrix.sh`
+- Latest report: `measurements/ble_cli_matrix_latest3/report.md`
 
-## 5. Validation Status
+Current matrix summary (`latest3`):
 
-Validated in Arduino CLI with the clean core package (`nrf54l15clean:nrf54l15clean:xiao_nrf54l15`) on 2026-02-22:
+- Pass: advertising scan visibility, passive scanner serial output, connection peripheral, GATT basic peripheral, battery notify peripheral, connection timing metrics.
+- Partial/fail: pairing and bond probe (`Paired: no`, `Bonded: no`).
+- Intermittent host-side `bluetoothctl info Connected` reporting gaps observed for one connectable-advertiser case despite successful connection attempts.
 
-- BLE examples compile and upload (`pyOCD`) to connected XIAO nRF54L15.
-- Low-power/non-BLE examples compile across BLE-on/BLE-off build options.
-- Tools menu options for CPU, power, peripheral auto-gating, BLE, BLE TX power, BLE timing profile, BLE trace, antenna, serial routing, and uploader are active.
+## Known BLE security gap (current blocker)
 
-## 6. Practical Parity Summary
+Packet/trace evidence shows:
 
-For non-BLE peripherals and low-power control, parity is close to production-ready Arduino usage.
+- SMP `Pairing Request/Confirm/Random` exchange occurs.
+- `LL_ENC_REQ` is received and accepted in peripheral stack.
+- Pairing still does not complete to a bonded state in repeatable `bluetoothctl pair` runs.
 
-For BLE peripheral use-cases, the clean core now supports practical app-level workflows (connect/discover/read/write CCCD/notify/indicate) but is still intentionally narrower than a complete Zephyr-class Bluetooth stack.
+This keeps SMP/bond parity in `Partial` state.
+
+## Practical summary
+
+- Non-BLE peripherals, IO, timing, interrupts, watchdog, and low-power controls are close to production Arduino usage.
+- BLE peripheral interoperability is strong for advertise/connect/discover/notify use-cases.
+- BLE security/bonding remains the primary parity gap before feature parity can be considered complete.

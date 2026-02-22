@@ -24,6 +24,7 @@
 #define SAADC_SAMPLERATE           0x5F8UL
 #define SAADC_RESULT_PTR           0x62CUL
 #define SAADC_RESULT_MAXCNT        0x630UL
+#define SAADC_RESULT_AMOUNT        0x634UL
 #define SAADC_NOISESHAPE           0x654UL
 
 #define SAADC_ENABLE_DISABLED      0UL
@@ -102,9 +103,11 @@ static adc_pin_desc_t resolve_analog(uint8_t apin)
     }
 }
 
-static uint8_t g_analog_read_resolution = 12U;
+// Keep Arduino compatibility default (0..1023) unless sketch overrides.
+static uint8_t g_analog_read_resolution = 10U;
 static uint8_t g_analog_write_resolution = 8U;
-static int16_t g_saadc_sample = 0;
+// Written by SAADC EasyDMA, so this must be volatile.
+static volatile int16_t g_saadc_sample = 0;
 
 static uint8_t g_pwm_initialized = 0U;
 static uint8_t g_pwm_running = 0U;
@@ -400,6 +403,40 @@ void analogWriteDisable(uint8_t pin)
     }
 }
 
+static uint8_t select_saadc_resolution_bits(uint8_t requested_bits)
+{
+    if (requested_bits <= 8U) {
+        return 8U;
+    }
+    if (requested_bits <= 10U) {
+        return 10U;
+    }
+    if (requested_bits <= 12U) {
+        return 12U;
+    }
+    return 14U;
+}
+
+static uint32_t scale_resolution(uint32_t value, uint8_t from_bits, uint8_t to_bits)
+{
+    if (to_bits == from_bits) {
+        return value;
+    }
+    if (to_bits < from_bits) {
+        return value >> (from_bits - to_bits);
+    }
+
+    const uint8_t shift = (uint8_t)(to_bits - from_bits);
+    if (shift >= 31U) {
+        return 0x7FFFFFFFUL;
+    }
+    const uint32_t shifted = value << shift;
+    if ((shifted >> shift) != value) {
+        return 0x7FFFFFFFUL;
+    }
+    return shifted;
+}
+
 static int saadc_sample_pin(uint8_t port, uint8_t pin, uint8_t resolution_bits)
 {
     const uintptr_t base = (uintptr_t)NRF_SAADC;
@@ -445,11 +482,13 @@ static int saadc_sample_pin(uint8_t port, uint8_t pin, uint8_t resolution_bits)
 
     g_saadc_sample = 0;
     *regptr(base, SAADC_RESULT_PTR) = (uint32_t)(uintptr_t)&g_saadc_sample;
-    *regptr(base, SAADC_RESULT_MAXCNT) = 1UL;
+    // MAXCNT is in bytes (one SAADC sample = 2 bytes).
+    *regptr(base, SAADC_RESULT_MAXCNT) = 2UL;
 
     *regptr(base, SAADC_EVENTS_STARTED) = 0;
     *regptr(base, SAADC_EVENTS_END) = 0;
     *regptr(base, SAADC_EVENTS_STOPPED) = 0;
+    *regptr(base, SAADC_EVENTS_CALDONE) = 0;
 
     *regptr(base, SAADC_ENABLE) = SAADC_ENABLE_ENABLED;
     *regptr(base, SAADC_TASKS_CALIBRATE) = 1UL;
@@ -483,7 +522,11 @@ static int saadc_sample_pin(uint8_t port, uint8_t pin, uint8_t resolution_bits)
 
     *regptr(base, SAADC_ENABLE) = SAADC_ENABLE_DISABLED;
 
-    int32_t value = g_saadc_sample;
+    if (*regptr(base, SAADC_RESULT_AMOUNT) < 2UL) {
+        return 0;
+    }
+
+    int32_t value = (int32_t)g_saadc_sample;
     if (value < 0) {
         value = 0;
     }
@@ -497,11 +540,11 @@ void analogReference(uint8_t mode)
 
 void analogReadResolution(uint8_t bits)
 {
-    if (bits < 8U) {
-        bits = 8U;
+    if (bits < 1U) {
+        bits = 1U;
     }
-    if (bits > 14U) {
-        bits = 14U;
+    if (bits > 30U) {
+        bits = 30U;
     }
     g_analog_read_resolution = bits;
 }
@@ -523,7 +566,18 @@ int analogRead(uint8_t pin)
     if (d.ain < 0) {
         return 0;
     }
-    return saadc_sample_pin(d.port, d.pin, g_analog_read_resolution);
+
+    const uint8_t hw_bits = select_saadc_resolution_bits(g_analog_read_resolution);
+    const int raw = saadc_sample_pin(d.port, d.pin, hw_bits);
+    if (raw <= 0) {
+        return 0;
+    }
+
+    uint32_t scaled = scale_resolution((uint32_t)raw, hw_bits, g_analog_read_resolution);
+    if (scaled > 0x7FFFFFFFUL) {
+        scaled = 0x7FFFFFFFUL;
+    }
+    return (int)scaled;
 }
 
 void analogWrite(uint8_t pin, int value)

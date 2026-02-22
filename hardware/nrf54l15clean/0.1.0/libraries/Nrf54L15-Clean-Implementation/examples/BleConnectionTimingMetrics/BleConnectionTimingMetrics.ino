@@ -19,6 +19,7 @@ static uint32_t g_llCtrlPackets = 0U;
 static uint32_t g_attPackets = 0U;
 static uint32_t g_encryptedEvents = 0U;
 static uint32_t g_lastWindowMs = 0U;
+static bool g_connectionAnnounced = false;
 
 static void printAddress(const uint8_t* addr) {
   if (addr == nullptr) {
@@ -81,9 +82,11 @@ void setup() {
   (void)Gpio::configure(kPinUserLed, GpioDirection::kOutput, GpioPull::kDisabled);
   (void)Gpio::write(kPinUserLed, true);
 
+  static const uint8_t kAddress[6] = {0x71, 0x00, 0x15, 0x54, 0xDE, 0xC0};
   bool ok = g_ble.begin();
   if (ok) {
-    ok = g_ble.setAdvertisingPduType(BleAdvPduType::kAdvInd) &&
+    ok = g_ble.setDeviceAddress(kAddress, BleAddressType::kRandomStatic) &&
+         g_ble.setAdvertisingPduType(BleAdvPduType::kAdvInd) &&
          g_ble.setAdvertisingName("XIAO54-TIMING", true) &&
          g_ble.setScanResponseName("XIAO54-TIMING-SCAN") &&
          g_ble.setGattDeviceName("XIAO54-TIMING") &&
@@ -105,11 +108,31 @@ void loop() {
   const uint32_t nowMs = millis();
 
   if (!g_ble.isConnected()) {
+    g_connectionAnnounced = false;
     BleAdvInteraction adv{};
     (void)g_ble.advertiseInteractEvent(&adv, 350U, 300000UL, 700000UL);
     ++g_advEvents;
 
     if (adv.receivedConnectInd) {
+      // Avoid extra logging work between CONNECT_IND and first data events.
+      g_lastWindowMs = nowMs;
+      (void)Gpio::write(kPinUserLed, true);
+      delay(1);
+      return;
+    }
+
+    if ((nowMs - g_lastWindowMs) >= 5000UL) {
+      printWindowAndReset(nowMs);
+    }
+    (void)Gpio::write(kPinUserLed, true);
+    delay(1);
+    return;
+  }
+
+  BleConnectionEvent evt{};
+  const bool ran = g_ble.pollConnectionEvent(&evt, 450000UL);
+  if (ran && evt.eventStarted) {
+    if (!g_connectionAnnounced) {
       BleConnectionInfo info{};
       if (g_ble.getConnectionInfo(&info)) {
         Serial.print("connected peer=");
@@ -122,19 +145,9 @@ void loop() {
         Serial.print(info.supervisionTimeoutUnits);
         Serial.print("\r\n");
       }
+      g_connectionAnnounced = true;
     }
 
-    if ((nowMs - g_lastWindowMs) >= 5000UL) {
-      printWindowAndReset(nowMs);
-    }
-    (void)Gpio::write(kPinUserLed, true);
-    __asm volatile("wfi");
-    return;
-  }
-
-  BleConnectionEvent evt{};
-  const bool ran = g_ble.pollConnectionEvent(&evt, 450000UL);
-  if (ran && evt.eventStarted) {
     ++g_linkEvents;
     if (g_ble.isConnectionEncrypted()) {
       ++g_encryptedEvents;
@@ -165,7 +178,7 @@ void loop() {
     (void)Gpio::write(kPinUserLed, false);
   } else {
     (void)Gpio::write(kPinUserLed, true);
-    __asm volatile("wfi");
+    delay(1);
   }
 
   if ((nowMs - g_lastWindowMs) >= 5000UL) {

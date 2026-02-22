@@ -69,8 +69,8 @@ static pin_desc_t resolve_pin(uint8_t pin)
         case PIN_D15: return (pin_desc_t){2U, 6U, 1U};
         case PIN_LED_BUILTIN: return (pin_desc_t){2U, 0U, 1U};
         case PIN_BUTTON: return (pin_desc_t){0U, 0U, 1U};
-        case PIN_SAMD11_TX: return (pin_desc_t){1U, 8U, 1U};
-        case PIN_SAMD11_RX: return (pin_desc_t){1U, 9U, 1U};
+        case PIN_SAMD11_TX: return (pin_desc_t){1U, 9U, 1U};
+        case PIN_SAMD11_RX: return (pin_desc_t){1U, 8U, 1U};
         default: return (pin_desc_t){0U, 0U, 0U};
     }
 }
@@ -112,6 +112,7 @@ static uint32_t polarity_from_mode(int mode)
     switch (mode) {
         case RISING:
             return CORE_GPIOTE_POLARITY_LOTOHI;
+        case LOW:
         case FALLING:
             return CORE_GPIOTE_POLARITY_HITOLO;
         case CHANGE:
@@ -312,7 +313,8 @@ void attachInterrupt(uint8_t pin, void (*userFunc)(void), int mode)
         return;
     }
 
-    if (mode != CHANGE && mode != RISING && mode != FALLING) {
+    if (mode != CHANGE && mode != RISING && mode != FALLING &&
+        mode != LOW) {
         return;
     }
 

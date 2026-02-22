@@ -11,6 +11,7 @@ static PowerManager g_power;
 
 static bool g_prevConnected = false;
 static bool g_prevEncrypted = false;
+static bool g_connectionAnnounced = false;
 static uint32_t g_lastAdvLogMs = 0U;
 
 static void onBleTrace(const char* message, void* context) {
@@ -50,9 +51,11 @@ void setup() {
   Gpio::write(kPinUserLed, true);
   g_ble.setTraceCallback(onBleTrace, nullptr);
 
-  bool ok = g_ble.begin(-8);
+  static const uint8_t kAddress[6] = {0x51, 0x00, 0x15, 0x54, 0xDE, 0xC0};
+  bool ok = g_ble.begin(0);
   if (ok) {
-    ok = g_ble.setAdvertisingPduType(BleAdvPduType::kAdvInd) &&
+    ok = g_ble.setDeviceAddress(kAddress, BleAddressType::kRandomStatic) &&
+         g_ble.setAdvertisingPduType(BleAdvPduType::kAdvInd) &&
          g_ble.setAdvertisingName("X54-PAIR", true) &&
          g_ble.setScanResponseName("X54-PAIR-SCAN") &&
          g_ble.setGattDeviceName("X54 Pairing Probe") &&
@@ -70,23 +73,15 @@ void loop() {
     if (g_prevConnected) {
       g_prevConnected = false;
       g_prevEncrypted = false;
+      g_connectionAnnounced = false;
       Serial.print("disconnected\r\n");
     }
 
     BleAdvInteraction adv{};
     g_ble.advertiseInteractEvent(&adv, 350U, 350000UL, 700000UL);
     if (adv.receivedConnectInd) {
-      BleConnectionInfo info{};
-      if (g_ble.getConnectionInfo(&info)) {
-        Serial.print("connected peer=");
-        printAddress(info.peerAddress);
-        Serial.print(" int=");
-        Serial.print(info.intervalUnits);
-        Serial.print("\r\n");
-      } else {
-        Serial.print("connected\r\n");
-      }
       g_prevConnected = true;
+      g_connectionAnnounced = false;
     } else {
       const uint32_t now = millis();
       if ((now - g_lastAdvLogMs) >= 2000UL) {
@@ -96,12 +91,25 @@ void loop() {
     }
 
     Gpio::write(kPinUserLed, true);
-    __asm volatile("wfi");
+    delay(1);
     return;
   }
 
   BleConnectionEvent evt{};
   const bool ran = g_ble.pollConnectionEvent(&evt, 450000UL);
+  if (!g_connectionAnnounced && ran && evt.eventStarted) {
+    BleConnectionInfo info{};
+    if (g_ble.getConnectionInfo(&info)) {
+      Serial.print("connected peer=");
+      printAddress(info.peerAddress);
+      Serial.print(" int=");
+      Serial.print(info.intervalUnits);
+      Serial.print("\r\n");
+    } else {
+      Serial.print("connected\r\n");
+    }
+    g_connectionAnnounced = true;
+  }
   const bool encrypted = g_ble.isConnectionEncrypted();
   if (encrypted != g_prevEncrypted) {
     g_prevEncrypted = encrypted;
@@ -129,10 +137,11 @@ void loop() {
     Serial.print("link terminated\r\n");
     g_prevConnected = false;
     g_prevEncrypted = false;
+    g_connectionAnnounced = false;
   }
 
   Gpio::write(kPinUserLed, encrypted ? false : true);
   if (!ran) {
-    __asm volatile("wfi");
+    delay(1);
   }
 }

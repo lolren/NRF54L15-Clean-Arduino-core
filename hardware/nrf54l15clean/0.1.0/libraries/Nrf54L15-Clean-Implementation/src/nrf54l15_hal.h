@@ -52,6 +52,7 @@ class Spim {
   bool begin(const Pin& sck, const Pin& mosi, const Pin& miso,
              const Pin& cs = kPinDisconnected, uint32_t hz = 4000000UL,
              SpiMode mode = SpiMode::kMode0, bool lsbFirst = false);
+  bool setFrequency(uint32_t hz);
   void end();
 
   bool transfer(const uint8_t* tx, uint8_t* rx, size_t len,
@@ -76,6 +77,7 @@ class Twim {
 
   bool begin(const Pin& scl, const Pin& sda,
              TwimFrequency frequency = TwimFrequency::k400k);
+  bool setFrequency(TwimFrequency frequency);
   void end();
 
   bool write(uint8_t address7, const uint8_t* data, size_t len,
@@ -274,6 +276,38 @@ class Saadc {
   bool configured_;
 };
 
+enum class BoardAntennaPath : uint8_t {
+  kCeramic = 0,
+  kExternal = 1,
+  kControlHighImpedance = 2,
+};
+
+class BoardControl {
+ public:
+  // Control RF switch path on P2.05:
+  // - ceramic/external actively drive RF_SW_CTL
+  // - control-high-impedance releases control pin (no active drive)
+  static bool setAntennaPath(BoardAntennaPath path);
+  static BoardAntennaPath antennaPath();
+
+  // Enables/disables the battery-divider path used for VBAT sense.
+  static bool setBatterySenseEnabled(bool enable);
+
+  // Reads VBAT in millivolts (divider-compensated, x2).
+  // This method enables the divider path only for the sampling window.
+  static bool sampleBatteryMilliVolts(int32_t* outMilliVolts,
+                                      uint32_t settleDelayUs = 250U,
+                                      uint32_t spinLimit = 500000UL);
+
+  // Approximate Li-ion state-of-charge from measured VBAT.
+  // Defaults are intentionally conservative for 1-cell chemistry.
+  static bool sampleBatteryPercent(uint8_t* outPercent,
+                                   int32_t emptyMilliVolts = 3300,
+                                   int32_t fullMilliVolts = 4200,
+                                   uint32_t settleDelayUs = 250U,
+                                   uint32_t spinLimit = 500000UL);
+};
+
 enum class PowerLatencyMode : uint8_t {
   kLowPower = 0,
   kConstantLatency = 1,
@@ -431,6 +465,7 @@ struct BleAdvInteraction {
   bool receivedScanRequest;
   bool scanResponseTransmitted;
   bool receivedConnectInd;
+  bool connectIndChSel2;
   bool peerAddressRandom;
   int8_t rssiDbm;
   uint8_t peerAddress[6];
@@ -505,6 +540,7 @@ class BleRadio {
   bool loadAddressFromFicr(bool forceRandomStatic = true);
   bool setDeviceAddress(const uint8_t address[6],
                         BleAddressType type = BleAddressType::kRandomStatic);
+  bool getDeviceAddress(uint8_t addressOut[6], BleAddressType* typeOut = nullptr) const;
 
   bool setAdvertisingPduType(BleAdvPduType type);
   bool setAdvertisingChannelSelectionAlgorithm2(bool enabled);
@@ -563,7 +599,8 @@ class BleRadio {
                                     uint32_t requestListenSpinLimit,
                                     uint32_t spinLimit);
   bool startConnectionFromConnectInd(const uint8_t* payload, uint8_t length,
-                                     bool peerAddressRandom);
+                                     bool peerAddressRandom, bool useChSel2,
+                                     uint32_t connectIndEndUs);
   bool buildLlControlResponse(const uint8_t* payload, uint8_t length,
                               uint8_t* outPayload, uint8_t* outLength,
                               bool* terminateInd);
@@ -596,7 +633,7 @@ class BleRadio {
   bool primeBondForCurrentPeer();
   void emitBleTrace(const char* message) const;
   void updateNextConnectionEventTime();
-  uint8_t selectNextDataChannel();
+  uint8_t selectNextDataChannel(bool useCurrentEventCounter);
   void restoreAdvertisingLinkDefaults();
   static uint32_t txPowerRegFromDbm(int8_t dbm);
 
@@ -628,15 +665,24 @@ class BleRadio {
   uint8_t connectionChannelMap_[5];
   uint8_t connectionChannelCount_;
   uint8_t connectionHop_;
+  bool connectionUseChSel2_;
+  uint16_t connectionChannelId_;
   uint8_t connectionSca_;
   uint8_t connectionChanUse_;
   uint8_t connectionExpectedRxSn_;
   uint8_t connectionTxSn_;
   uint16_t connectionEventCounter_;
+  uint16_t connectionMissedEventCount_;
   uint32_t connectionNextEventUs_;
+  uint32_t connectionFirstEventListenUs_;
+  uint8_t connectionSyncAttemptsRemaining_;
   uint16_t connectionAttMtu_;
   uint8_t connectionLastTxLlid_;
   uint8_t connectionLastTxLength_;
+  uint8_t connectionPendingTxLlid_;
+  uint8_t connectionPendingTxLength_;
+  bool connectionPendingTxValid_;
+  uint8_t connectionPendingTxPayload_[255];
   bool connectionUpdatePending_;
   uint16_t connectionUpdateInstant_;
   uint16_t connectionPendingIntervalUnits_;
@@ -694,6 +740,7 @@ class BleRadio {
   uint8_t smpEncReqRand_[8];
   uint16_t smpEncReqEdiv_;
   uint8_t smpKeySize_;
+  uint8_t advCycleStartIndex_;
   uint8_t scanCycleStartIndex_;
   uint8_t gapDeviceName_[31];
   uint8_t gapDeviceNameLen_;

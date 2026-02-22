@@ -9,6 +9,7 @@ static PowerManager g_power;
 
 static uint8_t g_batteryLevel = 100U;
 static uint32_t g_lastBatteryStepMs = 0U;
+static bool g_wasConnected = false;
 
 void setup() {
   Serial.begin(115200);
@@ -19,9 +20,11 @@ void setup() {
   Gpio::configure(kPinUserLed, GpioDirection::kOutput, GpioPull::kDisabled);
   Gpio::write(kPinUserLed, true);
 
+  static const uint8_t kAddress[6] = {0x41, 0x00, 0x15, 0x54, 0xDE, 0xC0};
   bool ok = g_ble.begin(-8);
   if (ok) {
-    ok = g_ble.setAdvertisingPduType(BleAdvPduType::kAdvInd) &&
+    ok = g_ble.setDeviceAddress(kAddress, BleAddressType::kRandomStatic) &&
+         g_ble.setAdvertisingPduType(BleAdvPduType::kAdvInd) &&
          g_ble.setAdvertisingName("X54-BATT", true) &&
          g_ble.setScanResponseName("X54-BATT-SCAN") &&
          g_ble.setGattDeviceName("XIAO nRF54L15 Battery") &&
@@ -36,28 +39,22 @@ void setup() {
 
 void loop() {
   if (!g_ble.isConnected()) {
+    g_wasConnected = false;
     BleAdvInteraction adv{};
     g_ble.advertiseInteractEvent(&adv, 350U, 300000UL, 700000UL);
     Gpio::write(kPinUserLed, true);
-    __asm volatile("wfi");
+    delay(1);
     return;
   }
 
-  const uint32_t now = millis();
-  if ((now - g_lastBatteryStepMs) >= 5000UL) {
-    g_lastBatteryStepMs = now;
-    g_batteryLevel = (g_batteryLevel > 5U) ? static_cast<uint8_t>(g_batteryLevel - 1U)
-                                            : 100U;
-    g_ble.setGattBatteryLevel(g_batteryLevel);
-
-    Serial.print("battery level updated to ");
-    Serial.print(g_batteryLevel);
-    Serial.print("%\r\n");
+  if (!g_wasConnected) {
+    g_wasConnected = true;
+    g_lastBatteryStepMs = millis();
   }
 
   BleConnectionEvent evt{};
   if (!g_ble.pollConnectionEvent(&evt, 450000UL)) {
-    __asm volatile("wfi");
+    delay(1);
     return;
   }
 
@@ -73,6 +70,18 @@ void loop() {
     Gpio::write(kPinUserLed, true);
   }
 
+  const uint32_t now = millis();
+  if ((now - g_lastBatteryStepMs) >= 5000UL) {
+    g_lastBatteryStepMs = now;
+    g_batteryLevel = (g_batteryLevel > 5U) ? static_cast<uint8_t>(g_batteryLevel - 1U)
+                                            : 100U;
+    g_ble.setGattBatteryLevel(g_batteryLevel);
+
+    Serial.print("battery level updated to ");
+    Serial.print(g_batteryLevel);
+    Serial.print("%\r\n");
+  }
+
   // ATT notification payload on L2CAP ATT channel:
   // [0..1]=len, [2..3]=cid, [4]=opcode, [5..6]=handle, [7]=value.
   if (evt.txPayloadLength >= 8U && evt.txPayload != nullptr &&
@@ -82,5 +91,5 @@ void loop() {
     Serial.print("%\r\n");
   }
 
-  __asm volatile("wfi");
+  delay(1);
 }

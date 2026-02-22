@@ -224,6 +224,7 @@ static TwoWire*& twi_owner_slot(const NRF_TWIM_Type* twim) {
 }  // namespace
 
 TwoWire Wire(NRF_TWIM20, PIN_WIRE_SDA, PIN_WIRE_SCL);
+TwoWire Wire1(NRF_TWIM21, PIN_WIRE1_SDA, PIN_WIRE1_SCL);
 
 extern "C" void TWIM20_IRQHandler(void) {
     if (g_twim20Owner != nullptr) {

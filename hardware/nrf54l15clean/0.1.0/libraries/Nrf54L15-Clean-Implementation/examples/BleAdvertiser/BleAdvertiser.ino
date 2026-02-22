@@ -67,7 +67,8 @@ void loop() {
     Serial.print(line);
   }
 
-  // 100 ms advertising interval with low-power idle between events.
+  // 100 ms advertising interval. Keep the loop active unless an explicit wake
+  // source is armed for WFI.
   delay(100);
-  __asm volatile("wfi");
+  delay(1);
 }

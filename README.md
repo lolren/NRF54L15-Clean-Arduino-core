@@ -1,118 +1,230 @@
 # Nrf54L15-Clean-Implementation
 
-Open-source Arduino core package for **Seeed XIAO nRF54L15** using a clean register-level implementation (no Zephyr/NCS runtime dependency).
+Open-source Arduino board package for **Seeed XIAO nRF54L15** with a clean register-level implementation.
 
-## What this package contains
-
-- Core name: **Nrf54L15-Clean-Implementation**
+- Core name: `Nrf54L15-Clean-Implementation`
 - Board: `XIAO nRF54L15 (Nrf54L15-Clean-Implementation)`
-- Architecture/FQBN namespace: `nrf54l15clean:nrf54l15clean`
-- Core + variant + linker/startup files
-- Built-in library bundle: `Nrf54L15-Clean-Implementation`
-- Upload helper supporting `pyocd` and `openocd`
-- Core Arduino API parity additions:
-  - `attachInterrupt()`/`detachInterrupt()` via GPIOTE IRQs (`RISING`, `FALLING`, `CHANGE`)
-  - hardware `analogWrite()` PWM on `D6..D9` with auto-stop when no channel needs waveform output
-  - `Wire` repeated-start support via `endTransmission(false)` and `requestFrom(..., sendStop)`
-  - `Wire` target/slave mode via `begin(address)`, `onReceive()`, and `onRequest()` on TWIS IRQ path
-- Extended BLE peripheral interoperability:
-  - broader LL control opcode handling
-  - strict LL control opcode-length validation and malformed-request reject path
-  - LL connection update/channel-map instant validation and safer retransmission gating
-  - GATT Service Changed characteristic + CCCD + indication/confirmation flow
-  - GATT Battery Level CCCD + notification flow
-  - ATT Read Multiple + Find By Type Value support
-  - stricter ATT Read By Group Type edge-case error behavior
-  - ATT Prepare/Execute Write path for selected writable CCCDs
-  - L2CAP LE Credit Based Connection Request deterministic response (`PSM not supported`)
-  - L2CAP command reject reason granularity improvements (`Cmd Not Understood`, `Signaling MTU exceeded`, `Invalid CID`)
-  - L2CAP LE signaling fallback responses (`Command Reject`, `Conn Param Update Response`)
-  - improved scan cycle robustness
-- Arduino Tools menu options for:
-  - Upload method (`Auto`, `pyOCD`, `OpenOCD`)
-  - CPU frequency (`64 MHz`, `128 MHz`)
-  - BLE support (`Enabled`, `Disabled`)
-  - BLE TX power (`-20 dBm`, `-8 dBm`, `0 dBm`, `+8 dBm`)
-  - BLE timing profile (`Interoperability`, `Balanced Low-Power`, `Aggressive Low-Power`)
-  - Power profile (`Balanced`, `Low Power/WFI idle`)
-  - Peripheral auto-gating (`Disabled`, `Balanced 2 ms`, `Aggressive 200 us`)
-  - Antenna (`Ceramic`, `External U.FL`)
-  - Serial routing (`USB bridge on Serial`, `Header UART on Serial`)
+- FQBN: `nrf54l15clean:nrf54l15clean:xiao_nrf54l15`
+- No Zephyr runtime dependency
+- No nRF Connect SDK runtime dependency
 
-## Project tracking docs
+## Why this repo exists
 
-- `FEATURE_PARITY.md` : current parity status, implemented scope, and known gaps.
-- `TODO.md` : prioritized backlog for parity, security, power, and DX work.
-- `POWER_PROFILE_MEASUREMENTS.md` : repeatable current-measurement workflow and profile matrix.
-- `measurements/power_profiles_template.csv` : ready-to-fill capture sheet.
-- `scripts/ble_timing_sweep.py` : automated BLE timing/TX-power sweep + summary reports.
+This repo is intentionally different from the Zephyr-based core:
 
-## Automation
+- Uses direct register programming for core + HAL behavior.
+- Ships as a normal Arduino Boards Manager package.
+- Does not require users to install large external SDKs to build/upload.
 
-- CI workflow: `.github/workflows/ci.yml`
-  - Compile matrix over representative BLE and low-power sketches.
-  - Package/index consistency validation (checksum, size, index sync).
-- Release workflow: `.github/workflows/release.yml`
-  - On `vX.Y.Z` tags, builds release artifacts and publishes them to GitHub Releases.
+## Boards Manager install
 
-## Folder layout
-
-- `hardware/nrf54l15clean/0.1.0/` : installable Arduino platform payload
-- `package_nrf54l15clean_index.json` : Boards Manager index file template
-- `scripts/build_release.py` : creates release archive + index with checksum/size
-
-## Quick local test (without publishing)
-
-From this repository root:
-
-```bash
-mkdir -p ~/Arduino/hardware/nrf54l15clean
-ln -sfn "$PWD/Nrf54L15-Clean-BoardPackage/hardware/nrf54l15clean/0.1.0" \
-  ~/Arduino/hardware/nrf54l15clean/nrf54l15clean
-
-arduino-cli compile --fqbn nrf54l15clean:nrf54l15clean:xiao_nrf54l15 \
-  ./Nrf54L15-Clean-BoardPackage/hardware/nrf54l15clean/0.1.0/examples/03.Peripherals/InterruptPwmApiProbe/InterruptPwmApiProbe.ino
-```
-
-## Publish for Arduino Boards Manager (GitHub)
-
-1. Push this package to your GitHub repo.
-2. Build release artifacts:
-
-```bash
-cd Nrf54L15-Clean-BoardPackage
-./scripts/build_release.py \
-  --repo-url "https://github.com/<user>/<repo>" \
-  --release-base-url "https://github.com/<user>/<repo>/releases/download/v{version}"
-```
-
-This generates:
-
-- `dist/nrf54l15clean-0.1.0.tar.bz2`
-- `dist/package_nrf54l15clean_index.json`
-
-3. Create GitHub release tag `v0.1.0` and upload:
-- `dist/nrf54l15clean-0.1.0.tar.bz2`
-
-4. Commit/publish `dist/package_nrf54l15clean_index.json` (or copy it to repo root as `package_nrf54l15clean_index.json`).
-
-5. Users add this URL in Arduino IDE / Arduino CLI additional Boards Manager URLs:
+Add this URL to Arduino IDE / Arduino CLI Additional Boards Manager URLs:
 
 ```text
-https://raw.githubusercontent.com/<user>/<repo>/main/package_nrf54l15clean_index.json
+https://raw.githubusercontent.com/lolren/NRF54L15-Clean-Arduino-core/main/package_nrf54l15clean_index.json
 ```
 
-Then install package `Nrf54L15-Clean-Implementation` and compile/upload.
+Then install package **`Nrf54L15-Clean-Implementation`** and select board:
 
-## Toolchain and uploader dependencies
+- `XIAO nRF54L15 (Nrf54L15-Clean-Implementation)`
 
-The package index declares:
+## Pinout
 
-- `arduino:arm-none-eabi-gcc` `7-2017q4`
-- `arduino:openocd` `0.11.0-arduino2`
+![XIAO nRF54L15 default pin routes](docs/xiao_nrf54l15_default_pin_routes.png)
 
-For pyOCD upload mode, install pyOCD on host:
+## Default peripheral routes
+
+| Peripheral | Default pins | Notes |
+|---|---|---|
+| `Wire` (I2C primary) | `SDA=D4(P1.10)`, `SCL=D5(P1.11)` | Sketch compatibility default |
+| `Wire1` (I2C secondary) | `SDA=D12(P0.04)`, `SCL=D11(P0.03)` | Back-pad bus |
+| `SPI` | `MOSI=D10(P2.02)`, `MISO=D9(P2.04)`, `SCK=D8(P2.01)`, `SS=D2(P1.06)` | Runtime clock via `SPISettings` |
+| `Serial1` / `Serial2` | `TX=D6(P2.08)`, `RX=D7(P2.07)` | `Serial2` is alias of `Serial1` |
+| `Serial` | USB bridge (default) | Can be switched to header UART via Tools menu |
+
+## Arduino pin map (Arduino -> MCU)
+
+| Arduino pin | MCU pin | ADC input | Typical role |
+|---|---|---|---|
+| `D0` / `A0` | `P1.04` | `AIN0` | GPIO / ADC |
+| `D1` / `A1` | `P1.05` | `AIN1` | GPIO / ADC |
+| `D2` / `A2` | `P1.06` | `AIN2` | GPIO / ADC / `SS` |
+| `D3` / `A3` | `P1.07` | `AIN3` | GPIO / ADC |
+| `D4` / `A4` | `P1.10` | N/A | `Wire SDA` |
+| `D5` / `A5` | `P1.11` | `AIN4` | `Wire SCL` |
+| `D6` | `P2.08` | N/A | `Serial1/2 TX` |
+| `D7` | `P2.07` | N/A | `Serial1/2 RX` |
+| `D8` | `P2.01` | N/A | `SPI SCK` |
+| `D9` | `P2.04` | N/A | `SPI MISO` |
+| `D10` | `P2.02` | N/A | `SPI MOSI` |
+| `D11` | `P0.03` | N/A | Back pad / `Wire1 SCL` |
+| `D12` | `P0.04` | N/A | Back pad / `Wire1 SDA` |
+| `D13` | `P2.10` | N/A | Back pad GPIO |
+| `D14` | `P2.09` | N/A | Back pad GPIO |
+| `D15` | `P2.06` | N/A | Back pad GPIO |
+| `LED_BUILTIN` (`16`) | `P2.00` | N/A | User LED (active-low) |
+| `PIN_BUTTON` (`17`) | `P0.00` | N/A | User button (active-low) |
+| `PIN_SAMD11_RX` (`18`) | `P1.08` | N/A | USB bridge route |
+| `PIN_SAMD11_TX` (`19`) | `P1.09` | N/A | USB bridge route |
+
+Additional board-control nets exposed in HAL:
+
+| Function | MCU pin | Symbol |
+|---|---|---|
+| VBAT divider enable | `P1.15` | `kPinVbatEnable` |
+| VBAT ADC sense | `P1.14` | `kPinVbatSense` / `A7` |
+| RF switch control | `P2.05` | `kPinRfSwitchCtl` |
+
+## MCU pin map (MCU -> Arduino)
+
+| MCU pin | Arduino alias |
+|---|---|
+| `P0.00` | `PIN_BUTTON` |
+| `P0.03` | `D11` |
+| `P0.04` | `D12` |
+| `P1.04` | `D0/A0` |
+| `P1.05` | `D1/A1` |
+| `P1.06` | `D2/A2` |
+| `P1.07` | `D3/A3` |
+| `P1.08` | `PIN_SAMD11_RX` |
+| `P1.09` | `PIN_SAMD11_TX` |
+| `P1.10` | `D4/A4` |
+| `P1.11` | `D5/A5` |
+| `P1.14` | `A7` / VBAT sense |
+| `P1.15` | VBAT enable |
+| `P2.00` | `LED_BUILTIN` |
+| `P2.01` | `D8` |
+| `P2.02` | `D10` |
+| `P2.04` | `D9` |
+| `P2.05` | RF switch control |
+| `P2.06` | `D15` |
+| `P2.07` | `D7` |
+| `P2.08` | `D6` |
+| `P2.09` | `D14` |
+| `P2.10` | `D13` |
+
+## Implemented Arduino core APIs
+
+- GPIO: `pinMode`, `digitalRead`, `digitalWrite`, `attachInterrupt`, `detachInterrupt`
+- ADC/PWM: `analogRead`, `analogReadResolution(bits)`, `analogWrite`, `analogWriteResolution`
+- UART: `Serial`, `Serial1`, `Serial2`
+- I2C: `Wire` + `Wire1`, repeated-start, target/slave callbacks
+- SPI: transactions + runtime frequency/mode/order
+- Timing/power: `millis`, `micros`, delays, optional low-power idle profile
+
+## HAL blocks in bundled library
+
+Library path:
+
+- `hardware/nrf54l15clean/0.1.0/libraries/Nrf54L15-Clean-Implementation`
+
+Implemented blocks:
+
+- `ClockControl`, `Gpio`, `Spim`, `Twim`, `Uarte`
+- `Saadc`, `Timer`, `Pwm`, `Gpiote`
+- `PowerManager`, `Grtc`, `TempSensor`, `Watchdog`, `Pdm`
+- `BleRadio` (custom peripheral LL + ATT/GATT subset)
+- `BoardControl` (battery sense + antenna route control)
+
+## Board control helpers (battery + RF switch)
+
+```cpp
+#include "nrf54l15_hal.h"
+using namespace xiao_nrf54l15;
+
+int32_t vbatMv = 0;
+uint8_t vbatPct = 0;
+BoardControl::sampleBatteryMilliVolts(&vbatMv);
+BoardControl::sampleBatteryPercent(&vbatPct);
+
+BoardControl::setAntennaPath(BoardAntennaPath::kCeramic);
+BoardControl::setAntennaPath(BoardAntennaPath::kExternal);
+BoardControl::setAntennaPath(BoardAntennaPath::kControlHighImpedance);
+```
+
+Important RF note:
+
+- `kControlHighImpedance` releases `P2.05` drive; it does **not** power-gate the RF switch IC.
+
+## Tools menu options
+
+- Upload method: Auto / pyOCD / OpenOCD
+- CPU frequency: 64 MHz / 128 MHz
+- BLE support: On / Off
+- BLE TX power: `-20`, `-8`, `0`, `+8` dBm
+- BLE timing profile: Interop / Balanced low-power / Aggressive low-power
+- BLE trace: Off / On
+- Power profile: Balanced / Low power (WFI idle)
+- Peripheral auto-gating: Off / 2 ms / 200 us
+- Antenna route: Ceramic / External U.FL
+- Serial routing: USB bridge / Header UART
+
+## Example sketches
+
+Core examples:
+
+- `hardware/nrf54l15clean/0.1.0/examples/01.Basics/AnalogReadSerial/AnalogReadSerial.ino`
+- `hardware/nrf54l15clean/0.1.0/examples/03.Peripherals/PeripheralProbe/PeripheralProbe.ino`
+- `hardware/nrf54l15clean/0.1.0/examples/03.Peripherals/InterruptPwmApiProbe/InterruptPwmApiProbe.ino`
+- `hardware/nrf54l15clean/0.1.0/examples/03.Peripherals/WireRepeatedStartProbe/WireRepeatedStartProbe.ino`
+- `hardware/nrf54l15clean/0.1.0/examples/03.Peripherals/WireTargetResponder/WireTargetResponder.ino`
+
+Library examples (HAL + BLE + power):
+
+- `.../examples/BoardBatteryAntennaBusControl/BoardBatteryAntennaBusControl.ino`
+- `.../examples/InterruptWatchdogLowPower/InterruptWatchdogLowPower.ino`
+- `.../examples/BleAdvertiser/BleAdvertiser.ino`
+- `.../examples/BlePassiveScanner/BlePassiveScanner.ino`
+- `.../examples/BleConnectionPeripheral/BleConnectionPeripheral.ino`
+- `.../examples/BleGattBasicPeripheral/BleGattBasicPeripheral.ino`
+- `.../examples/BleBatteryNotifyPeripheral/BleBatteryNotifyPeripheral.ino`
+- `.../examples/BlePairingEncryptionStatus/BlePairingEncryptionStatus.ino`
+- `.../examples/BleBondPersistenceProbe/BleBondPersistenceProbe.ino`
+- `.../examples/BleConnectionTimingMetrics/BleConnectionTimingMetrics.ino`
+
+## BLE status (current)
+
+Validated and stable with host adapter + hardware:
+
+- Advertising
+- Passive scanning
+- Connect/disconnect
+- GATT discovery/read
+- Battery notify CCCD flow
+
+Current gap (tracked):
+
+- Pairing/bond persistence is still **partial**. `bluetoothctl pair` currently does not complete to `Paired: yes`/`Bonded: yes` in repeatable CLI tests.
+
+Channel sounding status:
+
+- BLE channel sounding / AoA/AoD style feature parity is **not implemented yet** in this clean core.
+- It is tracked as advanced future work due significant PHY + timing + controller complexity.
+
+## Validation artifacts
+
+- `FEATURE_PARITY.md`
+- `TODO.md`
+- `POWER_PROFILE_MEASUREMENTS.md`
+- `measurements/ble_cli_matrix_latest3/report.md`
+- `scripts/ble_cli_matrix.sh`
+
+## Local development workflow
+
+Use one of:
+
+- `~/Arduino/hardware/...` sketchbook override (active development)
+- `~/.arduino15/packages/...` package-layout override
+
+Example compile:
 
 ```bash
-pip install pyocd
+arduino-cli compile --fqbn nrf54l15clean:nrf54l15clean:xiao_nrf54l15 \
+  hardware/nrf54l15clean/0.1.0/examples/03.Peripherals/InterruptPwmApiProbe/InterruptPwmApiProbe.ino
+```
+
+Example BLE matrix run:
+
+```bash
+bash scripts/ble_cli_matrix.sh --port /dev/ttyACM0 --sudo
 ```

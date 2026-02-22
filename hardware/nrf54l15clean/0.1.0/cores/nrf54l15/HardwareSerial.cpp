@@ -66,8 +66,8 @@ static bool decode_pin(uint8_t pin, uint8_t* port, uint8_t* p) {
         case PIN_D15: *port = 2; *p = 6; return true;
         case PIN_LED_BUILTIN: *port = 2; *p = 0; return true;
         case PIN_BUTTON: *port = 0; *p = 0; return true;
-        case PIN_SAMD11_TX: *port = 1; *p = 8; return true;
-        case PIN_SAMD11_RX: *port = 1; *p = 9; return true;
+        case PIN_SAMD11_TX: *port = 1; *p = 9; return true;
+        case PIN_SAMD11_RX: *port = 1; *p = 8; return true;
         default: return false;
     }
 }
@@ -320,3 +320,6 @@ HardwareSerial Serial1(NRF_UARTE20, PIN_SAMD11_TX, PIN_SAMD11_RX);
 HardwareSerial Serial(NRF_UARTE20, PIN_SAMD11_TX, PIN_SAMD11_RX);
 HardwareSerial Serial1(NRF_UARTE21, PIN_SERIAL1_TX, PIN_SERIAL1_RX);
 #endif
+
+// Compatibility alias for sketches/libraries that expect Serial2.
+HardwareSerial& Serial2 = Serial1;

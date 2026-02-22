@@ -20,9 +20,11 @@ void setup() {
   Gpio::configure(kPinUserLed, GpioDirection::kOutput, GpioPull::kDisabled);
   Gpio::write(kPinUserLed, true);
 
+  static const uint8_t kAddress[6] = {0x31, 0x00, 0x15, 0x54, 0xDE, 0xC0};
   bool ok = g_ble.begin(-8);
   if (ok) {
-    ok = g_ble.setAdvertisingPduType(BleAdvPduType::kAdvInd) &&
+    ok = g_ble.setDeviceAddress(kAddress, BleAddressType::kRandomStatic) &&
+         g_ble.setAdvertisingPduType(BleAdvPduType::kAdvInd) &&
          g_ble.setAdvertisingName("X54-GATT", true) &&
          g_ble.setScanResponseName("X54-GATT-SCAN") &&
          g_ble.setGattDeviceName("XIAO nRF54L15 Clean") &&
@@ -47,7 +49,7 @@ void loop() {
     BleAdvInteraction adv{};
     g_ble.advertiseInteractEvent(&adv, 350U, 350000UL, 700000UL);
     Gpio::write(kPinUserLed, true);
-    __asm volatile("wfi");
+    delay(1);
     return;
   }
 
@@ -97,5 +99,5 @@ void loop() {
   }
 
   Gpio::write(kPinUserLed, true);
-  __asm volatile("wfi");
+  delay(1);
 }

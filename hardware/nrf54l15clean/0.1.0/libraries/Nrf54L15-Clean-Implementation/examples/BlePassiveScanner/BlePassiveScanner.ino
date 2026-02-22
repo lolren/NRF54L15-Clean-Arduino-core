@@ -7,7 +7,12 @@
 using namespace xiao_nrf54l15;
 
 static BleRadio g_ble;
+static bool g_bleReady = false;
 static uint32_t g_seenPackets = 0;
+static uint32_t g_missWindows = 0;
+static uint32_t g_lastStatusMs = 0;
+
+static constexpr uint32_t kScanSpinPerChannel = 2000000UL;
 
 static const char* pduTypeName(uint8_t type) {
   switch (type & 0x0FU) {
@@ -56,17 +61,44 @@ void setup() {
   Gpio::write(kPinUserLed, true);
 
   const bool ok = g_ble.begin(-8);
+  g_bleReady = ok;
   Serial.print("BLE init: ");
   Serial.print(ok ? "OK" : "FAIL");
   Serial.print("\r\n");
+  if (!ok) {
+    Serial.print("Hint: enable Tools -> BLE Support = Enabled\r\n");
+  }
 }
 
 void loop() {
+  if (!g_bleReady) {
+    const uint32_t now = millis();
+    if ((now - g_lastStatusMs) >= 2000UL) {
+      g_lastStatusMs = now;
+      Serial.print("BLE init not ready; scanner idle\r\n");
+    }
+    delay(50);
+    return;
+  }
+
   BleScanPacket pkt{};
-  const bool got = g_ble.scanCycle(&pkt, 250000UL);
+  const bool got = g_ble.scanCycle(&pkt, kScanSpinPerChannel);
 
   if (!got) {
-    __asm volatile("wfi");
+    ++g_missWindows;
+    const uint32_t now = millis();
+    if ((now - g_lastStatusMs) >= 1000UL) {
+      g_lastStatusMs = now;
+      Serial.print("scanning... hits=");
+      Serial.print(g_seenPackets);
+      Serial.print(" misses=");
+      Serial.print(g_missWindows);
+      Serial.print(" spin=");
+      Serial.print(kScanSpinPerChannel);
+      Serial.print("\r\n");
+    }
+    // Keep scanning actively; WFI can stall indefinitely if no wake IRQ is armed.
+    delay(1);
     return;
   }
 
