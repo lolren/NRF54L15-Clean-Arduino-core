@@ -4101,16 +4101,29 @@ bool BleRadio::buildLlControlResponse(const uint8_t* payload, uint8_t length,
 
   const uint8_t opcode = payload[0];
   *outLength = 0U;
+  auto rejectMalformedRequest = [&]() -> bool {
+    outPayload[0] = kBleLlCtrlRejectExtInd;
+    outPayload[1] = opcode;
+    outPayload[2] = kBleLlErrorUnsupportedLlParamValue;
+    *outLength = 3U;
+    return true;
+  };
 
   switch (opcode) {
     case kBleLlCtrlTerminateInd:
+      if (length != 2U) {
+        return rejectMalformedRequest();
+      }
       if (terminateInd != nullptr) {
         *terminateInd = true;
       }
       return false;
 
     case kBleLlCtrlConnectionUpdateInd:
-      if (length >= 12U) {
+      if (length != 12U) {
+        return rejectMalformedRequest();
+      }
+      {
         const uint16_t interval = readLe16(&payload[4]);
         const uint16_t latency = readLe16(&payload[6]);
         const uint16_t timeout = readLe16(&payload[8]);
@@ -4145,12 +4158,17 @@ bool BleRadio::buildLlControlResponse(const uint8_t* payload, uint8_t length,
           connectionPendingTimeoutUnits_ = timeout;
           connectionUpdateInstant_ = instant;
           connectionUpdatePending_ = true;
+        } else {
+          return rejectMalformedRequest();
         }
       }
       return false;
 
     case kBleLlCtrlChannelMapInd:
-      if (length >= 8U) {
+      if (length != 8U) {
+        return rejectMalformedRequest();
+      }
+      {
         uint8_t map[5] = {payload[1], payload[2], payload[3], payload[4], payload[5]};
         const uint16_t instant = readLe16(&payload[6]);
         map[4] &= 0x1FU;
@@ -4163,13 +4181,27 @@ bool BleRadio::buildLlControlResponse(const uint8_t* payload, uint8_t length,
           connectionPendingChannelCount_ = count;
           connectionChannelMapInstant_ = instant;
           connectionChannelMapPending_ = true;
+        } else {
+          return rejectMalformedRequest();
         }
       }
       return false;
 
     case kBleLlCtrlEncReq:
+      if (length != 23U) {
+        return rejectMalformedRequest();
+      }
+      outPayload[0] = kBleLlCtrlRejectExtInd;
+      outPayload[1] = opcode;
+      outPayload[2] = kBleLlErrorUnsupportedRemoteFeature;
+      *outLength = 3U;
+      return true;
+
     case kBleLlCtrlStartEncReq:
     case kBleLlCtrlPauseEncReq:
+      if (length != 1U) {
+        return rejectMalformedRequest();
+      }
       outPayload[0] = kBleLlCtrlRejectExtInd;
       outPayload[1] = opcode;
       outPayload[2] = kBleLlErrorUnsupportedRemoteFeature;
@@ -4177,7 +4209,10 @@ bool BleRadio::buildLlControlResponse(const uint8_t* payload, uint8_t length,
       return true;
 
     case kBleLlCtrlConnectionParamReq:
-      if (length >= 24U) {
+      if (length != 24U) {
+        return rejectMalformedRequest();
+      }
+      {
         const uint16_t intervalMin = readLe16(&payload[1]);
         const uint16_t intervalMax = readLe16(&payload[3]);
         const uint16_t latency = readLe16(&payload[5]);
@@ -4187,7 +4222,7 @@ bool BleRadio::buildLlControlResponse(const uint8_t* payload, uint8_t length,
         if (intervalMin < 6U || intervalMax > 3200U || intervalMin > intervalMax) {
           valid = false;
         }
-        if (timeout < 10U || latency > 499U) {
+        if (timeout < 10U || timeout > 3200U || latency > 499U) {
           valid = false;
         }
         // Supervision timeout constraint per Core spec:
@@ -4217,12 +4252,18 @@ bool BleRadio::buildLlControlResponse(const uint8_t* payload, uint8_t length,
 
     case kBleLlCtrlFeatureReq:
     case kBleLlCtrlSlaveFeatureReq:
+      if (length != 9U) {
+        return rejectMalformedRequest();
+      }
       outPayload[0] = kBleLlCtrlFeatureRsp;
       memset(&outPayload[1], 0, 8U);
       *outLength = 9U;
       return true;
 
     case kBleLlCtrlVersionInd:
+      if (length != 6U) {
+        return rejectMalformedRequest();
+      }
       outPayload[0] = kBleLlCtrlVersionInd;
       outPayload[1] = 0x0DU;  // Core spec version 5.4.
       writeLe16(&outPayload[2], 0x0059U);  // Nordic Semiconductor company ID.
@@ -4231,6 +4272,9 @@ bool BleRadio::buildLlControlResponse(const uint8_t* payload, uint8_t length,
       return true;
 
     case kBleLlCtrlLengthReq:
+      if (length != 9U) {
+        return rejectMalformedRequest();
+      }
       outPayload[0] = kBleLlCtrlLengthRsp;
       writeLe16(&outPayload[1], kBleDataPduMaxPayload);
       writeLe16(&outPayload[3], 328U);
@@ -4240,6 +4284,9 @@ bool BleRadio::buildLlControlResponse(const uint8_t* payload, uint8_t length,
       return true;
 
     case kBleLlCtrlPhyReq:
+      if (length != 3U) {
+        return rejectMalformedRequest();
+      }
       outPayload[0] = kBleLlCtrlPhyRsp;
       outPayload[1] = 0x01U;  // LE 1M TX.
       outPayload[2] = 0x01U;  // LE 1M RX.
@@ -4247,22 +4294,89 @@ bool BleRadio::buildLlControlResponse(const uint8_t* payload, uint8_t length,
       return true;
 
     case kBleLlCtrlPingReq:
+      if (length != 1U) {
+        return rejectMalformedRequest();
+      }
       outPayload[0] = kBleLlCtrlPingRsp;
       *outLength = 1U;
       return true;
 
     case kBleLlCtrlConnectionParamRsp:
+      if (length != 24U) {
+        return false;
+      }
+      return false;
+
     case kBleLlCtrlEncRsp:
+      if (length != 13U) {
+        return false;
+      }
+      return false;
+
     case kBleLlCtrlStartEncRsp:
+      if (length != 1U) {
+        return false;
+      }
+      return false;
+
     case kBleLlCtrlPauseEncRsp:
+      if (length != 1U) {
+        return false;
+      }
+      return false;
+
+    case kBleLlCtrlPingRsp:
+      if (length != 1U) {
+        return false;
+      }
+      return false;
+
     case kBleLlCtrlRejectInd:
+      if (length != 2U) {
+        return false;
+      }
+      return false;
+
     case kBleLlCtrlRejectExtInd:
+      if (length != 3U) {
+        return false;
+      }
+      return false;
+
     case kBleLlCtrlPhyUpdateInd:
+      if (length != 5U) {
+        return false;
+      }
+      return false;
+
     case kBleLlCtrlMinUsedChannelsInd:
+      if (length != 3U) {
+        return false;
+      }
+      return false;
+
     case kBleLlCtrlUnknownRsp:
+      if (length != 2U) {
+        return false;
+      }
+      return false;
+
     case kBleLlCtrlFeatureRsp:
+      if (length != 9U) {
+        return false;
+      }
+      return false;
+
     case kBleLlCtrlLengthRsp:
+      if (length != 9U) {
+        return false;
+      }
+      return false;
+
     case kBleLlCtrlPhyRsp:
+      if (length != 3U) {
+        return false;
+      }
       return false;
 
     default:

@@ -17,6 +17,7 @@ Open-source Arduino core package for **Seeed XIAO nRF54L15** using a clean regis
   - `Wire` target/slave mode via `begin(address)`, `onReceive()`, and `onRequest()` on TWIS IRQ path
 - Extended BLE peripheral interoperability:
   - broader LL control opcode handling
+  - strict LL control opcode-length validation and malformed-request reject path
   - LL connection update/channel-map instant validation and safer retransmission gating
   - GATT Service Changed characteristic + CCCD + indication/confirmation flow
   - GATT Battery Level CCCD + notification flow

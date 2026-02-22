@@ -13,7 +13,7 @@ Last updated: 2026-02-22
 ## Priority 1 (BLE parity next)
 
 - [ ] LL control procedure hardening:
-  - [ ] Add stricter opcode-specific length validation and explicit malformed-PDU paths.
+  - [x] Add stricter opcode-specific length validation and explicit malformed-PDU paths.
   - [ ] Expand unknown/reject handling consistency for remote corner-cases.
 - [ ] ATT server parity:
   - [ ] Add `Read By Type` behavior edge-cases for mixed-length records and boundary handles.

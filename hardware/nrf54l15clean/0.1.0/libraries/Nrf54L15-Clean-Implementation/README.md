@@ -129,6 +129,7 @@ Examples:
   - Scannable/connectable advertising interaction handling (`SCAN_REQ`, `SCAN_RSP`, `CONNECT_IND` detect)
   - Legacy connection bring-up and data-channel event polling
   - LL control response subset (`FEATURE_REQ`, `VERSION_IND`, `LENGTH_REQ`, `PHY_REQ`, `PING_REQ`, unknown-op fallback)
+  - LL control strict opcode-length validation with malformed-request reject path
   - LL connection update/channel-map instant validation and safer retransmission gating
   - Minimal ATT/GATT responder on fixed L2CAP ATT channel (`0x0004`) for:
     - MTU exchange
