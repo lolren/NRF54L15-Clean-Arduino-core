@@ -138,6 +138,7 @@ Examples:
     - Characteristic discovery
     - Basic read/read-blob on GAP + Battery attributes
     - Read By Group Type edge-case handling (`Unsupported Group Type` vs `Invalid PDU`)
+    - Discovery boundary-handle validation (`start=0`/invalid ranges -> `Invalid Handle`)
     - Service Changed CCCD writes + Handle Value indication confirmation handling
     - Battery Level CCCD writes + Handle Value notification emission
   - L2CAP LE signaling (`CID 0x0005`) fallback handling:

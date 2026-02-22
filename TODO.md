@@ -16,7 +16,7 @@ Last updated: 2026-02-22
   - [x] Add stricter opcode-specific length validation and explicit malformed-PDU paths.
   - [ ] Expand unknown/reject handling consistency for remote corner-cases.
 - [ ] ATT server parity:
-  - [ ] Add `Read By Type` behavior edge-cases for mixed-length records and boundary handles.
+  - [x] Add `Read By Type` behavior edge-cases for mixed-length records and boundary handles.
   - [ ] Add optional `Write Long` path (`Prepare Write`/`Execute Write`) for selected attributes.
 - [ ] L2CAP signaling:
   - [ ] Implement additional LE signaling commands (still peripheral-safe subset first).

@@ -572,13 +572,6 @@ bool bleAddressEqual(const uint8_t* a, const uint8_t* b) {
   return memcmp(a, b, 6U) == 0;
 }
 
-uint16_t clampBleRangeStart(uint16_t start) {
-  if (start == 0U) {
-    return 1U;
-  }
-  return start;
-}
-
 uint8_t minU8(uint8_t a, uint8_t b) { return (a < b) ? a : b; }
 
 uint16_t minU16(uint16_t a, uint16_t b) { return (a < b) ? a : b; }
@@ -3445,12 +3438,13 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
                                      outAttResponseLength);
       }
 
-      const uint16_t start = clampBleRangeStart(readLe16(&attRequest[1]));
+      const uint16_t rawStart = readLe16(&attRequest[1]);
       const uint16_t end = readLe16(&attRequest[3]);
-      if (start > end) {
-        return buildAttErrorResponse(opcode, start, kAttErrInvalidHandle, outAttResponse,
+      if (rawStart == 0U || rawStart > end) {
+        return buildAttErrorResponse(opcode, rawStart, kAttErrInvalidHandle, outAttResponse,
                                      outAttResponseLength);
       }
+      const uint16_t start = rawStart;
 
       outAttResponse[0] = kAttOpFindInfoRsp;
       outAttResponse[1] = 0x01U;  // 16-bit UUID format.
@@ -3596,13 +3590,14 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
                                      outAttResponseLength);
       }
 
-      const uint16_t start = clampBleRangeStart(readLe16(&attRequest[1]));
+      const uint16_t rawStart = readLe16(&attRequest[1]);
       const uint16_t end = readLe16(&attRequest[3]);
       const uint16_t type = readLe16(&attRequest[5]);
-      if (start > end) {
-        return buildAttErrorResponse(opcode, start, kAttErrInvalidHandle, outAttResponse,
+      if (rawStart == 0U || rawStart > end) {
+        return buildAttErrorResponse(opcode, rawStart, kAttErrInvalidHandle, outAttResponse,
                                      outAttResponseLength);
       }
+      const uint16_t start = rawStart;
 
       outAttResponse[0] = kAttOpReadByTypeRsp;
       uint16_t used = 2U;

@@ -96,7 +96,7 @@ Legend:
 | LL instant validation | Partial | Connection update + channel map instant checks implemented. |
 | Retransmission gating safety | Partial | New payload consume now gated by TX ACK state. |
 | ATT MTU exchange | Done | Basic negotiation path. |
-| ATT discovery/read family | Partial | Includes Find Info, Read By Type, Read By Group Type, Read, Read Blob, Read Multiple, Find By Type Value. |
+| ATT discovery/read family | Partial | Includes Find Info, Read By Type, Read By Group Type, Read, Read Blob, Read Multiple, Find By Type Value, with stricter boundary-handle validation. |
 | GATT services (GAP/GATT/BAS) | Partial | Minimal static database. |
 | Service Changed indication flow | Done | CCCD write + indication + confirmation handling. |
 | Battery Level notify flow | Done | CCCD write + notification TX when value changes. |
