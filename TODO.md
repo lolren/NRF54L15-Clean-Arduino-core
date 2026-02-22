@@ -53,8 +53,8 @@ Last updated: 2026-02-22
 
 - [x] Add structured low-power telemetry example (active/sleep duty metrics).
 - [x] Add configurable peripheral auto-gating policy for idle windows.
-- [ ] Tune BLE connection event timing to reduce active radio-on windows.
-- [ ] Document measured current profiles per example and Tools menu profile.
+- [x] Tune BLE connection event timing to reduce active radio-on windows.
+- [x] Document measured current profiles per example and Tools menu profile.
 
 ## Priority 5 (developer experience)
 

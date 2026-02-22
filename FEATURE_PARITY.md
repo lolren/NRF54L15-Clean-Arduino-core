@@ -82,6 +82,7 @@ Legend:
 | Peripheral duty-cycling patterns | Done | Examples for ADC/SPI/I2C gating. |
 | Configurable peripheral auto-gating policy | Done | Tools menu policy auto-disables idle `SPI`/`Wire` and re-enables on demand. |
 | Low-power duty telemetry | Done | Rolling active-vs-sleep duty metrics example included for tuning. |
+| Measured current profiling workflow | Done | `POWER_PROFILE_MEASUREMENTS.md` defines repeatable capture matrix and procedure. |
 | System OFF wake (button) | Done | Example uses GPIO detect + reset reason. |
 | System OFF wake (timer/GRTC) | Done | Example uses compare wake path. |
 
@@ -97,6 +98,7 @@ Legend:
 | LL malformed control PDU handling | Partial | Strict opcode-length validation for handled procedures, reject responses for malformed requests, and consistent unsupported-feature rejects for selected unsupported requests. |
 | LL instant validation | Partial | Connection update + channel map instant checks implemented. |
 | Retransmission gating safety | Partial | New payload consume now gated by TX ACK state. |
+| Connection event timing optimization | Done | Budgeted RX/TX/disable timing windows + BLE timing profile tool options. |
 | ATT MTU exchange | Done | Basic negotiation path. |
 | ATT discovery/read family | Partial | Includes Find Info, Read By Type, Read By Group Type, Read, Read Blob, Read Multiple, Find By Type Value, with stricter boundary-handle validation. |
 | ATT queued writes (selected attrs) | Partial | Prepare/Execute Write implemented for selected writable CCCD attributes. |
@@ -126,7 +128,7 @@ Validated in Arduino CLI with the clean core package (`nrf54l15clean:nrf54l15cle
 
 - BLE examples compile and upload (`pyOCD`) to connected XIAO nRF54L15.
 - Low-power/non-BLE examples compile across BLE-on/BLE-off build options.
-- Tools menu options for CPU, power, peripheral auto-gating, BLE, BLE trace, antenna, serial routing, and uploader are active.
+- Tools menu options for CPU, power, peripheral auto-gating, BLE, BLE timing profile, BLE trace, antenna, serial routing, and uploader are active.
 
 ## 6. Practical Parity Summary
 

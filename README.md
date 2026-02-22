@@ -32,6 +32,7 @@ Open-source Arduino core package for **Seeed XIAO nRF54L15** using a clean regis
   - Upload method (`Auto`, `pyOCD`, `OpenOCD`)
   - CPU frequency (`64 MHz`, `128 MHz`)
   - BLE support (`Enabled`, `Disabled`)
+  - BLE timing profile (`Interoperability`, `Balanced Low-Power`, `Aggressive Low-Power`)
   - Power profile (`Balanced`, `Low Power/WFI idle`)
   - Peripheral auto-gating (`Disabled`, `Balanced 2 ms`, `Aggressive 200 us`)
   - Antenna (`Ceramic`, `External U.FL`)
@@ -41,6 +42,8 @@ Open-source Arduino core package for **Seeed XIAO nRF54L15** using a clean regis
 
 - `FEATURE_PARITY.md` : current parity status, implemented scope, and known gaps.
 - `TODO.md` : prioritized backlog for parity, security, power, and DX work.
+- `POWER_PROFILE_MEASUREMENTS.md` : repeatable current-measurement workflow and profile matrix.
+- `measurements/power_profiles_template.csv` : ready-to-fill capture sheet.
 
 ## Automation
 

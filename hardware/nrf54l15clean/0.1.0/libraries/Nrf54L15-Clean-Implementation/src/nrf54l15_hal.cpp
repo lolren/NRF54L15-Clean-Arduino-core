@@ -310,6 +310,44 @@ constexpr uint16_t kL2capConnParamResultRejected = 0x0001U;
 constexpr uint16_t kL2capLeCreditConnResultPsmNotSupported = 0x0002U;
 constexpr uint16_t kBleL2capLeSignalingMtu = 23U;
 
+constexpr uint32_t kBleConnSlaveScaPpm = 50UL;
+constexpr uint8_t kBleConnMicrosPollDivider = 32U;
+
+#if defined(NRF54L15_CLEAN_BLE_TIMING_AGGRESSIVE) && (NRF54L15_CLEAN_BLE_TIMING_AGGRESSIVE == 1)
+constexpr uint32_t kBleConnAnchorPrewaitUs = 120U;
+constexpr uint32_t kBleConnRxListenBaseUs = 420U;
+constexpr uint32_t kBleConnRxListenMaxUs = 2200U;
+constexpr uint32_t kBleConnDisableWaitUs = 450U;
+constexpr uint32_t kBleConnTxDisableWaitUs = 450U;
+constexpr uint32_t kBleConnFirstEventFallbackUs = 1000U;
+constexpr uint16_t kBlePreferredConnIntervalMinUnits = 80U;
+constexpr uint16_t kBlePreferredConnIntervalMaxUnits = 160U;
+constexpr uint16_t kBlePreferredConnLatency = 4U;
+constexpr uint16_t kBlePreferredConnTimeoutUnits = 600U;
+#elif defined(NRF54L15_CLEAN_BLE_TIMING_BALANCED) && (NRF54L15_CLEAN_BLE_TIMING_BALANCED == 1)
+constexpr uint32_t kBleConnAnchorPrewaitUs = 220U;
+constexpr uint32_t kBleConnRxListenBaseUs = 560U;
+constexpr uint32_t kBleConnRxListenMaxUs = 3000U;
+constexpr uint32_t kBleConnDisableWaitUs = 550U;
+constexpr uint32_t kBleConnTxDisableWaitUs = 550U;
+constexpr uint32_t kBleConnFirstEventFallbackUs = 1200U;
+constexpr uint16_t kBlePreferredConnIntervalMinUnits = 40U;
+constexpr uint16_t kBlePreferredConnIntervalMaxUnits = 80U;
+constexpr uint16_t kBlePreferredConnLatency = 0U;
+constexpr uint16_t kBlePreferredConnTimeoutUnits = 500U;
+#else
+constexpr uint32_t kBleConnAnchorPrewaitUs = 360U;
+constexpr uint32_t kBleConnRxListenBaseUs = 900U;
+constexpr uint32_t kBleConnRxListenMaxUs = 4500U;
+constexpr uint32_t kBleConnDisableWaitUs = 750U;
+constexpr uint32_t kBleConnTxDisableWaitUs = 750U;
+constexpr uint32_t kBleConnFirstEventFallbackUs = 1500U;
+constexpr uint16_t kBlePreferredConnIntervalMinUnits = 24U;
+constexpr uint16_t kBlePreferredConnIntervalMaxUnits = 40U;
+constexpr uint16_t kBlePreferredConnLatency = 0U;
+constexpr uint16_t kBlePreferredConnTimeoutUnits = 500U;
+#endif
+
 constexpr uint8_t kSmpCodePairingRequest = 0x01U;
 constexpr uint8_t kSmpCodePairingResponse = 0x02U;
 constexpr uint8_t kSmpCodePairingConfirm = 0x03U;
@@ -1075,6 +1113,104 @@ uint8_t remapChannelByIndex(const uint8_t map[5], uint8_t usedIndex) {
 
 bool timeReachedUs(uint32_t now, uint32_t target) {
   return static_cast<int32_t>(now - target) >= 0;
+}
+
+uint32_t bleMasterScaPpmUpperBound(uint8_t scaCode) {
+  switch (scaCode & 0x07U) {
+    case 0U:
+      return 500UL;
+    case 1U:
+      return 250UL;
+    case 2U:
+      return 150UL;
+    case 3U:
+      return 100UL;
+    case 4U:
+      return 75UL;
+    case 5U:
+      return 50UL;
+    case 6U:
+      return 30UL;
+    case 7U:
+    default:
+      return 20UL;
+  }
+}
+
+uint32_t bleConnectionWindowWideningUs(uint16_t intervalUnits, uint8_t masterScaCode) {
+  if (intervalUnits == 0U) {
+    return 0U;
+  }
+
+  const uint32_t intervalUs = static_cast<uint32_t>(intervalUnits) * 1250UL;
+  const uint32_t totalPpm =
+      bleMasterScaPpmUpperBound(masterScaCode) + kBleConnSlaveScaPpm;
+  return (intervalUs * totalPpm + 999999UL) / 1000000UL;
+}
+
+uint32_t bleConnectionRxListenUs(uint16_t intervalUnits, uint8_t masterScaCode) {
+  const uint32_t wideningUs = bleConnectionWindowWideningUs(intervalUnits, masterScaCode);
+  const uint32_t budgetUs = kBleConnRxListenBaseUs + wideningUs;
+  return (budgetUs < kBleConnRxListenMaxUs) ? budgetUs : kBleConnRxListenMaxUs;
+}
+
+bool waitRadioEndBudgeted(NRF_RADIO_Type* radio, uint32_t budgetUs, uint32_t spinLimit) {
+  if (radio == nullptr || spinLimit == 0U) {
+    return false;
+  }
+
+  const uint32_t startUs = micros();
+  uint8_t divider = kBleConnMicrosPollDivider;
+  while (spinLimit-- > 0U) {
+    if (radio->EVENTS_PHYEND != 0U || radio->EVENTS_END != 0U) {
+      return true;
+    }
+
+    if (--divider == 0U) {
+      divider = kBleConnMicrosPollDivider;
+      if ((budgetUs > 0U) &&
+          (static_cast<uint32_t>(micros() - startUs) >= budgetUs)) {
+        break;
+      }
+    }
+  }
+
+  return (radio->EVENTS_PHYEND != 0U || radio->EVENTS_END != 0U);
+}
+
+bool waitRadioDisabledBudgeted(NRF_RADIO_Type* radio, uint32_t budgetUs, uint32_t spinLimit) {
+  if (radio == nullptr || spinLimit == 0U) {
+    return false;
+  }
+
+  const uint32_t startUs = micros();
+  uint8_t divider = kBleConnMicrosPollDivider;
+  while (spinLimit-- > 0U) {
+    if (radio->EVENTS_DISABLED != 0U) {
+      return true;
+    }
+
+    const uint32_t state =
+        (radio->STATE & RADIO_STATE_STATE_Msk) >> RADIO_STATE_STATE_Pos;
+    if (state == RADIO_STATE_STATE_Disabled) {
+      return true;
+    }
+
+    if (--divider == 0U) {
+      divider = kBleConnMicrosPollDivider;
+      if ((budgetUs > 0U) &&
+          (static_cast<uint32_t>(micros() - startUs) >= budgetUs)) {
+        break;
+      }
+    }
+  }
+
+  if (radio->EVENTS_DISABLED != 0U) {
+    return true;
+  }
+  const uint32_t state =
+      (radio->STATE & RADIO_STATE_STATE_Msk) >> RADIO_STATE_STATE_Pos;
+  return (state == RADIO_STATE_STATE_Disabled);
 }
 
 bool llEventInstantReached(uint16_t currentEventCounter, uint16_t instant) {
@@ -2817,10 +2953,10 @@ BleRadio::BleRadio(uint32_t radioBase, uint32_t ficrBase)
       gapDeviceName_{0},
       gapDeviceNameLen_(0),
       gapAppearance_(0),
-      gapPpcpIntervalMin_(24U),
-      gapPpcpIntervalMax_(40U),
-      gapPpcpLatency_(0U),
-      gapPpcpTimeout_(500U),
+      gapPpcpIntervalMin_(kBlePreferredConnIntervalMinUnits),
+      gapPpcpIntervalMax_(kBlePreferredConnIntervalMaxUnits),
+      gapPpcpLatency_(kBlePreferredConnLatency),
+      gapPpcpTimeout_(kBlePreferredConnTimeoutUnits),
       gapBatteryLevel_(100U) {}
 
 bool BleRadio::begin(int8_t txPowerDbm) {
@@ -3394,9 +3530,17 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit
     return false;
   }
 
-  const uint32_t nowUs = micros();
+  uint32_t nowUs = micros();
   if (!timeReachedUs(nowUs, connectionNextEventUs_)) {
-    return false;
+    const uint32_t deltaUs = static_cast<uint32_t>(connectionNextEventUs_ - nowUs);
+    if (deltaUs > kBleConnAnchorPrewaitUs) {
+      return false;
+    }
+    // Short, bounded pre-wait near anchor reduces event jitter and avoids
+    // repeatedly spinning the full event path when the anchor is imminent.
+    while (!timeReachedUs(nowUs, connectionNextEventUs_)) {
+      nowUs = micros();
+    }
   }
 
   updateNextConnectionEventTime();
@@ -3446,19 +3590,24 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit
        RADIO_SHORTS_PHYEND_DISABLE_Msk);
   radio_->TASKS_RXEN = RADIO_TASKS_RXEN_TASKS_RXEN_Trigger;
 
-  const bool endSeen = waitForEnd(spinLimit);
+  const uint32_t rxListenUs =
+      bleConnectionRxListenUs(connectionIntervalUnits_, connectionSca_);
+  const bool endSeen = waitRadioEndBudgeted(radio_, rxListenUs, spinLimit);
   if (!endSeen) {
     radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
-    waitDisabled(spinLimit / 2U + 1U);
+    waitRadioDisabledBudgeted(radio_, kBleConnDisableWaitUs, spinLimit / 2U + 1U);
     radio_->SHORTS = 0U;
     clearRadioCoreEvents(radio_);
+    emitBleTrace("EVT_RX_TIMEOUT");
     return true;
   }
 
-  bool disabled = waitDisabled(spinLimit / 2U + 1U);
+  bool disabled =
+      waitRadioDisabledBudgeted(radio_, kBleConnDisableWaitUs, spinLimit / 2U + 1U);
   if (!disabled) {
     radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
-    disabled = waitDisabled(spinLimit / 2U + 1U);
+    disabled = waitRadioDisabledBudgeted(radio_, kBleConnDisableWaitUs,
+                                         spinLimit / 2U + 1U);
   }
   radio_->SHORTS = 0U;
   if (!disabled) {
@@ -3727,8 +3876,12 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit
       ((RADIO_SHORTS_PHYEND_DISABLE_Enabled << RADIO_SHORTS_PHYEND_DISABLE_Pos) &
        RADIO_SHORTS_PHYEND_DISABLE_Msk);
   radio_->TASKS_TXEN = RADIO_TASKS_TXEN_TASKS_TXEN_Trigger;
-  const bool txOk = waitDisabled(spinLimit / 2U + 1U);
+  const bool txOk = waitRadioDisabledBudgeted(radio_, kBleConnTxDisableWaitUs,
+                                              spinLimit / 2U + 1U);
   radio_->SHORTS = 0U;
+  if (!txOk) {
+    emitBleTrace("EVT_TX_TIMEOUT");
+  }
 
   if (event != nullptr) {
     event->txPacketSent = txOk;
@@ -4047,7 +4200,8 @@ bool BleRadio::startConnectionFromConnectInd(const uint8_t* payload, uint8_t len
   const uint32_t nowUs = micros();
   const uint32_t offsetUs = static_cast<uint32_t>(winOffset) * 1250UL;
   // Use WinOffset as anchor estimate. If zero, schedule near-term first event.
-  connectionNextEventUs_ = nowUs + ((offsetUs > 0U) ? offsetUs : 1500UL);
+  connectionNextEventUs_ =
+      nowUs + ((offsetUs > 0U) ? offsetUs : kBleConnFirstEventFallbackUs);
   if (winSize > 0U) {
     // Window size currently not used for precise scheduling in this clean HAL.
     (void)winSize;

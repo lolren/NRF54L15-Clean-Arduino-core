@@ -1,0 +1,7 @@
+id,sketch,tool_options,ble_link_state,run1_avg_mA,run2_avg_mA,run3_avg_mA,avg_mean_mA,p95_mean_mA,peak_mean_mA,notes
+P1,LowPowerIdleWfi,"clean_cpu=cpu64,clean_power=low,clean_autogate=off,clean_ble=off",N/A,TBD,TBD,TBD,TBD,TBD,TBD,Baseline idle
+P2,LowPowerIdleWfi,"clean_cpu=cpu64,clean_power=low,clean_autogate=aggressive,clean_ble=off",N/A,TBD,TBD,TBD,TBD,TBD,TBD,Auto-gate impact
+P3,LowPowerAutoGatePolicy,"clean_cpu=cpu64,clean_power=low,clean_autogate=balanced,clean_ble=off",N/A,TBD,TBD,TBD,TBD,TBD,TBD,SPI/TWI window workload
+P4,LowPowerBleBeaconDutyCycle,"clean_cpu=cpu64,clean_power=low,clean_ble=on,clean_ble_timing=balanced",Advertising,TBD,TBD,TBD,TBD,TBD,TBD,BLE burst mode
+P5,BleConnectionPeripheral,"clean_cpu=cpu64,clean_power=low,clean_ble=on,clean_ble_timing=interop",Connected,TBD,TBD,TBD,TBD,TBD,TBD,Interop profile
+P6,BleConnectionPeripheral,"clean_cpu=cpu64,clean_power=low,clean_ble=on,clean_ble_timing=aggressive",Connected,TBD,TBD,TBD,TBD,TBD,TBD,Aggressive BLE timing

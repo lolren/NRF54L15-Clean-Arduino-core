@@ -166,6 +166,11 @@ Examples:
     - Encryption Information/Master Identification key distribution parsing
   - Optional protocol-level BLE trace path:
     - Enable Arduino Tools -> `BLE Trace` to emit LL/SMP trace markers for interop debugging
+  - BLE timing profile controls:
+    - Arduino Tools -> `BLE Timing Profile` adjusts connection-event RX/TX timing budgets.
+    - `Interoperability`: widest timing windows.
+    - `Balanced Low-Power`: moderate timing windows.
+    - `Aggressive Low-Power`: shortest timing windows + lower-power preferred PPCP defaults.
   - Bonding key persistence:
     - Retention-backed bond record in `.noinit` RAM
     - Optional callback hooks for flash-backed load/save/clear policies
@@ -174,6 +179,11 @@ Examples:
   - Full security feature set (LE Secure Connections, full key distribution matrix, signing)
   - Privacy (RPA rotation/resolving list)
   - Full L2CAP signaling and complete GATT server database/configuration model
+
+## Power Profiling Workflow
+
+- See repository root `POWER_PROFILE_MEASUREMENTS.md` for repeatable current-measurement
+  procedure, capture matrix, and data template for Tools-menu profile comparisons.
 
 ## Notes
 
