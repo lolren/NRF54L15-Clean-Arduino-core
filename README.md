@@ -32,6 +32,7 @@ Open-source Arduino core package for **Seeed XIAO nRF54L15** using a clean regis
   - Upload method (`Auto`, `pyOCD`, `OpenOCD`)
   - CPU frequency (`64 MHz`, `128 MHz`)
   - BLE support (`Enabled`, `Disabled`)
+  - BLE TX power (`-20 dBm`, `-8 dBm`, `0 dBm`, `+8 dBm`)
   - BLE timing profile (`Interoperability`, `Balanced Low-Power`, `Aggressive Low-Power`)
   - Power profile (`Balanced`, `Low Power/WFI idle`)
   - Peripheral auto-gating (`Disabled`, `Balanced 2 ms`, `Aggressive 200 us`)

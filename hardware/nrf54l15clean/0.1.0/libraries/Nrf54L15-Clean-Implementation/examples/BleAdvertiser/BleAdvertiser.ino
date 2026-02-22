@@ -31,7 +31,7 @@ void setup() {
   };
   static const uint8_t kAddress[6] = {0x01, 0x00, 0x15, 0x54, 0xDE, 0xC0};
 
-  bool ok = g_ble.begin(0);
+  bool ok = g_ble.begin();
   if (ok) {
     ok = g_ble.setDeviceAddress(kAddress, BleAddressType::kRandomStatic);
   }

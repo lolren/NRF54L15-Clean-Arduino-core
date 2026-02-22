@@ -13,6 +13,7 @@ Compare average and peak current across Arduino Tools profiles and key sketches:
 - Power mode (`clean_power`)
 - Peripheral auto-gating (`clean_autogate`)
 - BLE enable (`clean_ble`)
+- BLE TX power (`clean_ble_tx`)
 - BLE timing profile (`clean_ble_timing`)
 
 ## 2. Required Equipment
@@ -101,6 +102,7 @@ You can also fill `measurements/power_profiles_template.csv` directly.
 | P4 | `LowPowerBleBeaconDutyCycle` | `clean_cpu=cpu64,clean_power=low,clean_ble=on,clean_ble_timing=balanced` | Advertising only | TBD | TBD | TBD | TBD | BLE burst mode |
 | P5 | `BleConnectionPeripheral` | `clean_cpu=cpu64,clean_power=low,clean_ble=on,clean_ble_timing=interop` | Connected | TBD | TBD | TBD | TBD | Interop profile |
 | P6 | `BleConnectionPeripheral` | `clean_cpu=cpu64,clean_power=low,clean_ble=on,clean_ble_timing=aggressive` | Connected | TBD | TBD | TBD | TBD | Aggressive BLE timing |
+| P7 | `BleConnectionPeripheral` | `clean_cpu=cpu64,clean_power=low,clean_ble=on,clean_ble_timing=balanced,clean_ble_tx=n20` | Connected | TBD | TBD | TBD | TBD | TX power reduction impact |
 
 ## 8. Interpretation Rules
 

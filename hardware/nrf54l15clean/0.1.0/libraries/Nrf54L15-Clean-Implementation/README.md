@@ -84,6 +84,9 @@ BLE examples:
 - `examples/BleConnectionPeripheral/BleConnectionPeripheral.ino`
   - Accepts legacy `CONNECT_IND`, tracks connection parameters, and runs data-channel events.
   - Responds to common LL control PDUs and ATT requests, with link event metadata logs.
+- `examples/BleConnectionTimingMetrics/BleConnectionTimingMetrics.ino`
+  - Measures connection-event outcomes over rolling windows (RX ok/CRC fail/RX timeout/TX timeout).
+  - Useful for comparing `BLE Timing Profile` and `BLE TX Power` tool options on real links.
 - `examples/BleGattBasicPeripheral/BleGattBasicPeripheral.ino`
   - Connectable/scannable BLE peripheral with minimal GATT database (GAP/GATT/Battery).
   - Supports ATT MTU exchange and basic discovery/read requests over CID `0x0004`.
@@ -171,6 +174,9 @@ Examples:
     - `Interoperability`: widest timing windows.
     - `Balanced Low-Power`: moderate timing windows.
     - `Aggressive Low-Power`: shortest timing windows + lower-power preferred PPCP defaults.
+  - BLE TX power controls:
+    - Arduino Tools -> `BLE TX Power` sets default `BleRadio::begin()` transmit power.
+    - Trade off current consumption/range without sketch code changes.
   - Bonding key persistence:
     - Retention-backed bond record in `.noinit` RAM
     - Optional callback hooks for flash-backed load/save/clear policies

@@ -81,6 +81,7 @@ Legend:
 | CPU frequency menu (64/128 MHz) | Done | Arduino Tools menu option. |
 | Peripheral duty-cycling patterns | Done | Examples for ADC/SPI/I2C gating. |
 | Configurable peripheral auto-gating policy | Done | Tools menu policy auto-disables idle `SPI`/`Wire` and re-enables on demand. |
+| BLE TX power menu | Done | Arduino Tools menu sets default BLE TX power without sketch changes. |
 | Low-power duty telemetry | Done | Rolling active-vs-sleep duty metrics example included for tuning. |
 | Measured current profiling workflow | Done | `POWER_PROFILE_MEASUREMENTS.md` defines repeatable capture matrix and procedure. |
 | System OFF wake (button) | Done | Example uses GPIO detect + reset reason. |
@@ -128,7 +129,7 @@ Validated in Arduino CLI with the clean core package (`nrf54l15clean:nrf54l15cle
 
 - BLE examples compile and upload (`pyOCD`) to connected XIAO nRF54L15.
 - Low-power/non-BLE examples compile across BLE-on/BLE-off build options.
-- Tools menu options for CPU, power, peripheral auto-gating, BLE, BLE timing profile, BLE trace, antenna, serial routing, and uploader are active.
+- Tools menu options for CPU, power, peripheral auto-gating, BLE, BLE TX power, BLE timing profile, BLE trace, antenna, serial routing, and uploader are active.
 
 ## 6. Practical Parity Summary
 

@@ -42,7 +42,7 @@ void setup() {
 
   g_power.setLatencyMode(PowerLatencyMode::kLowPower);
 
-  bool ok = g_ble.begin(0);
+  bool ok = g_ble.begin();
 
   static const uint8_t kAdvPayload[] = {
       2, 0x01, 0x06,                                   // Flags

@@ -39,7 +39,7 @@ void setup() {
   Gpio::configure(kPinUserLed, GpioDirection::kOutput, GpioPull::kDisabled);
   Gpio::write(kPinUserLed, true);
 
-  bool ok = g_ble.begin(0);
+  bool ok = g_ble.begin();
   if (ok) {
     ok = g_ble.setAdvertisingPduType(BleAdvPduType::kAdvInd) &&
          g_ble.setAdvertisingName("XIAO54-LINK", true) &&

@@ -398,6 +398,10 @@ enum class BleAddressType : uint8_t {
   kRandomStatic = 1,
 };
 
+#if !defined(NRF54L15_CLEAN_BLE_DEFAULT_TX_DBM)
+#define NRF54L15_CLEAN_BLE_DEFAULT_TX_DBM -8
+#endif
+
 enum class BleAdvPduType : uint8_t {
   kAdvInd = 0x00,
   kAdvDirectInd = 0x01,
@@ -493,7 +497,7 @@ class BleRadio {
   explicit BleRadio(uint32_t radioBase = nrf54l15::RADIO_BASE,
                     uint32_t ficrBase = nrf54l15::FICR_BASE);
 
-  bool begin(int8_t txPowerDbm = 0);
+  bool begin(int8_t txPowerDbm = NRF54L15_CLEAN_BLE_DEFAULT_TX_DBM);
   void end();
 
   bool setTxPowerDbm(int8_t dbm);
