@@ -1,0 +1,8 @@
+Attempting to disconnect from C0:DE:54:15:00:11
+Successful disconnected
+[[0;93mCHG[0m] Device 68:0E:11:85:74:1D RSSI: 0xffffff9d (-99)
+[[0;93mCHG[0m] Device C8:FC:4A:C5:8B:10 RSSI: 0xffffffb2 (-78)
+[[0;92mNEW[0m] Device C5:68:44:B3:43:BF C5-68-44-B3-43-BF
+[[0;93mCHG[0m] Device A4:C1:38:D0:E4:84 RSSI: 0xffffffb3 (-77)
+[[0;91mDEL[0m] Device A4:C1:38:75:8A:D6 LYWSD03MMC
+[[0;93mCHG[0m] Device 4E:D7:98:D7:EE:51 RSSI: 0xffffffb2 (-78)

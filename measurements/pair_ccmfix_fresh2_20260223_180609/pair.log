@@ -1,0 +1,16 @@
+Waiting to connect to bluetoothd...[0;94m[bluetooth][0m#            connect C0:DE:54:15:00:51
+Attempting to connect to C0:DE:54:15:00:51
+[0;94m[bluetooth][0m# pair C0:DE:54:15:00:51
+Attempting to pair with C0:DE:54:15:00:51
+[0;94m[bluetooth][0m# info C0:DE:54:15:00:51
+Device C0:DE:54:15:00:51 (random)
+	Name: X54-PAIR
+	Alias: X54-PAIR
+	Paired: no
+	Bonded: no
+	Trusted: no
+	Blocked: no
+	Connected: no
+	LegacyPairing: no
+	RSSI: 0xffffffab (-85)
+[0;94m[bluetooth][0m#                         

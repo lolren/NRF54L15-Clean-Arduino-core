@@ -1,0 +1,26 @@
+SetDiscoveryFilter success
+hci0 type 1 discovering off
+hci0 type 7 discovering on
+Discovery started
+[[0;92mNEW[0m] Device 41:18:6E:8F:F3:DE 41-18-6E-8F-F3-DE
+[[0;92mNEW[0m] Device 6F:9F:50:4B:03:59 6F-9F-50-4B-03-59
+[[0;93mCHG[0m] Device 41:18:6E:8F:F3:DE RSSI: 0xffffffad (-83)
+[[0;93mCHG[0m] Device 6F:9F:50:4B:03:59 RSSI: 0xffffffa2 (-94)
+[[0;93mCHG[0m] Device 41:18:6E:8F:F3:DE RSSI: 0xffffffa1 (-95)
+[[0;93mCHG[0m] Device 6F:9F:50:4B:03:59 RSSI: 0xffffffa1 (-95)
+[[0;92mNEW[0m] Device A4:C1:38:D0:E4:84 ATC_D0E484
+[[0;93mCHG[0m] Device 6F:9F:50:4B:03:59 RSSI: 0xffffff9f (-97)
+[[0;93mCHG[0m] Device 6F:9F:50:4B:03:59 RSSI: 0xffffffa1 (-95)
+[[0;92mNEW[0m] Device A4:C1:38:26:4E:DA ATC_264EDA
+[[0;93mCHG[0m] Device 41:18:6E:8F:F3:DE RSSI: 0xffffff9f (-97)
+[[0;93mCHG[0m] Device 41:18:6E:8F:F3:DE RSSI: 0xffffffa0 (-96)
+[[0;92mNEW[0m] Device D4:6A:AE:50:20:50 D4-6A-AE-50-20-50
+[[0;93mCHG[0m] Device 6F:9F:50:4B:03:59 RSSI: 0xffffffa0 (-96)
+[[0;93mCHG[0m] Device 6F:9F:50:4B:03:59 RSSI: 0xffffffa3 (-93)
+[[0;93mCHG[0m] Device 6F:9F:50:4B:03:59 RSSI: 0xffffffa3 (-93)
+[[0;93mCHG[0m] Device 6F:9F:50:4B:03:59 RSSI: 0xffffff9f (-97)
+[[0;93mCHG[0m] Device D4:6A:AE:50:20:50 RSSI: 0xffffffae (-82)
+hci0 type 7 discovering off
+hci0 type 7 discovering on
+[[0;93mCHG[0m] Device 6F:9F:50:4B:03:59 RSSI: 0xffffffa0 (-96)
+[[0;93mCHG[0m] Device 6F:9F:50:4B:03:59 RSSI: 0xffffffa2 (-94)

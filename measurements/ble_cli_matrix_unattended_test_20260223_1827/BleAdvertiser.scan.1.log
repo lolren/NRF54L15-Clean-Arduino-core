@@ -1,0 +1,15 @@
+SetDiscoveryFilter success
+[[0;92mNEW[0m] Device C0:DE:54:15:00:01 XIAO-54-CLN
+Discovery started
+[[0;93mCHG[0m] Device C0:DE:54:15:00:01 RSSI: 0xffffffa8 (-88)
+[[0;92mNEW[0m] Device 7A:AD:A5:A5:52:99 7A-AD-A5-A5-52-99
+[[0;93mCHG[0m] Device C0:DE:54:15:00:01 RSSI: 0xffffffaa (-86)
+[[0;93mCHG[0m] Device 7A:AD:A5:A5:52:99 RSSI: 0xffffffa0 (-96)
+[[0;92mNEW[0m] Device 75:15:44:87:D0:4B 75-15-44-87-D0-4B
+[[0;92mNEW[0m] Device A4:C1:38:D0:E4:84 ATC_D0E484
+[[0;93mCHG[0m] Device 7A:AD:A5:A5:52:99 RSSI: 0xffffffa3 (-93)
+[[0;93mCHG[0m] Device C0:DE:54:15:00:01 RSSI: 0xffffffa9 (-87)
+[[0;93mCHG[0m] Device 7A:AD:A5:A5:52:99 RSSI: 0xffffffa5 (-91)
+[[0;93mCHG[0m] Device 75:15:44:87:D0:4B RSSI: 0xffffffa7 (-89)
+[[0;93mCHG[0m] Device 7A:AD:A5:A5:52:99 RSSI: 0xffffff9f (-97)
+[[0;93mCHG[0m] Device C0:DE:54:15:00:01 RSSI: 0xffffffa5 (-91)

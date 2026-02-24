@@ -1,0 +1,7 @@
+--- serial highlights
+6:connected peer=68:34:21:E5:84:DF int=36
+--- pair highlights
+4:	Paired: no
+5:	Bonded: no
+8:	Connected: yes
+15:[[0;93mCHG[0m] Device C0:DE:54:15:00:51 Connected: no

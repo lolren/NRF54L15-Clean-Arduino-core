@@ -1,0 +1,17 @@
+SetDiscoveryFilter success
+hci0 type 1 discovering off
+hci0 type 7 discovering on
+Discovery started
+[[0;92mNEW[0m] Device 5C:B2:62:7F:41:17 5C-B2-62-7F-41-17
+[[0;93mCHG[0m] Device 5C:B2:62:7F:41:17 RSSI: 0xffffffb0 (-80)
+[[0;92mNEW[0m] Device C0:DE:54:15:00:31 X54-GATT
+[[0;93mCHG[0m] Device 5C:B2:62:7F:41:17 RSSI: 0xffffffb1 (-79)
+[[0;92mNEW[0m] Device A4:C1:38:75:8A:D6 LYWSD03MMC
+[[0;92mNEW[0m] Device A4:C1:38:8D:7D:4F ATC_8D7D4F
+[[0;93mCHG[0m] Device C0:DE:54:15:00:31 RSSI: 0xffffffaa (-86)
+[[0;93mCHG[0m] Device C0:DE:54:15:00:31 RSSI: 0xffffffac (-84)
+[[0;93mCHG[0m] Device 5C:B2:62:7F:41:17 RSSI: 0xffffffb1 (-79)
+[[0;92mNEW[0m] Device 44:50:16:9D:EA:4C 44-50-16-9D-EA-4C
+hci0 type 7 discovering off
+hci0 type 7 discovering on
+[[0;93mCHG[0m] Device 5C:B2:62:7F:41:17 RSSI: 0xffffffa8 (-88)

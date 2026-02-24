@@ -1,0 +1,3 @@
+Attempting to pair with C0:DE:54:15:00:51
+[[0;93mCHG[0m] Device C0:DE:54:15:00:51 Connected: yes
+Failed to pair: org.bluez.Error.AuthenticationTimeout

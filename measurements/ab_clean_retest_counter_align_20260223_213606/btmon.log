@@ -1,0 +1,1745 @@
+Bluetooth monitor ver 5.72
+btmon[2248282]: = Note: Linux version 6.17.0-14-generic (x86_64)       0.334590
+btmon[2248282]: = Note: Bluetooth subsystem version 2.22               0.334592
+= New Index: 68:34:21:E5:84:DF (Primary,USB,hci0)               [hci0] 0.334592
+= Open Index: 68:34:21:E5:84:DF                                 [hci0] 0.334593
+= Index Info: 68:34:21:E5:84:DF (Intel Corp.)                   [hci0] 0.334593
+bluetoothd[2915165]: @ MGMT Open.. (privileged) version 1.23  {0x0001} 0.334594
+bluetoothctl[2248336]: @ MGMT Open: bluetooth.. version 1.23  {0x0002} 1.336634
+bluetoothd[2915165]: @ MGMT Command.. (0x0024) plen 1  {0x0001} [hci0] 1.343342
+        Address type: 0x01
+          BR/EDR
+< HCI Command: Inquiry Cancel (0x01|0x0002) plen 0           #1 [hci0] 1.343457
+> HCI Event: Command Complete (0x0e) plen 4                  #2 [hci0] 1.438181
+      Inquiry Cancel (0x01|0x0002) ncmd 1
+        Status: Success (0x00)
+@ MGMT Event: Discovering (0x0013) plen 2              {0x0001} [hci0] 1.438279
+        Address type: 0x01
+          BR/EDR
+        Discovery: Disabled (0x00)
+@ MGMT Event: Command Complete (0x0001) plen 4         {0x0001} [hci0] 1.438375
+      Stop Discovery (0x0024) plen 1
+        Status: Success (0x00)
+        Address type: 0x01
+          BR/EDR
+bluetoothd[2915165]: @ MGMT Command.. (0x003a) plen 4  {0x0001} [hci0] 1.438419
+        Address type: 0x07
+          BR/EDR
+          LE Public
+          LE Random
+        RSSI: invalid (0x7f)
+        UUIDs: 0
+< HCI Command: LE Set Address Resolu.. (0x08|0x002d) plen 1  #3 [hci0] 1.438530
+        Address resolution: Disabled (0x00)
+> HCI Event: Command Complete (0x0e) plen 4                  #4 [hci0] 1.439094
+      LE Set Address Resolution Enable (0x08|0x002d) ncmd 1
+        Status: Success (0x00)
+< HCI Command: LE Set Random Address (0x08|0x0005) plen 6    #5 [hci0] 1.439352
+        Address: 13:BC:8C:1D:A6:55 (Non-Resolvable)
+> HCI Event: Command Complete (0x0e) plen 4                  #6 [hci0] 1.440094
+      LE Set Random Address (0x08|0x0005) ncmd 1
+        Status: Success (0x00)
+< HCI Command: LE Set Extended Scan.. (0x08|0x0041) plen 13  #7 [hci0] 1.440354
+        Own address type: Random (0x01)
+        Filter policy: Accept all advertisement (0x00)
+        PHYs: 0x05
+        Entry 0: LE 1M
+          Type: Active (0x01)
+          Interval: 22.500 msec (0x0024)
+          Window: 11.250 msec (0x0012)
+        Entry 1: LE Coded
+          Type: Active (0x01)
+          Interval: 67.500 msec (0x006c)
+          Window: 33.750 msec (0x0036)
+> HCI Event: Command Complete (0x0e) plen 4                  #8 [hci0] 1.441095
+      LE Set Extended Scan Parameters (0x08|0x0041) ncmd 1
+        Status: Success (0x00)
+< HCI Command: LE Set Extended Scan... (0x08|0x0042) plen 6  #9 [hci0] 1.441373
+        Extended scan: Enabled (0x01)
+        Filter duplicates: Disabled (0x00)
+        Duration: 0 msec (0x0000)
+        Period: 0.00 sec (0x0000)
+> HCI Event: Command Complete (0x0e) plen 4                 #10 [hci0] 1.442097
+      LE Set Extended Scan Enable (0x08|0x0042) ncmd 1
+        Status: Success (0x00)
+@ MGMT Event: Discovering (0x0013) plen 2              {0x0001} [hci0] 1.442194
+        Address type: 0x07
+          BR/EDR
+          LE Public
+          LE Random
+        Discovery: Enabled (0x01)
+< HCI Command: Inquiry (0x01|0x0001) plen 5                 #11 [hci0] 1.442219
+        Access code: 0x9e8b33 (General Inquiry)
+        Length: 10.24s (0x08)
+        Num responses: 0
+> HCI Event: Command Status (0x0f) plen 4                   #12 [hci0] 1.455166
+      Inquiry (0x01|0x0001) ncmd 1
+        Status: Success (0x00)
+@ MGMT Event: Command Complete (0x0001) plen 4         {0x0001} [hci0] 1.455433
+      Start Service Discovery (0x003a) plen 1
+        Status: Success (0x00)
+        Address type: 0x07
+          BR/EDR
+          LE Public
+          LE Random
+> HCI Event: LE Meta Event (0x3e) plen 57                   #13 [hci0] 1.975240
+      LE Extended Advertising Report (0x0d)
+        Num reports: 1
+        Entry 0
+          Event type: 0x0010
+            Props: 0x0010
+              Use legacy advertising PDUs
+            Data status: [0;32mComplete[0m
+          Legacy PDU Type: ADV_NONCONN_IND (0x0010)
+          Address type: Random (0x01)
+          Address: 5D:99:B3:92:3B:7B (Resolvable)
+          Primary PHY: LE 1M
+          Secondary PHY: No packets
+          SID: no ADI field (0xff)
+          TX power: 127 dBm
+          RSSI: -88 dBm (0xa8)
+          Periodic advertising interval: 0.00 msec (0x0000)
+          Direct address type: Public (0x00)
+          Direct address: 00:00:00:00:00:00 (OUI 00-00-00)
+          Data length: 0x1f
+        1e ff 06 00 01 09 20 02 d6 8e e4 73 77 99 db 98  ...... ....sw...
+        ce 83 b0 dd 7b 16 36 ac f7 1f fb 7a df de d8     ....{.6....z... 
+        Company: Microsoft (6)
+          Data: 01092002d68ee4737799db98ce83b0dd7b1636acf71ffb7adfded8
+@ MGMT Event: Device Found (0x0012) plen 45            {0x0001} [hci0] 1.975361
+        LE Address: 5D:99:B3:92:3B:7B (Resolvable)
+        RSSI: -88 dBm (0xa8)
+        Flags: 0x00000004
+          Not Connectable
+        Data length: 31
+        Company: Microsoft (6)
+          Data: 01092002d68ee4737799db98ce83b0dd7b1636acf71ffb7adfded8
+> HCI Event: LE Meta Event (0x3e) plen 57                   #14 [hci0] 2.180259
+      LE Extended Advertising Report (0x0d)
+        Num reports: 1
+        Entry 0
+          Event type: 0x0010
+            Props: 0x0010
+              Use legacy advertising PDUs
+            Data status: [0;32mComplete[0m
+          Legacy PDU Type: ADV_NONCONN_IND (0x0010)
+          Address type: Random (0x01)
+          Address: 5D:99:B3:92:3B:7B (Resolvable)
+          Primary PHY: LE 1M
+          Secondary PHY: No packets
+          SID: no ADI field (0xff)
+          TX power: 127 dBm
+          RSSI: -88 dBm (0xa8)
+          Periodic advertising interval: 0.00 msec (0x0000)
+          Direct address type: Public (0x00)
+          Direct address: 00:00:00:00:00:00 (OUI 00-00-00)
+          Data length: 0x1f
+        1e ff 06 00 01 09 20 02 d6 8e e4 73 77 99 db 98  ...... ....sw...
+        ce 83 b0 dd 7b 16 36 ac f7 1f fb 7a df de d8     ....{.6....z... 
+        Company: Microsoft (6)
+          Data: 01092002d68ee4737799db98ce83b0dd7b1636acf71ffb7adfded8
+@ MGMT Event: Device Found (0x0012) plen 45            {0x0001} [hci0] 2.180366
+        LE Address: 5D:99:B3:92:3B:7B (Resolvable)
+        RSSI: -88 dBm (0xa8)
+        Flags: 0x00000004
+          Not Connectable
+        Data length: 31
+        Company: Microsoft (6)
+          Data: 01092002d68ee4737799db98ce83b0dd7b1636acf71ffb7adfded8
+> HCI Event: LE Meta Event (0x3e) plen 43                   #15 [hci0] 2.910245
+      LE Extended Advertising Report (0x0d)
+        Num reports: 1
+        Entry 0
+          Event type: 0x0013
+            Props: 0x0013
+              Connectable
+              Scannable
+              Use legacy advertising PDUs
+            Data status: [0;32mComplete[0m
+          Legacy PDU Type: ADV_IND (0x0013)
+          Address type: Random (0x01)
+          Address: 6F:13:39:FC:73:49 (Resolvable)
+          Primary PHY: LE 1M
+          Secondary PHY: No packets
+          SID: no ADI field (0xff)
+          TX power: 127 dBm
+          RSSI: -77 dBm (0xb3)
+          Periodic advertising interval: 0.00 msec (0x0000)
+          Direct address type: Public (0x00)
+          Direct address: 00:00:00:00:00:00 (OUI 00-00-00)
+          Data length: 0x11
+        02 01 1a 02 0a 0c 0a ff 4c 00 10 05 37 1c 2f 8a  ........L...7./.
+        a9                                               .               
+        Flags: 0x1a
+          LE General Discoverable Mode
+          Simultaneous LE and BR/EDR (Controller)
+          Simultaneous LE and BR/EDR (Host)
+        TX power: 12 dBm
+        Company: Apple, Inc. (76)
+          Type: Unknown (16)
+          Data: 371c2f8aa9
+> HCI Event: LE Meta Event (0x3e) plen 26                   #16 [hci0] 2.911227
+      LE Extended Advertising Report (0x0d)
+        Num reports: 1
+        Entry 0
+          Event type: 0x001b
+            Props: 0x001b
+              Connectable
+              Scannable
+              Scan response
+              Use legacy advertising PDUs
+            Data status: [0;32mComplete[0m
+          Legacy PDU Type: SCAN_RSP to an ADV_SCAN_IND (0x001b)
+          Address type: Random (0x01)
+          Address: 6F:13:39:FC:73:49 (Resolvable)
+          Primary PHY: LE 1M
+          Secondary PHY: No packets
+          SID: no ADI field (0xff)
+          TX power: 127 dBm
+          RSSI: -77 dBm (0xb3)
+          Periodic advertising interval: 0.00 msec (0x0000)
+          Direct address type: Public (0x00)
+          Direct address: 00:00:00:00:00:00 (OUI 00-00-00)
+          Data length: 0x00
+@ MGMT Event: Device Found (0x0012) plen 31            {0x0001} [hci0] 2.911369
+        LE Address: 6F:13:39:FC:73:49 (Resolvable)
+        RSSI: -77 dBm (0xb3)
+        Flags: 0x00000000
+        Data length: 17
+        Flags: 0x1a
+          LE General Discoverable Mode
+          Simultaneous LE and BR/EDR (Controller)
+          Simultaneous LE and BR/EDR (Host)
+        TX power: 12 dBm
+        Company: Apple, Inc. (76)
+          Type: Unknown (16)
+          Data: 371c2f8aa9
+> HCI Event: LE Meta Event (0x3e) plen 57                   #17 [hci0] 3.020257
+      LE Extended Advertising Report (0x0d)
+        Num reports: 1
+        Entry 0
+          Event type: 0x0010
+            Props: 0x0010
+              Use legacy advertising PDUs
+            Data status: [0;32mComplete[0m
+          Legacy PDU Type: ADV_NONCONN_IND (0x0010)
+          Address type: Random (0x01)
+          Address: 5D:99:B3:92:3B:7B (Resolvable)
+          Primary PHY: LE 1M
+          Secondary PHY: No packets
+          SID: no ADI field (0xff)
+          TX power: 127 dBm
+          RSSI: -88 dBm (0xa8)
+          Periodic advertising interval: 0.00 msec (0x0000)
+          Direct address type: Public (0x00)
+          Direct address: 00:00:00:00:00:00 (OUI 00-00-00)
+          Data length: 0x1f
+        1e ff 06 00 01 09 20 02 d6 8e e4 73 77 99 db 98  ...... ....sw...
+        ce 83 b0 dd 7b 16 36 ac f7 1f fb 7a df de d8     ....{.6....z... 
+        Company: Microsoft (6)
+          Data: 01092002d68ee4737799db98ce83b0dd7b1636acf71ffb7adfded8
+@ MGMT Event: Device Found (0x0012) plen 45            {0x0001} [hci0] 3.020391
+        LE Address: 5D:99:B3:92:3B:7B (Resolvable)
+        RSSI: -88 dBm (0xa8)
+        Flags: 0x00000004
+          Not Connectable
+        Data length: 31
+        Company: Microsoft (6)
+          Data: 01092002d68ee4737799db98ce83b0dd7b1636acf71ffb7adfded8
+> HCI Event: LE Meta Event (0x3e) plen 43                   #18 [hci0] 3.109295
+      LE Extended Advertising Report (0x0d)
+        Num reports: 1
+        Entry 0
+          Event type: 0x0013
+            Props: 0x0013
+              Connectable
+              Scannable
+              Use legacy advertising PDUs
+            Data status: [0;32mComplete[0m
+          Legacy PDU Type: ADV_IND (0x0013)
+          Address type: Public (0x00)
+          Address: A4:C1:38:8D:7D:4F (Telink Semiconductor (Taipei) Co. Ltd.)
+          Primary PHY: LE 1M
+          Secondary PHY: No packets
+          SID: no ADI field (0xff)
+          TX power: 127 dBm
+          RSSI: -92 dBm (0xa4)
+          Periodic advertising interval: 0.00 msec (0x0000)
+          Direct address type: Public (0x00)
+          Direct address: 00:00:00:00:00:00 (OUI 00-00-00)
+          Data length: 0x11
+        10 16 1a 18 a4 c1 38 8d 7d 4f 00 b9 3c 51 0b 73  ......8.}O..<Q.s
+        8a                                               .               
+        Service Data: Environmental Sensing (0x181a)
+          Data: a4c1388d7d4f00b93c510b738a
+> HCI Event: LE Meta Event (0x3e) plen 38                   #19 [hci0] 3.110177
+      LE Extended Advertising Report (0x0d)
+        Num reports: 1
+        Entry 0
+          Event type: 0x001b
+            Props: 0x001b
+              Connectable
+              Scannable
+              Scan response
+              Use legacy advertising PDUs
+            Data status: [0;32mComplete[0m
+          Legacy PDU Type: SCAN_RSP to an ADV_SCAN_IND (0x001b)
+          Address type: Public (0x00)
+          Address: A4:C1:38:8D:7D:4F (Telink Semiconductor (Taipei) Co. Ltd.)
+          Primary PHY: LE 1M
+          Secondary PHY: No packets
+          SID: no ADI field (0xff)
+          TX power: 127 dBm
+          RSSI: -92 dBm (0xa4)
+          Periodic advertising interval: 0.00 msec (0x0000)
+          Direct address type: Public (0x00)
+          Direct address: 00:00:00:00:00:00 (OUI 00-00-00)
+          Data length: 0x0c
+        0b 09 41 54 43 5f 38 44 37 44 34 46              ..ATC_8D7D4F    
+        Name (complete): ATC_8D7D4F
+@ MGMT Event: Device Found (0x0012) plen 43            {0x0001} [hci0] 3.110272
+        LE Address: A4:C1:38:8D:7D:4F (Telink Semiconductor (Taipei) Co. Ltd.)
+        RSSI: -92 dBm (0xa4)
+        Flags: 0x00000000
+        Data length: 29
+        Service Data: Environmental Sensing (0x181a)
+          Data: a4c1388d7d4f00b93c510b738a
+        Name (complete): ATC_8D7D4F
+> HCI Event: LE Meta Event (0x3e) plen 34                   #20 [hci0] 3.582272
+      LE Extended Advertising Report (0x0d)
+        Num reports: 1
+        Entry 0
+          Event type: 0x0010
+            Props: 0x0010
+              Use legacy advertising PDUs
+            Data status: [0;32mComplete[0m
+          Legacy PDU Type: ADV_NONCONN_IND (0x0010)
+          Address type: Random (0x01)
+          Address: FA:10:C6:A0:6E:BE (Static)
+          Primary PHY: LE 1M
+          Secondary PHY: No packets
+          SID: no ADI field (0xff)
+          TX power: 127 dBm
+          RSSI: -80 dBm (0xb0)
+          Periodic advertising interval: 0.00 msec (0x0000)
+          Direct address type: Public (0x00)
+          Direct address: 00:00:00:00:00:00 (OUI 00-00-00)
+          Data length: 0x08
+        07 ff 4c 00 12 02 00 01                          ..L.....        
+        Company: Apple, Inc. (76)
+          Type: Unknown (18)
+          Data: 0001
+@ MGMT Event: Device Found (0x0012) plen 22            {0x0001} [hci0] 3.582384
+        LE Address: FA:10:C6:A0:6E:BE (Static)
+        RSSI: -80 dBm (0xb0)
+        Flags: 0x00000004
+          Not Connectable
+        Data length: 8
+        Company: Apple, Inc. (76)
+          Type: Unknown (18)
+          Data: 0001
+> HCI Event: LE Meta Event (0x3e) plen 43                   #21 [hci0] 3.686283
+      LE Extended Advertising Report (0x0d)
+        Num reports: 1
+        Entry 0
+          Event type: 0x0013
+            Props: 0x0013
+              Connectable
+              Scannable
+              Use legacy advertising PDUs
+            Data status: [0;32mComplete[0m
+          Legacy PDU Type: ADV_IND (0x0013)
+          Address type: Public (0x00)
+          Address: A4:C1:38:D0:E4:84 (Telink Semiconductor (Taipei) Co. Ltd.)
+          Primary PHY: LE 1M
+          Secondary PHY: No packets
+          SID: no ADI field (0xff)
+          TX power: 127 dBm
+          RSSI: -91 dBm (0xa5)
+          Periodic advertising interval: 0.00 msec (0x0000)
+          Direct address type: Public (0x00)
+          Direct address: 00:00:00:00:00:00 (OUI 00-00-00)
+          Data length: 0x11
+        10 16 1a 18 a4 c1 38 d0 e4 84 00 cb 3d 51 0b 70  ......8.....=Q.p
+        a1                                               .               
+        Service Data: Environmental Sensing (0x181a)
+          Data: a4c138d0e48400cb3d510b70a1
+> HCI Event: LE Meta Event (0x3e) plen 38                   #22 [hci0] 3.687196
+      LE Extended Advertising Report (0x0d)
+        Num reports: 1
+        Entry 0
+          Event type: 0x001b
+            Props: 0x001b
+              Connectable
+              Scannable
+              Scan response
+              Use legacy advertising PDUs
+            Data status: [0;32mComplete[0m
+          Legacy PDU Type: SCAN_RSP to an ADV_SCAN_IND (0x001b)
+          Address type: Public (0x00)
+          Address: A4:C1:38:D0:E4:84 (Telink Semiconductor (Taipei) Co. Ltd.)
+          Primary PHY: LE 1M
+          Secondary PHY: No packets
+          SID: no ADI field (0xff)
+          TX power: 127 dBm
+          RSSI: -91 dBm (0xa5)
+          Periodic advertising interval: 0.00 msec (0x0000)
+          Direct address type: Public (0x00)
+          Direct address: 00:00:00:00:00:00 (OUI 00-00-00)
+          Data length: 0x0c
+        0b 09 41 54 43 5f 44 30 45 34 38 34              ..ATC_D0E484    
+        Name (complete): ATC_D0E484
+@ MGMT Event: Device Found (0x0012) plen 43            {0x0001} [hci0] 3.687305
+        LE Address: A4:C1:38:D0:E4:84 (Telink Semiconductor (Taipei) Co. Ltd.)
+        RSSI: -91 dBm (0xa5)
+        Flags: 0x00000000
+        Data length: 29
+        Service Data: Environmental Sensing (0x181a)
+          Data: a4c138d0e48400cb3d510b70a1
+        Name (complete): ATC_D0E484
+> HCI Event: LE Meta Event (0x3e) plen 57                   #23 [hci0] 4.229286
+      LE Extended Advertising Report (0x0d)
+        Num reports: 1
+        Entry 0
+          Event type: 0x0010
+            Props: 0x0010
+              Use legacy advertising PDUs
+            Data status: [0;32mComplete[0m
+          Legacy PDU Type: ADV_NONCONN_IND (0x0010)
+          Address type: Random (0x01)
+          Address: D9:08:D5:69:61:41 (Static)
+          Primary PHY: LE 1M
+          Secondary PHY: No packets
+          SID: no ADI field (0xff)
+          TX power: 127 dBm
+          RSSI: -76 dBm (0xb4)
+          Periodic advertising interval: 0.00 msec (0x0000)
+          Direct address type: Public (0x00)
+          Direct address: 00:00:00:00:00:00 (OUI 00-00-00)
+          Data length: 0x1f
+        1e ff 4c 00 12 19 00 24 33 7a cb 50 39 c8 a0 b4  ..L....$3z.P9...
+        b2 f2 de 88 5e ac 5a 2f d9 ef 26 0b 45 00 00     ....^.Z/..&.E.. 
+        Company: Apple, Inc. (76)
+          Type: Unknown (18)
+          Data: 0024337acb5039c8a0b4b2f2de885eac5a2fd9ef260b450000
+@ MGMT Event: Device Found (0x0012) plen 45            {0x0001} [hci0] 4.229418
+        LE Address: D9:08:D5:69:61:41 (Static)
+        RSSI: -76 dBm (0xb4)
+        Flags: 0x00000004
+          Not Connectable
+        Data length: 31
+        Company: Apple, Inc. (76)
+          Type: Unknown (18)
+          Data: 0024337acb5039c8a0b4b2f2de885eac5a2fd9ef260b450000
+> HCI Event: LE Meta Event (0x3e) plen 57                   #24 [hci0] 4.601313
+      LE Extended Advertising Report (0x0d)
+        Num reports: 1
+        Entry 0
+          Event type: 0x0010
+            Props: 0x0010
+              Use legacy advertising PDUs
+            Data status: [0;32mComplete[0m
+          Legacy PDU Type: ADV_NONCONN_IND (0x0010)
+          Address type: Random (0x01)
+          Address: 5D:99:B3:92:3B:7B (Resolvable)
+          Primary PHY: LE 1M
+          Secondary PHY: No packets
+          SID: no ADI field (0xff)
+          TX power: 127 dBm
+          RSSI: -90 dBm (0xa6)
+          Periodic advertising interval: 0.00 msec (0x0000)
+          Direct address type: Public (0x00)
+          Direct address: 00:00:00:00:00:00 (OUI 00-00-00)
+          Data length: 0x1f
+        1e ff 06 00 01 09 20 02 d6 8e e4 73 77 99 db 98  ...... ....sw...
+        ce 83 b0 dd 7b 16 36 ac f7 1f fb 7a df de d8     ....{.6....z... 
+        Company: Microsoft (6)
+          Data: 01092002d68ee4737799db98ce83b0dd7b1636acf71ffb7adfded8
+@ MGMT Event: Device Found (0x0012) plen 45            {0x0001} [hci0] 4.601457
+        LE Address: 5D:99:B3:92:3B:7B (Resolvable)
+        RSSI: -90 dBm (0xa6)
+        Flags: 0x00000004
+          Not Connectable
+        Data length: 31
+        Company: Microsoft (6)
+          Data: 01092002d68ee4737799db98ce83b0dd7b1636acf71ffb7adfded8
+> HCI Event: LE Meta Event (0x3e) plen 43                   #25 [hci0] 5.656324
+      LE Extended Advertising Report (0x0d)
+        Num reports: 1
+        Entry 0
+          Event type: 0x0013
+            Props: 0x0013
+              Connectable
+              Scannable
+              Use legacy advertising PDUs
+            Data status: [0;32mComplete[0m
+          Legacy PDU Type: ADV_IND (0x0013)
+          Address type: Random (0x01)
+          Address: 6F:13:39:FC:73:49 (Resolvable)
+          Primary PHY: LE 1M
+          Secondary PHY: No packets
+          SID: no ADI field (0xff)
+          TX power: 127 dBm
+          RSSI: -76 dBm (0xb4)
+          Periodic advertising interval: 0.00 msec (0x0000)
+          Direct address type: Public (0x00)
+          Direct address: 00:00:00:00:00:00 (OUI 00-00-00)
+          Data length: 0x11
+        02 01 1a 02 0a 0c 0a ff 4c 00 10 05 37 1c 2f 8a  ........L...7./.
+        a9                                               .               
+        Flags: 0x1a
+          LE General Discoverable Mode
+          Simultaneous LE and BR/EDR (Controller)
+          Simultaneous LE and BR/EDR (Host)
+        TX power: 12 dBm
+        Company: Apple, Inc. (76)
+          Type: Unknown (16)
+          Data: 371c2f8aa9
+> HCI Event: LE Meta Event (0x3e) plen 26                   #26 [hci0] 5.657301
+      LE Extended Advertising Report (0x0d)
+        Num reports: 1
+        Entry 0
+          Event type: 0x001b
+            Props: 0x001b
+              Connectable
+              Scannable
+              Scan response
+              Use legacy advertising PDUs
+            Data status: [0;32mComplete[0m
+          Legacy PDU Type: SCAN_RSP to an ADV_SCAN_IND (0x001b)
+          Address type: Random (0x01)
+          Address: 6F:13:39:FC:73:49 (Resolvable)
+          Primary PHY: LE 1M
+          Secondary PHY: No packets
+          SID: no ADI field (0xff)
+          TX power: 127 dBm
+          RSSI: -77 dBm (0xb3)
+          Periodic advertising interval: 0.00 msec (0x0000)
+          Direct address type: Public (0x00)
+          Direct address: 00:00:00:00:00:00 (OUI 00-00-00)
+          Data length: 0x00
+@ MGMT Event: Device Found (0x0012) plen 31            {0x0001} [hci0] 5.657441
+        LE Address: 6F:13:39:FC:73:49 (Resolvable)
+        RSSI: -77 dBm (0xb3)
+        Flags: 0x00000000
+        Data length: 17
+        Flags: 0x1a
+          LE General Discoverable Mode
+          Simultaneous LE and BR/EDR (Controller)
+          Simultaneous LE and BR/EDR (Host)
+        TX power: 12 dBm
+        Company: Apple, Inc. (76)
+          Type: Unknown (16)
+          Data: 371c2f8aa9
+> HCI Event: LE Meta Event (0x3e) plen 39                   #27 [hci0] 5.660242
+      LE Extended Advertising Report (0x0d)
+        Num reports: 1
+        Entry 0
+          Event type: 0x0013
+            Props: 0x0013
+              Connectable
+              Scannable
+              Use legacy advertising PDUs
+            Data status: [0;32mComplete[0m
+          Legacy PDU Type: ADV_IND (0x0013)
+          Address type: Random (0x01)
+          Address: C0:DE:54:15:00:51 (Static)
+          Primary PHY: LE 1M
+          Secondary PHY: No packets
+          SID: no ADI field (0xff)
+          TX power: 127 dBm
+          RSSI: -80 dBm (0xb0)
+          Periodic advertising interval: 0.00 msec (0x0000)
+          Direct address type: Public (0x00)
+          Direct address: 00:00:00:00:00:00 (OUI 00-00-00)
+          Data length: 0x0d
+        02 01 06 09 09 58 35 34 2d 50 41 49 52           .....X54-PAIR   
+        Flags: 0x06
+          LE General Discoverable Mode
+          BR/EDR Not Supported
+        Name (complete): X54-PAIR
+> HCI Event: LE Meta Event (0x3e) plen 43                   #28 [hci0] 6.132395
+      LE Extended Advertising Report (0x0d)
+        Num reports: 1
+        Entry 0
+          Event type: 0x0013
+            Props: 0x0013
+              Connectable
+              Scannable
+              Use legacy advertising PDUs
+            Data status: [0;32mComplete[0m
+          Legacy PDU Type: ADV_IND (0x0013)
+          Address type: Public (0x00)
+          Address: A4:C1:38:9D:41:32 (Telink Semiconductor (Taipei) Co. Ltd.)
+          Primary PHY: LE 1M
+          Secondary PHY: No packets
+          SID: no ADI field (0xff)
+          TX power: 127 dBm
+          RSSI: -94 dBm (0xa2)
+          Periodic advertising interval: 0.00 msec (0x0000)
+          Direct address type: Public (0x00)
+          Direct address: 00:00:00:00:00:00 (OUI 00-00-00)
+          Data length: 0x11
+        10 16 1a 18 a4 c1 38 9d 41 32 00 c0 3b 52 0b 83  ......8.A2..;R..
+        89                                               .               
+        Service Data: Environmental Sensing (0x181a)
+          Data: a4c1389d413200c03b520b8389
+@ MGMT Event: Device Found (0x0012) plen 27            {0x0001} [hci0] 6.132428
+        LE Address: C0:DE:54:15:00:51 (Static)
+        RSSI: -80 dBm (0xb0)
+        Flags: 0x00000000
+        Data length: 13
+        Flags: 0x06
+          LE General Discoverable Mode
+          BR/EDR Not Supported
+        Name (complete): X54-PAIR
+> HCI Event: LE Meta Event (0x3e) plen 38                   #29 [hci0] 6.133401
+      LE Extended Advertising Report (0x0d)
+        Num reports: 1
+        Entry 0
+          Event type: 0x001b
+            Props: 0x001b
+              Connectable
+              Scannable
+              Scan response
+              Use legacy advertising PDUs
+            Data status: [0;32mComplete[0m
+          Legacy PDU Type: SCAN_RSP to an ADV_SCAN_IND (0x001b)
+          Address type: Public (0x00)
+          Address: A4:C1:38:9D:41:32 (Telink Semiconductor (Taipei) Co. Ltd.)
+          Primary PHY: LE 1M
+          Secondary PHY: No packets
+          SID: no ADI field (0xff)
+          TX power: 127 dBm
+          RSSI: -93 dBm (0xa3)
+          Periodic advertising interval: 0.00 msec (0x0000)
+          Direct address type: Public (0x00)
+          Direct address: 00:00:00:00:00:00 (OUI 00-00-00)
+          Data length: 0x0c
+        0b 09 41 54 43 5f 39 44 34 31 33 32              ..ATC_9D4132    
+        Name (complete): ATC_9D4132
+@ MGMT Event: Device Found (0x0012) plen 43            {0x0001} [hci0] 6.133416
+        LE Address: A4:C1:38:9D:41:32 (Telink Semiconductor (Taipei) Co. Ltd.)
+        RSSI: -93 dBm (0xa3)
+        Flags: 0x00000000
+        Data length: 29
+        Service Data: Environmental Sensing (0x181a)
+          Data: a4c1389d413200c03b520b8389
+        Name (complete): ATC_9D4132
+> HCI Event: LE Meta Event (0x3e) plen 43                   #30 [hci0] 7.035364
+      LE Extended Advertising Report (0x0d)
+        Num reports: 1
+        Entry 0
+          Event type: 0x0013
+            Props: 0x0013
+              Connectable
+              Scannable
+              Use legacy advertising PDUs
+            Data status: [0;32mComplete[0m
+          Legacy PDU Type: ADV_IND (0x0013)
+          Address type: Random (0x01)
+          Address: 6F:13:39:FC:73:49 (Resolvable)
+          Primary PHY: LE 1M
+          Secondary PHY: No packets
+          SID: no ADI field (0xff)
+          TX power: 127 dBm
+          RSSI: -77 dBm (0xb3)
+          Periodic advertising interval: 0.00 msec (0x0000)
+          Direct address type: Public (0x00)
+          Direct address: 00:00:00:00:00:00 (OUI 00-00-00)
+          Data length: 0x11
+        02 01 1a 02 0a 0c 0a ff 4c 00 10 05 37 1c 2f 8a  ........L...7./.
+        a9                                               .               
+        Flags: 0x1a
+          LE General Discoverable Mode
+          Simultaneous LE and BR/EDR (Controller)
+          Simultaneous LE and BR/EDR (Host)
+        TX power: 12 dBm
+        Company: Apple, Inc. (76)
+          Type: Unknown (16)
+          Data: 371c2f8aa9
+> HCI Event: LE Meta Event (0x3e) plen 26                   #31 [hci0] 7.139366
+      LE Extended Advertising Report (0x0d)
+        Num reports: 1
+        Entry 0
+          Event type: 0x0013
+            Props: 0x0013
+              Connectable
+              Scannable
+              Use legacy advertising PDUs
+            Data status: [0;32mComplete[0m
+          Legacy PDU Type: ADV_IND (0x0013)
+          Address type: Public (0x00)
+          Address: 6F:13:39:FC:73:49 (OUI 6F-13-39)
+          Primary PHY: LE 1M
+          Secondary PHY: No packets
+          SID: no ADI field (0xff)
+          TX power: 127 dBm
+          RSSI: -77 dBm (0xb3)
+          Periodic advertising interval: 0.00 msec (0x0000)
+          Direct address type: Public (0x00)
+          Direct address: 00:00:00:00:00:00 (OUI 00-00-00)
+          Data length: 0x00
+@ MGMT Event: Device Found (0x0012) plen 31            {0x0001} [hci0] 7.139388
+        LE Address: 6F:13:39:FC:73:49 (Resolvable)
+        RSSI: -77 dBm (0xb3)
+        Flags: 0x00000000
+        Data length: 17
+        Flags: 0x1a
+          LE General Discoverable Mode
+          Simultaneous LE and BR/EDR (Controller)
+          Simultaneous LE and BR/EDR (Host)
+        TX power: 12 dBm
+        Company: Apple, Inc. (76)
+          Type: Unknown (16)
+          Data: 371c2f8aa9
+> HCI Event: LE Meta Event (0x3e) plen 43                   #32 [hci0] 7.589303
+      LE Extended Advertising Report (0x0d)
+        Num reports: 1
+        Entry 0
+          Event type: 0x0013
+            Props: 0x0013
+              Connectable
+              Scannable
+              Use legacy advertising PDUs
+            Data status: [0;32mComplete[0m
+          Legacy PDU Type: ADV_IND (0x0013)
+          Address type: Random (0x01)
+          Address: 6F:13:39:FC:73:49 (Resolvable)
+          Primary PHY: LE 1M
+          Secondary PHY: No packets
+          SID: no ADI field (0xff)
+          TX power: 127 dBm
+          RSSI: -76 dBm (0xb4)
+          Periodic advertising interval: 0.00 msec (0x0000)
+          Direct address type: Public (0x00)
+          Direct address: 00:00:00:00:00:00 (OUI 00-00-00)
+          Data length: 0x11
+        02 01 1a 02 0a 0c 0a ff 4c 00 10 05 37 1c 2f 8a  ........L...7./.
+        a9                                               .               
+        Flags: 0x1a
+          LE General Discoverable Mode
+          Simultaneous LE and BR/EDR (Controller)
+          Simultaneous LE and BR/EDR (Host)
+        TX power: 12 dBm
+        Company: Apple, Inc. (76)
+          Type: Unknown (16)
+          Data: 371c2f8aa9
+@ MGMT Event: Device Found (0x0012) plen 14            {0x0001} [hci0] 7.589334
+        LE Address: 6F:13:39:FC:73:49 (OUI 6F-13-39)
+        RSSI: -77 dBm (0xb3)
+        Flags: 0x00000000
+        Data length: 0
+bluetoothd[2915165]: = src/device.c:device_new() Unable to registe..   7.589705
+bluetoothd[2915165]: = Unable to create object for found de..   [hci0] 7.589761
+> HCI Event: LE Meta Event (0x3e) plen 26                   #33 [hci0] 7.590279
+      LE Extended Advertising Report (0x0d)
+        Num reports: 1
+        Entry 0
+          Event type: 0x001b
+            Props: 0x001b
+              Connectable
+              Scannable
+              Scan response
+              Use legacy advertising PDUs
+            Data status: [0;32mComplete[0m
+          Legacy PDU Type: SCAN_RSP to an ADV_SCAN_IND (0x001b)
+          Address type: Random (0x01)
+          Address: 6F:13:39:FC:73:49 (Resolvable)
+          Primary PHY: LE 1M
+          Secondary PHY: No packets
+          SID: no ADI field (0xff)
+          TX power: 127 dBm
+          RSSI: -77 dBm (0xb3)
+          Periodic advertising interval: 0.00 msec (0x0000)
+          Direct address type: Public (0x00)
+          Direct address: 00:00:00:00:00:00 (OUI 00-00-00)
+          Data length: 0x00
+@ MGMT Event: Device Found (0x0012) plen 31            {0x0001} [hci0] 7.590394
+        LE Address: 6F:13:39:FC:73:49 (Resolvable)
+        RSSI: -77 dBm (0xb3)
+        Flags: 0x00000000
+        Data length: 17
+        Flags: 0x1a
+          LE General Discoverable Mode
+          Simultaneous LE and BR/EDR (Controller)
+          Simultaneous LE and BR/EDR (Host)
+        TX power: 12 dBm
+        Company: Apple, Inc. (76)
+          Type: Unknown (16)
+          Data: 371c2f8aa9
+> HCI Event: LE Meta Event (0x3e) plen 34                   #34 [hci0] 7.591285
+      LE Extended Advertising Report (0x0d)
+        Num reports: 1
+        Entry 0
+          Event type: 0x0010
+            Props: 0x0010
+              Use legacy advertising PDUs
+            Data status: [0;32mComplete[0m
+          Legacy PDU Type: ADV_NONCONN_IND (0x0010)
+          Address type: Random (0x01)
+          Address: FA:10:C6:A0:6E:BE (Static)
+          Primary PHY: LE 1M
+          Secondary PHY: No packets
+          SID: no ADI field (0xff)
+          TX power: 127 dBm
+          RSSI: -77 dBm (0xb3)
+          Periodic advertising interval: 0.00 msec (0x0000)
+          Direct address type: Public (0x00)
+          Direct address: 00:00:00:00:00:00 (OUI 00-00-00)
+          Data length: 0x08
+        07 ff 4c 00 12 02 00 01                          ..L.....        
+        Company: Apple, Inc. (76)
+          Type: Unknown (18)
+          Data: 0001
+@ MGMT Event: Device Found (0x0012) plen 22            {0x0001} [hci0] 7.591344
+        LE Address: FA:10:C6:A0:6E:BE (Static)
+        RSSI: -77 dBm (0xb3)
+        Flags: 0x00000004
+          Not Connectable
+        Data length: 8
+        Company: Apple, Inc. (76)
+          Type: Unknown (18)
+          Data: 0001
+> HCI Event: LE Meta Event (0x3e) plen 57                   #35 [hci0] 9.671464
+      LE Extended Advertising Report (0x0d)
+        Num reports: 1
+        Entry 0
+          Event type: 0x0010
+            Props: 0x0010
+              Use legacy advertising PDUs
+            Data status: [0;32mComplete[0m
+          Legacy PDU Type: ADV_NONCONN_IND (0x0010)
+          Address type: Random (0x01)
+          Address: 5D:99:B3:92:3B:7B (Resolvable)
+          Primary PHY: LE 1M
+          Secondary PHY: No packets
+          SID: no ADI field (0xff)
+          TX power: 127 dBm
+          RSSI: -88 dBm (0xa8)
+          Periodic advertising interval: 0.00 msec (0x0000)
+          Direct address type: Public (0x00)
+          Direct address: 00:00:00:00:00:00 (OUI 00-00-00)
+          Data length: 0x1f
+        1e ff 06 00 01 09 20 02 d6 8e e4 73 77 99 db 98  ...... ....sw...
+        ce 83 b0 dd 7b 16 36 ac f7 1f fb 7a df de d8     ....{.6....z... 
+        Company: Microsoft (6)
+          Data: 01092002d68ee4737799db98ce83b0dd7b1636acf71ffb7adfded8
+@ MGMT Event: Device Found (0x0012) plen 45            {0x0001} [hci0] 9.671605
+        LE Address: 5D:99:B3:92:3B:7B (Resolvable)
+        RSSI: -88 dBm (0xa8)
+        Flags: 0x00000004
+          Not Connectable
+        Data length: 31
+        Company: Microsoft (6)
+          Data: 01092002d68ee4737799db98ce83b0dd7b1636acf71ffb7adfded8
+> HCI Event: LE Meta Event (0x3e) plen 39                  #36 [hci0] 10.224463
+      LE Extended Advertising Report (0x0d)
+        Num reports: 1
+        Entry 0
+          Event type: 0x0013
+            Props: 0x0013
+              Connectable
+              Scannable
+              Use legacy advertising PDUs
+            Data status: [0;32mComplete[0m
+          Legacy PDU Type: ADV_IND (0x0013)
+          Address type: Random (0x01)
+          Address: C0:DE:54:15:00:51 (Static)
+          Primary PHY: LE 1M
+          Secondary PHY: No packets
+          SID: no ADI field (0xff)
+          TX power: 127 dBm
+          RSSI: -81 dBm (0xaf)
+          Periodic advertising interval: 0.00 msec (0x0000)
+          Direct address type: Public (0x00)
+          Direct address: 00:00:00:00:00:00 (OUI 00-00-00)
+          Data length: 0x0d
+        02 01 06 09 09 58 35 34 2d 50 41 49 52           .....X54-PAIR   
+        Flags: 0x06
+          LE General Discoverable Mode
+          BR/EDR Not Supported
+        Name (complete): X54-PAIR
+> HCI Event: LE Meta Event (0x3e) plen 57                  #37 [hci0] 10.397477
+      LE Extended Advertising Report (0x0d)
+        Num reports: 1
+        Entry 0
+          Event type: 0x0010
+            Props: 0x0010
+              Use legacy advertising PDUs
+            Data status: [0;32mComplete[0m
+          Legacy PDU Type: ADV_NONCONN_IND (0x0010)
+          Address type: Random (0x01)
+          Address: 5D:99:B3:92:3B:7B (Resolvable)
+          Primary PHY: LE 1M
+          Secondary PHY: No packets
+          SID: no ADI field (0xff)
+          TX power: 127 dBm
+          RSSI: -90 dBm (0xa6)
+          Periodic advertising interval: 0.00 msec (0x0000)
+          Direct address type: Public (0x00)
+          Direct address: 00:00:00:00:00:00 (OUI 00-00-00)
+          Data length: 0x1f
+        1e ff 06 00 01 09 20 02 d6 8e e4 73 77 99 db 98  ...... ....sw...
+        ce 83 b0 dd 7b 16 36 ac f7 1f fb 7a df de d8     ....{.6....z... 
+        Company: Microsoft (6)
+          Data: 01092002d68ee4737799db98ce83b0dd7b1636acf71ffb7adfded8
+@ MGMT Event: Device Found (0x0012) plen 27           {0x0001} [hci0] 10.397492
+        LE Address: C0:DE:54:15:00:51 (Static)
+        RSSI: -81 dBm (0xaf)
+        Flags: 0x00000000
+        Data length: 13
+        Flags: 0x06
+          LE General Discoverable Mode
+          BR/EDR Not Supported
+        Name (complete): X54-PAIR
+@ MGMT Event: Device Found (0x0012) plen 45           {0x0001} [hci0] 10.397495
+        LE Address: 5D:99:B3:92:3B:7B (Resolvable)
+        RSSI: -90 dBm (0xa6)
+        Flags: 0x00000004
+          Not Connectable
+        Data length: 31
+        Company: Microsoft (6)
+          Data: 01092002d68ee4737799db98ce83b0dd7b1636acf71ffb7adfded8
+> HCI Event: LE Meta Event (0x3e) plen 43                  #38 [hci0] 10.883472
+      LE Extended Advertising Report (0x0d)
+        Num reports: 1
+        Entry 0
+          Event type: 0x0013
+            Props: 0x0013
+              Connectable
+              Scannable
+              Use legacy advertising PDUs
+            Data status: [0;32mComplete[0m
+          Legacy PDU Type: ADV_IND (0x0013)
+          Address type: Random (0x01)
+          Address: 6F:13:39:FC:73:49 (Resolvable)
+          Primary PHY: LE 1M
+          Secondary PHY: No packets
+          SID: no ADI field (0xff)
+          TX power: 127 dBm
+          RSSI: -81 dBm (0xaf)
+          Periodic advertising interval: 0.00 msec (0x0000)
+          Direct address type: Public (0x00)
+          Direct address: 00:00:00:00:00:00 (OUI 00-00-00)
+          Data length: 0x11
+        02 01 1a 02 0a 0c 0a ff 4c 00 10 05 37 1c 2f 8a  ........L...7./.
+        a9                                               .               
+        Flags: 0x1a
+          LE General Discoverable Mode
+          Simultaneous LE and BR/EDR (Controller)
+          Simultaneous LE and BR/EDR (Host)
+        TX power: 12 dBm
+        Company: Apple, Inc. (76)
+          Type: Unknown (16)
+          Data: 371c2f8aa9
+> HCI Event: LE Meta Event (0x3e) plen 26                  #39 [hci0] 10.884485
+      LE Extended Advertising Report (0x0d)
+        Num reports: 1
+        Entry 0
+          Event type: 0x001b
+            Props: 0x001b
+              Connectable
+              Scannable
+              Scan response
+              Use legacy advertising PDUs
+            Data status: [0;32mComplete[0m
+          Legacy PDU Type: SCAN_RSP to an ADV_SCAN_IND (0x001b)
+          Address type: Random (0x01)
+          Address: 6F:13:39:FC:73:49 (Resolvable)
+          Primary PHY: LE 1M
+          Secondary PHY: No packets
+          SID: no ADI field (0xff)
+          TX power: 127 dBm
+          RSSI: -81 dBm (0xaf)
+          Periodic advertising interval: 0.00 msec (0x0000)
+          Direct address type: Public (0x00)
+          Direct address: 00:00:00:00:00:00 (OUI 00-00-00)
+          Data length: 0x00
+@ MGMT Event: Device Found (0x0012) plen 31           {0x0001} [hci0] 10.884557
+        LE Address: 6F:13:39:FC:73:49 (Resolvable)
+        RSSI: -81 dBm (0xaf)
+        Flags: 0x00000000
+        Data length: 17
+        Flags: 0x1a
+          LE General Discoverable Mode
+          Simultaneous LE and BR/EDR (Controller)
+          Simultaneous LE and BR/EDR (Host)
+        TX power: 12 dBm
+        Company: Apple, Inc. (76)
+          Type: Unknown (16)
+          Data: 371c2f8aa9
+> HCI Event: Inquiry Complete (0x01) plen 1                #40 [hci0] 11.695515
+        Status: Success (0x00)
+> HCI Event: LE Meta Event (0x3e) plen 43                  #41 [hci0] 11.701513
+      LE Extended Advertising Report (0x0d)
+        Num reports: 1
+        Entry 0
+          Event type: 0x0013
+            Props: 0x0013
+              Connectable
+              Scannable
+              Use legacy advertising PDUs
+            Data status: [0;32mComplete[0m
+          Legacy PDU Type: ADV_IND (0x0013)
+          Address type: Random (0x01)
+          Address: 6F:13:39:FC:73:49 (Resolvable)
+          Primary PHY: LE 1M
+          Secondary PHY: No packets
+          SID: no ADI field (0xff)
+          TX power: 127 dBm
+          RSSI: -82 dBm (0xae)
+          Periodic advertising interval: 0.00 msec (0x0000)
+          Direct address type: Public (0x00)
+          Direct address: 00:00:00:00:00:00 (OUI 00-00-00)
+          Data length: 0x11
+        02 01 1a 02 0a 0c 0a ff 4c 00 10 05 37 1c 2f 8a  ........L...7./.
+        a9                                               .               
+        Flags: 0x1a
+          LE General Discoverable Mode
+          Simultaneous LE and BR/EDR (Controller)
+          Simultaneous LE and BR/EDR (Host)
+        TX power: 12 dBm
+        Company: Apple, Inc. (76)
+          Type: Unknown (16)
+          Data: 371c2f8aa9
+> HCI Event: LE Meta Event (0x3e) plen 26                  #42 [hci0] 11.702513
+      LE Extended Advertising Report (0x0d)
+        Num reports: 1
+        Entry 0
+          Event type: 0x001b
+            Props: 0x001b
+              Connectable
+              Scannable
+              Scan response
+              Use legacy advertising PDUs
+            Data status: [0;32mComplete[0m
+          Legacy PDU Type: SCAN_RSP to an ADV_SCAN_IND (0x001b)
+          Address type: Random (0x01)
+          Address: 6F:13:39:FC:73:49 (Resolvable)
+          Primary PHY: LE 1M
+          Secondary PHY: No packets
+          SID: no ADI field (0xff)
+          TX power: 127 dBm
+          RSSI: -82 dBm (0xae)
+          Periodic advertising interval: 0.00 msec (0x0000)
+          Direct address type: Public (0x00)
+          Direct address: 00:00:00:00:00:00 (OUI 00-00-00)
+          Data length: 0x00
+@ MGMT Event: Device Found (0x0012) plen 31           {0x0001} [hci0] 11.702640
+        LE Address: 6F:13:39:FC:73:49 (Resolvable)
+        RSSI: -82 dBm (0xae)
+        Flags: 0x00000000
+        Data length: 17
+        Flags: 0x1a
+          LE General Discoverable Mode
+          Simultaneous LE and BR/EDR (Controller)
+          Simultaneous LE and BR/EDR (Host)
+        TX power: 12 dBm
+        Company: Apple, Inc. (76)
+          Type: Unknown (16)
+          Data: 371c2f8aa9
+@ MGMT Event: Discovering (0x0013) plen 2             {0x0001} [hci0] 11.755815
+        Address type: 0x07
+          BR/EDR
+          LE Public
+          LE Random
+        Discovery: Disabled (0x00)
+< HCI Command: LE Set Extended Sca.. (0x08|0x0042) plen 6  #43 [hci0] 11.755980
+        Extended scan: Disabled (0x00)
+        Filter duplicates: Disabled (0x00)
+        Duration: 0 msec (0x0000)
+        Period: 0.00 sec (0x0000)
+bluetoothd[2915165]: @ MGMT Comman.. (0x003a) plen 4  {0x0001} [hci0] 11.756063
+        Address type: 0x07
+          BR/EDR
+          LE Public
+          LE Random
+        RSSI: invalid (0x7f)
+        UUIDs: 0
+> HCI Event: Command Complete (0x0e) plen 4                #44 [hci0] 11.757388
+      LE Set Extended Scan Enable (0x08|0x0042) ncmd 1
+        Status: Success (0x00)
+< HCI Command: LE Set Random Address (0x08|0x0005) plen 6  #45 [hci0] 11.757709
+        Address: 17:74:36:A2:32:54 (Non-Resolvable)
+> HCI Event: Command Complete (0x0e) plen 4                #46 [hci0] 11.758384
+      LE Set Random Address (0x08|0x0005) ncmd 1
+        Status: Success (0x00)
+< HCI Command: LE Set Extended Sc.. (0x08|0x0041) plen 13  #47 [hci0] 11.758657
+        Own address type: Random (0x01)
+        Filter policy: Accept all advertisement (0x00)
+        PHYs: 0x05
+        Entry 0: LE 1M
+          Type: Active (0x01)
+          Interval: 22.500 msec (0x0024)
+          Window: 11.250 msec (0x0012)
+        Entry 1: LE Coded
+          Type: Active (0x01)
+          Interval: 67.500 msec (0x006c)
+          Window: 33.750 msec (0x0036)
+> HCI Event: Command Complete (0x0e) plen 4                #48 [hci0] 11.759385
+      LE Set Extended Scan Parameters (0x08|0x0041) ncmd 1
+        Status: Success (0x00)
+< HCI Command: LE Set Extended Sca.. (0x08|0x0042) plen 6  #49 [hci0] 11.759713
+        Extended scan: Enabled (0x01)
+        Filter duplicates: Enabled (0x01)
+        Duration: 0 msec (0x0000)
+        Period: 0.00 sec (0x0000)
+> HCI Event: Command Complete (0x0e) plen 4                #50 [hci0] 11.760386
+      LE Set Extended Scan Enable (0x08|0x0042) ncmd 1
+        Status: Success (0x00)
+@ MGMT Event: Discovering (0x0013) plen 2             {0x0001} [hci0] 11.760464
+        Address type: 0x07
+          BR/EDR
+          LE Public
+          LE Random
+        Discovery: Enabled (0x01)
+< HCI Command: Inquiry (0x01|0x0001) plen 5                #51 [hci0] 11.760727
+        Access code: 0x9e8b33 (General Inquiry)
+        Length: 10.24s (0x08)
+        Num responses: 0
+> HCI Event: LE Meta Event (0x3e) plen 57                  #52 [hci0] 11.765506
+      LE Extended Advertising Report (0x0d)
+        Num reports: 1
+        Entry 0
+          Event type: 0x0010
+            Props: 0x0010
+              Use legacy advertising PDUs
+            Data status: [0;32mComplete[0m
+          Legacy PDU Type: ADV_NONCONN_IND (0x0010)
+          Address type: Random (0x01)
+          Address: 5D:99:B3:92:3B:7B (Resolvable)
+          Primary PHY: LE 1M
+          Secondary PHY: No packets
+          SID: no ADI field (0xff)
+          TX power: 127 dBm
+          RSSI: -97 dBm (0x9f)
+          Periodic advertising interval: 0.00 msec (0x0000)
+          Direct address type: Public (0x00)
+          Direct address: 00:00:00:00:00:00 (OUI 00-00-00)
+          Data length: 0x1f
+        1e ff 06 00 01 09 20 02 d6 8e e4 73 77 99 db 98  ...... ....sw...
+        ce 83 b0 dd 7b 16 36 ac f7 1f fb 7a df de d8     ....{.6....z... 
+        Company: Microsoft (6)
+          Data: 01092002d68ee4737799db98ce83b0dd7b1636acf71ffb7adfded8
+@ MGMT Event: Device Found (0x0012) plen 45           {0x0001} [hci0] 11.765623
+        LE Address: 5D:99:B3:92:3B:7B (Resolvable)
+        RSSI: -97 dBm (0x9f)
+        Flags: 0x00000004
+          Not Connectable
+        Data length: 31
+        Company: Microsoft (6)
+          Data: 01092002d68ee4737799db98ce83b0dd7b1636acf71ffb7adfded8
+> HCI Event: Command Status (0x0f) plen 4                  #53 [hci0] 11.766435
+      Inquiry (0x01|0x0001) ncmd 1
+        Status: Success (0x00)
+@ MGMT Event: Command Complete (0x0001) plen 4        {0x0001} [hci0] 11.766679
+      Start Service Discovery (0x003a) plen 1
+        Status: Success (0x00)
+        Address type: 0x07
+          BR/EDR
+          LE Public
+          LE Random
+> HCI Event: LE Meta Event (0x3e) plen 43                  #54 [hci0] 12.804541
+      LE Extended Advertising Report (0x0d)
+        Num reports: 1
+        Entry 0
+          Event type: 0x0013
+            Props: 0x0013
+              Connectable
+              Scannable
+              Use legacy advertising PDUs
+            Data status: [0;32mComplete[0m
+          Legacy PDU Type: ADV_IND (0x0013)
+          Address type: Random (0x01)
+          Address: 6F:13:39:FC:73:49 (Resolvable)
+          Primary PHY: LE 1M
+          Secondary PHY: No packets
+          SID: no ADI field (0xff)
+          TX power: 127 dBm
+          RSSI: -82 dBm (0xae)
+          Periodic advertising interval: 0.00 msec (0x0000)
+          Direct address type: Public (0x00)
+          Direct address: 00:00:00:00:00:00 (OUI 00-00-00)
+          Data length: 0x11
+        02 01 1a 02 0a 0c 0a ff 4c 00 10 05 37 1c 2f 8a  ........L...7./.
+        a9                                               .               
+        Flags: 0x1a
+          LE General Discoverable Mode
+          Simultaneous LE and BR/EDR (Controller)
+          Simultaneous LE and BR/EDR (Host)
+        TX power: 12 dBm
+        Company: Apple, Inc. (76)
+          Type: Unknown (16)
+          Data: 371c2f8aa9
+> HCI Event: LE Meta Event (0x3e) plen 26                  #55 [hci0] 12.805440
+      LE Extended Advertising Report (0x0d)
+        Num reports: 1
+        Entry 0
+          Event type: 0x001b
+            Props: 0x001b
+              Connectable
+              Scannable
+              Scan response
+              Use legacy advertising PDUs
+            Data status: [0;32mComplete[0m
+          Legacy PDU Type: SCAN_RSP to an ADV_SCAN_IND (0x001b)
+          Address type: Random (0x01)
+          Address: 6F:13:39:FC:73:49 (Resolvable)
+          Primary PHY: LE 1M
+          Secondary PHY: No packets
+          SID: no ADI field (0xff)
+          TX power: 127 dBm
+          RSSI: -81 dBm (0xaf)
+          Periodic advertising interval: 0.00 msec (0x0000)
+          Direct address type: Public (0x00)
+          Direct address: 00:00:00:00:00:00 (OUI 00-00-00)
+          Data length: 0x00
+@ MGMT Event: Device Found (0x0012) plen 31           {0x0001} [hci0] 12.805519
+        LE Address: 6F:13:39:FC:73:49 (Resolvable)
+        RSSI: -81 dBm (0xaf)
+        Flags: 0x00000000
+        Data length: 17
+        Flags: 0x1a
+          LE General Discoverable Mode
+          Simultaneous LE and BR/EDR (Controller)
+          Simultaneous LE and BR/EDR (Host)
+        TX power: 12 dBm
+        Company: Apple, Inc. (76)
+          Type: Unknown (16)
+          Data: 371c2f8aa9
+bluetoothctl[2248336]: @ MGMT Close: bluetoothctl            {0x0002} 13.344009
+bluetoothd[2915165]: @ MGMT Comman.. (0x0024) plen 1  {0x0001} [hci0] 13.353353
+        Address type: 0x07
+          BR/EDR
+          LE Public
+          LE Random
+< HCI Command: Inquiry Cancel (0x01|0x0002) plen 0         #56 [hci0] 13.353406
+> HCI Event: Command Complete (0x0e) plen 4                #57 [hci0] 13.355440
+      Inquiry Cancel (0x01|0x0002) ncmd 1
+        Status: Success (0x00)
+< HCI Command: LE Set Extended Sca.. (0x08|0x0042) plen 6  #58 [hci0] 13.355607
+        Extended scan: Disabled (0x00)
+        Filter duplicates: Disabled (0x00)
+        Duration: 0 msec (0x0000)
+        Period: 0.00 sec (0x0000)
+> HCI Event: Command Complete (0x0e) plen 4                #59 [hci0] 13.356431
+      LE Set Extended Scan Enable (0x08|0x0042) ncmd 1
+        Status: Success (0x00)
+@ MGMT Event: Command Complete (0x0001) plen 4        {0x0001} [hci0] 13.356559
+      Stop Discovery (0x0024) plen 1
+        Status: Success (0x00)
+        Address type: 0x07
+          BR/EDR
+          LE Public
+          LE Random
+@ MGMT Event: Discovering (0x0013) plen 2             {0x0001} [hci0] 13.356569
+        Address type: 0x07
+          BR/EDR
+          LE Public
+          LE Random
+        Discovery: Disabled (0x00)
+bluetoothd[2915165]: @ MGMT Comman.. (0x003a) plen 4  {0x0001} [hci0] 13.356792
+        Address type: 0x01
+          BR/EDR
+        RSSI: invalid (0x7f)
+        UUIDs: 0
+bluetoothctl[2249440]: @ MGMT Open: bluetoot.. version 1.23  {0x0002} 13.356858
+< HCI Command: Inquiry (0x01|0x0001) plen 5                #60 [hci0] 13.356970
+        Access code: 0x9e8b33 (General Inquiry)
+        Length: 10.24s (0x08)
+        Num responses: 0
+> HCI Event: Command Status (0x0f) plen 4                  #61 [hci0] 13.358432
+      Inquiry (0x01|0x0001) ncmd 1
+        Status: Success (0x00)
+@ MGMT Event: Command Complete (0x0001) plen 4        {0x0001} [hci0] 13.358579
+      Start Service Discovery (0x003a) plen 1
+        Status: Success (0x00)
+        Address type: 0x01
+          BR/EDR
+@ MGMT Event: Discovering (0x0013) plen 2             {0x0001} [hci0] 13.358583
+        Address type: 0x01
+          BR/EDR
+        Discovery: Enabled (0x01)
+bluetoothctl[2249440]: @ MGMT Close: bluetoothctl            {0x0002} 19.369144
+bluetoothctl[2249975]: @ MGMT Open: bluetoot.. version 1.23  {0x0002} 19.382443
+> HCI Event: Inquiry Complete (0x01) plen 1                #62 [hci0] 23.662828
+        Status: Success (0x00)
+@ MGMT Event: Discovering (0x0013) plen 2             {0x0001} [hci0] 23.662937
+        Address type: 0x01
+          BR/EDR
+        Discovery: Disabled (0x00)
+bluetoothd[2915165]: @ MGMT Comman.. (0x003a) plen 4  {0x0001} [hci0] 23.663090
+        Address type: 0x01
+          BR/EDR
+        RSSI: invalid (0x7f)
+        UUIDs: 0
+< HCI Command: Inquiry (0x01|0x0001) plen 5                #63 [hci0] 23.663266
+        Access code: 0x9e8b33 (General Inquiry)
+        Length: 10.24s (0x08)
+        Num responses: 0
+> HCI Event: Command Status (0x0f) plen 4                  #64 [hci0] 23.664721
+      Inquiry (0x01|0x0001) ncmd 1
+        Status: Success (0x00)
+@ MGMT Event: Command Complete (0x0001) plen 4        {0x0001} [hci0] 23.664945
+      Start Service Discovery (0x003a) plen 1
+        Status: Success (0x00)
+        Address type: 0x01
+          BR/EDR
+@ MGMT Event: Discovering (0x0013) plen 2             {0x0001} [hci0] 23.664951
+        Address type: 0x01
+          BR/EDR
+        Discovery: Enabled (0x01)
+bluetoothctl[2249975]: @ MGMT Close: bluetoothctl            {0x0002} 27.394691
+bluetoothctl[2250723]: @ MGMT Open: bluetoot.. version 1.23  {0x0002} 27.404952
+bluetoothd[2915165]: @ MGMT Comman.. (0x0024) plen 1  {0x0001} [hci0] 27.423679
+        Address type: 0x01
+          BR/EDR
+< HCI Command: Inquiry Cancel (0x01|0x0002) plen 0         #65 [hci0] 27.423798
+> HCI Event: Command Complete (0x0e) plen 4                #66 [hci0] 27.519919
+      Inquiry Cancel (0x01|0x0002) ncmd 1
+        Status: Success (0x00)
+@ MGMT Event: Discovering (0x0013) plen 2             {0x0001} [hci0] 27.519937
+        Address type: 0x01
+          BR/EDR
+        Discovery: Disabled (0x00)
+@ MGMT Event: Command Complete (0x0001) plen 4        {0x0001} [hci0] 27.520057
+      Stop Discovery (0x0024) plen 1
+        Status: Success (0x00)
+        Address type: 0x01
+          BR/EDR
+bluetoothd[2915165]: @ MGMT Comman.. (0x0019) plen 8  {0x0001} [hci0] 27.520108
+        LE Address: C0:DE:54:15:00:51 (Static)
+        Capability: DisplayYesNo (0x01)
+< HCI Command: LE Set Address Reso.. (0x08|0x002d) plen 1  #67 [hci0] 27.520313
+        Address resolution: Enabled (0x01)
+> HCI Event: Command Complete (0x0e) plen 4                #68 [hci0] 27.520830
+      LE Set Address Resolution Enable (0x08|0x002d) ncmd 1
+        Status: Success (0x00)
+< HCI Command: LE Set Extended Sc.. (0x08|0x0041) plen 13  #69 [hci0] 27.520987
+        Own address type: Public (0x00)
+        Filter policy: Ignore not in accept list (0x01)
+        PHYs: 0x05
+        Entry 0: LE 1M
+          Type: Passive (0x00)
+          Interval: 60.000 msec (0x0060)
+          Window: 60.000 msec (0x0060)
+        Entry 1: LE Coded
+          Type: Passive (0x00)
+          Interval: 180.000 msec (0x0120)
+          Window: 180.000 msec (0x0120)
+> HCI Event: Command Complete (0x0e) plen 4                #70 [hci0] 27.521829
+      LE Set Extended Scan Parameters (0x08|0x0041) ncmd 1
+        Status: Success (0x00)
+< HCI Command: LE Set Extended Sca.. (0x08|0x0042) plen 6  #71 [hci0] 27.521908
+        Extended scan: Enabled (0x01)
+        Filter duplicates: Enabled (0x01)
+        Duration: 0 msec (0x0000)
+        Period: 0.00 sec (0x0000)
+> HCI Event: Command Complete (0x0e) plen 4                #72 [hci0] 27.522828
+      LE Set Extended Scan Enable (0x08|0x0042) ncmd 1
+        Status: Success (0x00)
+> HCI Event: LE Meta Event (0x3e) plen 39                  #73 [hci0] 30.013046
+      LE Extended Advertising Report (0x0d)
+        Num reports: 1
+        Entry 0
+          Event type: 0x0013
+            Props: 0x0013
+              Connectable
+              Scannable
+              Use legacy advertising PDUs
+            Data status: [0;32mComplete[0m
+          Legacy PDU Type: ADV_IND (0x0013)
+          Address type: Random (0x01)
+          Address: C0:DE:54:15:00:51 (Static)
+          Primary PHY: LE 1M
+          Secondary PHY: No packets
+          SID: no ADI field (0xff)
+          TX power: 127 dBm
+          RSSI: -81 dBm (0xaf)
+          Periodic advertising interval: 0.00 msec (0x0000)
+          Direct address type: Public (0x00)
+          Direct address: 00:00:00:00:00:00 (OUI 00-00-00)
+          Data length: 0x0d
+        02 01 06 09 09 58 35 34 2d 50 41 49 52           .....X54-PAIR   
+        Flags: 0x06
+          LE General Discoverable Mode
+          BR/EDR Not Supported
+        Name (complete): X54-PAIR
+< HCI Command: LE Set Extended Sca.. (0x08|0x0042) plen 6  #74 [hci0] 30.013287
+        Extended scan: Disabled (0x00)
+        Filter duplicates: Disabled (0x00)
+        Duration: 0 msec (0x0000)
+        Period: 0.00 sec (0x0000)
+> HCI Event: Command Complete (0x0e) plen 4                #75 [hci0] 30.032035
+      LE Set Extended Scan Enable (0x08|0x0042) ncmd 1
+        Status: Success (0x00)
+< HCI Command: LE Extended Create.. (0x08|0x0043) plen 26  #76 [hci0] 30.032310
+        Filter policy: Accept list is not used (0x00)
+        Own address type: Public (0x00)
+        Peer address type: Random (0x01)
+        Peer address: C0:DE:54:15:00:51 (Static)
+        Initiating PHYs: 0x01
+        Entry 0: LE 1M
+          Scan interval: 60.000 msec (0x0060)
+          Scan window: 60.000 msec (0x0060)
+          Min connection interval: 30.00 msec (0x0018)
+          Max connection interval: 50.00 msec (0x0028)
+          Connection latency: 0 (0x0000)
+          Supervision timeout: 420 msec (0x002a)
+          Min connection length: 0.000 msec (0x0000)
+          Max connection length: 0.000 msec (0x0000)
+> HCI Event: Command Status (0x0f) plen 4                  #77 [hci0] 30.033905
+      LE Extended Create Connection (0x08|0x0043) ncmd 1
+        Status: Success (0x00)
+> HCI Event: LE Meta Event (0x3e) plen 31                  #78 [hci0] 30.450011
+      LE Enhanced Connection Complete (0x0a)
+        Status: Success (0x00)
+        Handle: 2048
+        Role: Central (0x00)
+        Peer address type: Random (0x01)
+        Peer address: C0:DE:54:15:00:51 (Static)
+        Local resolvable private address: 00:00:00:00:00:00 (Non-Resolvable)
+        Peer resolvable private address: 00:00:00:00:00:00 (Non-Resolvable)
+        Connection interval: 45.00 msec (0x0024)
+        Connection latency: 0 (0x0000)
+        Supervision timeout: 420 msec (0x002a)
+        Central clock accuracy: 0x00
+@ MGMT Event: Device Connected (0x000b) plen 26       {0x0001} [hci0] 30.450037
+        LE Address: C0:DE:54:15:00:51 (Static)
+        Flags: 0x00000008
+          Connection Locally Initiated
+        Data length: 13
+        Flags: 0x06
+          LE General Discoverable Mode
+          BR/EDR Not Supported
+        Name (complete): X54-PAIR
+btmon[2248282]: @ RAW Open: btmon (privileged) version 2.22  {0x0003} 30.450104
+btmon[2248282]: @ RAW Close: btmon                           {0x0003} 30.450111
+> HCI Event: LE Meta Event (0x3e) plen 4                   #79 [hci0] 30.450928
+      LE Channel Selection Algorithm (0x14)
+        Handle: 2048 Address: C0:DE:54:15:00:51 (Static)
+        Algorithm: #2 (0x01)
+< HCI Command: LE Read Remote Used.. (0x08|0x0016) plen 2  #80 [hci0] 30.462745
+        Handle: 2048 Address: C0:DE:54:15:00:51 (Static)
+> HCI Event: Command Status (0x0f) plen 4                  #81 [hci0] 30.463907
+      LE Read Remote Used Features (0x08|0x0016) ncmd 1
+        Status: Success (0x00)
+> HCI Event: LE Meta Event (0x3e) plen 12                  #82 [hci0] 30.499019
+      LE Read Remote Used Features (0x04)
+        Status: Success (0x00)
+        Handle: 2048 Address: C0:DE:54:15:00:51 (Static)
+        Features: 0x1f 0x00 0x00 0x00 0x00 0x00 0x00 0x00
+          LE Encryption
+          Connection Parameter Request Procedure
+          Extended Reject Indication
+          Peripheral-initiated Features Exchange
+          LE Ping
+< ACL Data TX: Handle 2048 flags 0x00 dlen 11              #83 [hci0] 30.499083
+      SMP: Pairing Request (0x01) len 6
+        IO capability: DisplayYesNo (0x01)
+        OOB data: Authentication data not present (0x00)
+        Authentication requirement: Bonding, MITM, SC, No Keypresses, CT2 (0x2d)
+        Max encryption key size: 16
+        Initiator key distribution: EncKey Sign LinkKey (0x0d)
+        Responder key distribution: EncKey IdKey Sign LinkKey (0x0f)
+bluetoothd[2915165]: < ACL Data TX: H.. flags 0x00 dlen 7  #84 [hci0] 30.499289
+      ATT: Exchange MTU Request (0x02) len 2
+        Client RX MTU: 517
+> HCI Event: Number of Completed Packets (0x13) plen 5     #85 [hci0] 30.588005
+        Num handles: 1
+        Handle: 2048 Address: C0:DE:54:15:00:51 (Static)
+        Count: 1
+        #83: len 11 (1 Kb/s)
+        Latency: 88 msec (88-88 msec ~88 msec)
+> HCI Event: Number of Completed Packets (0x13) plen 5     #86 [hci0] 30.633015
+        Num handles: 1
+        Handle: 2048 Address: C0:DE:54:15:00:51 (Static)
+        Count: 1
+        #84: len 7 (0 Kb/s)
+        Latency: 133 msec (88-133 msec ~111 msec)
+> ACL Data RX: Handle 2048 flags 0x02 dlen 11              #87 [hci0] 30.635821
+      SMP: Pairing Response (0x02) len 6
+        IO capability: NoInputNoOutput (0x03)
+        OOB data: Authentication data not present (0x00)
+        Authentication requirement: Bonding, No MITM, Legacy, No Keypresses (0x01)
+        Max encryption key size: 16
+        Initiator key distribution: EncKey (0x01)
+        Responder key distribution: <none> (0x00)
+@ MGMT Event: User Confirmation R.. (0x000f) plen 12  {0x0001} [hci0] 30.635838
+        LE Address: C0:DE:54:15:00:51 (Static)
+        Confirm hint: 0x01
+        Value: 0x00000000
+bluetoothd[2915165]: @ MGMT Comman.. (0x001c) plen 7  {0x0001} [hci0] 30.635975
+        LE Address: C0:DE:54:15:00:51 (Static)
+@ MGMT Event: Command Complete (0x0001) plen 10       {0x0001} [hci0] 30.635983
+      User Confirmation Reply (0x001c) plen 7
+        Status: Success (0x00)
+        LE Address: C0:DE:54:15:00:51 (Static)
+< ACL Data TX: Handle 2048 flags 0x00 dlen 21              #88 [hci0] 30.636132
+      SMP: Pairing Confirm (0x03) len 16
+        Confim value: d4bd5016fc1a21a4c058fdb3cb0f6cac
+> HCI Event: Number of Completed Packets (0x13) plen 5     #89 [hci0] 30.677918
+        Num handles: 1
+        Handle: 2048 Address: C0:DE:54:15:00:51 (Static)
+        Count: 1
+        #88: len 21 (4 Kb/s)
+        Latency: 41 msec (41-133 msec ~76 msec)
+> ACL Data RX: Handle 2048 flags 0x02 dlen 7               #90 [hci0] 30.679835
+      ATT: Exchange MTU Response (0x03) len 2
+        Server RX MTU: 23
+bluetoothd[2915165]: < ACL Data TX:... flags 0x00 dlen 11  #91 [hci0] 30.680073
+      ATT: Read By Type Request (0x08) len 6
+        Handle range: 0x0001-0xffff
+        Attribute type: Server Supported Features (0x2b3a)
+> HCI Event: Number of Completed Packets (0x13) plen 5     #92 [hci0] 30.722920
+        Num handles: 1
+        Handle: 2048 Address: C0:DE:54:15:00:51 (Static)
+        Count: 1
+        #91: len 11 (2 Kb/s)
+        Latency: 42 msec (41-133 msec ~59 msec)
+> ACL Data RX: Handle 2048 flags 0x02 dlen 21              #93 [hci0] 30.725802
+      SMP: Pairing Confirm (0x03) len 16
+        Confim value: e11d12e2c50daf98c70da4a11f00b593
+< ACL Data TX: Handle 2048 flags 0x00 dlen 21              #94 [hci0] 30.725813
+      SMP: Pairing Random (0x04) len 16
+        Random value: a93ef1d6ad659d225c491a60978161c1
+> HCI Event: Number of Completed Packets (0x13) plen 5     #95 [hci0] 30.767978
+        Num handles: 1
+        Handle: 2048 Address: C0:DE:54:15:00:51 (Static)
+        Count: 1
+        #94: len 21 (4 Kb/s)
+        Latency: 42 msec (41-133 msec ~50 msec)
+> ACL Data RX: Handle 2048 flags 0x02 dlen 9               #96 [hci0] 30.768008
+      ATT: Error Response (0x01) len 4
+        Read By Type Request (0x08)
+        Handle: 0x0001
+        Error: Attribute Not Found (0x0a)
+bluetoothd[2915165]: < ACL Data TX:... flags 0x00 dlen 11  #97 [hci0] 30.768122
+      ATT: Read By Group Type Request (0x10) len 6
+        Handle range: 0x0001-0xffff
+        Attribute group type: Primary Service (0x2800)
+> HCI Event: Number of Completed Packets (0x13) plen 5     #98 [hci0] 30.812925
+        Num handles: 1
+        Handle: 2048 Address: C0:DE:54:15:00:51 (Static)
+        Count: 1
+        #97: len 11 (2 Kb/s)
+        Latency: 44 msec (41-133 msec ~47 msec)
+> ACL Data RX: Handle 2048 flags 0x02 dlen 21              #99 [hci0] 30.814731
+      SMP: Pairing Random (0x04) len 16
+        Random value: 4b54ccf9fe96547375c548265d90addd
+< HCI Command: LE Start Encryption (0x08|0x0019) plen 28  #100 [hci0] 30.814750
+        Handle: 2048 Address: C0:DE:54:15:00:51 (Static)
+        Random number: 0x0000000000000000
+        Encrypted diversifier: 0x0000
+        Long term key: d1fb9bcda16dd0e8fc77c267392ecd1a
+> HCI Event: Command Status (0x0f) plen 4                 #101 [hci0] 30.815918
+      LE Start Encryption (0x08|0x0019) ncmd 1
+        Status: Success (0x00)
+> HCI Event: Encryption Change (0x08) plen 4              #102 [hci0] 31.308039
+        Status: Connection Timeout (0x08)
+        Handle: 2048 Address: C0:DE:54:15:00:51 (Static)
+        Encryption: Disabled (0x00)
+@ MGMT Event: Command Complete (0x0001) plen 10       {0x0001} [hci0] 31.308059
+      Pair Device (0x0019) plen 7
+        Status: Timeout (0x08)
+        LE Address: C0:DE:54:15:00:51 (Static)
+< HCI Command: Disconnect (0x01|0x0006) plen 3            #103 [hci0] 31.308158
+        Handle: 2048 Address: C0:DE:54:15:00:51 (Static)
+        Reason: Authentication Failure (0x05)
+> HCI Event: Disconnect Complete (0x05) plen 4            #104 [hci0] 31.308937
+        Status: Success (0x00)
+        Handle: 2048 Address: C0:DE:54:15:00:51 (Static)
+        Reason: Connection Timeout (0x08)
+@ MGMT Event: Device Disconnected (0x000c) plen 8     {0x0001} [hci0] 31.308965
+        LE Address: C0:DE:54:15:00:51 (Static)
+        Reason: Connection timeout (0x01)
+> HCI Event: Command Status (0x0f) plen 4                 #105 [hci0] 31.310016
+      Disconnect (0x01|0x0006) ncmd 1
+        Status: Unknown Connection Identifier (0x02)
+bluetoothd[2915165]: @ MGMT Comman.. (0x003a) plen 4  {0x0001} [hci0] 36.758114
+        Address type: 0x01
+          BR/EDR
+        RSSI: invalid (0x7f)
+        UUIDs: 0
+< HCI Command: Inquiry (0x01|0x0001) plen 5               #106 [hci0] 36.758319
+        Access code: 0x9e8b33 (General Inquiry)
+        Length: 10.24s (0x08)
+        Num responses: 0
+> HCI Event: Command Status (0x0f) plen 4                 #107 [hci0] 36.853106
+      Inquiry (0x01|0x0001) ncmd 1
+        Status: Success (0x00)
+@ MGMT Event: Command Complete (0x0001) plen 4        {0x0001} [hci0] 36.853245
+      Start Service Discovery (0x003a) plen 1
+        Status: Success (0x00)
+        Address type: 0x01
+          BR/EDR
+@ MGMT Event: Discovering (0x0013) plen 2             {0x0001} [hci0] 36.853254
+        Address type: 0x01
+          BR/EDR
+        Discovery: Enabled (0x01)
+> HCI Event: Inquiry Complete (0x01) plen 1               #108 [hci0] 47.157398
+        Status: Success (0x00)
+@ MGMT Event: Discovering (0x0013) plen 2             {0x0001} [hci0] 47.157494
+        Address type: 0x01
+          BR/EDR
+        Discovery: Disabled (0x00)
+bluetoothd[2915165]: @ MGMT Comman.. (0x003a) plen 4  {0x0001} [hci0] 47.157711
+        Address type: 0x01
+          BR/EDR
+        RSSI: invalid (0x7f)
+        UUIDs: 0
+< HCI Command: Inquiry (0x01|0x0001) plen 5               #109 [hci0] 47.157861
+        Access code: 0x9e8b33 (General Inquiry)
+        Length: 10.24s (0x08)
+        Num responses: 0
+> HCI Event: Command Status (0x0f) plen 4                 #110 [hci0] 47.158382
+      Inquiry (0x01|0x0001) ncmd 1
+        Status: Success (0x00)
+@ MGMT Event: Command Complete (0x0001) plen 4        {0x0001} [hci0] 47.158614
+      Start Service Discovery (0x003a) plen 1
+        Status: Success (0x00)
+        Address type: 0x01
+          BR/EDR
+@ MGMT Event: Discovering (0x0013) plen 2             {0x0001} [hci0] 47.158619
+        Address type: 0x01
+          BR/EDR
+        Discovery: Enabled (0x01)
+> HCI Event: Inquiry Complete (0x01) plen 1               #111 [hci0] 57.462801
+        Status: Success (0x00)
+@ MGMT Event: Discovering (0x0013) plen 2             {0x0001} [hci0] 57.462930
+        Address type: 0x01
+          BR/EDR
+        Discovery: Disabled (0x00)
+bluetoothd[2915165]: @ MGMT Comman.. (0x003a) plen 4  {0x0001} [hci0] 57.463165
+        Address type: 0x01
+          BR/EDR
+        RSSI: invalid (0x7f)
+        UUIDs: 0
+< HCI Command: Inquiry (0x01|0x0001) plen 5               #112 [hci0] 57.463421
+        Access code: 0x9e8b33 (General Inquiry)
+        Length: 10.24s (0x08)
+        Num responses: 0
+> HCI Event: Command Status (0x0f) plen 4                 #113 [hci0] 57.464668
+      Inquiry (0x01|0x0001) ncmd 1
+        Status: Success (0x00)
+@ MGMT Event: Command Complete (0x0001) plen 4        {0x0001} [hci0] 57.464814
+      Start Service Discovery (0x003a) plen 1
+        Status: Success (0x00)
+        Address type: 0x01
+          BR/EDR
+@ MGMT Event: Discovering (0x0013) plen 2             {0x0001} [hci0] 57.464820
+        Address type: 0x01
+          BR/EDR
+        Discovery: Enabled (0x01)
+> HCI Event: Inquiry Complete (0x01) plen 1               #114 [hci0] 67.769006
+        Status: Success (0x00)
+@ MGMT Event: Discovering (0x0013) plen 2             {0x0001} [hci0] 67.769110
+        Address type: 0x01
+          BR/EDR
+        Discovery: Disabled (0x00)
+bluetoothd[2915165]: @ MGMT Comman.. (0x003a) plen 4  {0x0001} [hci0] 67.769241
+        Address type: 0x01
+          BR/EDR
+        RSSI: invalid (0x7f)
+        UUIDs: 0
+< HCI Command: Inquiry (0x01|0x0001) plen 5               #115 [hci0] 67.769406
+        Access code: 0x9e8b33 (General Inquiry)
+        Length: 10.24s (0x08)
+        Num responses: 0
+> HCI Event: Command Status (0x0f) plen 4                 #116 [hci0] 67.769988
+      Inquiry (0x01|0x0001) ncmd 1
+        Status: Success (0x00)
+@ MGMT Event: Command Complete (0x0001) plen 4        {0x0001} [hci0] 67.770135
+      Start Service Discovery (0x003a) plen 1
+        Status: Success (0x00)
+        Address type: 0x01
+          BR/EDR
+@ MGMT Event: Discovering (0x0013) plen 2             {0x0001} [hci0] 67.770145
+        Address type: 0x01
+          BR/EDR
+        Discovery: Enabled (0x01)
+> HCI Event: Inquiry Complete (0x01) plen 1               #117 [hci0] 78.076478
+        Status: Success (0x00)
+@ MGMT Event: Discovering (0x0013) plen 2             {0x0001} [hci0] 78.076509
+        Address type: 0x01
+          BR/EDR
+        Discovery: Disabled (0x00)
+bluetoothd[2915165]: @ MGMT Comman.. (0x003a) plen 4  {0x0001} [hci0] 78.076658
+        Address type: 0x01
+          BR/EDR
+        RSSI: invalid (0x7f)
+        UUIDs: 0
+< HCI Command: Inquiry (0x01|0x0001) plen 5               #118 [hci0] 78.076810
+        Access code: 0x9e8b33 (General Inquiry)
+        Length: 10.24s (0x08)
+        Num responses: 0
+> HCI Event: Command Status (0x0f) plen 4                 #119 [hci0] 78.077341
+      Inquiry (0x01|0x0001) ncmd 1
+        Status: Success (0x00)
+@ MGMT Event: Command Complete (0x0001) plen 4        {0x0001} [hci0] 78.077478
+      Start Service Discovery (0x003a) plen 1
+        Status: Success (0x00)
+        Address type: 0x01
+          BR/EDR
+@ MGMT Event: Discovering (0x0013) plen 2             {0x0001} [hci0] 78.077488
+        Address type: 0x01
+          BR/EDR
+        Discovery: Enabled (0x01)
+> HCI Event: Inquiry Complete (0x01) plen 1               #120 [hci0] 88.382849
+        Status: Success (0x00)
+@ MGMT Event: Discovering (0x0013) plen 2             {0x0001} [hci0] 88.382945
+        Address type: 0x01
+          BR/EDR
+        Discovery: Disabled (0x00)
+bluetoothd[2915165]: @ MGMT Comman.. (0x003a) plen 4  {0x0001} [hci0] 88.383089
+        Address type: 0x01
+          BR/EDR
+        RSSI: invalid (0x7f)
+        UUIDs: 0
+< HCI Command: Inquiry (0x01|0x0001) plen 5               #121 [hci0] 88.383350
+        Access code: 0x9e8b33 (General Inquiry)
+        Length: 10.24s (0x08)
+        Num responses: 0
+> HCI Event: Command Status (0x0f) plen 4                 #122 [hci0] 88.384697
+      Inquiry (0x01|0x0001) ncmd 1
+        Status: Success (0x00)
+@ MGMT Event: Command Complete (0x0001) plen 4        {0x0001} [hci0] 88.384979
+      Start Service Discovery (0x003a) plen 1
+        Status: Success (0x00)
+        Address type: 0x01
+          BR/EDR
+@ MGMT Event: Discovering (0x0013) plen 2             {0x0001} [hci0] 88.384990
+        Address type: 0x01
+          BR/EDR
+        Discovery: Enabled (0x01)
+bluetoothctl[2250723]: @ MGMT Close: bluetoothctl            {0x0002} 97.478337
+bluetoothctl[2257025]: @ MGMT Open: bluetoot.. version 1.23  {0x0002} 97.483703
+> HCI Event: Inquiry Complete (0x01) plen 1               #123 [hci0] 98.688066
+        Status: Success (0x00)
+@ MGMT Event: Discovering (0x0013) plen 2             {0x0001} [hci0] 98.688153
+        Address type: 0x01
+          BR/EDR
+        Discovery: Disabled (0x00)
+bluetoothd[2915165]: @ MGMT Comman.. (0x003a) plen 4  {0x0001} [hci0] 98.688273
+        Address type: 0x01
+          BR/EDR
+        RSSI: invalid (0x7f)
+        UUIDs: 0
+< HCI Command: Inquiry (0x01|0x0001) plen 5               #124 [hci0] 98.688370
+        Access code: 0x9e8b33 (General Inquiry)
+        Length: 10.24s (0x08)
+        Num responses: 0
+> HCI Event: Command Status (0x0f) plen 4                 #125 [hci0] 98.689048
+      Inquiry (0x01|0x0001) ncmd 1
+        Status: Success (0x00)
+@ MGMT Event: Command Complete (0x0001) plen 4        {0x0001} [hci0] 98.689265
+      Start Service Discovery (0x003a) plen 1
+        Status: Success (0x00)
+        Address type: 0x01
+          BR/EDR
+@ MGMT Event: Discovering (0x0013) plen 2             {0x0001} [hci0] 98.689273
+        Address type: 0x01
+          BR/EDR
+        Discovery: Enabled (0x01)
+bluetoothctl[2257025]: @ MGMT Close: bluetoothctl           {0x0002} 105.494083

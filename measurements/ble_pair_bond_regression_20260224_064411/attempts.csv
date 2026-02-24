@@ -1,0 +1,3 @@
+attempt,pair_ok,paired,bonded,enc_change_success,mic_failure,host_crash,disconnect_reason
+1,yes,yes,no,no,no,no,       Reason: Connection terminated by local host (0x02)
+2,yes,yes,yes,no,yes,yes,n/a

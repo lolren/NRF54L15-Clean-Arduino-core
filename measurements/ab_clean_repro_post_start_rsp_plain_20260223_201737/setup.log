@@ -1,0 +1,9 @@
+Waiting to connect to bluetoothd...[0;94m[bluetooth][0m#            power on
+[0;94m[bluetooth][0m# agent NoInputNoOutput
+Failed to register agent object
+[0;94m[bluetooth][0m# default-agent
+No agent is registered
+[0;94m[bluetooth][0m# pairable on
+[0;94m[bluetooth][0m# remove C0:DE:54:15:00:51
+Device C0:DE:54:15:00:51 not available
+[0;94m[bluetooth][0m#                         

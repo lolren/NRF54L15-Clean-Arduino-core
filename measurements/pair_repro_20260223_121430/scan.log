@@ -1,0 +1,10 @@
+SetDiscoveryFilter success
+Discovery started
+[[0;92mNEW[0m] Device A4:C1:38:26:4E:DA ATC_264EDA
+[[0;92mNEW[0m] Device C0:DE:54:15:00:51 X54-PAIR
+[[0;92mNEW[0m] Device 47:71:B5:AD:CA:2F 47-71-B5-AD-CA-2F
+[[0;93mCHG[0m] Device C0:DE:54:15:00:51 RSSI: 0xffffffb0 (-80)
+[[0;93mCHG[0m] Device 47:71:B5:AD:CA:2F RSSI: 0xffffffac (-84)
+[[0;93mCHG[0m] Device 47:71:B5:AD:CA:2F RSSI: 0xffffffa7 (-89)
+[[0;92mNEW[0m] Device C2:0E:9D:18:65:97 C2-0E-9D-18-65-97
+[[0;93mCHG[0m] Device 47:71:B5:AD:CA:2F RSSI: 0xffffffa7 (-89)

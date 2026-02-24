@@ -1,0 +1,89 @@
+Bluetooth monitor ver 5.72
+btmon[2826940]: = Note: Linux version 6.17.0-14-generic (x86_64)       0.930168
+btmon[2826940]: = Note: Bluetooth subsystem version 2.22               0.930169
+= New Index: 68:34:21:E5:84:DF (Primary,USB,hci0)               [hci0] 0.930170
+= Open Index: 68:34:21:E5:84:DF                                 [hci0] 0.930171
+= Index Info: 68:34:21:E5:84:DF (Intel Corp.)                   [hci0] 0.930171
+bluetoothd[2375041]: @ MGMT Open.. (privileged) version 1.23  {0x0001} 0.930172
+btmgmt[2058593]: @ MGMT Open: btmgmt version 1.23             {0x0003} 0.930173
+> HCI Event: Inquiry Complete (0x01) plen 1                  #1 [hci0] 1.627388
+        Status: Success (0x00)
+@ MGMT Event: Discovering (0x0013) plen 2              {0x0001} [hci0] 1.627530
+        Address type: 0x01
+          BR/EDR
+        Discovery: Disabled (0x00)
+bluetoothd[2375041]: @ MGMT Command.. (0x003a) plen 4  {0x0001} [hci0] 1.627746
+        Address type: 0x01
+          BR/EDR
+        RSSI: invalid (0x7f)
+        UUIDs: 0
+< HCI Command: Inquiry (0x01|0x0001) plen 5                  #2 [hci0] 1.627845
+        Access code: 0x9e8b33 (General Inquiry)
+        Length: 10.24s (0x08)
+        Num responses: 0
+> HCI Event: Command Status (0x0f) plen 4                    #3 [hci0] 1.629300
+      Inquiry (0x01|0x0001) ncmd 1
+        Status: Success (0x00)
+@ MGMT Event: Command Complete (0x0001) plen 4         {0x0001} [hci0] 1.629479
+      Start Service Discovery (0x003a) plen 1
+        Status: Success (0x00)
+        Address type: 0x01
+          BR/EDR
+@ MGMT Event: Discovering (0x0013) plen 2              {0x0001} [hci0] 1.629486
+        Address type: 0x01
+          BR/EDR
+        Discovery: Enabled (0x01)
+> HCI Event: Inquiry Complete (0x01) plen 1                 #4 [hci0] 11.933710
+        Status: Success (0x00)
+@ MGMT Event: Discovering (0x0013) plen 2             {0x0001} [hci0] 11.933836
+        Address type: 0x01
+          BR/EDR
+        Discovery: Disabled (0x00)
+bluetoothd[2375041]: @ MGMT Comman.. (0x003a) plen 4  {0x0001} [hci0] 11.934069
+        Address type: 0x01
+          BR/EDR
+        RSSI: invalid (0x7f)
+        UUIDs: 0
+< HCI Command: Inquiry (0x01|0x0001) plen 5                 #5 [hci0] 11.934287
+        Access code: 0x9e8b33 (General Inquiry)
+        Length: 10.24s (0x08)
+        Num responses: 0
+> HCI Event: Command Status (0x0f) plen 4                   #6 [hci0] 11.935582
+      Inquiry (0x01|0x0001) ncmd 1
+        Status: Success (0x00)
+@ MGMT Event: Command Complete (0x0001) plen 4        {0x0001} [hci0] 11.935806
+      Start Service Discovery (0x003a) plen 1
+        Status: Success (0x00)
+        Address type: 0x01
+          BR/EDR
+@ MGMT Event: Discovering (0x0013) plen 2             {0x0001} [hci0] 11.935811
+        Address type: 0x01
+          BR/EDR
+        Discovery: Enabled (0x01)
+> HCI Event: Inquiry Complete (0x01) plen 1                 #7 [hci0] 22.239961
+        Status: Success (0x00)
+@ MGMT Event: Discovering (0x0013) plen 2             {0x0001} [hci0] 22.240077
+        Address type: 0x01
+          BR/EDR
+        Discovery: Disabled (0x00)
+bluetoothd[2375041]: @ MGMT Comman.. (0x003a) plen 4  {0x0001} [hci0] 22.240296
+        Address type: 0x01
+          BR/EDR
+        RSSI: invalid (0x7f)
+        UUIDs: 0
+< HCI Command: Inquiry (0x01|0x0001) plen 5                 #8 [hci0] 22.240525
+        Access code: 0x9e8b33 (General Inquiry)
+        Length: 10.24s (0x08)
+        Num responses: 0
+> HCI Event: Command Status (0x0f) plen 4                   #9 [hci0] 22.241867
+      Inquiry (0x01|0x0001) ncmd 1
+        Status: Success (0x00)
+@ MGMT Event: Command Complete (0x0001) plen 4        {0x0001} [hci0] 22.242099
+      Start Service Discovery (0x003a) plen 1
+        Status: Success (0x00)
+        Address type: 0x01
+          BR/EDR
+@ MGMT Event: Discovering (0x0013) plen 2             {0x0001} [hci0] 22.242114
+        Address type: 0x01
+          BR/EDR
+        Discovery: Enabled (0x01)

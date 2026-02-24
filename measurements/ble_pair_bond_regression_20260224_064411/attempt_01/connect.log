@@ -1,0 +1,5 @@
+Attempting to connect to C0:DE:54:15:00:51
+hci0 type 1 discovering off
+hci0 type 1 discovering on
+[[0;93mCHG[0m] Device C0:DE:54:15:00:51 RSSI: 0xffffffa7 (-89)
+[[0;91mDEL[0m] Device A4:C1:38:9D:41:32 ATC_9D4132

@@ -1,0 +1,22 @@
+Device A4:C1:38:9D:41:32 ATC_9D4132
+Device C5:68:44:B3:43:BF C5-68-44-B3-43-BF
+Device C0:DE:54:15:00:31 X54-GATT
+Device C8:FC:4A:C5:8B:10 C8-FC-4A-C5-8B-10
+Device A4:C1:38:75:8A:D6 LYWSD03MMC
+Device C0:DE:54:15:00:21 XIAO54-LINK
+Device A4:C1:38:26:4E:DA ATC_264EDA
+Device 68:0E:11:85:74:1D 68-0E-11-85-74-1D
+Device 4E:D7:98:D7:EE:51 4E-D7-98-D7-EE-51
+Device 40:5E:F6:0D:B8:15 Galaxy Buds Live (B815)
+[[0;93mCHG[0m] Device 4E:D7:98:D7:EE:51 RSSI: 0xffffffb1 (-79)
+[[0;93mCHG[0m] Device A4:C1:38:9D:41:32 RSSI: 0xffffffa8 (-88)
+hci0 type 7 discovering off
+hci0 type 7 discovering on
+[[0;93mCHG[0m] Device A4:C1:38:26:4E:DA RSSI: 0xffffffc9 (-55)
+[[0;93mCHG[0m] Device A4:C1:38:26:4E:DA RSSI: 0xffffffc8 (-56)
+[[0;93mCHG[0m] Device C0:DE:54:15:00:31 RSSI: 0xffffffad (-83)
+[[0;93mCHG[0m] Device 4E:D7:98:D7:EE:51 RSSI: 0xffffffa0 (-96)
+[[0;93mCHG[0m] Device C8:FC:4A:C5:8B:10 RSSI: 0xffffffb2 (-78)
+[[0;93mCHG[0m] Device 4E:D7:98:D7:EE:51 RSSI: 0xffffff9e (-98)
+[[0;92mNEW[0m] Device A4:C1:38:D0:E4:84 ATC_D0E484
+[[0;91mDEL[0m] Device C0:DE:54:15:00:21 XIAO54-LINK

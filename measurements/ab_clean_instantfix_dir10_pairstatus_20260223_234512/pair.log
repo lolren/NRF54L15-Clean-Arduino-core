@@ -1,0 +1,11 @@
+Attempting to pair with C0:DE:54:15:00:51
+hci0 type 1 discovering off
+Failed to pair: org.bluez.Error.AuthenticationFailed
+hci0 C0:DE:54:15:00:51 type LE Random disconnected with reason 0
+[[0;93mCHG[0m] Device C0:DE:54:15:00:51 ServicesResolved: no
+[[0;93mCHG[0m] Device C0:DE:54:15:00:51 Connected: no
+[[0;91mDEL[0m] Device 73:01:16:B1:70:95 73-01-16-B1-70-95
+[[0;91mDEL[0m] Device 58:4B:27:38:45:ED 58-4B-27-38-45-ED
+hci0 type 1 discovering on
+hci0 type 1 discovering off
+hci0 type 1 discovering on

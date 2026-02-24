@@ -1,0 +1,10 @@
+SetDiscoveryFilter success
+Discovery started
+[[0;92mNEW[0m] Device C5:68:44:B3:43:BF C5-68-44-B3-43-BF
+[[0;91mDEL[0m] Device A4:C1:38:D0:E4:84 ATC_D0E484
+[[0;93mCHG[0m] Device A4:C1:38:75:8A:D6 RSSI: 0xffffffb3 (-77)
+[[0;93mCHG[0m] Device 59:E1:5E:2D:DD:C3 RSSI: 0xffffffa0 (-96)
+[[0;93mCHG[0m] Device 59:E1:5E:2D:DD:C3 RSSI: 0xffffffa0 (-96)
+[[0;93mCHG[0m] Device A4:C1:38:8D:7D:4F RSSI: 0xffffffa7 (-89)
+[[0;93mCHG[0m] Device 59:E1:5E:2D:DD:C3 RSSI: 0xffffffad (-83)
+[[0;93mCHG[0m] Device F3:62:B9:D4:08:D5 RSSI: 0xffffffb1 (-79)

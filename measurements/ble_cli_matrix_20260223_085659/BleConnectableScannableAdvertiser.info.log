@@ -1,0 +1,13 @@
+Device C0:DE:54:15:00:11 (random)
+	Name: XIAO-54
+	Alias: XIAO-54
+	Appearance: 0x0080 (128)
+	Icon: computer
+	Paired: no
+	Bonded: no
+	Trusted: no
+	Blocked: no
+	Connected: no
+	LegacyPairing: no
+	RSSI: 0xffffffa5 (-91)
+[[0;91mDEL[0m] Device EB:1E:62:A0:75:AB EB-1E-62-A0-75-AB

@@ -1,0 +1,10 @@
+example,mode,compile,upload,scan,connect,info_connected,extra,note
+BleAdvertiser,scan,pass,pass,pass,fail,fail,skip,
+BlePassiveScanner,serial,pass,pass,skip,skip,skip,pass,
+BleConnectableScannableAdvertiser,connect,pass,pass,pass,fail,pass,skip,
+BleConnectionPeripheral,connect,pass,pass,pass,pass,pass,skip,
+BleGattBasicPeripheral,gatt,pass,pass,pass,fail,pass,pass,
+BleBatteryNotifyPeripheral,notify,pass,pass,pass,fail,pass,pass,
+BlePairingEncryptionStatus,connect,pass,pass,fail,skip,skip,skip,scan_miss
+BleBondPersistenceProbe,connect,pass,pass,fail,skip,skip,skip,scan_miss
+BleConnectionTimingMetrics,connect,pass,pass,pass,pass,pass,skip,

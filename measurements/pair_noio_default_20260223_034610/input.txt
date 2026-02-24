@@ -1,0 +1,5 @@
+default-agent
+connect C0:DE:54:15:00:51
+pair C0:DE:54:15:00:51
+info C0:DE:54:15:00:51
+quit

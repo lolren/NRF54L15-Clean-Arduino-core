@@ -1,0 +1,16 @@
+SetDiscoveryFilter success
+Discovery started
+[[0;92mNEW[0m] Device F3:7B:9C:DB:48:AD F3-7B-9C-DB-48-AD
+[[0;93mCHG[0m] Device 58:CA:FD:97:A0:74 RSSI: 0xffffffa2 (-94)
+[[0;93mCHG[0m] Device 58:CA:FD:97:A0:74 RSSI: 0xffffffa1 (-95)
+[[0;93mCHG[0m] Device 58:CA:FD:97:A0:74 RSSI: 0xffffffa7 (-89)
+[[0;93mCHG[0m] Device 58:CA:FD:97:A0:74 RSSI: 0xffffffa6 (-90)
+[[0;92mNEW[0m] Device A4:C1:38:26:4E:DA ATC_264EDA
+[[0;92mNEW[0m] Device A4:C1:38:9D:41:32 ATC_9D4132
+[[0;93mCHG[0m] Device 58:CA:FD:97:A0:74 RSSI: 0xffffffa7 (-89)
+[[0;93mCHG[0m] Device A4:C1:38:26:4E:DA RSSI: 0xffffffc4 (-60)
+[[0;93mCHG[0m] Device 58:CA:FD:97:A0:74 RSSI: 0xffffffa2 (-94)
+[[0;93mCHG[0m] Device 58:CA:FD:97:A0:74 RSSI: 0xffffffa0 (-96)
+[[0;93mCHG[0m] Device A4:C1:38:8D:7D:4F RSSI: 0xffffffa5 (-91)
+[[0;93mCHG[0m] Device A4:C1:38:8D:7D:4F ServiceData.0000181a-0000-1000-8000-00805f9b34fb:
+  a4 c1 38 8d 7d 4f 00 be 3d 51 0b 77 8e           ..8.}O..=Q.w.   

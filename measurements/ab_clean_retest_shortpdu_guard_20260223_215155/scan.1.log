@@ -1,0 +1,10 @@
+SetDiscoveryFilter success
+Discovery started
+[[0;92mNEW[0m] Device 77:97:32:85:74:A1 77-97-32-85-74-A1
+[[0;93mCHG[0m] Device 77:97:32:85:74:A1 RSSI: 0xffffffac (-84)
+[[0;92mNEW[0m] Device 6B:39:44:EA:A1:46 6B-39-44-EA-A1-46
+[[0;92mNEW[0m] Device C0:DE:54:15:00:51 X54-PAIR
+[[0;93mCHG[0m] Device 6B:39:44:EA:A1:46 RSSI: 0xffffffa6 (-90)
+[[0;93mCHG[0m] Device 6B:39:44:EA:A1:46 RSSI: 0xffffffa7 (-89)
+[[0;93mCHG[0m] Device 6B:39:44:EA:A1:46 RSSI: 0xffffffa6 (-90)
+[[0;92mNEW[0m] Device D9:08:D5:69:61:41 D9-08-D5-69-61-41

@@ -1,0 +1,28 @@
+Attempting to pair with C0:DE:54:15:00:51
+[[0;93mCHG[0m] Device C0:DE:54:15:00:51 Connected: yes
+[[0;93mCHG[0m] Device C0:DE:54:15:00:51 Bonded: yes
+hci0 class of device changed: 0x000000
+hci0 new_settings: bondable ssp br/edr le secure-conn cis-central cis-peripheral 
+[[0;93mCHG[0m] Device 58:50:45:11:3B:C0 RSSI is nil
+[[0;91mDEL[0m] Device 58:50:45:11:3B:C0 58-50-45-11-3B-C0
+[[0;93mCHG[0m] Device F8:42:16:BA:CD:63 RSSI is nil
+[[0;91mDEL[0m] Device F8:42:16:BA:CD:63 F8-42-16-BA-CD-63
+[[0;93mCHG[0m] Device D4:6A:AE:50:20:50 RSSI is nil
+[[0;91mDEL[0m] Device D4:6A:AE:50:20:50 D4-6A-AE-50-20-50
+[[0;93mCHG[0m] Controller 68:34:21:E5:84:DF Class: 0x00000000 (0)
+[[0;93mCHG[0m] Controller 68:34:21:E5:84:DF Powered: no
+[[0;93mCHG[0m] Controller 68:34:21:E5:84:DF Discovering: no
+[[0;93mCHG[0m] Device C0:DE:54:15:00:51 Connected: no
+[[0;93mCHG[0m] Device C0:DE:54:15:00:51 Paired: yes
+[[0;93mCHG[0m] Device C0:DE:54:15:00:51 RSSI is nil
+[[0;93mCHG[0m] Device 71:08:33:57:4A:15 TxPower is nil
+[[0;93mCHG[0m] Device 71:08:33:57:4A:15 RSSI is nil
+[[0;93mCHG[0m] Device A4:C1:38:26:4E:DA RSSI is nil
+Pairing successful
+hci0 class of device changed: 0x7c0104
+[[0;93mCHG[0m] Controller 68:34:21:E5:84:DF Class: 0x007c0104 (8126724)
+hci0 name changed: lolren-ms7e34
+hci0 new_settings: powered bondable ssp br/edr le secure-conn cis-central cis-peripheral 
+[[0;93mCHG[0m] Controller 68:34:21:E5:84:DF Powered: yes
+[[0;91mDEL[0m] Device A4:C1:38:26:4E:DA ATC_264EDA
+[[0;91mDEL[0m] Device 71:08:33:57:4A:15 71-08-33-57-4A-15

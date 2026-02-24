@@ -1,0 +1,7 @@
+Flashing /home/lolren/.cache/arduino/sketches/70BB66B5C424BB8749532FD861687C55/BleBondPersistenceProbe.ino.hex
+Runner: pyocd
+Probe UID: E91217E8
+[---|---|---|---|---|---|---|---|---|----]
+[========================================]
+Upload complete
+New upload port: /dev/ttyACM0 (serial)

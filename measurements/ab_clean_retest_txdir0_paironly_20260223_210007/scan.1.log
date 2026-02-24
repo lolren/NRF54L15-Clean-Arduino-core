@@ -1,0 +1,18 @@
+SetDiscoveryFilter success
+Discovery started
+[[0;92mNEW[0m] Device 46:8D:71:EC:56:EF 46-8D-71-EC-56-EF
+[[0;92mNEW[0m] Device C0:DE:54:15:00:51 X54-PAIR
+[[0;92mNEW[0m] Device 5A:48:5D:DA:07:37 5A-48-5D-DA-07-37
+[[0;93mCHG[0m] Device 5A:48:5D:DA:07:37 RSSI: 0xffffffa5 (-91)
+[[0;92mNEW[0m] Device FA:A9:E9:67:F9:C8 FA-A9-E9-67-F9-C8
+[[0;92mNEW[0m] Device E9:50:5E:FD:D2:44 E9-50-5E-FD-D2-44
+[[0;93mCHG[0m] Device 5A:48:5D:DA:07:37 RSSI: 0xffffffa5 (-91)
+[[0;93mCHG[0m] Device 5A:48:5D:DA:07:37 RSSI: 0xffffffa5 (-91)
+[[0;92mNEW[0m] Device A4:C1:38:9D:41:32 ATC_9D4132
+[[0;93mCHG[0m] Device 5A:48:5D:DA:07:37 RSSI: 0xffffffa5 (-91)
+[[0;93mCHG[0m] Device 5A:48:5D:DA:07:37 RSSI: 0xffffffa5 (-91)
+[[0;93mCHG[0m] Device C0:DE:54:15:00:51 RSSI: 0xffffffad (-83)
+[[0;93mCHG[0m] Device 5A:48:5D:DA:07:37 RSSI: 0xffffffa5 (-91)
+[[0;93mCHG[0m] Device 5A:48:5D:DA:07:37 RSSI: 0xffffffa6 (-90)
+[[0;93mCHG[0m] Device 5A:48:5D:DA:07:37 RSSI: 0xffffffa6 (-90)
+[[0;92mNEW[0m] Device A4:C1:38:26:4E:DA ATC_264EDA

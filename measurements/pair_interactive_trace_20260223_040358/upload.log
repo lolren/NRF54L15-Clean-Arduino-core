@@ -1,0 +1,7 @@
+Flashing /home/lolren/.cache/arduino/sketches/B2331C0E26E6ACE6E48102A02F83FF1E/BlePairingEncryptionStatus.ino.hex
+Runner: pyocd
+Probe UID: E91217E8
+[---|---|---|---|---|---|---|---|---|----]
+[========================================]
+Upload complete
+New upload port: /dev/ttyACM0 (serial)

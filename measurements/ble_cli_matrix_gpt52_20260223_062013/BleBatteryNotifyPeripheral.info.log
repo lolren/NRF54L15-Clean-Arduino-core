@@ -1,0 +1,13 @@
+Device C0:DE:54:15:00:41 (random)
+	Name: X54-BATT
+	Alias: X54-BATT
+	Paired: no
+	Bonded: no
+	Trusted: no
+	Blocked: no
+	Connected: no
+	LegacyPairing: no
+	RSSI: 0xffffffa8 (-88)
+hci0 type 1 discovering off
+hci0 type 1 discovering on
+[[0;91mDEL[0m] Device FE:D3:30:1F:05:58 FE-D3-30-1F-05-58

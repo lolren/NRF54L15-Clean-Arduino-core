@@ -1,0 +1,19 @@
+SetDiscoveryFilter success
+hci0 type 1 discovering off
+hci0 type 7 discovering on
+Discovery started
+[[0;92mNEW[0m] Device C0:DE:54:15:00:11 XIAO-54
+[[0;92mNEW[0m] Device 6D:C8:51:8E:AD:1C 6D-C8-51-8E-AD-1C
+[[0;93mCHG[0m] Device 6D:C8:51:8E:AD:1C RSSI: 0xffffffa3 (-93)
+[[0;93mCHG[0m] Device 6D:C8:51:8E:AD:1C RSSI: 0xffffffab (-85)
+[[0;93mCHG[0m] Device C0:DE:54:15:00:11 RSSI: 0xffffffa1 (-95)
+[[0;93mCHG[0m] Device 6D:C8:51:8E:AD:1C RSSI: 0xffffffab (-85)
+[[0;93mCHG[0m] Device 6D:C8:51:8E:AD:1C RSSI: 0xffffffab (-85)
+[[0;92mNEW[0m] Device CB:53:48:C1:BA:11 CB-53-48-C1-BA-11
+[[0;92mNEW[0m] Device 61:A1:A1:1F:AF:12 61-A1-A1-1F-AF-12
+[[0;93mCHG[0m] Device 61:A1:A1:1F:AF:12 RSSI: 0xffffff9e (-98)
+[[0;93mCHG[0m] Device 6D:C8:51:8E:AD:1C RSSI: 0xffffffa4 (-92)
+hci0 type 7 discovering off
+hci0 type 7 discovering on
+[[0;92mNEW[0m] Device F5:DA:20:D6:D6:5D F5-DA-20-D6-D6-5D
+[[0;93mCHG[0m] Device 6D:C8:51:8E:AD:1C RSSI: 0xffffffab (-85)

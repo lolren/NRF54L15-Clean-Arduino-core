@@ -1,0 +1,46 @@
+Changing power on succeeded
+Device C0:DE:54:15:00:51 not available
+SetDiscoveryFilter success
+hci0 type 1 discovering off
+hci0 type 7 discovering on
+Discovery started
+[[0;92mNEW[0m] Device 7E:78:4B:84:8A:7C 7E-78-4B-84-8A-7C
+[[0;92mNEW[0m] Device C0:DE:54:15:00:51 X54-PAIR
+[[0;92mNEW[0m] Device A4:C1:38:26:4E:DA ATC_264EDA
+[[0;93mCHG[0m] Device C0:DE:54:15:00:51 RSSI: 0xffffffae (-82)
+[[0;93mCHG[0m] Device 7E:78:4B:84:8A:7C RSSI: 0xffffffa9 (-87)
+[[0;93mCHG[0m] Device 7E:78:4B:84:8A:7C RSSI: 0xffffffa8 (-88)
+hci0 type 7 discovering off
+hci0 type 7 discovering on
+[[0;93mCHG[0m] Device C0:DE:54:15:00:51 RSSI: 0xffffffae (-82)
+[[0;92mNEW[0m] Device A4:C1:38:D0:E4:84 ATC_D0E484
+Attempting to connect to C0:DE:54:15:00:51
+hci0 type 1 discovering off
+hci0 type 1 discovering on
+hci0 C0:DE:54:15:00:51 type LE Random connected eir_len 13
+[[0;93mCHG[0m] Device C0:DE:54:15:00:51 Connected: yes
+Failed to connect: org.bluez.Error.Failed le-connection-abort-by-local
+hci0 C0:DE:54:15:00:51 type LE Random disconnected with reason 0
+[[0;93mCHG[0m] Device C0:DE:54:15:00:51 Connected: no
+Attempting to pair with C0:DE:54:15:00:51
+hci0 type 1 discovering off
+hci0 C0:DE:54:15:00:51 type LE Random connected eir_len 13
+[[0;93mCHG[0m] Device C0:DE:54:15:00:51 Connected: yes
+Failed to pair: org.bluez.Error.AuthenticationFailed
+hci0 C0:DE:54:15:00:51 type LE Random disconnected with reason 0
+[[0;93mCHG[0m] Device C0:DE:54:15:00:51 Connected: no
+hci0 type 1 discovering on
+[[0;91mDEL[0m] Device A4:C1:38:26:4E:DA ATC_264EDA
+[[0;91mDEL[0m] Device 7E:78:4B:84:8A:7C 7E-78-4B-84-8A-7C
+[[0;91mDEL[0m] Device A4:C1:38:D0:E4:84 ATC_D0E484
+hci0 type 1 discovering off
+hci0 type 1 discovering on
+hci0 type 1 discovering off
+hci0 type 1 discovering on
+[[0;91mDEL[0m] Device C0:DE:54:15:00:51 X54-PAIR
+hci0 type 1 discovering off
+hci0 type 1 discovering on
+Device C0:DE:54:15:00:51 not available
+DeviceSet C0:DE:54:15:00:51 not available
+hci0 type 1 discovering off
+hci0 type 1 discovering on

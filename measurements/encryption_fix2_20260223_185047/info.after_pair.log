@@ -1,0 +1,17 @@
+Device C0:DE:54:15:00:51 (random)
+	Name: X54 Pairing Probe
+	Alias: X54 Pairing Probe
+	Paired: no
+	Bonded: no
+	Trusted: no
+	Blocked: no
+	Connected: no
+	LegacyPairing: no
+	UUID: Generic Access Profile    (00001800-0000-1000-8000-00805f9b34fb)
+	UUID: Generic Attribute Profile (00001801-0000-1000-8000-00805f9b34fb)
+	UUID: Battery Service           (0000180f-0000-1000-8000-00805f9b34fb)
+	RSSI: 0xffffffb2 (-78)
+[[0;91mDEL[0m] Device C7:F9:6F:16:65:0A C7-F9-6F-16-65-0A
+[[0;91mDEL[0m] Device 58:1E:30:B6:EC:9D 58-1E-30-B6-EC-9D
+[[0;91mDEL[0m] Device 68:C6:BE:7C:7C:B2 68-C6-BE-7C-7C-B2
+[[0;91mDEL[0m] Device A4:C1:38:26:4E:DA ATC_264EDA

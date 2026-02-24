@@ -1,0 +1,10 @@
+Attempting to pair with C0:DE:54:15:00:51
+[[0;93mCHG[0m] Device C0:DE:54:15:00:51 Connected: yes
+Failed to pair: org.bluez.Error.AuthenticationTimeout
+[[0;93mCHG[0m] Device C0:DE:54:15:00:51 Connected: no
+[[0;91mDEL[0m] Device A4:C1:38:75:8A:D6 LYWSD03MMC
+[[0;91mDEL[0m] Device FA:A9:E9:67:F9:C8 FA-A9-E9-67-F9-C8
+[[0;91mDEL[0m] Device FA:10:C6:A0:6E:BE FA-10-C6-A0-6E-BE
+[[0;91mDEL[0m] Device 6F:13:39:FC:73:49 6F-13-39-FC-73-49
+[[0;91mDEL[0m] Device 46:14:9B:4F:D9:CD 46-14-9B-4F-D9-CD
+[[0;91mDEL[0m] Device A4:C1:38:D0:E4:84 ATC_D0E484

@@ -1,0 +1,7 @@
+Attempting to pair with C0:DE:54:15:00:51
+[[0;93mCHG[0m] Device C0:DE:54:15:00:51 Connected: yes
+Failed to pair: org.bluez.Error.AuthenticationFailed
+[[0;93mCHG[0m] Device C0:DE:54:15:00:51 Connected: no
+[[0;91mDEL[0m] Device E9:50:5E:FD:D2:44 E9-50-5E-FD-D2-44
+[[0;91mDEL[0m] Device 5A:48:5D:DA:07:37 5A-48-5D-DA-07-37
+[[0;91mDEL[0m] Device 46:8D:71:EC:56:EF 46-8D-71-EC-56-EF

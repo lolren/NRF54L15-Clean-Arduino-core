@@ -1,0 +1,6 @@
+SetDiscoveryFilter success
+hci0 type 7 discovering on
+Discovery started
+[[0;93mCHG[0m] Controller 68:34:21:E5:84:DF Discovering: yes
+[[0;92mNEW[0m] Device 5C:B2:62:7F:41:17 5C-B2-62-7F-41-17
+hci0 type 7 discovering off

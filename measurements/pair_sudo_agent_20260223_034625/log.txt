@@ -1,0 +1,23 @@
+Waiting to connect to bluetoothd...[0;94m[bluetooth][0m# agent NoInputNoOutput
+Failed to register agent object
+[0;94m[bluetooth][0m# default-agent
+No agent is registered
+[0;94m[bluetooth][0m# connect C0:DE:54:15:00:51
+Attempting to connect to C0:DE:54:15:00:51
+[0;94m[bluetooth][0m# pair C0:DE:54:15:00:51
+Attempting to pair with C0:DE:54:15:00:51
+[0;94m[bluetooth][0m# info C0:DE:54:15:00:51
+Device C0:DE:54:15:00:51 (random)
+	Name: X54-PAIR
+	Alias: X54-PAIR
+	Paired: no
+	Bonded: no
+	Trusted: no
+	Blocked: no
+	Connected: no
+	LegacyPairing: no
+	UUID: Generic Access Profile    (00001800-0000-1000-8000-00805f9b34fb)
+	UUID: Generic Attribute Profile (00001801-0000-1000-8000-00805f9b34fb)
+	UUID: Battery Service           (0000180f-0000-1000-8000-00805f9b34fb)
+[0;94m[bluetooth][0m# quit
+[0;94m[bluetooth][0m# 

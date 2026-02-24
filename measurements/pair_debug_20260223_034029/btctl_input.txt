@@ -1,0 +1,11 @@
+agent NoInputNoOutput
+default-agent
+scan on
+menu scan
+discovery on
+back
+connect C0:DE:54:15:00:51
+pair C0:DE:54:15:00:51
+info C0:DE:54:15:00:51
+disconnect C0:DE:54:15:00:51
+quit

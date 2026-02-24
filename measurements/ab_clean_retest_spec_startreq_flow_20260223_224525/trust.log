@@ -1,0 +1,11 @@
+[[0;93mCHG[0m] Device C0:DE:54:15:00:51 Trusted: yes
+Changing C0:DE:54:15:00:51 trust succeeded
+[[0;93mCHG[0m] Device 70:0E:4F:FC:89:77 RSSI is nil
+[[0;91mDEL[0m] Device 70:0E:4F:FC:89:77 70-0E-4F-FC-89-77
+[[0;93mCHG[0m] Device F8:42:16:BA:CD:63 RSSI is nil
+[[0;91mDEL[0m] Device F8:42:16:BA:CD:63 F8-42-16-BA-CD-63
+[[0;93mCHG[0m] Device C0:DE:54:15:00:51 RSSI is nil
+[[0;93mCHG[0m] Device A4:C1:38:8D:7D:4F RSSI is nil
+[[0;93mCHG[0m] Device 5F:27:1A:05:A6:39 TxPower is nil
+[[0;93mCHG[0m] Device 5F:27:1A:05:A6:39 RSSI is nil
+[[0;93mCHG[0m] Controller 68:34:21:E5:84:DF Discovering: no

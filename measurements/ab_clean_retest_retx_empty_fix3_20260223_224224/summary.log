@@ -1,0 +1,22 @@
+MEAS=/home/lolren/Desktop/Clean_nrf54_implementation/Nrf54L15-Clean-BoardPackage/measurements/ab_clean_retest_retx_empty_fix3_20260223_224224
+pair:
+11:Pairing successful
+serial:
+6:connected peer=68:34:21:E5:84:DF int=36
+19:encryption=ON ce=13
+20:ce=13 rx=1 crc=1 new=1 llid=3 len=1 tx=1 txllid=3 txlen=1 term=0
+21:ce=14 rx=1 crc=1 new=1 llid=2 len=0 tx=1 txllid=1 txlen=0 term=0
+22:ce=15 rx=0 crc=0 new=0 llid=0 len=0 tx=0 txllid=1 txlen=0 term=0
+23:ce=16 rx=0 crc=0 new=0 llid=0 len=0 tx=0 txllid=1 txlen=0 term=0
+24:ce=17 rx=0 crc=0 new=0 llid=0 len=0 tx=0 txllid=1 txlen=0 term=0
+25:ce=18 rx=0 crc=0 new=0 llid=0 len=0 tx=0 txllid=1 txlen=0 term=0
+26:ce=19 rx=0 crc=0 new=0 llid=0 len=0 tx=0 txllid=1 txlen=0 term=0
+27:ce=20 rx=0 crc=0 new=0 llid=0 len=0 tx=0 txllid=1 txlen=0 term=0
+30:encryption=OFF ce=24
+32:link terminated
+33:enc_dbg followup_armed=1 end_seen=0 crc_ok=0 start_req=0 start_rsp_tx_ok=0 rx_llid1=0 rx_llid2=0 rx_llid3=0 last_hdr=0x00 last_llid=0 last_len=0 last_b0=0x00 main_enc_req=1 main_enc_rsp_tx_ok=2 main_start_req=0 main_start_req_dec=0 main_start_rsp_tx_ok=1 pend_ctrl_rx=0 pend_last_hdr=0x00 pend_last_len_raw=0 pend_last_b0=0x00 pend_last_dec=0 enc_rsp_txen_lag_last_us=1 enc_rsp_txen_lag_max_us=1 mic_fail=0 short_pdu=0 mic_ctr_lo=0 mic_hdr=0x00 mic_len_raw=0 mic_dir=0 mic_state=0x00 mic_b=0x00,00,00,00,00 start_rsp_rx=1 start_rsp_raw_len=5 start_rsp_dec=1 start_rsp_hdr=0x0F pause_req=0 pause_rsp=0 enc_clear=0 clear_reason=0x00 tx_lag_last=0 tx_lag_max=2 enc_tx_cnt=2 enc_tx_lag_last=0 enc_tx_lag_max=0 skdm=B4CD2C92E541A5B8 ivm=14FC3477 skds=4D30ACBDC7ECAC11 ivs=274FCB44 sk=22884226A9AFC6642F0059FF7FA1B4A1 sk_alt=73835A460AEC54C6FAFA8A9F71F68BFC sk_ok=1 sk_alt_ok=1 rx_dir=1 tx_dir=0
+btmon:
+298:> HCI Event: Encryption Change (0x08) plen 4               #43 [hci0] 10.974740
+368:> HCI Event: Hardware Error (0x10) plen 1                  #50 [hci0] 11.071731
+929:          Encryption Change
+937:          Hardware Error

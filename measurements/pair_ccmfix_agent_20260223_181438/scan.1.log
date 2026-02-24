@@ -1,0 +1,17 @@
+SetDiscoveryFilter success
+Discovery started
+[[0;92mNEW[0m] Device 66:FE:E7:5D:3A:8B 66-FE-E7-5D-3A-8B
+[[0;92mNEW[0m] Device 46:1C:24:8D:14:79 46-1C-24-8D-14-79
+[[0;93mCHG[0m] Device 46:1C:24:8D:14:79 RSSI: 0xffffffa5 (-91)
+[[0;92mNEW[0m] Device A4:C1:38:26:4E:DA ATC_264EDA
+[[0;92mNEW[0m] Device A4:C1:38:75:8A:D6 LYWSD03MMC
+[[0;93mCHG[0m] Device A4:C1:38:75:8A:D6 RSSI: 0xffffffb6 (-74)
+[[0;93mCHG[0m] Device 46:1C:24:8D:14:79 RSSI: 0xffffffa5 (-91)
+[[0;93mCHG[0m] Device 66:FE:E7:5D:3A:8B RSSI: 0xffffffad (-83)
+[[0;93mCHG[0m] Device 46:1C:24:8D:14:79 RSSI: 0xffffffa5 (-91)
+[[0;93mCHG[0m] Device 46:1C:24:8D:14:79 RSSI: 0xffffffaa (-86)
+[[0;93mCHG[0m] Device 46:1C:24:8D:14:79 RSSI: 0xffffffa7 (-89)
+[[0;93mCHG[0m] Device 46:1C:24:8D:14:79 RSSI: 0xffffffa7 (-89)
+[[0;93mCHG[0m] Device 66:FE:E7:5D:3A:8B RSSI: 0xffffffa9 (-87)
+[[0;93mCHG[0m] Device 46:1C:24:8D:14:79 RSSI: 0xffffffa5 (-91)
+[[0;93mCHG[0m] Device 66:FE:E7:5D:3A:8B RSSI: 0xffffffa9 (-87)

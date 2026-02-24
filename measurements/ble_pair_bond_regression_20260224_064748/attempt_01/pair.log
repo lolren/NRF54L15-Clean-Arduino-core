@@ -1,0 +1,15 @@
+Attempting to pair with C0:DE:54:15:00:51
+hci0 type 1 discovering off
+[[0;93mCHG[0m] Device C0:DE:54:15:00:51 Bonded: yes
+hci0 class of device changed: 0x000000
+hci0 new_settings: bondable ssp br/edr le secure-conn cis-central cis-peripheral 
+[[0;93mCHG[0m] Controller 68:34:21:E5:84:DF Class: 0x00000000 (0)
+[[0;93mCHG[0m] Controller 68:34:21:E5:84:DF Powered: no
+[[0;93mCHG[0m] Controller 68:34:21:E5:84:DF Discovering: no
+[[0;93mCHG[0m] Device C0:DE:54:15:00:51 Connected: no
+[[0;93mCHG[0m] Device C0:DE:54:15:00:51 Paired: yes
+hci0 class of device changed: 0x7c0104
+hci0 name changed: lolren-ms7e34
+[[0;93mCHG[0m] Controller 68:34:21:E5:84:DF Class: 0x007c0104 (8126724)
+hci0 new_settings: powered bondable ssp br/edr le secure-conn cis-central cis-peripheral 
+[[0;93mCHG[0m] Controller 68:34:21:E5:84:DF Powered: yes

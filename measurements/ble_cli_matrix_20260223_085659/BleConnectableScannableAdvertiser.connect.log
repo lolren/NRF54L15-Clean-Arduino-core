@@ -1,0 +1,12 @@
+Attempting to connect to C0:DE:54:15:00:11
+[[0;91mDEL[0m] Device A4:C1:38:26:4E:DA ATC_264EDA
+[[0;91mDEL[0m] Device A4:C1:38:D0:E4:84 ATC_D0E484
+hci0 type 1 discovering off
+hci0 type 1 discovering on
+hci0 C0:DE:54:15:00:11 type LE Random connected eir_len 16
+[[0;93mCHG[0m] Device C0:DE:54:15:00:11 Connected: yes
+Connection successful
+hci0 C0:DE:54:15:00:11 type LE Random disconnected with reason 1
+[[0;93mCHG[0m] Device C0:DE:54:15:00:11 Connected: no
+hci0 type 1 discovering off
+hci0 type 1 discovering on

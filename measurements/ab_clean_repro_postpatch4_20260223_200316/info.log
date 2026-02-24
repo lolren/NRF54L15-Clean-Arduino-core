@@ -1,0 +1,13 @@
+Device C0:DE:54:15:00:51 (random)
+	Name: X54-PAIR
+	Alias: X54-PAIR
+	Paired: no
+	Bonded: no
+	Trusted: yes
+	Blocked: no
+	Connected: no
+	LegacyPairing: no
+	RSSI: 0xffffffad (-83)
+[[0;91mDEL[0m] Device C4:5F:62:0A:3F:8C C4-5F-62-0A-3F-8C
+[[0;91mDEL[0m] Device A4:C1:38:75:8A:D6 LYWSD03MMC
+[[0;91mDEL[0m] Device 4D:1D:A9:BC:B6:46 4D-1D-A9-BC-B6-46

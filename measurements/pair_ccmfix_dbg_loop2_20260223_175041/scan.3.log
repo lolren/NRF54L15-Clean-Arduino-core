@@ -1,0 +1,17 @@
+SetDiscoveryFilter success
+Discovery started
+[[0;93mCHG[0m] Device 59:9A:E1:16:C7:F1 RSSI: 0xffffffa5 (-91)
+[[0;93mCHG[0m] Device 59:9A:E1:16:C7:F1 RSSI: 0xffffffa6 (-90)
+[[0;93mCHG[0m] Device 59:9A:E1:16:C7:F1 RSSI: 0xffffffa6 (-90)
+[[0;93mCHG[0m] Device 59:9A:E1:16:C7:F1 RSSI: 0xffffffa7 (-89)
+[[0;93mCHG[0m] Device 59:9A:E1:16:C7:F1 RSSI: 0xffffffa5 (-91)
+[[0;93mCHG[0m] Device 42:39:35:CC:EE:74 RSSI: 0xffffffa9 (-87)
+[[0;93mCHG[0m] Device 59:9A:E1:16:C7:F1 RSSI: 0xffffffa5 (-91)
+[[0;93mCHG[0m] Device 42:39:35:CC:EE:74 RSSI: 0xffffffa9 (-87)
+[[0;93mCHG[0m] Device 42:39:35:CC:EE:74 RSSI: 0xffffffaa (-86)
+[[0;92mNEW[0m] Device A4:C1:38:26:4E:DA ATC_264EDA
+[[0;93mCHG[0m] Device A4:C1:38:D0:E4:84 RSSI: 0xffffffa9 (-87)
+[[0;93mCHG[0m] Device A4:C1:38:D0:E4:84 ServiceData.0000181a-0000-1000-8000-00805f9b34fb:
+  a4 c1 38 d0 e4 84 00 cb 3a 50 0b 70 a2           ..8.....:P.p.   
+[[0;93mCHG[0m] Device 59:9A:E1:16:C7:F1 RSSI: 0xffffffa6 (-90)
+[[0;93mCHG[0m] Device EF:7D:6A:E6:2A:9F RSSI: 0xffffffae (-82)

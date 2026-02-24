@@ -1,0 +1,19 @@
+Waiting to connect to bluetoothd...[0;94m[bluetooth][0m# agent on
+Failed to register agent object
+[0;94m[bluetooth][0m# default-agent
+No agent is registered
+[0;94m[bluetooth][0m# connect C0:DE:54:15:00:51
+Device C0:DE:54:15:00:51 not available
+[0;94m[bluetooth][0m# pair C0:DE:54:15:00:51
+Device C0:DE:54:15:00:51 not available
+[0;94m[bluetooth][0m# yes
+[1;39mInvalid command in menu main: yes[0m
+[1;39m
+Use "help" for a list of available commands in a menu.
+Use "menu <submenu>" if you want to enter any submenu.
+Use "back" if you want to return to menu main.[0m
+[0;94m[bluetooth][0m# info C0:DE:54:15:00:51
+Device C0:DE:54:15:00:51 not available
+DeviceSet C0:DE:54:15:00:51 not available
+[0;94m[bluetooth][0m# quit
+[0;94m[bluetooth][0m# 

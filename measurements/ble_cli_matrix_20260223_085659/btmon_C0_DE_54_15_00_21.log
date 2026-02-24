@@ -1,0 +1,39 @@
+Bluetooth monitor ver 5.72
+btmon[2394870]: = Note: Linux version 6.17.0-14-generic (x86_64)       0.120643
+btmon[2394870]: = Note: Bluetooth subsystem version 2.22               0.120645
+= New Index: 68:34:21:E5:84:DF (Primary,USB,hci0)               [hci0] 0.120646
+= Open Index: 68:34:21:E5:84:DF                                 [hci0] 0.120646
+= Index Info: 68:34:21:E5:84:DF (Intel Corp.)                   [hci0] 0.120647
+bluetoothd[2375041]: @ MGMT Open.. (privileged) version 1.23  {0x0001} 0.120647
+btmgmt[2058593]: @ MGMT Open: btmgmt version 1.23             {0x0003} 0.120648
+bluetoothctl[2394928]: @ MGMT Op.. (privileged) version 1.23  {0x0002} 1.119584
+bluetoothctl[2394928]: @ MGMT Close: bluetoothctl             {0x0002} 9.128961
+> HCI Event: Inquiry Complete (0x01) plen 1                  #1 [hci0] 9.916639
+        Status: Success (0x00)
+@ MGMT Event: Discovering (0x0013) plen 2              {0x0001} [hci0] 9.916822
+        Address type: 0x01
+          BR/EDR
+        Discovery: Disabled (0x00)
+bluetoothd[2375041]: @ MGMT Command.. (0x003a) plen 4  {0x0001} [hci0] 9.916938
+        Address type: 0x01
+          BR/EDR
+        RSSI: invalid (0x7f)
+        UUIDs: 0
+< HCI Command: Inquiry (0x01|0x0001) plen 5                  #2 [hci0] 9.917054
+        Access code: 0x9e8b33 (General Inquiry)
+        Length: 10.24s (0x08)
+        Num responses: 0
+> HCI Event: Command Status (0x0f) plen 4                    #3 [hci0] 9.917620
+      Inquiry (0x01|0x0001) ncmd 1
+        Status: Success (0x00)
+@ MGMT Event: Command Complete (0x0001) plen 4         {0x0001} [hci0] 9.917786
+      Start Service Discovery (0x003a) plen 1
+        Status: Success (0x00)
+        Address type: 0x01
+          BR/EDR
+@ MGMT Event: Discovering (0x0013) plen 2              {0x0001} [hci0] 9.917794
+        Address type: 0x01
+          BR/EDR
+        Discovery: Enabled (0x01)
+bluetoothctl[2395943]: @ MGMT O..n (privileged) version 1.23  {0x0002} 12.144860
+bluetoothctl[2395943]: @ MGMT Close: bluetoothctl            {0x0002} 18.151875

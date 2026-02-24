@@ -1,0 +1,7 @@
+Attempting to connect to C0:DE:54:15:00:51
+[[0;91mDEL[0m] Device 46:34:B5:FF:67:F4 46-34-B5-FF-67-F4
+hci0 type 1 discovering off
+hci0 type 1 discovering on
+hci0 C0:DE:54:15:00:51 type LE Random connected eir_len 13
+[[0;93mCHG[0m] Device C0:DE:54:15:00:51 Connected: yes
+Connection successful

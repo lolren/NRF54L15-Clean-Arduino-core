@@ -1,0 +1,130 @@
+Bluetooth monitor ver 5.72
+btmon[1584085]: = Note: Linux version 6.17.0-14-generic (x86_64)       0.197104
+btmon[1584085]: = Note: Bluetooth subsystem version 2.22               0.197105
+= New Index: 68:34:21:E5:84:DF (Primary,USB,hci0)               [hci0] 0.197106
+= Open Index: 68:34:21:E5:84:DF                                 [hci0] 0.197107
+= Index Info: 68:34:21:E5:84:DF (Intel Corp.)                   [hci0] 0.197107
+bluetoothd[2915165]: @ MGMT Open.. (privileged) version 1.23  {0x0001} 0.197108
+bluetoothctl[1584190]: @ MGMT Open: bluetooth.. version 1.23  {0x0002} 1.200115
+> HCI Event: Inquiry Complete (0x01) plen 1                  #1 [hci0] 6.041345
+        Status: Success (0x00)
+@ MGMT Event: Discovering (0x0013) plen 2              {0x0001} [hci0] 6.041485
+        Address type: 0x01
+          BR/EDR
+        Discovery: Disabled (0x00)
+< HCI Command: LE Set Address Resolu.. (0x08|0x002d) plen 1  #2 [hci0] 6.041591
+        Address resolution: Disabled (0x00)
+bluetoothd[2915165]: @ MGMT Command.. (0x003a) plen 4  {0x0001} [hci0] 6.041726
+        Address type: 0x01
+          BR/EDR
+        RSSI: invalid (0x7f)
+        UUIDs: 0
+> HCI Event: Command Complete (0x0e) plen 4                  #3 [hci0] 6.042302
+      LE Set Address Resolution Enable (0x08|0x002d) ncmd 1
+        Status: Success (0x00)
+< HCI Command: LE Set Address Resolu.. (0x08|0x002d) plen 1  #4 [hci0] 6.042613
+        Address resolution: Enabled (0x01)
+> HCI Event: Command Complete (0x0e) plen 4                  #5 [hci0] 6.043237
+      LE Set Address Resolution Enable (0x08|0x002d) ncmd 1
+        Status: Success (0x00)
+< HCI Command: LE Set Extended Scan.. (0x08|0x0041) plen 13  #6 [hci0] 6.043590
+        Own address type: Public (0x00)
+        Filter policy: Ignore not in accept list (0x01)
+        PHYs: 0x05
+        Entry 0: LE 1M
+          Type: Passive (0x00)
+          Interval: 60.000 msec (0x0060)
+          Window: 60.000 msec (0x0060)
+        Entry 1: LE Coded
+          Type: Passive (0x00)
+          Interval: 180.000 msec (0x0120)
+          Window: 180.000 msec (0x0120)
+> HCI Event: Command Complete (0x0e) plen 4                  #7 [hci0] 6.044237
+      LE Set Extended Scan Parameters (0x08|0x0041) ncmd 1
+        Status: Success (0x00)
+< HCI Command: LE Set Extended Scan... (0x08|0x0042) plen 6  #8 [hci0] 6.044585
+        Extended scan: Enabled (0x01)
+        Filter duplicates: Enabled (0x01)
+        Duration: 0 msec (0x0000)
+        Period: 0.00 sec (0x0000)
+> HCI Event: Command Complete (0x0e) plen 4                  #9 [hci0] 6.045338
+      LE Set Extended Scan Enable (0x08|0x0042) ncmd 1
+        Status: Success (0x00)
+< HCI Command: Inquiry (0x01|0x0001) plen 5                 #10 [hci0] 6.045796
+        Access code: 0x9e8b33 (General Inquiry)
+        Length: 10.24s (0x08)
+        Num responses: 0
+> HCI Event: Command Status (0x0f) plen 4                   #11 [hci0] 6.113330
+      Inquiry (0x01|0x0001) ncmd 1
+        Status: Success (0x00)
+@ MGMT Event: Command Complete (0x0001) plen 4         {0x0001} [hci0] 6.113478
+      Start Service Discovery (0x003a) plen 1
+        Status: Success (0x00)
+        Address type: 0x01
+          BR/EDR
+@ MGMT Event: Discovering (0x0013) plen 2              {0x0001} [hci0] 6.113492
+        Address type: 0x01
+          BR/EDR
+        Discovery: Enabled (0x01)
+bluetoothctl[1584190]: @ MGMT Close: bluetoothctl             {0x0002} 9.212045
+bluetoothctl[1584903]: @ MGMT Open: bluetooth.. version 1.23  {0x0002} 9.217575
+bluetoothd[2915165]: @ MGMT Command.. (0x0024) plen 1  {0x0001} [hci0] 9.222219
+        Address type: 0x01
+          BR/EDR
+< HCI Command: Inquiry Cancel (0x01|0x0002) plen 0          #12 [hci0] 9.222335
+> HCI Event: Command Complete (0x0e) plen 4                 #13 [hci0] 9.258537
+      Inquiry Cancel (0x01|0x0002) ncmd 1
+        Status: Success (0x00)
+@ MGMT Event: Discovering (0x0013) plen 2              {0x0001} [hci0] 9.258652
+        Address type: 0x01
+          BR/EDR
+        Discovery: Disabled (0x00)
+< HCI Command: LE Set Extended Scan.. (0x08|0x0042) plen 6  #14 [hci0] 9.258793
+        Extended scan: Disabled (0x00)
+        Filter duplicates: Disabled (0x00)
+        Duration: 0 msec (0x0000)
+        Period: 0.00 sec (0x0000)
+> HCI Event: Command Complete (0x0e) plen 4                 #15 [hci0] 9.269499
+      LE Set Extended Scan Enable (0x08|0x0042) ncmd 1
+        Status: Success (0x00)
+@ MGMT Event: Command Complete (0x0001) plen 4         {0x0001} [hci0] 9.269614
+      Stop Discovery (0x0024) plen 1
+        Status: Success (0x00)
+        Address type: 0x01
+          BR/EDR
+< HCI Command: LE Set Address Resol.. (0x08|0x002d) plen 1  #16 [hci0] 9.269627
+        Address resolution: Disabled (0x00)
+bluetoothd[2915165]: @ MGMT Command.. (0x0019) plen 8  {0x0001} [hci0] 9.269815
+        LE Address: C0:DE:54:15:00:51 (Static)
+        Capability: DisplayYesNo (0x01)
+> HCI Event: Command Complete (0x0e) plen 4                 #17 [hci0] 9.270502
+      LE Set Address Resolution Enable (0x08|0x002d) ncmd 1
+        Status: Success (0x00)
+< HCI Command: LE Set Address Resol.. (0x08|0x002d) plen 1  #18 [hci0] 9.270627
+        Address resolution: Enabled (0x01)
+> HCI Event: Command Complete (0x0e) plen 4                 #19 [hci0] 9.271420
+      LE Set Address Resolution Enable (0x08|0x002d) ncmd 1
+        Status: Success (0x00)
+< HCI Command: LE Set Extended Sca.. (0x08|0x0041) plen 13  #20 [hci0] 9.271544
+        Own address type: Public (0x00)
+        Filter policy: Ignore not in accept list (0x01)
+        PHYs: 0x05
+        Entry 0: LE 1M
+          Type: Passive (0x00)
+          Interval: 60.000 msec (0x0060)
+          Window: 60.000 msec (0x0060)
+        Entry 1: LE Coded
+          Type: Passive (0x00)
+          Interval: 180.000 msec (0x0120)
+          Window: 180.000 msec (0x0120)
+> HCI Event: Command Complete (0x0e) plen 4                 #21 [hci0] 9.272422
+      LE Set Extended Scan Parameters (0x08|0x0041) ncmd 1
+        Status: Success (0x00)
+< HCI Command: LE Set Extended Scan.. (0x08|0x0042) plen 6  #22 [hci0] 9.272589
+        Extended scan: Enabled (0x01)
+        Filter duplicates: Enabled (0x01)
+        Duration: 0 msec (0x0000)
+        Period: 0.00 sec (0x0000)
+> HCI Event: Command Complete (0x0e) plen 4                 #23 [hci0] 9.273422
+      LE Set Extended Scan Enable (0x08|0x0042) ncmd 1
+        Status: Success (0x00)

@@ -1,0 +1,9 @@
+SetDiscoveryFilter success
+hci0 type 1 discovering off
+hci0 type 7 discovering on
+Discovery started
+[[0;92mNEW[0m] Device 46:34:B5:FF:67:F4 46-34-B5-FF-67-F4
+[[0;92mNEW[0m] Device 7B:D9:E9:4E:3A:35 7B-D9-E9-4E-3A-35
+hci0 type 7 discovering off
+hci0 type 7 discovering on
+[[0;92mNEW[0m] Device C0:DE:54:15:00:51 X54-PAIR

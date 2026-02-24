@@ -1,0 +1,15 @@
+Device C0:DE:54:15:00:11 (random)
+	Name: XIAO-nRF54L15
+	Alias: XIAO-nRF54L15
+	Appearance: 0x0080 (128)
+	Icon: computer
+	Paired: no
+	Bonded: no
+	Trusted: no
+	Blocked: no
+	Connected: no
+	LegacyPairing: no
+	RSSI: 0xffffffa1 (-95)
+hci0 type 1 discovering off
+hci0 type 1 discovering on
+[[0;91mDEL[0m] Device CB:53:48:C1:BA:11 CB-53-48-C1-BA-11

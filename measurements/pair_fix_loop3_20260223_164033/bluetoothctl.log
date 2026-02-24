@@ -1,0 +1,49 @@
+Waiting to connect to bluetoothd...[0;94m[bluetooth][0m#            [0;94m[X54 Pairing Probe][0m# power on
+[0;94m[X54 Pairing Probe][0m# scan on
+[0;94m[X54 Pairing Probe][0m#                                 Agent registered
+[0;94m[X54 Pairing Probe][0m#                                 Changing power on succeeded
+[0;94m[X54 Pairing Probe][0m#                                 SetDiscoveryFilter success
+                                [[0;91mDEL[0m] Device 65:0B:BD:35:ED:2E 65-0B-BD-35-ED-2E
+                                [[0;93mCHG[0m] Device C0:DE:54:15:00:51 ServicesResolved: no
+[0;94m[X54 Pairing Probe][0m# [0;94m[bluetooth][0m#                                 [[0;93mCHG[0m] Device C0:DE:54:15:00:51 Connected: no
+[0;94m[bluetooth][0m# pair C0:DE:54:15:00:51
+Attempting to pair with C0:DE:54:15:00:51
+[0;94m[bluetooth][0m# connect C0:DE:54:15:00:51
+Attempting to connect to C0:DE:54:15:00:51
+[0;94m[bluetooth][0m# trust C0:DE:54:15:00:51
+[0;94m[bluetooth][0m# scan off
+[0;94m[bluetooth][0m# info C0:DE:54:15:00:51
+Device C0:DE:54:15:00:51 (random)
+	Name: X54 Pairing Probe
+	Alias: X54 Pairing Probe
+	Paired: no
+	Bonded: no
+	Trusted: yes
+	Blocked: no
+	Connected: no
+	LegacyPairing: no
+	UUID: Generic Access Profile    (00001800-0000-1000-8000-00805f9b34fb)
+	UUID: Generic Attribute Profile (00001801-0000-1000-8000-00805f9b34fb)
+	UUID: Battery Service           (0000180f-0000-1000-8000-00805f9b34fb)
+	RSSI: 0xffffffae (-82)
+	Battery Percentage: 0x60 (96)
+[0;94m[bluetooth][0m#                         Failed to start discovery: org.bluez.Error.InProgress
+[0;94m[bluetooth][0m#                         Changing C0:DE:54:15:00:51 trust succeeded
+[0;94m[bluetooth][0m#                         Failed to stop discovery: org.bluez.Error.Failed
+                        Failed to pair: org.bluez.Error.Failed
+[0;94m[bluetooth][0m#                         Failed to connect: org.bluez.Error.Failed le-connection-abort-by-local
+info C0:DE:54:15:00:51
+Device C0:DE:54:15:00:51 (random)
+	Name: X54 Pairing Probe
+	Alias: X54 Pairing Probe
+	Paired: no
+	Bonded: no
+	Trusted: yes
+	Blocked: no
+	Connected: no
+	LegacyPairing: no
+	UUID: Generic Access Profile    (00001800-0000-1000-8000-00805f9b34fb)
+	UUID: Generic Attribute Profile (00001801-0000-1000-8000-00805f9b34fb)
+	UUID: Battery Service           (0000180f-0000-1000-8000-00805f9b34fb)
+	RSSI: 0xffffffae (-82)
+[0;94m[bluetooth][0m# quit

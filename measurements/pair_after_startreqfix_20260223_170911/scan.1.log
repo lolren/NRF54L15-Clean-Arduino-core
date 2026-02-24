@@ -1,0 +1,8 @@
+SetDiscoveryFilter success
+Discovery started
+[[0;92mNEW[0m] Device C0:DE:54:15:00:51 X54-PAIR
+[[0;92mNEW[0m] Device E9:CA:A2:61:3F:50 E9-CA-A2-61-3F-50
+[[0;93mCHG[0m] Device C0:DE:54:15:00:51 RSSI: 0xffffffa6 (-90)
+[[0;92mNEW[0m] Device A4:C1:38:D0:E4:84 ATC_D0E484
+[[0;92mNEW[0m] Device 41:93:C6:5C:11:CF 41-93-C6-5C-11-CF
+[[0;93mCHG[0m] Device C0:DE:54:15:00:51 RSSI: 0xffffffa4 (-92)

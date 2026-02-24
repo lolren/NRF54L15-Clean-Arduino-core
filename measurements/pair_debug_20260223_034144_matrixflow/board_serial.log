@@ -1,0 +1,57 @@
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+[trace] CONNECTED
+[trace] QUEUE_LL_CTRL
+connected peer=68:34:21:E5:84:DF int=36
+ll_ctrl op=0x08 ce=1
+[trace] TX_LL_CTRL_PENDING
+[trace] QUEUE_LL_CTRL
+ll_ctrl op=0x0C ce=4
+[trace] TX_LL_CTRL_PENDING
+[trace] SMP_PAIRING_REQUEST_RX
+[trace] QUEUE_L2CAP
+[trace] TX_L2CAP_PENDING
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] SUPERVISION_TIMEOUT
+[trace] DISCONNECT
+[trace] EVT_RX_TIMEOUT
+link terminated
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising

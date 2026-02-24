@@ -1,0 +1,46 @@
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+connected peer=68:34:21:E5:84:DF int=36
+ll_ctrl op=0x08 new=1 tx_ok=1 tx_llid=1 tx_len=0 ce=1
+ll_ctrl op=0x0C new=1 tx_ok=1 tx_llid=1 tx_len=0 ce=3
+ll_ctrl op=0x01 new=1 tx_ok=1 tx_llid=2 tx_len=7 ce=5
+ll_ctrl op=0x01 new=1 tx_ok=1 tx_llid=1 tx_len=0 ce=210
+ll_ctrl op=0x01 new=1 tx_ok=1 tx_llid=1 tx_len=0 ce=299
+rx_smp code=0x01 l2len=7 rx_len=11 new=1 ce=352
+tx_smp code=0x02 l2len=7 tx_len=11 ce=353
+tx_smp code=0x02 l2len=7 tx_len=11 ce=354
+rx_smp code=0x03 l2len=17 rx_len=21 new=1 ce=355
+tx_smp code=0x03 l2len=17 tx_len=21 ce=356
+rx_smp code=0x04 l2len=17 rx_len=21 new=1 ce=357
+tx_smp code=0x04 l2len=17 tx_len=21 ce=358
+ll_ctrl op=0x03 new=1 tx_ok=1 tx_llid=3 tx_len=13 tx_op=0x04 ce=359
+ll_ctrl op=0x02 new=1 tx_ok=1 tx_llid=1 tx_len=0 ce=1028
+link terminated
+enc_dbg followup_armed=1 end_seen=0 crc_ok=0 start_req=0 start_rsp_tx_ok=0
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising

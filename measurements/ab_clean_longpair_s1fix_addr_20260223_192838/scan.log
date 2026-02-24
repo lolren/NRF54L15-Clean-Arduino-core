@@ -1,0 +1,22 @@
+SetDiscoveryFilter success
+Discovery started
+[[0;92mNEW[0m] Device C7:F9:6F:16:65:0A C7-F9-6F-16-65-0A
+[[0;93mCHG[0m] Device C0:DE:54:15:00:51 RSSI: 0xffffffaf (-81)
+[[0;93mCHG[0m] Device C0:DE:54:15:00:51 Name: X54-PAIR
+[[0;93mCHG[0m] Device C0:DE:54:15:00:51 Alias: X54-PAIR
+[[0;92mNEW[0m] Device 7D:3A:27:49:7C:A9 7D-3A-27-49-7C-A9
+[[0;92mNEW[0m] Device 69:54:EF:53:DD:98 69-54-EF-53-DD-98
+[[0;93mCHG[0m] Device C0:DE:54:15:00:51 RSSI: 0xffffffac (-84)
+[[0;93mCHG[0m] Device 69:54:EF:53:DD:98 RSSI: 0xffffff9d (-99)
+[[0;92mNEW[0m] Device A4:C1:38:75:8A:D6 LYWSD03MMC
+[[0;92mNEW[0m] Device A4:C1:38:8D:7D:4F ATC_8D7D4F
+[[0;92mNEW[0m] Device A4:C1:38:26:4E:DA ATC_264EDA
+[[0;92mNEW[0m] Device DE:CB:70:58:C3:F0 DE-CB-70-58-C3-F0
+[[0;93mCHG[0m] Device 69:54:EF:53:DD:98 RSSI: 0xffffff9e (-98)
+[[0;92mNEW[0m] Device A4:C1:38:D0:E4:84 ATC_D0E484
+[[0;93mCHG[0m] Device 69:54:EF:53:DD:98 RSSI: 0xffffffa2 (-94)
+[[0;93mCHG[0m] Device C0:DE:54:15:00:51 RSSI: 0xffffffad (-83)
+[[0;93mCHG[0m] Device A4:C1:38:75:8A:D6 RSSI: 0xffffffb0 (-80)
+[[0;93mCHG[0m] Device A4:C1:38:75:8A:D6 UUIDs: 0000fe95-0000-1000-8000-00805f9b34fb
+[[0;93mCHG[0m] Device A4:C1:38:75:8A:D6 ServiceData.0000fe95-0000-1000-8000-00805f9b34fb:
+  30 58 5b 05 01 d6 8a 75 38 c1 a4 28 01 00        0X[....u8..(..  

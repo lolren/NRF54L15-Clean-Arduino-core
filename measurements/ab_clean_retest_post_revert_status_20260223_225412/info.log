@@ -1,0 +1,10 @@
+Device C0:DE:54:15:00:51 (random)
+	Name: X54-PAIR
+	Alias: X54-PAIR
+	Paired: yes
+	Bonded: yes
+	Trusted: yes
+	Blocked: no
+	Connected: no
+	LegacyPairing: no
+[[0;93mCHG[0m] Controller 68:34:21:E5:84:DF Discovering: yes

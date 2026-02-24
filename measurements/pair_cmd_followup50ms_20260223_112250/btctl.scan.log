@@ -1,0 +1,16 @@
+SetDiscoveryFilter success
+Discovery started
+[[0;92mNEW[0m] Device C0:DE:54:15:00:51 X54-PAIR
+[[0;92mNEW[0m] Device 65:19:9D:C0:5C:D3 65-19-9D-C0-5C-D3
+[[0;92mNEW[0m] Device C5:58:2D:E3:96:9A C5-58-2D-E3-96-9A
+[[0;93mCHG[0m] Device C0:DE:54:15:00:51 RSSI: 0xffffffb0 (-80)
+[[0;93mCHG[0m] Device 65:19:9D:C0:5C:D3 RSSI: 0xffffffa3 (-93)
+[[0;93mCHG[0m] Device C0:DE:54:15:00:51 RSSI: 0xffffffaf (-81)
+[[0;92mNEW[0m] Device A4:C1:38:D0:E4:84 ATC_D0E484
+[[0;93mCHG[0m] Device 65:19:9D:C0:5C:D3 RSSI: 0xffffffa2 (-94)
+[[0;93mCHG[0m] Device C0:DE:54:15:00:51 RSSI: 0xffffffb0 (-80)
+[[0;92mNEW[0m] Device A4:C1:38:26:4E:DA ATC_264EDA
+[[0;93mCHG[0m] Device 65:19:9D:C0:5C:D3 RSSI: 0xffffffa3 (-93)
+[[0;93mCHG[0m] Device A4:C1:38:D0:E4:84 RSSI: 0xffffffad (-83)
+[[0;93mCHG[0m] Device A4:C1:38:D0:E4:84 ServiceData.0000181a-0000-1000-8000-00805f9b34fb:
+  a4 c1 38 d0 e4 84 00 ce 38 50 0b 71 ea           ..8.....8P.q.   

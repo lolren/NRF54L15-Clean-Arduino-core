@@ -1,0 +1,336 @@
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+[trace] CONNECTED
+connected peer=68:34:21:E5:84:DF int=36
+ll_ctrl op=0x08 ce=1
+ll_ctrl op=0x0C ce=3
+[trace] SMP_PAIRING_REQUEST_RX
+[trace] SMP_CONFIRM_RX
+[trace] SMP_RANDOM_RX
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+ll_ctrl op=0x01 ce=117
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+ll_ctrl op=0x01 ce=230
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+ll_ctrl op=0x01 ce=286
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+ll_ctrl op=0x01 ce=365
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+ll_ctrl op=0x01 ce=421
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+ll_ctrl op=0x01 ce=589
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+ll_ctrl op=0x02 ce=675
+link terminated
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising

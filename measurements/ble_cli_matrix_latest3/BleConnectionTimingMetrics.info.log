@@ -1,0 +1,19 @@
+Device C0:DE:54:15:00:71 (random)
+	Name: XIAO54-TIMING
+	Alias: XIAO54-TIMING
+	Paired: no
+	Bonded: no
+	Trusted: no
+	Blocked: no
+	Connected: yes
+	LegacyPairing: no
+	UUID: Generic Access Profile    (00001800-0000-1000-8000-00805f9b34fb)
+	UUID: Generic Attribute Profile (00001801-0000-1000-8000-00805f9b34fb)
+	UUID: Battery Service           (0000180f-0000-1000-8000-00805f9b34fb)
+	RSSI: 0xffffffab (-85)
+	Battery Percentage: 0x64 (100)
+hci0 type 1 discovering off
+hci0 type 1 discovering on
+[[0;91mDEL[0m] Device F5:DA:20:D6:D6:5D F5-DA-20-D6-D6-5D
+[[0;91mDEL[0m] Device A4:C1:38:9D:41:32 ATC_9D4132
+[[0;91mDEL[0m] Device 44:52:15:AF:0C:2C 44-52-15-AF-0C-2C

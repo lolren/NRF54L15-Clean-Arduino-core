@@ -1,0 +1,17 @@
+#10 ch=38 rssi=-105 type=ADV_IND txAddr=public len=23 advA=A4:C1:38:D0:E4:84
+#11 ch=38 rssi=-90 type=SCAN_REQ txAddr=public len=12 advA=B4:3A:45:89:65:FA
+#12 ch=37 rssi=-83 type=ADV_IND txAddr=public len=23 advA=A4:C1:38:26:4E:DA
+#13 ch=39 rssi=-103 type=ADV_IND txAddr=public len=27 advA=A4:C1:38:75:8A:D6
+#14 ch=38 rssi=-102 type=ADV_NONCONN txAddr=random len=37 advA=C5:68:44:B3:43:BF
+#15 ch=37 rssi=-83 type=ADV_IND txAddr=public len=23 advA=A4:C1:38:26:4E:DA
+#16 ch=38 rssi=-90 type=SCAN_REQ txAddr=public len=12 advA=B4:3A:45:89:65:FA
+#17 ch=39 rssi=-86 type=SCAN_REQ txAddr=random len=12 advA=19:B4:02:BC:EE:B4
+#18 ch=37 rssi=-74 type=SCAN_REQ txAddr=random len=12 advA=19:B4:02:BC:EE:B4
+#19 ch=38 rssi=-85 type=ADV_IND txAddr=public len=23 advA=A4:C1:38:26:4E:DA
+#20 ch=38 rssi=-89 type=SCAN_REQ txAddr=public len=12 advA=B4:3A:45:89:65:FA
+#21 ch=39 rssi=-86 type=ADV_IND txAddr=public len=23 advA=A4:C1:38:26:4E:DA
+#22 ch=37 rssi=-91 type=SCAN_REQ txAddr=public len=12 advA=B4:3A:45:89:65:FA
+#23 ch=38 rssi=-90 type=SCAN_REQ txAddr=public len=12 advA=B4:3A:45:89:65:FA
+#24 ch=39 rssi=-85 type=SCAN_REQ txAddr=random len=12 advA=3C:B7:43:93:E4:CE
+#25 ch=37 rssi=-74 type=SCAN_REQ txAddr=random len=12 advA=3C:B7:43:93:E4:CE
+#26 ch=38 rssi=-98 type=ADV_IND txAddr=public len=27 advA=A4:C1:38:75:8A:D6

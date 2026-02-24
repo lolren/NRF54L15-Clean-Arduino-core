@@ -1,0 +1,9 @@
+Attempting to disconnect from C0:DE:54:15:00:21
+[[0;91mDEL[0m] Device A4:C1:38:75:8A:D6 LYWSD03MMC
+[[0;91mDEL[0m] Device A4:C1:38:9D:41:32 ATC_9D4132
+hci0 C0:DE:54:15:00:21 type LE Random disconnected with reason 2
+[[0;93mCHG[0m] Device C0:DE:54:15:00:21 ServicesResolved: no
+Successful disconnected
+[[0;93mCHG[0m] Device C0:DE:54:15:00:21 Connected: no
+hci0 type 1 discovering off
+hci0 type 1 discovering on

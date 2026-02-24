@@ -1,0 +1,7 @@
+Attempting to disconnect from C0:DE:54:15:00:71
+hci0 C0:DE:54:15:00:71 type LE Random disconnected with reason 2
+[[0;93mCHG[0m] Device C0:DE:54:15:00:71 ServicesResolved: no
+Successful disconnected
+[[0;93mCHG[0m] Device C0:DE:54:15:00:71 Connected: no
+[[0;93mCHG[0m] Device 59:E1:5E:2D:DD:C3 RSSI: 0xffffffac (-84)
+[[0;92mNEW[0m] Device C0:13:1A:B3:49:E3 C0-13-1A-B3-49-E3

@@ -1,0 +1,10 @@
+BLE Pair/Bond Regression Summary
+attempts=2
+pass_count=0
+pair_ok_count=2
+paired_count=2
+bonded_count=1
+enc_change_success_count=0
+mic_failure_count=1
+host_crash_count=1
+csv=/home/lolren/Desktop/Clean_nrf54_implementation/Nrf54L15-Clean-BoardPackage/measurements/ble_pair_bond_regression_20260224_064411/attempts.csv

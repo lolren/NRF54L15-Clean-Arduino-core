@@ -1,0 +1,7 @@
+Flashing /home/lolren/.cache/arduino/sketches/04F9234396505BBE1C671BA85E0A1151/BlePassiveScanner.ino.hex
+Runner: pyocd
+Probe UID: E91217E8
+[---|---|---|---|---|---|---|---|---|----]
+[========================================]
+Upload complete
+New upload port: /dev/ttyACM0 (serial)

@@ -1,0 +1,5 @@
+Attempting to pair with C0:DE:54:15:00:51
+Failed to pair: org.bluez.Error.AuthenticationTimeout
+[[0;93mCHG[0m] Device C0:DE:54:15:00:51 ServicesResolved: no
+[[0;93mCHG[0m] Device C0:DE:54:15:00:51 Connected: no
+[[0;91mDEL[0m] Device A4:C1:38:26:4E:DA ATC_264EDA

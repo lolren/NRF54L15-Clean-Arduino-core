@@ -1,0 +1,36 @@
+Device C0:DE:54:15:00:51 (random)
+	Name: X54-PAIR
+	Alias: X54-PAIR
+	Paired: no
+	Bonded: no
+	Trusted: yes
+	Blocked: no
+	Connected: no
+	LegacyPairing: no
+	RSSI: 0xffffffb4 (-76)
+[[0;93mCHG[0m] Device C0:DE:54:15:00:51 Connected: yes
+[[0;93mCHG[0m] Device C0:DE:54:15:00:51 Bonded: yes
+hci0 class of device changed: 0x000000
+hci0 new_settings: bondable ssp br/edr le secure-conn cis-central cis-peripheral 
+[[0;93mCHG[0m] Device 69:2B:FC:47:52:B9 RSSI is nil
+[[0;91mDEL[0m] Device 69:2B:FC:47:52:B9 69-2B-FC-47-52-B9
+[[0;93mCHG[0m] Device EF:FB:2D:23:0A:13 RSSI is nil
+[[0;91mDEL[0m] Device EF:FB:2D:23:0A:13 EF-FB-2D-23-0A-13
+[[0;93mCHG[0m] Device D9:08:D5:69:61:41 RSSI is nil
+[[0;91mDEL[0m] Device D9:08:D5:69:61:41 D9-08-D5-69-61-41
+[[0;93mCHG[0m] Controller 68:34:21:E5:84:DF Class: 0x00000000 (0)
+[[0;93mCHG[0m] Controller 68:34:21:E5:84:DF Powered: no
+[[0;93mCHG[0m] Controller 68:34:21:E5:84:DF Discovering: no
+[[0;93mCHG[0m] Device 77:97:32:85:74:A1 TxPower is nil
+[[0;93mCHG[0m] Device 77:97:32:85:74:A1 RSSI is nil
+[[0;93mCHG[0m] Device A4:C1:38:9D:41:32 RSSI is nil
+[[0;93mCHG[0m] Device A4:C1:38:26:4E:DA RSSI is nil
+[[0;93mCHG[0m] Device A4:C1:38:D0:E4:84 RSSI is nil
+[[0;93mCHG[0m] Device C0:DE:54:15:00:51 Connected: no
+[[0;93mCHG[0m] Device C0:DE:54:15:00:51 Paired: yes
+[[0;93mCHG[0m] Device C0:DE:54:15:00:51 RSSI is nil
+hci0 class of device changed: 0x7c0104
+hci0 name changed: lolren-ms7e34
+[[0;93mCHG[0m] Controller 68:34:21:E5:84:DF Class: 0x007c0104 (8126724)
+hci0 new_settings: powered bondable ssp br/edr le secure-conn cis-central cis-peripheral 
+[[0;93mCHG[0m] Controller 68:34:21:E5:84:DF Powered: yes

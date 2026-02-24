@@ -1,0 +1,7 @@
+Flashing /home/lolren/.cache/arduino/sketches/4CB0501C330F9E5A6C8191DB1067D26F/BleConnectionPeripheral.ino.hex
+Runner: pyocd
+Probe UID: E91217E8
+[---|---|---|---|---|---|---|---|---|----]
+[========================================]
+Upload complete
+New upload port: /dev/ttyACM0 (serial)

@@ -1,0 +1,43 @@
+Attempting to connect to C0:DE:54:15:00:51
+[[0;93mCHG[0m] Device C5:68:44:B3:43:BF RSSI: 0xffffffb1 (-79)
+[[0;93mCHG[0m] Device C0:DE:54:15:00:51 RSSI: 0xffffffb6 (-74)
+hci0 C0:DE:54:15:00:51 type LE Random connected eir_len 13
+[[0;93mCHG[0m] Device C0:DE:54:15:00:51 Connected: yes
+Connection successful
+[[0;92mNEW[0m] Primary Service (Handle 0x0000)
+	/org/bluez/hci0/dev_C0_DE_54_15_00_51/service0008
+	00001801-0000-1000-8000-00805f9b34fb
+	Generic Attribute Profile
+[[0;92mNEW[0m] Characteristic (Handle 0x0000)
+	/org/bluez/hci0/dev_C0_DE_54_15_00_51/service0008/char0009
+	00002a05-0000-1000-8000-00805f9b34fb
+	Service Changed
+[[0;92mNEW[0m] Descriptor (Handle 0x0000)
+	/org/bluez/hci0/dev_C0_DE_54_15_00_51/service0008/char0009/desc000b
+	00002902-0000-1000-8000-00805f9b34fb
+	Client Characteristic Configuration
+[[0;92mNEW[0m] Primary Service (Handle 0x0000)
+	/org/bluez/hci0/dev_C0_DE_54_15_00_51/service0010
+	0000180f-0000-1000-8000-00805f9b34fb
+	Battery Service
+[[0;92mNEW[0m] Characteristic (Handle 0x0000)
+	/org/bluez/hci0/dev_C0_DE_54_15_00_51/service0010/char0011
+	00002a19-0000-1000-8000-00805f9b34fb
+	Battery Level
+[[0;92mNEW[0m] Descriptor (Handle 0x0000)
+	/org/bluez/hci0/dev_C0_DE_54_15_00_51/service0010/char0011/desc0013
+	00002902-0000-1000-8000-00805f9b34fb
+	Client Characteristic Configuration
+[[0;93mCHG[0m] Device C0:DE:54:15:00:51 UUIDs: 00001800-0000-1000-8000-00805f9b34fb
+[[0;93mCHG[0m] Device C0:DE:54:15:00:51 UUIDs: 00001801-0000-1000-8000-00805f9b34fb
+[[0;93mCHG[0m] Device C0:DE:54:15:00:51 UUIDs: 0000180f-0000-1000-8000-00805f9b34fb
+[[0;93mCHG[0m] Device C0:DE:54:15:00:51 ServicesResolved: yes
+[[0;93mCHG[0m] Device C0:DE:54:15:00:51 Name: X54 Pairing Probe
+[[0;93mCHG[0m] Device C0:DE:54:15:00:51 Alias: X54 Pairing Probe
+hci0 type 7 discovering off
+hci0 type 7 discovering on
+[[0;93mCHG[0m] Device 4E:D7:98:D7:EE:51 RSSI: 0xffffffb1 (-79)
+[[0;93mCHG[0m] Device A4:C1:38:8D:7D:4F RSSI: 0xffffff9f (-97)
+[[0;93mCHG[0m] Device A4:C1:38:8D:7D:4F ServiceData.0000181a-0000-1000-8000-00805f9b34fb:
+  a4 c1 38 8d 7d 4f 00 be 3a 51 0b 77 db           ..8.}O..:Q.w.   
+[[0;93mCHG[0m] Device 4E:D7:98:D7:EE:51 RSSI: 0xffffffa0 (-96)

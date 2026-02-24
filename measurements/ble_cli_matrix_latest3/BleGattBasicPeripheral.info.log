@@ -1,0 +1,17 @@
+Device C0:DE:54:15:00:31 (random)
+	Name: XIAO nRF54L15 Clean
+	Alias: XIAO nRF54L15 Clean
+	Paired: no
+	Bonded: no
+	Trusted: no
+	Blocked: no
+	Connected: yes
+	LegacyPairing: no
+	UUID: Generic Access Profile    (00001800-0000-1000-8000-00805f9b34fb)
+	UUID: Generic Attribute Profile (00001801-0000-1000-8000-00805f9b34fb)
+	UUID: Battery Service           (0000180f-0000-1000-8000-00805f9b34fb)
+	RSSI: 0xffffffab (-85)
+	Battery Percentage: 0x63 (99)
+hci0 type 1 discovering off
+hci0 type 1 discovering on
+[[0;91mDEL[0m] Device F5:DA:20:D6:D6:5D F5-DA-20-D6-D6-5D

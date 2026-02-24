@@ -1,0 +1,24 @@
+Waiting to connect to bluetoothd...[0;94m[bluetooth][0m# [C[C[C[C[C[C[C[CX54 Bond Probeconnect C0:DE:54:15:00:61
+Attempting to connect to C0:DE:54:15:00:61
+[0;94m[X54 Bond Probe][0m# pair C0:DE:54:15:00:61
+Attempting to pair with C0:DE:54:15:00:61
+[0;94m[X54 Bond Probe][0m# disconnect C0:DE:54:15:00:61
+Attempting to disconnect from C0:DE:54:15:00:61
+[0;94m[X54 Bond Probe][0m# connect C0:DE:54:15:00:61
+Attempting to connect to C0:DE:54:15:00:61
+[0;94m[X54 Bond Probe][0m# info C0:DE:54:15:00:61
+Device C0:DE:54:15:00:61 (random)
+	Name: X54 Bond Probe
+	Alias: X54 Bond Probe
+	Paired: no
+	Bonded: no
+	Trusted: no
+	Blocked: no
+	Connected: yes
+	LegacyPairing: no
+	UUID: Generic Access Profile    (00001800-0000-1000-8000-00805f9b34fb)
+	UUID: Generic Attribute Profile (00001801-0000-1000-8000-00805f9b34fb)
+	UUID: Battery Service           (0000180f-0000-1000-8000-00805f9b34fb)
+	RSSI: 0xffffffb0 (-80)
+	Battery Percentage: 0x5f (95)
+[0;94m[X54 Bond Probe][0m# 

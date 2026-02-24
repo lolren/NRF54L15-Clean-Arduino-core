@@ -1,0 +1,7 @@
+Attempting to disconnect from C0:DE:54:15:00:71
+[[0;92mNEW[0m] Device A4:C1:38:26:4E:DA ATC_264EDA
+hci0 C0:DE:54:15:00:71 type LE Random disconnected with reason 2
+Successful disconnected
+[[0;93mCHG[0m] Device C0:DE:54:15:00:71 Connected: no
+hci0 type 7 discovering off
+hci0 type 7 discovering on

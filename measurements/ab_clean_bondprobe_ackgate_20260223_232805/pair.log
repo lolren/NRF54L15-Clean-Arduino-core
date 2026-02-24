@@ -1,0 +1,31 @@
+Waiting to connect to bluetoothd...[0;94m[bluetooth][0m#            trust C0:DE:54:15:00:61
+[0;94m[bluetooth][0m# connect C0:DE:54:15:00:61
+Attempting to connect to C0:DE:54:15:00:61
+[0;94m[bluetooth][0m# pair C0:DE:54:15:00:61
+Attempting to pair with C0:DE:54:15:00:61
+[0;94m[bluetooth][0m# trust C0:DE:54:15:00:61
+[0;94m[bluetooth][0m# info C0:DE:54:15:00:61
+Device C0:DE:54:15:00:61 (random)
+	Name: X54-BOND
+	Alias: X54-BOND
+	Paired: no
+	Bonded: no
+	Trusted: no
+	Blocked: no
+	Connected: no
+	LegacyPairing: no
+[0;94m[bluetooth][0m# disconnect C0:DE:54:15:00:61
+Attempting to disconnect from C0:DE:54:15:00:61
+[0;94m[bluetooth][0m# connect C0:DE:54:15:00:61
+Attempting to connect to C0:DE:54:15:00:61
+[0;94m[bluetooth][0m# info C0:DE:54:15:00:61
+Device C0:DE:54:15:00:61 (random)
+	Name: X54-BOND
+	Alias: X54-BOND
+	Paired: no
+	Bonded: no
+	Trusted: no
+	Blocked: no
+	Connected: no
+	LegacyPairing: no
+[0;94m[bluetooth][0m#                         

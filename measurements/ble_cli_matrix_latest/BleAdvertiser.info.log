@@ -1,0 +1,13 @@
+Device C0:DE:54:15:00:01 (random)
+	Name: XIAO-54-CLN
+	Alias: XIAO-54-CLN
+	Paired: no
+	Bonded: no
+	Trusted: no
+	Blocked: no
+	Connected: no
+	LegacyPairing: no
+	ManufacturerData.Key: 0x1234 (4660)
+	ManufacturerData.Value:
+  54 15                                            T.              
+	RSSI: 0xffffffac (-84)

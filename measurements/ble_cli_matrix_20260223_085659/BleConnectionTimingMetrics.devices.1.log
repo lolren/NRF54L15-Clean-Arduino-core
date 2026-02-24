@@ -1,0 +1,30 @@
+Device C0:DE:54:15:00:61 X54 Bond Probe
+Device 40:5E:F6:0D:B8:15 Galaxy Buds Live (B815)
+Device C0:DE:54:15:00:41 XIAO nRF54L15 Battery
+hci0 type 7 discovering off
+[[0;93mCHG[0m] Controller 68:34:21:E5:84:DF Discovering: no
+[[0;91mDEL[0m] Descriptor (Handle 0x0000)
+	/org/bluez/hci0/dev_C0_DE_54_15_00_61/service0008/char0009/desc000b
+	00002902-0000-1000-8000-00805f9b34fb
+	Client Characteristic Configuration
+[[0;91mDEL[0m] Characteristic (Handle 0x0000)
+	/org/bluez/hci0/dev_C0_DE_54_15_00_61/service0008/char0009
+	00002a05-0000-1000-8000-00805f9b34fb
+	Service Changed
+[[0;91mDEL[0m] Primary Service (Handle 0x0000)
+	/org/bluez/hci0/dev_C0_DE_54_15_00_61/service0008
+	00001801-0000-1000-8000-00805f9b34fb
+	Generic Attribute Profile
+[[0;91mDEL[0m] Descriptor (Handle 0x0000)
+	/org/bluez/hci0/dev_C0_DE_54_15_00_61/service0010/char0011/desc0013
+	00002902-0000-1000-8000-00805f9b34fb
+	Client Characteristic Configuration
+[[0;91mDEL[0m] Characteristic (Handle 0x0000)
+	/org/bluez/hci0/dev_C0_DE_54_15_00_61/service0010/char0011
+	00002a19-0000-1000-8000-00805f9b34fb
+	Battery Level
+[[0;91mDEL[0m] Primary Service (Handle 0x0000)
+	/org/bluez/hci0/dev_C0_DE_54_15_00_61/service0010
+	0000180f-0000-1000-8000-00805f9b34fb
+	Battery Service
+[[0;91mDEL[0m] Device C0:DE:54:15:00:61 X54 Bond Probe

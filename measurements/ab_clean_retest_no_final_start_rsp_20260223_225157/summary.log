@@ -1,0 +1,20 @@
+MEAS=/home/lolren/Desktop/Clean_nrf54_implementation/Nrf54L15-Clean-BoardPackage/measurements/ab_clean_retest_no_final_start_rsp_20260223_225157
+pair:
+3:Failed to pair: org.bluez.Error.AuthenticationFailed
+serial:
+5:connected peer=68:34:21:E5:84:DF int=36
+19:encryption=ON ce=14
+25:ce=19 rx=0 crc=0 new=0 llid=0 len=0 tx=0 txllid=1 txlen=0 term=0
+26:ce=20 rx=0 crc=0 new=0 llid=0 len=0 tx=0 txllid=1 txlen=0 term=0
+27:ce=21 rx=0 crc=0 new=0 llid=0 len=0 tx=0 txllid=1 txlen=0 term=0
+28:ce=22 rx=0 crc=0 new=0 llid=0 len=0 tx=0 txllid=1 txlen=0 term=0
+29:encryption=OFF ce=24
+30:ce=24 rx=0 crc=0 new=0 llid=0 len=0 tx=0 txllid=1 txlen=0 term=1
+31:link terminated
+32:enc_dbg followup_armed=1 end_seen=0 crc_ok=0 start_req=0 start_rsp_tx_ok=0 rx_llid1=0 rx_llid2=0 rx_llid3=0 last_hdr=0x00 last_llid=0 last_len=0 last_b0=0x00 main_enc_req=1 main_enc_rsp_tx_ok=3 main_start_req=0 main_start_req_dec=0 main_start_rsp_tx_ok=0 pend_ctrl_rx=0 pend_last_hdr=0x00 pend_last_len_raw=0 pend_last_b0=0x00 pend_last_dec=0 enc_rsp_txen_lag_last_us=1 enc_rsp_txen_lag_max_us=1 mic_fail=0 short_pdu=0 mic_ctr_lo=0 mic_hdr=0x00 mic_len_raw=0 mic_dir=0 mic_state=0x00 mic_b=0x00,00,00,00,00 start_rsp_rx=1 start_rsp_raw_len=5 start_rsp_dec=1 start_rsp_hdr=0x0F pause_req=0 pause_rsp=0 enc_clear=0 clear_reason=0x00 tx_lag_last=0 tx_lag_max=1 enc_tx_cnt=1 enc_tx_lag_last=0 enc_tx_lag_max=0 skdm=DC313307520A2A1B ivm=F43B484F skds=E2AD7BF4603A632C ivs=88D21C0D sk=A6D6FE0B5FD505BF69ECC53D62A3C083 sk_alt=1D418C157233BF9529AC6ABCBA720F07 sk_ok=1 sk_alt_ok=1 rx_dir=1 tx_dir=0
+btmon:
+261:> HCI Event: Encryption Change (0x08) plen 4               #40 [hci0] 11.342918
+262:        Status: Connection Terminated due to MIC Failure (0x3d)
+271:        Reason: Authentication Failure (0x05)
+275:        Reason: Connection Terminated due to MIC Failure (0x3d)
+278:        Reason: Unspecified (0x00)

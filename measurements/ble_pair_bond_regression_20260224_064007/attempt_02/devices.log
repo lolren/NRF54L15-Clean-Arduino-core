@@ -1,0 +1,10 @@
+Device A4:C1:38:75:8A:D6 LYWSD03MMC
+Device 7A:A0:FC:B5:07:16 7A-A0-FC-B5-07-16
+Device 4B:21:C2:20:D7:B3 4B-21-C2-20-D7-B3
+Device C0:DE:54:15:00:61 X54 Bond Probe
+Device C0:DE:54:15:00:71 XIAO54-TIMING
+Device C0:DE:54:15:00:21 XIAO54-LINK
+Device C0:DE:54:15:00:11 XIAO-54
+Device 40:5E:F6:0D:B8:15 Galaxy Buds Live (B815)
+Device C0:DE:54:15:00:41 XIAO nRF54L15 Battery
+hci0 type 1 discovering on

@@ -1,0 +1,179 @@
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+[trace] CONNECTED
+connected peer=68:34:21:E5:84:DF int=36
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] SMP_PAIRING_REQUEST_RX
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] SMP_CONFIRM_RX
+[trace] SMP_RANDOM_RX
+[trace] LL_ENC_REQ_ACCEPTED
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] EVT_RX_TIMEOUT
+[trace] SUPERVISION_TIMEOUT
+[trace] DISCONNECT
+[trace] EVT_RX_TIMEOUT
+link terminated
+enc_dbg followup_armed=4 end_seen=1 crc_ok=1 start_req=0 start_rsp_tx_ok=0 rx_llid1=0 rx_llid2=0 rx_llid3=1 last_hdr=0x03 last_llid=3 last_len=23 last_b0=0x03 main_enc_req=1 main_enc_rsp_tx_ok=4 main_start_req=0 main_start_req_dec=0 main_start_rsp_tx_ok=0 pend_ctrl_rx=3 pend_last_hdr=0x03 pend_last_len_raw=23 pend_last_b0=0x03 pend_last_dec=0
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising
+advertising

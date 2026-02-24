@@ -1,0 +1,43 @@
+MEAS=/home/lolren/Desktop/Clean_nrf54_implementation/Nrf54L15-Clean-BoardPackage/measurements/zephyr_ctrl_pair_20260223_224027
+ADDR=4B:9E:B7:C1:74:83
+--- pair ---
+Device 4B:9E:B7:C1:74:83 not available
+[[0;91mDEL[0m] Device A4:C1:38:D0:E4:84 ATC_D0E484
+[[0;91mDEL[0m] Device A4:C1:38:8D:7D:4F ATC_8D7D4F
+[[0;93mCHG[0m] Controller 68:34:21:E5:84:DF Discovering: yes
+[[0;91mDEL[0m] Device 5F:27:1A:05:A6:39 5F-27-1A-05-A6-39
+--- info ---
+Device 4B:9E:B7:C1:74:83 not available
+DeviceSet 4B:9E:B7:C1:74:83 not available
+--- serial ---
+Looping... LED state: 1
+Looping... LED state: 1
+Looping... LED state: 1
+Looping... LED state: 1
+Looping... LED state: 1
+Looping... LED state: 1
+Looping... LED state: 1
+Looping... LED state: 1
+Looping... LED state: 1
+Looping... LED state: 1
+Looping... LED state: 1
+Looping... LED state: 1
+Looping... LED state: 1
+Looping... LED state: 1
+Looping... LED state: 1
+Looping... LED state: 1
+Looping... LED state: 1
+Looping... LED state: 1
+Looping... LED state: 1
+Looping... LED state: 1
+Looping... LED state: 1
+Looping... LED state: 1
+Looping... LED state: 1
+Looping... LED state: 1
+Looping... LED state: 1
+Looping... LED state: 1
+Looping... LED state: 1
+Looping... LED state: 1
+Looping... LED state: 1
+Looping... LED state: 1
+--- btmon key ---

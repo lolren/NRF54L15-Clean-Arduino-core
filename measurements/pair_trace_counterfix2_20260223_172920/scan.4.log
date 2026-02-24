@@ -1,0 +1,26 @@
+SetDiscoveryFilter success
+Discovery started
+[[0;93mCHG[0m] Device 76:E8:DC:3F:2D:69 RSSI: 0xffffffa1 (-95)
+[[0;93mCHG[0m] Device 40:70:67:32:C9:DE RSSI: 0xffffffa6 (-90)
+[[0;93mCHG[0m] Device 76:E8:DC:3F:2D:69 RSSI: 0xffffffa1 (-95)
+[[0;93mCHG[0m] Device 76:E8:DC:3F:2D:69 RSSI: 0xffffffa5 (-91)
+[[0;91mDEL[0m] Device A4:C1:38:26:4E:DA ATC_264EDA
+[[0;93mCHG[0m] Device A4:C1:38:75:8A:D6 RSSI: 0xffffffb2 (-78)
+[[0;93mCHG[0m] Device 76:E8:DC:3F:2D:69 RSSI: 0xffffffa5 (-91)
+[[0;93mCHG[0m] Device 76:E8:DC:3F:2D:69 RSSI: 0xffffffa2 (-94)
+[[0;93mCHG[0m] Device 76:E8:DC:3F:2D:69 RSSI: 0xffffffa2 (-94)
+[[0;93mCHG[0m] Device 76:E8:DC:3F:2D:69 RSSI: 0xffffffa5 (-91)
+[[0;91mDEL[0m] Device A4:C1:38:9D:41:32 ATC_9D4132
+[[0;91mDEL[0m] Device A4:C1:38:D0:E4:84 ATC_D0E484
+[[0;93mCHG[0m] Device A4:C1:38:75:8A:D6 RSSI: 0xffffffb6 (-74)
+[[0;93mCHG[0m] Device E9:CA:A2:61:3F:50 RSSI: 0xffffffa8 (-88)
+[[0;93mCHG[0m] Device 76:E8:DC:3F:2D:69 RSSI: 0xffffffa6 (-90)
+[[0;93mCHG[0m] Device 76:E8:DC:3F:2D:69 RSSI: 0xffffffa5 (-91)
+[[0;93mCHG[0m] Device 76:E8:DC:3F:2D:69 RSSI: 0xffffffa4 (-92)
+[[0;92mNEW[0m] Device A4:C1:38:26:4E:DA ATC_264EDA
+[[0;91mDEL[0m] Device ED:FA:80:CF:9C:23 ED-FA-80-CF-9C-23
+[[0;93mCHG[0m] Device E9:CA:A2:61:3F:50 RSSI: 0xffffffab (-85)
+[[0;93mCHG[0m] Device 76:E8:DC:3F:2D:69 RSSI: 0xffffffa5 (-91)
+[[0;93mCHG[0m] Device 76:E8:DC:3F:2D:69 RSSI: 0xffffffa5 (-91)
+[[0;93mCHG[0m] Device 76:E8:DC:3F:2D:69 RSSI: 0xffffffa2 (-94)
+[[0;92mNEW[0m] Device A4:C1:38:D0:E4:84 ATC_D0E484

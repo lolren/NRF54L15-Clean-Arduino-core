@@ -1,0 +1,4 @@
+Attempting to pair with A4:C1:38:8D:7D:4F
+Failed to pair: org.bluez.Error.AuthenticationFailed
+[[0;93mCHG[0m] Device A4:C1:38:8D:7D:4F ServicesResolved: no
+[[0;93mCHG[0m] Device A4:C1:38:8D:7D:4F Connected: no
