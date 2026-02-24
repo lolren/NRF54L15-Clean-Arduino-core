@@ -452,6 +452,14 @@ enum class BleAdvertisingChannel : uint8_t {
   k39 = 39,
 };
 
+enum BleGattCharacteristicProperty : uint8_t {
+  kBleGattPropRead = 0x02U,
+  kBleGattPropWriteNoRsp = 0x04U,
+  kBleGattPropWrite = 0x08U,
+  kBleGattPropNotify = 0x10U,
+  kBleGattPropIndicate = 0x20U,
+};
+
 struct BleScanPacket {
   BleAdvertisingChannel channel;
   int8_t rssiDbm;
@@ -624,11 +632,18 @@ using BleBondLoadCallback = bool (*)(BleBondRecord* outRecord, void* context);
 using BleBondSaveCallback = bool (*)(const BleBondRecord* record, void* context);
 using BleBondClearCallback = bool (*)(void* context);
 using BleTraceCallback = void (*)(const char* message, void* context);
+using BleGattWriteCallback = void (*)(uint16_t valueHandle, const uint8_t* value,
+                                      uint8_t valueLength, bool withResponse,
+                                      void* context);
 
 // Minimal BLE LL radio block (legacy ADV + passive scan) implemented on RADIO.
 // This class intentionally avoids a full host/controller stack.
 class BleRadio {
  public:
+  static constexpr uint8_t kCustomGattMaxServices = 4U;
+  static constexpr uint8_t kCustomGattMaxCharacteristics = 8U;
+  static constexpr uint8_t kCustomGattMaxValueLength = 20U;
+
   explicit BleRadio(uint32_t radioBase = nrf54l15::RADIO_BASE,
                     uint32_t ficrBase = nrf54l15::FICR_BASE);
 
@@ -649,6 +664,28 @@ class BleRadio {
   bool buildAdvertisingPacket();
   bool setGattDeviceName(const char* name);
   bool setGattBatteryLevel(uint8_t percent);
+  bool clearCustomGatt();
+  bool addCustomGattService(uint16_t uuid16, uint16_t* outServiceHandle = nullptr);
+  // Characteristics can only be appended to the most recently added custom
+  // service, matching Zephyr's static service-table ordering model.
+  bool addCustomGattCharacteristic(uint16_t serviceHandle, uint16_t uuid16,
+                                   uint8_t properties,
+                                   const uint8_t* initialValue = nullptr,
+                                   uint8_t initialValueLength = 0U,
+                                   uint16_t* outValueHandle = nullptr,
+                                   uint16_t* outCccdHandle = nullptr);
+  bool setCustomGattCharacteristicValue(uint16_t valueHandle,
+                                        const uint8_t* value,
+                                        uint8_t valueLength);
+  bool getCustomGattCharacteristicValue(uint16_t valueHandle,
+                                        uint8_t* outValue,
+                                        uint8_t* inOutValueLength) const;
+  bool notifyCustomGattCharacteristic(uint16_t valueHandle,
+                                      bool indicate = false);
+  bool isCustomGattCccdEnabled(uint16_t valueHandle,
+                               bool indication = false) const;
+  void setCustomGattWriteCallback(BleGattWriteCallback callback,
+                                  void* context = nullptr);
 
   bool setScanResponseData(const uint8_t* data, size_t len);
   bool setScanResponseName(const char* name);
@@ -698,6 +735,27 @@ class BleRadio {
                        uint32_t scanRspListenSpinLimit = 300000UL);
 
  private:
+  static constexpr uint16_t kCustomGattHandleStart = 0x0020U;
+  static constexpr uint16_t kCustomGattHandleEnd = 0x00FFU;
+
+  struct BleCustomServiceState {
+    uint16_t uuid16;
+    uint16_t serviceHandle;
+    uint16_t endHandle;
+  };
+
+  struct BleCustomCharacteristicState {
+    uint16_t serviceHandle;
+    uint16_t uuid16;
+    uint8_t properties;
+    uint16_t declarationHandle;
+    uint16_t valueHandle;
+    uint16_t cccdHandle;
+    uint16_t cccdValue;
+    uint8_t valueLength;
+    uint8_t value[kCustomGattMaxValueLength];
+  };
+
   bool configureBle1M();
   bool waitDisabled(uint32_t spinLimit);
   bool waitForEnd(uint32_t spinLimit);
@@ -740,6 +798,18 @@ class BleRadio {
   bool persistBondRecord(const BleBondRecord& record);
   bool clearPersistentBondRecord();
   bool primeBondForCurrentPeer();
+  void clearCustomGattConnectionState();
+  BleCustomServiceState* findCustomServiceByHandle(uint16_t serviceHandle);
+  const BleCustomServiceState* findCustomServiceByHandle(uint16_t serviceHandle) const;
+  BleCustomCharacteristicState* findCustomCharacteristicByValueHandle(uint16_t valueHandle);
+  const BleCustomCharacteristicState* findCustomCharacteristicByValueHandle(
+      uint16_t valueHandle) const;
+  BleCustomCharacteristicState* findCustomCharacteristicByCccdHandle(uint16_t cccdHandle);
+  const BleCustomCharacteristicState* findCustomCharacteristicByCccdHandle(
+      uint16_t cccdHandle) const;
+  bool writeCustomGattCharacteristic(uint16_t handle, const uint8_t* value,
+                                     uint16_t valueLength, bool withResponse,
+                                     uint8_t* outErrorCode);
   void emitBleTrace(const char* message) const;
   void updateNextConnectionEventTime();
   uint8_t selectNextDataChannel(bool useCurrentEventCounter);
@@ -881,6 +951,17 @@ class BleRadio {
   uint16_t gapPpcpLatency_;
   uint16_t gapPpcpTimeout_;
   uint8_t gapBatteryLevel_;
+  BleCustomServiceState customGattServices_[kCustomGattMaxServices];
+  BleCustomCharacteristicState customGattCharacteristics_[kCustomGattMaxCharacteristics];
+  uint8_t customGattServiceCount_;
+  uint8_t customGattCharacteristicCount_;
+  uint16_t customGattNextHandle_;
+  bool connectionCustomNotificationPending_;
+  uint8_t connectionCustomPendingCharIndex_;
+  bool connectionCustomPendingIndication_;
+  uint16_t connectionCustomIndicationAwaitingHandle_;
+  BleGattWriteCallback customGattWriteCallback_;
+  void* customGattWriteContext_;
   BleEncryptionDebugCounters encDebug_;
 };
 

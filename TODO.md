@@ -28,7 +28,8 @@ Last updated: 2026-02-24
 
 - [ ] Central role baseline (scan/initiate/minimal GATT client).
 - [ ] Extended/periodic advertising support where hardware path is practical.
-- [ ] Optional dynamic GATT registration API.
+- [x] Optional dynamic GATT registration API (16-bit services/chars + CCCD + runtime notify/indicate path).
+- [ ] Expand dynamic GATT support with descriptor registration and multi-service editing (remove/reorder) parity.
 
 ## Priority 4: Advanced RF features
 
@@ -67,4 +68,5 @@ Last updated: 2026-02-24
   - optional automatic bond-sector erase via `pyocd` for clean bond-probe attempts.
 - [x] Added default flash-backed RRAM bond persistence backend with retention fallback and reserved linker storage region.
 - [x] Bond probe now exposes serial command hooks (`clear-bond`, `show-bond`) and uses constant-latency mode for tighter pairing timing.
+- [x] Added runtime custom 16-bit GATT registration API (service/characteristic/CCCD/value update/write callback) with `BleCustomGattRuntime` example.
 - [x] README upgraded with pinout image, mapping tables, default routes, and example index.

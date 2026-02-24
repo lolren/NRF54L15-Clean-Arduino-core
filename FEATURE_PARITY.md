@@ -70,8 +70,8 @@ Legend:
 | Capability | Status | Notes |
 |---|---|---|
 | Advertising / passive scan / active scan / connect | Done | Legacy ADV + passive scan + active scan (SCAN_REQ/SCAN_RSP) + connect paths validated. |
-| GATT GAP/GATT/BAS minimal server | Partial | Service set is intentionally minimal/static. |
-| ATT discovery/read/write subset | Partial | Core operations implemented and validated. |
+| GATT GAP/GATT/BAS + optional runtime custom services | Partial | Default GAP/GATT/BAS remains built-in; runtime 16-bit custom service/characteristic registration (read/write/notify/indicate + CCCD) is now available via `BleRadio` API. |
+| ATT discovery/read/write subset | Partial | Core operations implemented and validated, including runtime custom 16-bit attributes. |
 | Battery notifications / Service Changed indications | Done | CCCD flows validated. |
 | LL control handling subset | Partial | Broad subset implemented; full edge-case matrix pending. |
 | SMP legacy pairing flow | Partial | Request/confirm/random + LL encryption entry are implemented. `BlePairingEncryptionStatus` now reaches mostly stable pair/bond on Broadcom (`4/5` pass), while `BleBondPersistenceProbe` still shows start-encryption timeout failures. |
@@ -99,6 +99,12 @@ Additional runtime parity check (active scan):
 - `measurements/active_scan_parity_20260223_230813`
 - Observed `scan_rsp=1` and resolved scan-response local name (`scan_name=ATC_264EDA`).
 
+Additional runtime parity check (custom runtime GATT registration):
+
+- `measurements/custom_gatt_runtime_20260224_225041_connect`
+  - Custom-advertiser endpoint (`X54-CUSTOM`) is discoverable and connect attempts reach `Connected: yes` before host-local LE abort in this run.
+  - Full remote-attribute dump remains host-tooling-sensitive in this session; compile and on-target runtime path are verified.
+
 Additional BLE-security regression evidence (post-fix):
 
 - `measurements/ble_pair_bond_regression_20260224_064411`
@@ -115,6 +121,10 @@ Additional BLE-security regression evidence (post-fix):
   - `BlePairingEncryptionStatus` on Broadcom (`hci1`, sudo capture): `4/5` pair-bond pass, `1/5` host-inconclusive.
 - `measurements/ble_pair_bond_regression_20260224_212347`
   - `BleBondPersistenceProbe` with clean bond storage still fails at encryption start (connection-timeout disconnect), so bonded parity remains partial.
+- `measurements/ble_pair_bond_regression_20260224_224348`
+  - `BlePairingEncryptionStatus` on Broadcom (`hci1`) produced `2/2` host-inconclusive attempts (`host_unstable=yes`), no target-crash signature.
+- `measurements/ble_pair_bond_regression_20260224_224649`
+  - `BlePairingEncryptionStatus` on the alternate adapter (`hci0`) produced `1/1 fail_target` (`Paired/Bonded: no`), reinforcing that security parity remains open.
 
 Regression tooling now supports explicit host-vs-target classification and reconnect-mode probing:
 

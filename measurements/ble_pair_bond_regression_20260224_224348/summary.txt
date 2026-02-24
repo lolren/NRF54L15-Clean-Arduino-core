@@ -1,0 +1,18 @@
+BLE Pair/Bond Regression Summary
+attempts=2
+mode=pair-bond
+pass_count=0
+fail_target_count=0
+inconclusive_host_count=2
+pair_ok_count=0
+paired_count=0
+bonded_count=0
+enc_change_success_count=0
+reconnect_connected_count=0
+reconnect_bonded_count=0
+reconnect_enc_seen_count=0
+target_trace_error_count=0
+mic_failure_count=0
+host_crash_count=0
+host_unstable_count=2
+csv=/home/lolren/Desktop/Nrf54_clean/NRF54L15-Clean-Arduino-core/measurements/ble_pair_bond_regression_20260224_224348/attempts.csv

@@ -1,0 +1,3 @@
+attempt,mode,pair_ok,paired,bonded,enc_change_success,enc_change_success_count,reconnect_connected,reconnect_bonded,reconnect_enc_seen,target_trace_error,mic_failure,host_crash,host_unstable,target_verdict,overall_verdict,disconnect_reason
+1,pair-bond,no,no,no,no,0,n/a,n/a,n/a,no,no,no,yes,unknown_host,inconclusive_host,n/a
+2,pair-bond,no,no,no,no,0,n/a,n/a,n/a,no,no,no,yes,unknown_host,inconclusive_host,n/a

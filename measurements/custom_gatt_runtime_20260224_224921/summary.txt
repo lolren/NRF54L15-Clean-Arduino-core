@@ -1,0 +1,3 @@
+controller=5C:F3:70:9B:8D:0D
+scan_result=device_not_available
+notes=bluetoothctl showed discovery in progress and failed to resolve target in this run.

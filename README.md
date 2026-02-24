@@ -183,6 +183,7 @@ Library examples (HAL + BLE + power):
 - `.../examples/BleActiveScanner/BleActiveScanner.ino`
 - `.../examples/BleConnectionPeripheral/BleConnectionPeripheral.ino`
 - `.../examples/BleGattBasicPeripheral/BleGattBasicPeripheral.ino`
+- `.../examples/BleCustomGattRuntime/BleCustomGattRuntime.ino`
 - `.../examples/BleBatteryNotifyPeripheral/BleBatteryNotifyPeripheral.ino`
 - `.../examples/BlePairingEncryptionStatus/BlePairingEncryptionStatus.ino`
 - `.../examples/BleBondPersistenceProbe/BleBondPersistenceProbe.ino`

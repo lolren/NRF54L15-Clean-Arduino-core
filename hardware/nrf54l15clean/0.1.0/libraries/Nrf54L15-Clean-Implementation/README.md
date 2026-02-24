@@ -136,6 +136,9 @@ BLE examples:
   - Connectable/scannable BLE peripheral with minimal GATT database (GAP/GATT/Battery).
   - Supports ATT MTU exchange and basic discovery/read requests over CID `0x0004`.
   - Supports Battery Level CCCD writes and Handle Value Notifications.
+- `examples/BleCustomGattRuntime/BleCustomGattRuntime.ino`
+  - Demonstrates runtime registration of custom 16-bit GATT service/characteristics.
+  - Includes writable characteristic, CCCD-backed notification characteristic, and serial command hooks.
 - `examples/BleBatteryNotifyPeripheral/BleBatteryNotifyPeripheral.ino`
   - Connectable/scannable BLE peripheral focused on Battery Level notifications.
   - Periodically updates battery percentage and emits notifications when CCCD notify is enabled.

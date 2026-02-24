@@ -491,6 +491,7 @@ constexpr uint8_t kGattCharacteristicPropNotify = 0x10U;
 constexpr uint8_t kGattCharacteristicPropIndicate = 0x20U;
 constexpr uint8_t kAttrReadInvalidHandleLen = 0xFFU;
 constexpr uint8_t kAttrReadInvalidOffsetLen = 0xFEU;
+constexpr uint8_t kAttrReadNotPermittedLen = 0xFDU;
 
 struct BlePrimaryServiceRecord {
   uint16_t startHandle;
@@ -3419,17 +3420,29 @@ BleRadio::BleRadio(uint32_t radioBase, uint32_t ficrBase)
       gapDeviceName_{0},
       gapDeviceNameLen_(0),
       gapAppearance_(0),
-	      gapPpcpIntervalMin_(kBlePreferredConnIntervalMinUnits),
-	      gapPpcpIntervalMax_(kBlePreferredConnIntervalMaxUnits),
-	      gapPpcpLatency_(kBlePreferredConnLatency),
-	      gapPpcpTimeout_(kBlePreferredConnTimeoutUnits),
-	      gapBatteryLevel_(100U),
-	      encDebug_{} {}
+      gapPpcpIntervalMin_(kBlePreferredConnIntervalMinUnits),
+      gapPpcpIntervalMax_(kBlePreferredConnIntervalMaxUnits),
+      gapPpcpLatency_(kBlePreferredConnLatency),
+      gapPpcpTimeout_(kBlePreferredConnTimeoutUnits),
+      gapBatteryLevel_(100U),
+      customGattServices_{},
+      customGattCharacteristics_{},
+      customGattServiceCount_(0U),
+      customGattCharacteristicCount_(0U),
+      customGattNextHandle_(kCustomGattHandleStart),
+      connectionCustomNotificationPending_(false),
+      connectionCustomPendingCharIndex_(0xFFU),
+      connectionCustomPendingIndication_(false),
+      connectionCustomIndicationAwaitingHandle_(0U),
+      customGattWriteCallback_(nullptr),
+      customGattWriteContext_(nullptr),
+      encDebug_{} {}
 
 bool BleRadio::begin(int8_t txPowerDbm) {
   connected_ = false;
   advCycleStartIndex_ = 0U;
   scanCycleStartIndex_ = 0U;
+  clearCustomGattConnectionState();
 
 #if defined(NRF54L15_CLEAN_BLE_ENABLED) && (NRF54L15_CLEAN_BLE_ENABLED == 0)
   (void)txPowerDbm;
@@ -3493,6 +3506,7 @@ void BleRadio::end() {
   if (radio_ == nullptr) {
     connected_ = false;
     initialized_ = false;
+    clearCustomGattConnectionState();
     return;
   }
 
@@ -3502,6 +3516,7 @@ void BleRadio::end() {
   clearRadioCoreEvents(radio_);
   connected_ = false;
   initialized_ = false;
+  clearCustomGattConnectionState();
 }
 
 bool BleRadio::setTxPowerDbm(int8_t dbm) {
@@ -3679,6 +3694,382 @@ bool BleRadio::setGattBatteryLevel(uint8_t percent) {
   }
   gapBatteryLevel_ = percent;
   return true;
+}
+
+bool BleRadio::clearCustomGatt() {
+  if (connected_) {
+    return false;
+  }
+  memset(customGattServices_, 0, sizeof(customGattServices_));
+  memset(customGattCharacteristics_, 0, sizeof(customGattCharacteristics_));
+  customGattServiceCount_ = 0U;
+  customGattCharacteristicCount_ = 0U;
+  customGattNextHandle_ = kCustomGattHandleStart;
+  clearCustomGattConnectionState();
+  return true;
+}
+
+BleRadio::BleCustomServiceState* BleRadio::findCustomServiceByHandle(
+    uint16_t serviceHandle) {
+  for (uint8_t i = 0U; i < customGattServiceCount_; ++i) {
+    if (customGattServices_[i].serviceHandle == serviceHandle) {
+      return &customGattServices_[i];
+    }
+  }
+  return nullptr;
+}
+
+const BleRadio::BleCustomServiceState* BleRadio::findCustomServiceByHandle(
+    uint16_t serviceHandle) const {
+  for (uint8_t i = 0U; i < customGattServiceCount_; ++i) {
+    if (customGattServices_[i].serviceHandle == serviceHandle) {
+      return &customGattServices_[i];
+    }
+  }
+  return nullptr;
+}
+
+BleRadio::BleCustomCharacteristicState*
+BleRadio::findCustomCharacteristicByValueHandle(uint16_t valueHandle) {
+  for (uint8_t i = 0U; i < customGattCharacteristicCount_; ++i) {
+    if (customGattCharacteristics_[i].valueHandle == valueHandle) {
+      return &customGattCharacteristics_[i];
+    }
+  }
+  return nullptr;
+}
+
+const BleRadio::BleCustomCharacteristicState*
+BleRadio::findCustomCharacteristicByValueHandle(uint16_t valueHandle) const {
+  for (uint8_t i = 0U; i < customGattCharacteristicCount_; ++i) {
+    if (customGattCharacteristics_[i].valueHandle == valueHandle) {
+      return &customGattCharacteristics_[i];
+    }
+  }
+  return nullptr;
+}
+
+BleRadio::BleCustomCharacteristicState*
+BleRadio::findCustomCharacteristicByCccdHandle(uint16_t cccdHandle) {
+  if (cccdHandle == 0U) {
+    return nullptr;
+  }
+  for (uint8_t i = 0U; i < customGattCharacteristicCount_; ++i) {
+    if (customGattCharacteristics_[i].cccdHandle == cccdHandle) {
+      return &customGattCharacteristics_[i];
+    }
+  }
+  return nullptr;
+}
+
+const BleRadio::BleCustomCharacteristicState*
+BleRadio::findCustomCharacteristicByCccdHandle(uint16_t cccdHandle) const {
+  if (cccdHandle == 0U) {
+    return nullptr;
+  }
+  for (uint8_t i = 0U; i < customGattCharacteristicCount_; ++i) {
+    if (customGattCharacteristics_[i].cccdHandle == cccdHandle) {
+      return &customGattCharacteristics_[i];
+    }
+  }
+  return nullptr;
+}
+
+bool BleRadio::addCustomGattService(uint16_t uuid16, uint16_t* outServiceHandle) {
+  if (connected_ || uuid16 == 0U || customGattServiceCount_ >= kCustomGattMaxServices) {
+    return false;
+  }
+  if (customGattNextHandle_ > kCustomGattHandleEnd) {
+    return false;
+  }
+
+  BleCustomServiceState& service = customGattServices_[customGattServiceCount_];
+  service.uuid16 = uuid16;
+  service.serviceHandle = customGattNextHandle_;
+  service.endHandle = customGattNextHandle_;
+  ++customGattNextHandle_;
+  ++customGattServiceCount_;
+
+  if (outServiceHandle != nullptr) {
+    *outServiceHandle = service.serviceHandle;
+  }
+  return true;
+}
+
+bool BleRadio::addCustomGattCharacteristic(uint16_t serviceHandle, uint16_t uuid16,
+                                           uint8_t properties,
+                                           const uint8_t* initialValue,
+                                           uint8_t initialValueLength,
+                                           uint16_t* outValueHandle,
+                                           uint16_t* outCccdHandle) {
+  constexpr uint8_t kAllowedProps = static_cast<uint8_t>(
+      kBleGattPropRead | kBleGattPropWriteNoRsp | kBleGattPropWrite |
+      kBleGattPropNotify | kBleGattPropIndicate);
+  if (connected_ || uuid16 == 0U ||
+      customGattCharacteristicCount_ >= kCustomGattMaxCharacteristics ||
+      (properties == 0U) || ((properties & ~kAllowedProps) != 0U)) {
+    return false;
+  }
+  if (initialValueLength > kCustomGattMaxValueLength ||
+      (initialValueLength > 0U && initialValue == nullptr)) {
+    return false;
+  }
+
+  uint8_t serviceIndex = 0xFFU;
+  for (uint8_t i = 0U; i < customGattServiceCount_; ++i) {
+    if (customGattServices_[i].serviceHandle == serviceHandle) {
+      serviceIndex = i;
+      break;
+    }
+  }
+  if (serviceIndex == 0xFFU) {
+    return false;
+  }
+  // Keep service ranges monotonic by only appending to the newest service.
+  if (serviceIndex != static_cast<uint8_t>(customGattServiceCount_ - 1U)) {
+    return false;
+  }
+
+  const bool hasCccd = ((properties & (kBleGattPropNotify | kBleGattPropIndicate)) != 0U);
+  const uint16_t requiredHandles = hasCccd ? 3U : 2U;
+  if (customGattNextHandle_ > kCustomGattHandleEnd ||
+      (static_cast<uint16_t>(kCustomGattHandleEnd - customGattNextHandle_ + 1U) <
+       requiredHandles)) {
+    return false;
+  }
+
+  BleCustomCharacteristicState& characteristic =
+      customGattCharacteristics_[customGattCharacteristicCount_];
+  memset(&characteristic, 0, sizeof(characteristic));
+  characteristic.serviceHandle = serviceHandle;
+  characteristic.uuid16 = uuid16;
+  characteristic.properties = properties;
+  characteristic.declarationHandle = customGattNextHandle_++;
+  characteristic.valueHandle = customGattNextHandle_++;
+  characteristic.cccdHandle = hasCccd ? customGattNextHandle_++ : 0U;
+  characteristic.cccdValue = 0U;
+  characteristic.valueLength = initialValueLength;
+  if (initialValueLength > 0U) {
+    memcpy(characteristic.value, initialValue, initialValueLength);
+  }
+  ++customGattCharacteristicCount_;
+
+  BleCustomServiceState& service = customGattServices_[serviceIndex];
+  service.endHandle = (characteristic.cccdHandle != 0U) ? characteristic.cccdHandle
+                                                         : characteristic.valueHandle;
+
+  if (outValueHandle != nullptr) {
+    *outValueHandle = characteristic.valueHandle;
+  }
+  if (outCccdHandle != nullptr) {
+    *outCccdHandle = characteristic.cccdHandle;
+  }
+  return true;
+}
+
+bool BleRadio::setCustomGattCharacteristicValue(uint16_t valueHandle,
+                                                const uint8_t* value,
+                                                uint8_t valueLength) {
+  if (valueLength > kCustomGattMaxValueLength ||
+      (valueLength > 0U && value == nullptr)) {
+    return false;
+  }
+
+  BleCustomCharacteristicState* characteristic =
+      findCustomCharacteristicByValueHandle(valueHandle);
+  if (characteristic == nullptr) {
+    return false;
+  }
+  characteristic->valueLength = valueLength;
+  memset(characteristic->value, 0, sizeof(characteristic->value));
+  if (valueLength > 0U) {
+    memcpy(characteristic->value, value, valueLength);
+  }
+  return true;
+}
+
+bool BleRadio::getCustomGattCharacteristicValue(uint16_t valueHandle, uint8_t* outValue,
+                                                uint8_t* inOutValueLength) const {
+  if (outValue == nullptr || inOutValueLength == nullptr) {
+    return false;
+  }
+  const BleCustomCharacteristicState* characteristic =
+      findCustomCharacteristicByValueHandle(valueHandle);
+  if (characteristic == nullptr) {
+    return false;
+  }
+  if (*inOutValueLength < characteristic->valueLength) {
+    *inOutValueLength = characteristic->valueLength;
+    return false;
+  }
+  if (characteristic->valueLength > 0U) {
+    memcpy(outValue, characteristic->value, characteristic->valueLength);
+  }
+  *inOutValueLength = characteristic->valueLength;
+  return true;
+}
+
+bool BleRadio::notifyCustomGattCharacteristic(uint16_t valueHandle, bool indicate) {
+  if (!connected_) {
+    return false;
+  }
+  BleCustomCharacteristicState* characteristic =
+      findCustomCharacteristicByValueHandle(valueHandle);
+  if (characteristic == nullptr) {
+    return false;
+  }
+
+  const bool notifyEnabled = ((characteristic->properties & kBleGattPropNotify) != 0U) &&
+                             ((characteristic->cccdValue & 0x0001U) != 0U);
+  const bool indicateEnabled =
+      ((characteristic->properties & kBleGattPropIndicate) != 0U) &&
+      ((characteristic->cccdValue & 0x0002U) != 0U);
+  if (indicate) {
+    if (!indicateEnabled || connectionCustomIndicationAwaitingHandle_ != 0U) {
+      return false;
+    }
+  } else if (!notifyEnabled) {
+    return false;
+  }
+
+  const ptrdiff_t idx = (characteristic - &customGattCharacteristics_[0]);
+  if (idx < 0 ||
+      static_cast<uint8_t>(idx) >= customGattCharacteristicCount_) {
+    return false;
+  }
+  if (connectionCustomNotificationPending_ &&
+      connectionCustomPendingCharIndex_ != static_cast<uint8_t>(idx)) {
+    return false;
+  }
+
+  connectionCustomNotificationPending_ = true;
+  connectionCustomPendingCharIndex_ = static_cast<uint8_t>(idx);
+  connectionCustomPendingIndication_ = indicate;
+  return true;
+}
+
+bool BleRadio::isCustomGattCccdEnabled(uint16_t valueHandle, bool indication) const {
+  const BleCustomCharacteristicState* characteristic =
+      findCustomCharacteristicByValueHandle(valueHandle);
+  if (characteristic == nullptr || characteristic->cccdHandle == 0U) {
+    return false;
+  }
+  const uint16_t mask = indication ? 0x0002U : 0x0001U;
+  return ((characteristic->cccdValue & mask) != 0U);
+}
+
+void BleRadio::setCustomGattWriteCallback(BleGattWriteCallback callback, void* context) {
+  customGattWriteCallback_ = callback;
+  customGattWriteContext_ = context;
+}
+
+bool BleRadio::writeCustomGattCharacteristic(uint16_t handle, const uint8_t* value,
+                                             uint16_t valueLength, bool withResponse,
+                                             uint8_t* outErrorCode) {
+  if (outErrorCode != nullptr) {
+    *outErrorCode = kAttErrWriteNotPermitted;
+  }
+
+  BleCustomCharacteristicState* valueTarget =
+      findCustomCharacteristicByValueHandle(handle);
+  if (valueTarget != nullptr) {
+    if ((valueLength > kCustomGattMaxValueLength) ||
+        (valueLength > 0U && value == nullptr)) {
+      if (outErrorCode != nullptr) {
+        *outErrorCode = kAttErrInvalidAttrValueLen;
+      }
+      return false;
+    }
+    const bool allowWriteReq = ((valueTarget->properties & kBleGattPropWrite) != 0U);
+    const bool allowWriteCmd =
+        ((valueTarget->properties & kBleGattPropWriteNoRsp) != 0U);
+    if ((withResponse && !allowWriteReq) || (!withResponse && !allowWriteCmd)) {
+      if (outErrorCode != nullptr) {
+        *outErrorCode = kAttErrWriteNotPermitted;
+      }
+      return false;
+    }
+
+    valueTarget->valueLength = static_cast<uint8_t>(valueLength);
+    memset(valueTarget->value, 0, sizeof(valueTarget->value));
+    if (valueLength > 0U) {
+      memcpy(valueTarget->value, value, valueLength);
+    }
+    if (customGattWriteCallback_ != nullptr) {
+      customGattWriteCallback_(valueTarget->valueHandle, valueTarget->value,
+                               valueTarget->valueLength, withResponse,
+                               customGattWriteContext_);
+    }
+    return true;
+  }
+
+  BleCustomCharacteristicState* cccdTarget =
+      findCustomCharacteristicByCccdHandle(handle);
+  if (cccdTarget == nullptr) {
+    if (outErrorCode != nullptr) {
+      *outErrorCode = kAttErrWriteNotPermitted;
+    }
+    return false;
+  }
+  if (valueLength != 2U || value == nullptr) {
+    if (outErrorCode != nullptr) {
+      *outErrorCode = kAttErrInvalidAttrValueLen;
+    }
+    return false;
+  }
+
+  uint16_t allowedMask = 0U;
+  if ((cccdTarget->properties & kBleGattPropNotify) != 0U) {
+    allowedMask |= 0x0001U;
+  }
+  if ((cccdTarget->properties & kBleGattPropIndicate) != 0U) {
+    allowedMask |= 0x0002U;
+  }
+  if (allowedMask == 0U) {
+    if (outErrorCode != nullptr) {
+      *outErrorCode = kAttErrWriteNotPermitted;
+    }
+    return false;
+  }
+
+  const uint16_t cccd = readLe16(value);
+  if ((cccd & ~allowedMask) != 0U) {
+    if (outErrorCode != nullptr) {
+      *outErrorCode = kAttErrWriteNotPermitted;
+    }
+    return false;
+  }
+  cccdTarget->cccdValue = cccd;
+  if ((cccdTarget->cccdValue & 0x0002U) == 0U &&
+      connectionCustomIndicationAwaitingHandle_ == cccdTarget->valueHandle) {
+    connectionCustomIndicationAwaitingHandle_ = 0U;
+  }
+  if (connectionCustomNotificationPending_) {
+    const uint8_t idx = connectionCustomPendingCharIndex_;
+    if (idx < customGattCharacteristicCount_ &&
+        &customGattCharacteristics_[idx] == cccdTarget) {
+      const bool pendingModeEnabled =
+          connectionCustomPendingIndication_
+              ? ((cccdTarget->cccdValue & 0x0002U) != 0U)
+              : ((cccdTarget->cccdValue & 0x0001U) != 0U);
+      if (!pendingModeEnabled) {
+        connectionCustomNotificationPending_ = false;
+        connectionCustomPendingCharIndex_ = 0xFFU;
+        connectionCustomPendingIndication_ = false;
+      }
+    }
+  }
+  return true;
+}
+
+void BleRadio::clearCustomGattConnectionState() {
+  connectionCustomNotificationPending_ = false;
+  connectionCustomPendingCharIndex_ = 0xFFU;
+  connectionCustomPendingIndication_ = false;
+  connectionCustomIndicationAwaitingHandle_ = 0U;
+  for (uint8_t i = 0U; i < customGattCharacteristicCount_; ++i) {
+    customGattCharacteristics_[i].cccdValue = 0U;
+  }
 }
 
 bool BleRadio::buildAdvertisingPacket() {
@@ -4177,6 +4568,7 @@ bool BleRadio::disconnect(uint32_t spinLimit) {
   connectionPreparedWriteValue_[0] = 0U;
   connectionPreparedWriteValue_[1] = 0U;
   connectionPreparedWriteMask_ = 0U;
+  clearCustomGattConnectionState();
   clearConnectionSecurityState();
   restoreAdvertisingLinkDefaults();
   clearRadioCoreEvents(radio_);
@@ -5586,6 +5978,57 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit
         !connectionEncStartReqTxPending_ &&
         !connectionEncAwaitingStartRsp_ &&
         !connectionEncStartReqPending_ &&
+        connectionCustomNotificationPending_) {
+      if (connectionCustomPendingCharIndex_ < customGattCharacteristicCount_) {
+        BleCustomCharacteristicState& custom =
+            customGattCharacteristics_[connectionCustomPendingCharIndex_];
+        const bool modeEnabled = connectionCustomPendingIndication_
+                                     ? (((custom.properties & kBleGattPropIndicate) != 0U) &&
+                                        ((custom.cccdValue & 0x0002U) != 0U))
+                                     : (((custom.properties & kBleGattPropNotify) != 0U) &&
+                                        ((custom.cccdValue & 0x0001U) != 0U));
+        const bool indicationFlowReady =
+            !connectionServiceChangedIndicationAwaitingConfirm_ &&
+            (connectionCustomIndicationAwaitingHandle_ == 0U);
+        const bool canTransmit =
+            modeEnabled &&
+            (!connectionCustomPendingIndication_ || indicationFlowReady);
+        if (canTransmit) {
+          writeLe16(&connectionTxPayload_[0],
+                    static_cast<uint16_t>(3U + custom.valueLength));
+          writeLe16(&connectionTxPayload_[2], kBleL2capCidAtt);
+          connectionTxPayload_[4] = connectionCustomPendingIndication_
+                                        ? kAttOpHandleValueInd
+                                        : kAttOpHandleValueNtf;
+          writeLe16(&connectionTxPayload_[5], custom.valueHandle);
+          if (custom.valueLength > 0U) {
+            memcpy(&connectionTxPayload_[7], custom.value, custom.valueLength);
+          }
+          deferredLlid = kBlePduDataStartOrComplete;
+          deferredLength = static_cast<uint8_t>(7U + custom.valueLength);
+          if (connectionCustomPendingIndication_) {
+            connectionCustomIndicationAwaitingHandle_ = custom.valueHandle;
+          }
+          connectionCustomNotificationPending_ = false;
+          connectionCustomPendingCharIndex_ = 0xFFU;
+          connectionCustomPendingIndication_ = false;
+        } else if (!modeEnabled) {
+          connectionCustomNotificationPending_ = false;
+          connectionCustomPendingCharIndex_ = 0xFFU;
+          connectionCustomPendingIndication_ = false;
+        }
+      } else {
+        connectionCustomNotificationPending_ = false;
+        connectionCustomPendingCharIndex_ = 0xFFU;
+        connectionCustomPendingIndication_ = false;
+      }
+    }
+
+    if ((deferredLength == 0U) &&
+        !encryptionProcedureBusy &&
+        !connectionEncStartReqTxPending_ &&
+        !connectionEncAwaitingStartRsp_ &&
+        !connectionEncStartReqPending_ &&
         connectionBatteryNotificationsEnabled_ &&
         connectionBatteryNotificationPending_) {
       writeLe16(&connectionTxPayload_[0], 4U);
@@ -6166,6 +6609,7 @@ bool BleRadio::startConnectionFromConnectInd(const uint8_t* payload, uint8_t len
   connectionPreparedWriteValue_[0] = 0U;
   connectionPreparedWriteValue_[1] = 0U;
   connectionPreparedWriteMask_ = 0U;
+  clearCustomGattConnectionState();
   clearConnectionSecurityState();
   if (primeBondForCurrentPeer()) {
     emitBleTrace("BOND_PRIMED");
@@ -6299,8 +6743,50 @@ uint8_t BleRadio::readAttributeValue(uint16_t handle, uint16_t offset,
       writeLe16(&fullValue[0], connectionBatteryNotificationsEnabled_ ? 0x0001U : 0x0000U);
       fullLen = 2U;
       break;
-    default:
-      return kAttrReadInvalidHandleLen;
+    default: {
+      const BleCustomServiceState* service = findCustomServiceByHandle(handle);
+      if (service != nullptr) {
+        writeLe16(&fullValue[0], service->uuid16);
+        fullLen = 2U;
+        break;
+      }
+
+      const BleCustomCharacteristicState* characteristic =
+          findCustomCharacteristicByValueHandle(handle);
+      if (characteristic != nullptr) {
+        if ((characteristic->properties & kBleGattPropRead) == 0U) {
+          return kAttrReadNotPermittedLen;
+        }
+        if (characteristic->valueLength > 0U) {
+          memcpy(&fullValue[0], characteristic->value, characteristic->valueLength);
+        }
+        fullLen = characteristic->valueLength;
+        break;
+      }
+
+      characteristic = findCustomCharacteristicByCccdHandle(handle);
+      if (characteristic != nullptr) {
+        writeLe16(&fullValue[0], characteristic->cccdValue);
+        fullLen = 2U;
+        break;
+      }
+
+      for (uint8_t i = 0U; i < customGattCharacteristicCount_; ++i) {
+        const BleCustomCharacteristicState& candidate = customGattCharacteristics_[i];
+        if (candidate.declarationHandle != handle) {
+          continue;
+        }
+        fullValue[0] = candidate.properties;
+        writeLe16(&fullValue[1], candidate.valueHandle);
+        writeLe16(&fullValue[3], candidate.uuid16);
+        fullLen = 5U;
+        break;
+      }
+      if (fullLen == 0U) {
+        return kAttrReadInvalidHandleLen;
+      }
+      break;
+    }
   }
 
   if (offset > fullLen) {
@@ -6340,16 +6826,10 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
     connectionPreparedWriteMask_ = 0U;
   };
   auto applyCccdState = [&](uint16_t handle, uint16_t cccd) -> bool {
-    const uint16_t allowedMask =
-        (handle == kHandleGattServiceChangedCccd) ? 0x0002U :
-        (handle == kHandleBatteryLevelCccd) ? 0x0001U : 0xFFFFU;
-    if (allowedMask == 0xFFFFU) {
-      return false;
-    }
-    if ((cccd & ~allowedMask) != 0U) {
-      return false;
-    }
     if (handle == kHandleGattServiceChangedCccd) {
+      if ((cccd & ~0x0002U) != 0U) {
+        return false;
+      }
       const bool enableIndication = ((cccd & 0x0002U) != 0U);
       if (enableIndication && !connectionServiceChangedIndicationsEnabled_) {
         connectionServiceChangedIndicationPending_ = true;
@@ -6361,10 +6841,52 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
       connectionServiceChangedIndicationsEnabled_ = enableIndication;
       return true;
     }
+    if (handle == kHandleBatteryLevelCccd) {
+      if ((cccd & ~0x0001U) != 0U) {
+        return false;
+      }
+      const bool enableNotify = ((cccd & 0x0001U) != 0U);
+      connectionBatteryNotificationsEnabled_ = enableNotify;
+      connectionBatteryNotificationPending_ = enableNotify;
+      return true;
+    }
 
-    const bool enableNotify = ((cccd & 0x0001U) != 0U);
-    connectionBatteryNotificationsEnabled_ = enableNotify;
-    connectionBatteryNotificationPending_ = enableNotify;
+    BleCustomCharacteristicState* custom = findCustomCharacteristicByCccdHandle(handle);
+    if (custom == nullptr) {
+      return false;
+    }
+
+    uint16_t allowedMask = 0U;
+    if ((custom->properties & kBleGattPropNotify) != 0U) {
+      allowedMask |= 0x0001U;
+    }
+    if ((custom->properties & kBleGattPropIndicate) != 0U) {
+      allowedMask |= 0x0002U;
+    }
+    if (allowedMask == 0U || ((cccd & ~allowedMask) != 0U)) {
+      return false;
+    }
+
+    custom->cccdValue = cccd;
+    if (((custom->cccdValue & 0x0002U) == 0U) &&
+        (connectionCustomIndicationAwaitingHandle_ == custom->valueHandle)) {
+      connectionCustomIndicationAwaitingHandle_ = 0U;
+    }
+    if (connectionCustomNotificationPending_) {
+      const uint8_t pendingIndex = connectionCustomPendingCharIndex_;
+      if (pendingIndex < customGattCharacteristicCount_ &&
+          (&customGattCharacteristics_[pendingIndex] == custom)) {
+        const bool pendingEnabled =
+            connectionCustomPendingIndication_
+                ? ((custom->cccdValue & 0x0002U) != 0U)
+                : ((custom->cccdValue & 0x0001U) != 0U);
+        if (!pendingEnabled) {
+          connectionCustomNotificationPending_ = false;
+          connectionCustomPendingCharIndex_ = 0xFFU;
+          connectionCustomPendingIndication_ = false;
+        }
+      }
+    }
     return true;
   };
 
@@ -6421,6 +6943,52 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
         used += 4U;
         ++recordCount;
       }
+      for (uint8_t i = 0U;
+           (i < customGattServiceCount_) && (recordCount < maxRecords); ++i) {
+        const BleCustomServiceState& service = customGattServices_[i];
+        if (inHandleRange(service.serviceHandle, start, end)) {
+          writeLe16(&outAttResponse[used], service.serviceHandle);
+          writeLe16(&outAttResponse[used + 2U], kUuidPrimaryService);
+          used += 4U;
+          ++recordCount;
+          if (recordCount >= maxRecords) {
+            break;
+          }
+        }
+        for (uint8_t j = 0U;
+             (j < customGattCharacteristicCount_) && (recordCount < maxRecords);
+             ++j) {
+          const BleCustomCharacteristicState& ch = customGattCharacteristics_[j];
+          if (ch.serviceHandle != service.serviceHandle) {
+            continue;
+          }
+          if (inHandleRange(ch.declarationHandle, start, end)) {
+            writeLe16(&outAttResponse[used], ch.declarationHandle);
+            writeLe16(&outAttResponse[used + 2U], kUuidCharacteristic);
+            used += 4U;
+            ++recordCount;
+            if (recordCount >= maxRecords) {
+              break;
+            }
+          }
+          if (inHandleRange(ch.valueHandle, start, end)) {
+            writeLe16(&outAttResponse[used], ch.valueHandle);
+            writeLe16(&outAttResponse[used + 2U], ch.uuid16);
+            used += 4U;
+            ++recordCount;
+            if (recordCount >= maxRecords) {
+              break;
+            }
+          }
+          if (ch.cccdHandle != 0U &&
+              inHandleRange(ch.cccdHandle, start, end)) {
+            writeLe16(&outAttResponse[used], ch.cccdHandle);
+            writeLe16(&outAttResponse[used + 2U], kUuidClientCharacteristicConfig);
+            used += 4U;
+            ++recordCount;
+          }
+        }
+      }
 
       if (recordCount == 0U) {
         return buildAttErrorResponse(opcode, start, kAttErrAttributeNotFound,
@@ -6468,6 +7036,20 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
           break;
         }
         writeLe16(&outAttResponse[used], service.startHandle);
+        writeLe16(&outAttResponse[used + 2U], service.endHandle);
+        used += 4U;
+        ++recordCount;
+      }
+      for (uint8_t i = 0U;
+           (i < customGattServiceCount_) && (recordCount < maxRecords); ++i) {
+        const BleCustomServiceState& service = customGattServices_[i];
+        if (service.uuid16 != serviceUuid) {
+          continue;
+        }
+        if (!inHandleRange(service.serviceHandle, rawStart, end)) {
+          continue;
+        }
+        writeLe16(&outAttResponse[used], service.serviceHandle);
         writeLe16(&outAttResponse[used + 2U], service.endHandle);
         used += 4U;
         ++recordCount;
@@ -6531,6 +7113,18 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
         used += 6U;
         ++recordCount;
       }
+      for (uint8_t i = 0U;
+           (i < customGattServiceCount_) && (recordCount < maxRecords); ++i) {
+        const BleCustomServiceState& service = customGattServices_[i];
+        if (!inHandleRange(service.serviceHandle, start, end)) {
+          continue;
+        }
+        writeLe16(&outAttResponse[used], service.serviceHandle);
+        writeLe16(&outAttResponse[used + 2U], service.endHandle);
+        writeLe16(&outAttResponse[used + 4U], service.uuid16);
+        used += 6U;
+        ++recordCount;
+      }
 
       if (recordCount == 0U) {
         return buildAttErrorResponse(opcode, start, kAttErrAttributeNotFound,
@@ -6581,6 +7175,20 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
           used += entryLen;
           ++recordCount;
         }
+        for (uint8_t i = 0U;
+             (i < customGattCharacteristicCount_) && (recordCount < maxRecords);
+             ++i) {
+          const BleCustomCharacteristicState& ch = customGattCharacteristics_[i];
+          if (!inHandleRange(ch.declarationHandle, start, end)) {
+            continue;
+          }
+          writeLe16(&outAttResponse[used], ch.declarationHandle);
+          outAttResponse[used + 2U] = ch.properties;
+          writeLe16(&outAttResponse[used + 3U], ch.valueHandle);
+          writeLe16(&outAttResponse[used + 5U], ch.uuid16);
+          used += entryLen;
+          ++recordCount;
+        }
       } else if (type == kUuidPrimaryService) {
         entryLen = 4U;
         outAttResponse[1] = entryLen;
@@ -6596,6 +7204,17 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
             break;
           }
           writeLe16(&outAttResponse[used], service.startHandle);
+          writeLe16(&outAttResponse[used + 2U], service.uuid16);
+          used += entryLen;
+          ++recordCount;
+        }
+        for (uint8_t i = 0U;
+             (i < customGattServiceCount_) && (recordCount < maxRecords); ++i) {
+          const BleCustomServiceState& service = customGattServices_[i];
+          if (!inHandleRange(service.serviceHandle, start, end)) {
+            continue;
+          }
+          writeLe16(&outAttResponse[used], service.serviceHandle);
           writeLe16(&outAttResponse[used + 2U], service.uuid16);
           used += entryLen;
           ++recordCount;
@@ -6651,6 +7270,49 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
           used += entryLen;
           ++recordCount;
         }
+
+        for (uint8_t i = 0U; i < customGattCharacteristicCount_; ++i) {
+          const BleCustomCharacteristicState& ch = customGattCharacteristics_[i];
+          uint16_t handle = 0U;
+          if (type == ch.uuid16) {
+            handle = ch.valueHandle;
+          } else if (type == kUuidClientCharacteristicConfig) {
+            handle = ch.cccdHandle;
+          }
+          if (handle == 0U || !inHandleRange(handle, start, end)) {
+            continue;
+          }
+
+          uint8_t temp[31] = {0};
+          const uint8_t vlen = readAttributeValue(handle, 0U, temp, maxAttValueLen);
+          if (vlen == kAttrReadInvalidHandleLen ||
+              vlen == kAttrReadInvalidOffsetLen ||
+              vlen == kAttrReadNotPermittedLen) {
+            continue;
+          }
+
+          const uint8_t candidateEntryLen = static_cast<uint8_t>(2U + vlen);
+          if (candidateEntryLen == 2U) {
+            continue;
+          }
+          if (entryLen == 0U) {
+            entryLen = candidateEntryLen;
+            outAttResponse[1] = entryLen;
+          }
+          if (candidateEntryLen != entryLen) {
+            continue;
+          }
+          if ((used + entryLen) > maxAttResponseLen) {
+            break;
+          }
+
+          writeLe16(&outAttResponse[used], handle);
+          if (vlen > 0U) {
+            memcpy(&outAttResponse[used + 2U], temp, vlen);
+          }
+          used += entryLen;
+          ++recordCount;
+        }
       }
 
       if (recordCount == 0U) {
@@ -6678,6 +7340,10 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
         return buildAttErrorResponse(opcode, handle, kAttErrInvalidHandle,
                                      outAttResponse, outAttResponseLength);
       }
+      if (vlen == kAttrReadNotPermittedLen) {
+        return buildAttErrorResponse(opcode, handle, kAttErrReadNotPermitted,
+                                     outAttResponse, outAttResponseLength);
+      }
       if (vlen == kAttrReadInvalidOffsetLen) {
         return buildAttErrorResponse(opcode, handle, kAttErrInvalidOffset,
                                      outAttResponse, outAttResponseLength);
@@ -6703,6 +7369,10 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
           readAttributeValue(handle, offset, &outAttResponse[1], maxAttValueLen);
       if (vlen == kAttrReadInvalidHandleLen) {
         return buildAttErrorResponse(opcode, handle, kAttErrInvalidHandle,
+                                     outAttResponse, outAttResponseLength);
+      }
+      if (vlen == kAttrReadNotPermittedLen) {
+        return buildAttErrorResponse(opcode, handle, kAttErrReadNotPermitted,
                                      outAttResponse, outAttResponseLength);
       }
       if (vlen == kAttrReadInvalidOffsetLen) {
@@ -6739,6 +7409,10 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
           return buildAttErrorResponse(opcode, handle, kAttErrInvalidHandle,
                                        outAttResponse, outAttResponseLength);
         }
+        if (vlen == kAttrReadNotPermittedLen) {
+          return buildAttErrorResponse(opcode, handle, kAttErrReadNotPermitted,
+                                       outAttResponse, outAttResponseLength);
+        }
         if (vlen == kAttrReadInvalidOffsetLen) {
           return buildAttErrorResponse(opcode, handle, kAttErrInvalidOffset,
                                        outAttResponse, outAttResponseLength);
@@ -6762,7 +7436,8 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
 
       const uint16_t handle = readLe16(&attRequest[1]);
       if ((handle != kHandleGattServiceChangedCccd) &&
-          (handle != kHandleBatteryLevelCccd)) {
+          (handle != kHandleBatteryLevelCccd) &&
+          (findCustomCharacteristicByCccdHandle(handle) == nullptr)) {
         return buildAttErrorResponse(opcode, handle, kAttErrWriteNotPermitted,
                                      outAttResponse, outAttResponseLength);
       }
@@ -6824,7 +7499,8 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
       if (connectionPreparedWriteActive_) {
         const uint16_t handle = connectionPreparedWriteHandle_;
         if ((handle != kHandleGattServiceChangedCccd) &&
-            (handle != kHandleBatteryLevelCccd)) {
+            (handle != kHandleBatteryLevelCccd) &&
+            (findCustomCharacteristicByCccdHandle(handle) == nullptr)) {
           clearPreparedWrite();
           return buildAttErrorResponse(opcode, handle, kAttErrWriteNotPermitted,
                                        outAttResponse, outAttResponseLength);
@@ -6852,6 +7528,7 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
       // Confirmation for ATT Handle Value Indication. This opcode has no response.
       if (requestLength == 1U) {
         connectionServiceChangedIndicationAwaitingConfirm_ = false;
+        connectionCustomIndicationAwaitingHandle_ = 0U;
       }
       *outAttResponseLength = 0U;
       return false;
@@ -6863,9 +7540,14 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
                                      outAttResponseLength);
       }
       const uint16_t handle = readLe16(&attRequest[1]);
-      if ((handle == kHandleGattServiceChangedCccd) ||
-          (handle == kHandleBatteryLevelCccd)) {
-        const uint16_t valueLen = static_cast<uint16_t>(requestLength - 3U);
+      const uint16_t valueLen = static_cast<uint16_t>(requestLength - 3U);
+      const uint8_t* value = (valueLen > 0U) ? &attRequest[3] : nullptr;
+
+      const bool isCccdHandle =
+          (handle == kHandleGattServiceChangedCccd) ||
+          (handle == kHandleBatteryLevelCccd) ||
+          (findCustomCharacteristicByCccdHandle(handle) != nullptr);
+      if (isCccdHandle) {
         if (valueLen != 2U) {
           return buildAttErrorResponse(opcode, handle, kAttErrInvalidAttrValueLen,
                                        outAttResponse, outAttResponseLength);
@@ -6883,26 +7565,36 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
         *outAttResponseLength = 1U;
         return true;
       }
-
-      return buildAttErrorResponse(opcode, handle, kAttErrWriteNotPermitted,
-                                   outAttResponse, outAttResponseLength);
+      uint8_t errorCode = kAttErrWriteNotPermitted;
+      if (writeCustomGattCharacteristic(handle, value, valueLen, true, &errorCode)) {
+        outAttResponse[0] = kAttOpWriteRsp;
+        *outAttResponseLength = 1U;
+        return true;
+      }
+      return buildAttErrorResponse(opcode, handle, errorCode, outAttResponse,
+                                   outAttResponseLength);
     }
 
     case kAttOpWriteCmd: {
-      if (requestLength >= 5U) {
+      if (requestLength >= 3U) {
         const uint16_t handle = readLe16(&attRequest[1]);
-        if ((handle == kHandleGattServiceChangedCccd) ||
-            (handle == kHandleBatteryLevelCccd)) {
-          const uint16_t valueLen = static_cast<uint16_t>(requestLength - 3U);
-          if (valueLen == 2U) {
-            const uint16_t cccd = readLe16(&attRequest[3]);
-            if (applyCccdState(handle, cccd)) {
-              if (connectionPreparedWriteActive_ &&
-                  connectionPreparedWriteHandle_ == handle) {
-                clearPreparedWrite();
-              }
+        const uint16_t valueLen = static_cast<uint16_t>(requestLength - 3U);
+        const uint8_t* value = (valueLen > 0U) ? &attRequest[3] : nullptr;
+        const bool isCccdHandle =
+            (handle == kHandleGattServiceChangedCccd) ||
+            (handle == kHandleBatteryLevelCccd) ||
+            (findCustomCharacteristicByCccdHandle(handle) != nullptr);
+        if (isCccdHandle && valueLen == 2U) {
+          const uint16_t cccd = readLe16(&attRequest[3]);
+          if (applyCccdState(handle, cccd)) {
+            if (connectionPreparedWriteActive_ &&
+                connectionPreparedWriteHandle_ == handle) {
+              clearPreparedWrite();
             }
           }
+        } else {
+          uint8_t ignoredError = kAttErrWriteNotPermitted;
+          writeCustomGattCharacteristic(handle, value, valueLen, false, &ignoredError);
         }
       }
       // Write command has no ATT response.

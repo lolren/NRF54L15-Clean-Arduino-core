@@ -21,6 +21,8 @@ Target: close the remaining parity gap vs the Zephyr-based core while keeping th
   - Latest evidence:
     - `measurements/ble_pair_bond_regression_20260224_212703` (`BlePairingEncryptionStatus`, Broadcom `hci1`, `4/5` pass, `1/5` host-inconclusive).
     - `measurements/ble_pair_bond_regression_20260224_212347` (`BleBondPersistenceProbe`, clean bond storage, repeated timeout during encryption start).
+    - `measurements/ble_pair_bond_regression_20260224_224348` (`BlePairingEncryptionStatus`, Broadcom `hci1`, `2/2` host-inconclusive in this session).
+    - `measurements/ble_pair_bond_regression_20260224_224649` (`BlePairingEncryptionStatus`, alternate adapter `hci0`, `1/1 fail_target`).
     - `measurements/ble_pair_bond_regression_20260224_211654` (pair reaches SMP random exchange then disconnects at start-encryption transition).
     - `measurements/ble_pair_bond_regression_20260224_064411` (2/2 paired, 1/2 bonded, one run still host-crash contaminated).
     - `measurements/ble_pair_bond_regression_20260224_064748` (single-attempt bonded pass with Intel host crash signature).
@@ -41,6 +43,11 @@ Target: close the remaining parity gap vs the Zephyr-based core while keeping th
 - [x] GAP-BLE-SEC-02: Durable default bond persistence backend implemented.
   - Current path now uses flash-backed RRAM + `.noinit` retention blob + callback hooks.
   - Remaining work: power-cycle and bonded-reconnect validation matrix to close parity.
+
+- [x] GAP-BLE-GATT-RT-01: Optional runtime custom GATT registration baseline implemented.
+  - Added dynamic 16-bit service/characteristic registration, runtime value updates, CCCD handling, and notify/indicate scheduling.
+  - Demo sketch: `examples/BleCustomGattRuntime/BleCustomGattRuntime.ino`.
+  - Remaining work: descriptor registration and mutable service-table operations (remove/reorder).
 
 - [ ] GAP-BLE-CTRL-01: LL control hardening under edge-case sequencing.
   - Focus: start-encryption sequencing, retransmit/ACK windows, control/data transition edge cases.
@@ -81,7 +88,20 @@ Target: close the remaining parity gap vs the Zephyr-based core while keeping th
 - [x] LL instant application now uses the current-event counter basis (aligned with channel selection), reducing off-by-one risk during pending connection/channel-map instant application.
   - File: `hardware/nrf54l15clean/0.1.0/libraries/Nrf54L15-Clean-Implementation/src/nrf54l15_hal.cpp`
 
+- [x] Runtime custom GATT feature-breadth step:
+  - new `BleRadio` API for dynamic 16-bit services/chars:
+    - `clearCustomGatt`, `addCustomGattService`, `addCustomGattCharacteristic`
+    - runtime value IO, CCCD state, write callbacks
+    - `notifyCustomGattCharacteristic` with notify/indicate scheduling in connection events
+  - new example: `hardware/nrf54l15clean/0.1.0/libraries/Nrf54L15-Clean-Implementation/examples/BleCustomGattRuntime/BleCustomGattRuntime.ino`
+  - validation captures:
+    - `measurements/custom_gatt_runtime_20260224_224921`
+    - `measurements/custom_gatt_runtime_20260224_225041_connect`
+
 - [x] Executed new hardware regression passes with this change:
+  - `measurements/ble_pair_bond_regression_20260224_224048` (`BleBondPersistenceProbe`, `2/2` host-inconclusive)
+  - `measurements/ble_pair_bond_regression_20260224_224348` (`BlePairingEncryptionStatus`, `2/2` host-inconclusive)
+  - `measurements/ble_pair_bond_regression_20260224_224649` (`BlePairingEncryptionStatus`, `1/1 fail_target` on alternate adapter)
   - `measurements/ble_pair_bond_regression_20260224_071104` (pair-bond smoke, new verdict fields)
   - `measurements/ble_pair_bond_regression_20260224_071149` (bonded-reconnect smoke, reconnect metrics)
   - `measurements/ble_pair_bond_regression_20260224_064007`
