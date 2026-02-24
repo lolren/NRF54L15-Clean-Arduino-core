@@ -56,4 +56,9 @@ Last updated: 2026-02-24
   - derive session key during TX window to enable same-event encrypted follow-up decode;
   - allow bounded plain zero-length data PDU during final `LL_START_ENC_RSP` transition.
 - [x] Added `scripts/ble_pair_bond_regression.sh` with CSV/summary output and host-crash tagging.
+- [x] BLE security regression runner upgraded:
+  - mode switch: `pair-bond` and `bonded-reconnect`;
+  - host-controller controls: `--controller`, `--btmon-iface`;
+  - verdict split: `target_verdict`, `overall_verdict`, `host_unstable`;
+  - reconnect metrics: `reconnect_connected`, `reconnect_bonded`, `reconnect_enc_seen`.
 - [x] README upgraded with pinout image, mapping tables, default routes, and example index.

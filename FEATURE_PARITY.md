@@ -107,6 +107,18 @@ Additional BLE-security regression evidence (post-fix):
   - Intel host crash (`Hardware Error 0x0c`) still present in one attempt.
 - `measurements/ble_pair_bond_regression_20260224_064748`
   - Single-attempt bond pass (`Paired: yes`, `Bonded: yes`) with host crash signature.
+- `measurements/ble_pair_bond_regression_20260224_071104`
+  - Pair-bond smoke run with new regression format (`target_verdict`, `overall_verdict`, `host_unstable`).
+- `measurements/ble_pair_bond_regression_20260224_071149`
+  - Bonded-reconnect smoke run with reconnect metrics (`reconnect_connected`, `reconnect_bonded`, `reconnect_enc_seen`).
+
+Regression tooling now supports explicit host-vs-target classification and reconnect-mode probing:
+
+- `scripts/ble_pair_bond_regression.sh --mode pair-bond`
+- `scripts/ble_pair_bond_regression.sh --mode bonded-reconnect`
+- optional controller selection for multi-adapter hosts:
+  - `--controller <controller_addr>`
+  - `--btmon-iface <hciX>`
 
 ## Known BLE security gap (current blocker)
 

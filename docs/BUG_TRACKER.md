@@ -52,7 +52,13 @@ Target: close the remaining parity gap vs the Zephyr-based core while keeping th
   - repeat attempts
   - summarized verdict (`pair_ok`, `bond_ok`, `enc_change_ok`, `mic_fail`, `host_crash`)
 - [x] Add a concise runbook for unattended pair/bond tests (no interactive trust/agent setup surprises).
-- [ ] Tag runs as `host-unstable` when Intel crash signature is present.
+- [x] Tag runs as `host-unstable` when Intel crash signature is present.
+- [x] Split attempt verdicts into target and host dimensions:
+  - `target_verdict` (`pass`, `fail`, `unknown_host`)
+  - `overall_verdict` (`pass`, `fail_target`, `inconclusive_host`)
+- [x] Add bonded reconnect regression mode:
+  - `--mode bonded-reconnect` (pair + disconnect + reconnect without re-pair)
+  - reconnect metrics in CSV (`reconnect_connected`, `reconnect_bonded`, `reconnect_enc_seen`)
 
 ## What was implemented in this cycle
 
@@ -65,11 +71,15 @@ Target: close the remaining parity gap vs the Zephyr-based core while keeping th
   - `scripts/ble_pair_bond_regression.sh`
   - handles multiline encryption-change detection;
   - removes false-positive MIC-failure detection from unrelated `0x3d` bitmasks.
+  - adds `--mode pair-bond|bonded-reconnect`, `--controller`, `--btmon-iface`;
+  - emits `host_unstable`, `target_trace_error`, `target_verdict`, `overall_verdict`.
 
 - [x] LL instant application now uses the current-event counter basis (aligned with channel selection), reducing off-by-one risk during pending connection/channel-map instant application.
   - File: `hardware/nrf54l15clean/0.1.0/libraries/Nrf54L15-Clean-Implementation/src/nrf54l15_hal.cpp`
 
 - [x] Executed new hardware regression passes with this change:
+  - `measurements/ble_pair_bond_regression_20260224_071104` (pair-bond smoke, new verdict fields)
+  - `measurements/ble_pair_bond_regression_20260224_071149` (bonded-reconnect smoke, reconnect metrics)
   - `measurements/ble_pair_bond_regression_20260224_064007`
   - `measurements/ble_pair_bond_regression_20260224_064411`
   - `measurements/ble_pair_bond_regression_20260224_064748`
@@ -90,13 +100,12 @@ Target: close the remaining parity gap vs the Zephyr-based core while keeping th
 
 1. Run 10-attempt bond probe matrix on current baseline + transition-hardening patch and record aggregate outcomes.
 2. Validate same matrix on non-Intel host (or phone) to separate core defects from host crashes.
-3. Add host-crash contamination tags to regression summary (`host-unstable`) and split target vs host verdicts.
-4. Add explicit trace points for:
+3. Add explicit trace points for:
    - pending instant apply (`connUpdateInstant`, `channelMapInstant`)
    - first three encrypted RX/TX counters and headers after `LL_START_ENC_RSP`.
-5. If MIC failures remain without host crash signature, tighten start-encryption acceptance rules:
+4. If MIC failures remain without host crash signature, tighten start-encryption acceptance rules:
    - bounded plaintext-empty tolerance window while awaiting final encrypted transition.
-6. Implement durable default bond persistence backend (flash-backed) with retention fallback.
+5. Implement durable default bond persistence backend (flash-backed) with retention fallback.
 
 ## Operating rules
 

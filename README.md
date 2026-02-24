@@ -244,5 +244,17 @@ bash scripts/ble_cli_matrix.sh --port /dev/ttyACM0 --sudo
 Example pair/bond regression run:
 
 ```bash
-bash scripts/ble_pair_bond_regression.sh --port /dev/ttyACM0 --sudo --attempts 10
+bash scripts/ble_pair_bond_regression.sh --port /dev/ttyACM0 --sudo --attempts 10 --mode pair-bond
+```
+
+Example bonded reconnect regression run:
+
+```bash
+bash scripts/ble_pair_bond_regression.sh --port /dev/ttyACM0 --sudo --attempts 5 --mode bonded-reconnect --example BleBondPersistenceProbe
+```
+
+If multiple host adapters are present:
+
+```bash
+bash scripts/ble_pair_bond_regression.sh --sudo --controller AA:BB:CC:DD:EE:FF --btmon-iface hci1
 ```

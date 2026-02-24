@@ -9,15 +9,36 @@ Purpose: run repeatable BLE security checks with minimal manual interaction.
 - `arduino-cli`, `bluetoothctl`, and `btmon` installed.
 - `sudo -n` access for `btmon/bluetoothctl` (recommended for unattended runs).
 
-## Recommended command
+## Recommended command (pair/bond)
 
 ```bash
 cd Nrf54L15-Clean-BoardPackage
 ./scripts/ble_pair_bond_regression.sh \
   --sudo \
   --attempts 10 \
+  --mode pair-bond \
   --example BlePairingEncryptionStatus \
   --fqbn nrf54l15clean:nrf54l15clean:xiao_nrf54l15:clean_ble_trace=on
+```
+
+## Bonded reconnect command
+
+```bash
+cd Nrf54L15-Clean-BoardPackage
+./scripts/ble_pair_bond_regression.sh \
+  --sudo \
+  --attempts 5 \
+  --mode bonded-reconnect \
+  --example BleBondPersistenceProbe
+```
+
+## Optional adapter selection
+
+Use these options when multiple host adapters are present:
+
+```bash
+--controller AA:BB:CC:DD:EE:FF   # bluetoothctl controller address (select)
+--btmon-iface hci1               # btmon capture interface
 ```
 
 Outputs:
@@ -31,10 +52,15 @@ Outputs:
 - `pair_ok=yes` means host observed successful pairing outcome.
 - `bonded=yes` means host reported bonded state.
 - `enc_change_success=yes` means `Encryption Change` success event was seen.
+- `reconnect_connected/reconnect_bonded/reconnect_enc_seen` are used in `bonded-reconnect` mode.
+- `target_trace_error=yes` indicates target-side BLE trace failures seen on serial logs.
 - `mic_failure=yes` indicates explicit MIC failure reason in btmon.
 - `host_crash=yes` indicates host adapter instability signature (`Hardware Error 0x0c` / Intel reset).
+- `host_unstable=yes` tags host-contaminated runs.
+- `target_verdict` classifies target behavior (`pass`, `fail`, `unknown_host`).
+- `overall_verdict` is the final attempt verdict (`pass`, `fail_target`, `inconclusive_host`).
 
-When `host_crash=yes`, treat the attempt as host-contaminated evidence.
+When `host_unstable=yes`, treat the attempt as host-contaminated evidence.
 
 ## Common issues
 
