@@ -175,6 +175,7 @@ Library examples (HAL + BLE + power):
 - `.../examples/InterruptWatchdogLowPower/InterruptWatchdogLowPower.ino`
 - `.../examples/BleAdvertiser/BleAdvertiser.ino`
 - `.../examples/BlePassiveScanner/BlePassiveScanner.ino`
+- `.../examples/BleActiveScanner/BleActiveScanner.ino`
 - `.../examples/BleConnectionPeripheral/BleConnectionPeripheral.ino`
 - `.../examples/BleGattBasicPeripheral/BleGattBasicPeripheral.ino`
 - `.../examples/BleBatteryNotifyPeripheral/BleBatteryNotifyPeripheral.ino`
@@ -188,6 +189,7 @@ Validated and stable with host adapter + hardware:
 
 - Advertising
 - Passive scanning
+- Active scanning (`SCAN_REQ` / `SCAN_RSP`)
 - Connect/disconnect
 - GATT discovery/read
 - Battery notify CCCD flow
@@ -207,6 +209,7 @@ Channel sounding status:
 - `TODO.md`
 - `POWER_PROFILE_MEASUREMENTS.md`
 - `docs/BLE_CLI_MATRIX_SUMMARY.md`
+- `docs/BUG_TRACKER.md`
 - `scripts/ble_cli_matrix.sh`
 
 ## Local development workflow

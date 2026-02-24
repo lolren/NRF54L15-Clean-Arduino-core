@@ -10,17 +10,19 @@ Last updated: 2026-02-23
 
 ## Priority 1: BLE security parity (current top blocker)
 
-- [ ] Complete legacy pairing end-to-end so `bluetoothctl pair` reaches `Paired: yes` / `Bonded: yes` reliably.
-- [ ] Resolve post-`LL_ENC_REQ` handshake gap (currently stalls/disconnects before stable bonded state).
+- [ ] Make legacy pairing outcome deterministic so `bluetoothctl pair` reaches `Paired: yes` / `Bonded: yes` reliably across repeated runs.
+- [ ] Resolve intermittent post-`LE Start Encryption` failure modes (MIC/auth failures and host timeout paths).
 - [ ] Add targeted traces/tests for `LL_ENC_REQ/LL_ENC_RSP/LL_START_ENC_REQ/LL_START_ENC_RSP` sequencing.
 - [ ] Validate encrypted data path counters/nonce behavior against known-good vectors.
 - [ ] Verify bonded reconnect path with persisted keys after successful pairing.
+- [ ] Verify BLE security results on a non-Intel host adapter to isolate target bugs from Intel `Hardware Error 0x0c` crashes.
 
 ## Priority 2: BLE procedure hardening
 
 - [ ] Expand LL control edge-case handling to reduce controller-specific interop issues.
 - [ ] Add negative tests for malformed LL/SMP/L2CAP/ATT packets.
 - [ ] Add packet-level regression tests for connection-update/channel-map instant edge cases.
+- [ ] Add over-the-air sniff correlation for encryption-procedure debugging to isolate host-adapter artifacts.
 
 ## Priority 3: Feature breadth
 
@@ -44,8 +46,10 @@ Last updated: 2026-02-23
 ## Done recently
 
 - [x] BLE matrix automation script improved: scan retries, pair/bond modes, robust CLI reporting.
+- [x] Active BLE scan path added (`SCAN_REQ`/`SCAN_RSP`) with `BleActiveScanner` example.
 - [x] Antenna Tools-menu route now respected during BLE init.
 - [x] Pair/bond example default TX level improved for better discoverability.
 - [x] Pair/bond examples now fail fast with explicit step diagnostics when BLE init/config fails.
 - [x] LL security path updated to emit immediate `LL_ENC_RSP` handling attempt for improved interop testing.
+- [x] LL instant application aligned to current-event counter basis (connection update/channel map apply path).
 - [x] README upgraded with pinout image, mapping tables, default routes, and example index.

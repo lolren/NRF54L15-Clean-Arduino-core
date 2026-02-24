@@ -14,6 +14,7 @@ Source run:
 |---|---|---|---|---|---|---|---|
 | `BleAdvertiser` | `scan_nonconn` | pass | pass | pass | skip | skip | skip |
 | `BlePassiveScanner` | `serial` | pass | pass | skip | skip | skip | pass |
+| `BleActiveScanner` | `serial_active` | pass | pass | skip | skip | skip | pass (manual run) |
 | `BleConnectableScannableAdvertiser` | `connect` | pass | pass | pass | pass | fail | skip |
 | `BleConnectionPeripheral` | `connect` | pass | pass | pass | pass | pass | skip |
 | `BleGattBasicPeripheral` | `gatt` | pass | pass | pass | pass | pass | pass |
@@ -28,3 +29,5 @@ Source run:
 - Pair/bond flows are still partial: host reports `Paired: no` / `Bonded: no`.
 - In additional interactive-agent tests, host reaches `LE Start Encryption`,
   but the flow still terminates before bonded completion (`AuthenticationFailed`/`AuthenticationCanceled`).
+- Active-scan parity check shows SCAN_RSP capture and AD-name extraction:
+  `measurements/active_scan_parity_20260223_230813` (`scan_rsp=1`, `scan_name=ATC_264EDA`).

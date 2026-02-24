@@ -1,0 +1,29 @@
+# BLE Fix Attempt Log
+
+Purpose: prevent duplicate fixes and keep a single source of truth for BLE debugging decisions.
+
+How to use:
+- Add one row before applying a new fix (status `planned`).
+- Update the same row after test with measurement folder and result (`pass`/`fail`/`partial`).
+- Reuse the same `Attempt ID` in commit messages and notes.
+
+## Attempts
+
+| Attempt ID | UTC Date | Change | Why | Measurement Folder | Result | Notes |
+|---|---|---|---|---|---|---|
+| BLE-20260223-01 | 2026-02-23 | Stop replying to `LL_START_ENC_RSP` (no echo response). | We observed repeated `LL_START_ENC_RSP` retransmit loop. | `measurements/ab_clean_retest_no_start_rsp_echo2_20260223_205519` | partial | Loop resolved (`main_start_rsp_tx_ok=0`), but link still drops after encryption start. |
+| BLE-20260223-02 | 2026-02-23 | Set peripheral encryption directions to `rx_dir=1`, `tx_dir=0`. | First encrypted peripheral packet likely used wrong direction bit. | `measurements/ab_clean_retest_txdir0_fresh_20260223_211400` | fail | Still fails with host `MIC Failure` right after `LE Start Encryption`. |
+| BLE-20260223-03 | 2026-02-23 | Wait for central `LL_START_ENC_REQ` after `LL_ENC_RSP` (do not send `LL_START_ENC_REQ` from peripheral). | Validate strict spec-style ordering. | `measurements/ab_clean_retest_spec_startreq_flow_20260223_224525` | fail | Pairing regressed (`AuthenticationTimeout`), repeated `LL_ENC_REQ/ENC_RSP`, no stable transition to encrypted data path. |
+| BLE-20260223-04 | 2026-02-23 | Advance TX/RX packet counters on zero-length encrypted PDUs; define TX counter as “next counter to use”. | Empty encrypted PDUs were reusing counters, causing counter drift risk. | `measurements/ab_clean_retest_emptyctrfix4_20260223_222649` | partial | Pairing/encryption succeeds, but link still collapses immediately after first encrypted empty data exchange. |
+| BLE-20260223-05 | 2026-02-23 | Retransmit any unacked TX PDU verbatim (including empty encrypted PDUs). | Fresh-encrypting unacked empties can consume counters incorrectly. | `measurements/ab_clean_retest_retx_empty_fix2_20260223_223710` | partial | No immediate MIC-fail, but post-encryption disconnect persists. Intel host adapter logs `Hardware Error 0x0c` shortly after encryption enable. |
+| BLE-20260223-06 | 2026-02-23 | Suppress final outbound `LL_START_ENC_RSP` after receiving peer `LL_START_ENC_RSP`. | Test if “final START_ENC_RSP echo” was destabilizing link. | `measurements/ab_clean_retest_no_final_start_rsp_20260223_225157` | fail | Immediate `MIC Failure (0x3d)` and pairing fails (`AuthenticationFailed`). Final `LL_START_ENC_RSP` is required for this central. |
+| BLE-20260223-07 | 2026-02-23 | Add encrypted TX/RX counter/header telemetry to debug output. | Pinpoint exact counters/headers used at failure edge. | `measurements/ab_clean_retest_dbgcounters_20260223_225736` | partial | At failure edge: last TX encrypted empty used `tx_ctr_lo=1`, `tx_hdr=0x05`, `tx_alen=4`; host still resets with Intel `Hardware Error 0x0c`. |
+| BLE-20260223-08 | 2026-02-23 | Remove implicit ACK shortcut for zero-length TX (strict ACK gate for new payload consumption). | Prevent SN/NESN drift from treating zero-length TX as auto-acked during encrypted transition. | `measurements/ab_clean_retest_ackgate_pairfocus_20260223_232436`, `measurements/ab_clean_bondprobe_ackgate_20260223_232805` | partial | Procedure quality improved (fewer sequencing anomalies) but pair/bond still unstable; seen timeout/auth-failure outcomes. |
+| BLE-20260223-09 | 2026-02-23 | Apply LL instant using current-event counter basis (same basis as channel selection). | Reduce off-by-one risk for `CONNECTION_UPDATE_IND` / `CHANNEL_MAP_IND` instant application. | `measurements/ab_clean_instantfix_bondprobe_20260223_233817`, `measurements/ab_clean_instantfix_pairstatus_20260223_234024`, `measurements/ab_clean_instantfix_baseline_bondprobe_20260223_234808` | partial | Mixed outcomes: MIC/auth failures in some runs; one run reached `Paired: yes`/`Bonded: yes` before Intel host crash (`0x0c`). Keep patch for now. |
+| BLE-20260223-10 | 2026-02-23 | Force default encryption directions to `rx_dir=1`, `tx_dir=0` (with instant fix). | Test whether avoiding runtime direction swap stabilizes first encrypted PDUs. | `measurements/ab_clean_instantfix_dir10_bondprobe_20260223_234312`, `measurements/ab_clean_instantfix_dir10_pairstatus_20260223_234512` | fail | Regressed to immediate MIC/short-PDU failures around `LL_START_ENC_RSP` transition. Reverted. |
+
+## Known-good references
+
+| Ref ID | Description | Folder |
+|---|---|---|
+| REF-ZEPHYR-PAIR-01 | Zephyr-based core host pairing capture reference | `measurements/ab_zephyr_longpair_20260223_191822` |

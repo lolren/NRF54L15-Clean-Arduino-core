@@ -460,6 +460,21 @@ struct BleScanPacket {
   const uint8_t* payload;
 };
 
+struct BleActiveScanResult {
+  BleAdvertisingChannel channel;
+  int8_t advRssiDbm;
+  uint8_t advHeader;
+  uint8_t advPayloadLength;
+  bool advertiserAddressRandom;
+  uint8_t advertiserAddress[6];
+  uint8_t advPayload[31];
+  bool scanResponseReceived;
+  int8_t scanRspRssiDbm;
+  uint8_t scanRspHeader;
+  uint8_t scanRspPayloadLength;
+  uint8_t scanRspPayload[31];
+};
+
 struct BleAdvInteraction {
   BleAdvertisingChannel channel;
   bool receivedScanRequest;
@@ -506,6 +521,91 @@ struct BleConnectionEvent {
   uint8_t txPayloadLength;
   const uint8_t* payload;
   const uint8_t* txPayload;
+};
+
+// Debug counters for link-layer encryption (LL_ENC_REQ/RSP, LL_START_ENC_REQ/RSP).
+// Useful when pairing/bonding fails due to tight T_IFS timing.
+struct BleEncryptionDebugCounters {
+  uint32_t followupArmed;
+  uint32_t followupEndSeen;
+  uint32_t followupCrcOk;
+  uint32_t followupStartEncReqSeen;
+  uint32_t followupStartEncRspTxOk;
+  uint32_t followupRxLlid1;
+  uint32_t followupRxLlid2;
+  uint32_t followupRxLlid3;
+  uint8_t lastFollowHdr;
+  uint8_t lastFollowLlid;
+  uint8_t lastFollowLen;
+  uint8_t lastFollowByte0;
+  // Main (first) RX/TX observations for start-encryption debugging.
+  uint32_t mainEncReqSeen;
+  uint32_t mainStartEncReqSeen;
+  uint32_t mainStartEncReqSeenDecrypted;
+  uint32_t mainEncRspTxOk;
+  uint32_t mainStartEncRspTxOk;
+  // While awaiting LL_START_ENC_REQ, track any LL control PDU observed so we can
+  // see what the peer is sending (plain vs encrypted) without spamming Serial.
+  uint32_t startPendingControlRxSeen;
+  uint8_t startPendingLastHdr;
+  uint8_t startPendingLastLenRaw;
+  uint8_t startPendingLastByte0;
+  uint8_t startPendingLastDecrypted;
+  // TXEN scheduling lag (relative to the intended target) for LL_ENC_RSP.
+  uint32_t encRspTxenLagLastUs;
+  uint32_t encRspTxenLagMaxUs;
+  // Low-overhead MIC failure diagnostics (kept compact for serial print).
+  uint32_t encRxMicFailCount;
+  uint32_t encRxShortPduCount;
+  uint32_t encRxLastMicFailCounterLo;
+  uint8_t encRxLastMicFailHdr;
+  uint8_t encRxLastMicFailLenRaw;
+  uint8_t encRxLastMicFailDir;
+  uint8_t encRxLastMicFailState;
+  uint8_t encRxLastMicFailData0;
+  uint8_t encRxLastMicFailData1;
+  uint8_t encRxLastMicFailData2;
+  uint8_t encRxLastMicFailData3;
+  uint8_t encRxLastMicFailData4;
+  // Encryption clear/transition reason breadcrumbs.
+  uint32_t encStartRspRxCount;
+  uint8_t encStartRspLastRawLen;
+  uint8_t encStartRspLastDecrypted;
+  uint8_t encStartRspLastHdr;
+  uint8_t reserved0;
+  uint32_t encPauseReqAcceptedCount;
+  uint32_t encPauseRspRxCount;
+  uint32_t encClearCount;
+  uint8_t encLastClearReason;
+  // TXEN scheduling lag diagnostics (all packets and encrypted packets).
+  uint32_t txenLagLastUs;
+  uint32_t txenLagMaxUs;
+  uint32_t encTxenLagLastUs;
+  uint32_t encTxenLagMaxUs;
+  uint32_t encTxPacketCount;
+  uint32_t encLastTxCounterLo;
+  uint32_t encLastRxCounterLo;
+  uint8_t encLastTxHdr;
+  uint8_t encLastTxPlainLen;
+  uint8_t encLastTxAirLen;
+  uint8_t encLastTxWasFresh;
+  uint8_t encLastTxWasEncrypted;
+  uint8_t encLastRxHdr;
+  uint8_t encLastRxLenRaw;
+  uint8_t encLastRxWasNew;
+  uint8_t encLastRxWasDecrypted;
+  uint8_t reserved1;
+  // Last observed ENC_REQ/ENC_RSP key material snapshots.
+  uint8_t encLastSkdm[8];
+  uint8_t encLastIvm[4];
+  uint8_t encLastSkds[8];
+  uint8_t encLastIvs[4];
+  uint8_t encLastSessionKey[16];
+  uint8_t encLastSessionAltKey[16];
+  uint8_t encLastSessionKeyValid;
+  uint8_t encLastSessionAltKeyValid;
+  uint8_t encLastRxDir;
+  uint8_t encLastTxDir;
 };
 
 struct BleBondRecord {
@@ -572,6 +672,8 @@ class BleRadio {
   bool isConnected() const;
   bool isConnectionEncrypted() const;
   bool getConnectionInfo(BleConnectionInfo* info) const;
+  void getEncryptionDebugCounters(BleEncryptionDebugCounters* out) const;
+  void clearEncryptionDebugCounters();
   bool hasBondRecord() const;
   bool getBondRecord(BleBondRecord* outRecord) const;
   bool clearBondRecord(bool clearPersistentStorage = true);
@@ -587,6 +689,13 @@ class BleRadio {
   bool scanOnce(BleAdvertisingChannel channel, BleScanPacket* packet,
                 uint32_t spinLimit = 900000UL);
   bool scanCycle(BleScanPacket* packet, uint32_t perChannelSpinLimit = 300000UL);
+  bool scanActiveOnce(BleAdvertisingChannel channel, BleActiveScanResult* result,
+                      uint32_t advListenSpinLimit = 900000UL,
+                      uint32_t scanRspListenSpinLimit = 300000UL,
+                      uint32_t spinLimit = 900000UL);
+  bool scanActiveCycle(BleActiveScanResult* result,
+                       uint32_t perChannelAdvListenSpinLimit = 300000UL,
+                       uint32_t scanRspListenSpinLimit = 300000UL);
 
  private:
   bool configureBle1M();
@@ -671,6 +780,7 @@ class BleRadio {
   uint8_t connectionChanUse_;
   uint8_t connectionExpectedRxSn_;
   uint8_t connectionTxSn_;
+  bool connectionTxHistoryValid_;
   uint16_t connectionEventCounter_;
   uint16_t connectionMissedEventCount_;
   uint32_t connectionNextEventUs_;
@@ -679,6 +789,12 @@ class BleRadio {
   uint16_t connectionAttMtu_;
   uint8_t connectionLastTxLlid_;
   uint8_t connectionLastTxLength_;
+  // Snapshot of the last transmitted plaintext payload (before any encryption),
+  // so callers can safely inspect `BleConnectionEvent::txPayload` even though
+  // `connectionTxPayload_` is reused later in the connection event.
+  uint8_t connectionLastTxPlainLlid_;
+  uint8_t connectionLastTxPlainLength_;
+  uint8_t connectionLastTxPlainPayload_[255];
   uint8_t connectionPendingTxLlid_;
   uint8_t connectionPendingTxLength_;
   bool connectionPendingTxValid_;
@@ -713,15 +829,30 @@ class BleRadio {
   bool connectionEncRxEnabled_;
   bool connectionEncTxEnabled_;
   bool connectionEncStartReqPending_;
+  bool connectionEncStartReqTxPending_;
   bool connectionEncAwaitingStartRsp_;
   bool connectionEncEnableTxOnNextEvent_;
   uint64_t connectionEncRxCounter_;
   uint64_t connectionEncTxCounter_;
+  bool connectionEncKeyDerivationPending_;
+  uint8_t connectionEncSkd_[16];
   uint8_t connectionEncSessionKey_[16];
+  uint8_t connectionEncSessionKeyAlt_[16];
+  bool connectionEncAltKeyValid_;
+  uint8_t connectionEncRxDirection_;
+  uint8_t connectionEncTxDirection_;
   uint8_t connectionEncIv_[8];
   bool connectionLastTxWasEncrypted_;
   uint8_t connectionLastTxEncryptedLength_;
   uint8_t connectionLastTxEncryptedPayload_[31];
+  bool connectionEncPrecomputedEmptyValid_;
+  uint64_t connectionEncPrecomputedCounter_;
+  uint8_t connectionEncPrecomputedPayload_[4];
+  bool connectionEncPrecomputedStartRspValid_;
+  uint8_t connectionEncPrecomputedStartRsp_[1 + 4];
+  bool connectionEncPrecomputedStartRspTxValid_;
+  uint64_t connectionEncPrecomputedStartRspTxCounter_;
+  uint8_t connectionEncPrecomputedStartRspTx_[1 + 4];
   BleBondLoadCallback bondLoadCallback_;
   BleBondSaveCallback bondSaveCallback_;
   BleBondClearCallback bondClearCallback_;
@@ -750,6 +881,7 @@ class BleRadio {
   uint16_t gapPpcpLatency_;
   uint16_t gapPpcpTimeout_;
   uint8_t gapBatteryLevel_;
+  BleEncryptionDebugCounters encDebug_;
 };
 
 }  // namespace xiao_nrf54l15

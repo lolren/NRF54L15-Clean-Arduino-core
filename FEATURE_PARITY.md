@@ -69,13 +69,13 @@ Legend:
 
 | Capability | Status | Notes |
 |---|---|---|
-| Advertising / passive scan / connect | Done | Legacy ADV + scan + connect paths stable. |
+| Advertising / passive scan / active scan / connect | Done | Legacy ADV + passive scan + active scan (SCAN_REQ/SCAN_RSP) + connect paths validated. |
 | GATT GAP/GATT/BAS minimal server | Partial | Service set is intentionally minimal/static. |
 | ATT discovery/read/write subset | Partial | Core operations implemented and validated. |
 | Battery notifications / Service Changed indications | Done | CCCD flows validated. |
 | LL control handling subset | Partial | Broad subset implemented; full edge-case matrix pending. |
-| SMP legacy pairing flow | Partial | Request/confirm/random and LL encryption entry are implemented, but host CLI pairing does not complete to bonded state yet in repeatable tests. |
-| Bond persistence | Partial | Record format + retention path implemented; full bonded reconnect parity still blocked by pairing completion gap. |
+| SMP legacy pairing flow | Partial | Request/confirm/random + LL encryption entry are implemented. Pair/bond can succeed (`Paired: yes`, `Bonded: yes`) but remains flaky across repeated host runs. |
+| Bond persistence | Partial | Record format + retention path implemented; durable power-cycle persistence and stable bonded reconnect still pending. |
 | Central role / multi-role | Planned | Not implemented. |
 | Extended advertising / periodic advertising | Planned | Not implemented. |
 | Channel sounding / AoA/AoD parity | Planned | Not implemented; tracked as advanced PHY work. |
@@ -90,8 +90,13 @@ Validated on 2026-02-23 with connected XIAO nRF54L15 + host BLE adapter using:
 Current matrix summary (`ble_cli_matrix_post_enc_rsp`):
 
 - Pass: advertising scan visibility, passive scanner serial output, connection peripheral, GATT basic peripheral, battery notify peripheral, connection timing metrics.
-- Partial/fail: pairing and bond probe (`Paired: no`, `Bonded: no`).
+- Partial/fail: pairing and bond probe remain unstable across runs; success and failure outcomes both observed.
 - Intermittent host-side `bluetoothctl info Connected` reporting gaps observed for one connectable-advertiser case despite successful connection attempts.
+
+Additional runtime parity check (active scan):
+
+- `measurements/active_scan_parity_20260223_230813`
+- Observed `scan_rsp=1` and resolved scan-response local name (`scan_name=ATC_264EDA`).
 
 ## Known BLE security gap (current blocker)
 
@@ -99,9 +104,9 @@ Packet/trace evidence shows:
 
 - SMP `Pairing Request/Confirm/Random` exchange occurs.
 - LL encryption procedure entry remains partial under host interop:
-  `bluetoothctl pair` still does not complete to `Paired: yes` / `Bonded: yes`.
+  some runs complete to `Paired: yes` / `Bonded: yes`, while others fail around the same transition.
 - Interactive agent-led tests can progress to host `LE Start Encryption`,
-  but still end in host-side authentication failure/cancel in repeatable runs.
+  but still show intermittent MIC/auth failures and Intel host-controller crash artifacts in repeatable runs.
 
 This keeps SMP/bond parity in `Partial` state.
 
