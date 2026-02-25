@@ -1,9 +1,0 @@
-Failed to stop discovery: org.bluez.Error.Failed
-[[0;93mCHG[0m] Device 69:2B:FC:47:52:B9 RSSI is nil
-[[0;91mDEL[0m] Device 69:2B:FC:47:52:B9 69-2B-FC-47-52-B9
-[[0;93mCHG[0m] Device EF:FB:2D:23:0A:13 RSSI is nil
-[[0;91mDEL[0m] Device EF:FB:2D:23:0A:13 EF-FB-2D-23-0A-13
-[[0;93mCHG[0m] Device 71:08:33:57:4A:15 TxPower is nil
-[[0;93mCHG[0m] Device 71:08:33:57:4A:15 RSSI is nil
-[[0;93mCHG[0m] Device A4:C1:38:75:8A:D6 RSSI is nil
-[[0;93mCHG[0m] Controller 68:34:21:E5:84:DF Discovering: no

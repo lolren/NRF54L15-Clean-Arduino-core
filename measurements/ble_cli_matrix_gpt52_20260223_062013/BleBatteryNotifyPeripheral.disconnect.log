@@ -1,8 +1,0 @@
-Attempting to disconnect from C0:DE:54:15:00:41
-hci0 C0:DE:54:15:00:41 type LE Random connect failed (status 0x0e, Disconnected)
-Successful disconnected
-[[0;91mDEL[0m] Device C0:DE:54:15:00:41 X54-BATT
-[[0;91mDEL[0m] Device E9:CD:F3:A3:5D:B7 E9-CD-F3-A3-5D-B7
-[[0;91mDEL[0m] Device 46:F3:DB:2E:E0:56 46-F3-DB-2E-E0-56
-hci0 type 1 discovering off
-hci0 type 1 discovering on

@@ -1,9 +1,0 @@
-Device F1:82:84:CB:80:DA F1-82-84-CB-80-DA
-Device 7C:11:F9:B4:8C:FC 7C-11-F9-B4-8C-FC
-Device C6:91:1D:C9:80:CC C6-91-1D-C9-80-CC
-Device A4:C1:38:D0:E4:84 ATC_D0E484
-Device C0:DE:54:15:00:21 XIAO54-LINK
-Device 40:5E:F6:0D:B8:15 Galaxy Buds Live (B815)
-Device C0:DE:54:15:00:41 XIAO nRF54L15 Battery
-hci0 type 7 discovering off
-hci0 type 1 discovering on

@@ -1,7 +1,0 @@
-Flashing measurements/pair_sn_debug_20260223_074229/build/BlePairingEncryptionStatus.ino.hex
-Runner: pyocd
-Probe UID: E91217E8
-[---|---|---|---|---|---|---|---|---|----]
-[========================================]
-Upload complete
-New upload port: /dev/ttyACM0 (serial)

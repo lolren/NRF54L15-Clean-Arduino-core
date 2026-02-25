@@ -1,7 +1,0 @@
-Flashing /home/lolren/.cache/arduino/sketches/23394BE7A755839C148EF48463EDD5B8/BleConnectionTimingMetrics.ino.hex
-Runner: pyocd
-Probe UID: E91217E8
-[---|---|---|---|---|---|---|---|---|----]
-[========================================]
-Upload complete
-New upload port: /dev/ttyACM0 (serial)

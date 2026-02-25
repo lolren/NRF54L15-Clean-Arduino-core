@@ -1,8 +1,0 @@
-SetDiscoveryFilter success
-Discovery started
-[[0;92mNEW[0m] Device DE:CB:70:58:C3:F0 DE-CB-70-58-C3-F0
-[[0;92mNEW[0m] Device A4:C1:38:26:4E:DA ATC_264EDA
-[[0;92mNEW[0m] Device A4:C1:38:75:8A:D6 LYWSD03MMC
-[[0;93mCHG[0m] Device A4:C1:38:75:8A:D6 RSSI: 0xffffffad (-83)
-[[0;92mNEW[0m] Device 7D:3A:27:49:7C:A9 7D-3A-27-49-7C-A9
-[[0;92mNEW[0m] Device 69:54:EF:53:DD:98 69-54-EF-53-DD-98

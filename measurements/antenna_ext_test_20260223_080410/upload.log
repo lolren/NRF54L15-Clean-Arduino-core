@@ -1,7 +1,0 @@
-Flashing measurements/antenna_ext_test_20260223_080410/build/BlePairingEncryptionStatus.ino.hex
-Runner: pyocd
-Probe UID: E91217E8
-[---|---|---|---|---|---|---|---|---|----]
-[========================================]
-Upload complete
-New upload port: /dev/ttyACM0 (serial)

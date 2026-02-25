@@ -1,7 +1,0 @@
-Attempting to pair with 5C:A0:04:A6:75:BE
-[[0;93mCHG[0m] Device 5C:A0:04:A6:75:BE ServicesResolved: no
-[[0;93mCHG[0m] Device 5C:A0:04:A6:75:BE Connected: no
-Failed to pair: org.bluez.Error.AuthenticationCanceled
-[[0;91mDEL[0m] Device A4:C1:38:D0:E4:84 ATC_D0E484
-[[0;91mDEL[0m] Device 47:9C:15:8F:77:BC 47-9C-15-8F-77-BC
-[[0;91mDEL[0m] Device 71:BD:CF:B1:C8:D4 71-BD-CF-B1-C8-D4

@@ -1,9 +1,0 @@
-power on
-agent NoInputNoOutput
-default-agent
-scan on
-pair C0:DE:54:15:00:51
-trust C0:DE:54:15:00:51
-connect C0:DE:54:15:00:51
-scan off
-quit

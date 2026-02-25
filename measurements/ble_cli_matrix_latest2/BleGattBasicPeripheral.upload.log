@@ -1,7 +1,0 @@
-Flashing /home/lolren/.cache/arduino/sketches/1864289C52118B4A6D9DB051AF8CBB5E/BleGattBasicPeripheral.ino.hex
-Runner: pyocd
-Probe UID: E91217E8
-[---|---|---|---|---|---|---|---|---|----]
-[========================================]
-Upload complete
-New upload port: /dev/ttyACM0 (serial)

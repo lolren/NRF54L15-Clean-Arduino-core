@@ -323,9 +323,9 @@ constexpr uint16_t kBleL2capLeSignalingMtu = 23U;
 
 constexpr uint32_t kBleConnSlaveScaPpm = 50UL;
 constexpr uint8_t kBleConnMicrosPollDivider = 32U;
-// With fast ramp-up enabled, trigger TXEN ~110 us after RX end so packet start
+// With fast ramp-up enabled, trigger TXEN ~115 us after RX end so packet start
 // lands near the BLE 150 us inter-frame spacing.
-constexpr uint32_t kBleConnTxenAfterRxUs = 100U;
+constexpr uint32_t kBleConnTxenAfterRxUs = 115U;
 // Legacy advertising request/response exchanges should complete within hundreds
 // of microseconds around T_IFS. Bound RX listen windows so advertising cadence
 // does not become host-CPU-spin dependent.
@@ -4194,6 +4194,19 @@ bool BleRadio::advertiseOnce(BleAdvertisingChannel channel, uint32_t spinLimit) 
 }
 
 bool BleRadio::advertiseEvent(uint32_t interChannelDelayUs, uint32_t spinLimit) {
+  // Add spec-compliant random delay (0-10ms) to prevent persistent collisions.
+  {
+    static uint32_t seed = 0U;
+    if (seed == 0U) {
+      seed = micros() ^ (static_cast<uint32_t>(address_[0]) << 24U);
+    }
+    seed = seed * 1103515245U + 12345U;
+    const uint32_t advDelayUs = (seed % 10001U);
+    if (advDelayUs > 0U) {
+      delayMicroseconds(advDelayUs);
+    }
+  }
+
   if (!advertiseOnce(BleAdvertisingChannel::k37, spinLimit)) {
     return false;
   }
@@ -4385,6 +4398,13 @@ bool BleRadio::advertiseInteractOnce(BleAdvertisingChannel channel,
           << RADIO_SHORTS_PHYEND_DISABLE_Pos) &
          RADIO_SHORTS_PHYEND_DISABLE_Msk);
 
+    // Wait for T_IFS turnaround (150us nominal).
+    const uint32_t txTriggerTargetUs = rxEndUs + kBleConnTxenAfterRxUs;
+    uint32_t txTriggerNowUs = micros();
+    while (!timeReachedUs(txTriggerNowUs, txTriggerTargetUs)) {
+      txTriggerNowUs = micros();
+    }
+
     radio_->TASKS_TXEN = RADIO_TASKS_TXEN_TASKS_TXEN_Trigger;
     txScanRspOk = waitDisabled(spinLimit);
     radio_->SHORTS = 0U;
@@ -4406,6 +4426,19 @@ bool BleRadio::advertiseInteractEvent(BleAdvInteraction* interaction,
                                       uint32_t interChannelDelayUs,
                                       uint32_t requestListenSpinLimit,
                                       uint32_t spinLimit) {
+  // Add spec-compliant random delay (0-10ms) to prevent persistent collisions.
+  {
+    static uint32_t seed = 0U;
+    if (seed == 0U) {
+      seed = micros() ^ (static_cast<uint32_t>(address_[0]) << 24U);
+    }
+    seed = seed * 1103515245U + 12345U;
+    const uint32_t advDelayUs = (seed % 10001U);
+    if (advDelayUs > 0U) {
+      delayMicroseconds(advDelayUs);
+    }
+  }
+
   BleAdvInteraction tmp{};
   bool allOk = true;
   const BleAdvertisingChannel channels[] = {
@@ -6539,6 +6572,13 @@ bool BleRadio::handleRequestAndMaybeRespond(BleAdvertisingChannel channel,
         ((RADIO_SHORTS_PHYEND_DISABLE_Enabled
           << RADIO_SHORTS_PHYEND_DISABLE_Pos) &
          RADIO_SHORTS_PHYEND_DISABLE_Msk);
+
+    // Wait for T_IFS turnaround (150us nominal).
+    const uint32_t txTriggerTargetUs = rxEndUs + kBleConnTxenAfterRxUs;
+    uint32_t txTriggerNowUs = micros();
+    while (!timeReachedUs(txTriggerNowUs, txTriggerTargetUs)) {
+      txTriggerNowUs = micros();
+    }
 
     radio_->TASKS_TXEN = RADIO_TASKS_TXEN_TASKS_TXEN_Trigger;
     txScanRspOk = waitDisabled(spinLimit);

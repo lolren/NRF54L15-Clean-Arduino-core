@@ -1,9 +1,0 @@
-Attempting to disconnect from C0:DE:54:15:00:31
-[[0;91mDEL[0m] Device 6D:C8:51:8E:AD:1C 6D-C8-51-8E-AD-1C
-hci0 C0:DE:54:15:00:31 type LE Random disconnected with reason 2
-[[0;93mCHG[0m] Device C0:DE:54:15:00:31 ServicesResolved: no
-Successful disconnected
-[[0;93mCHG[0m] Device C0:DE:54:15:00:31 Connected: no
-[[0;91mDEL[0m] Device A4:C1:38:75:8A:D6 LYWSD03MMC
-hci0 type 1 discovering off
-hci0 type 1 discovering on

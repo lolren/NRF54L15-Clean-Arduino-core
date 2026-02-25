@@ -1,9 +1,0 @@
-Attempting to pair with C0:DE:54:15:00:51
-[[0;93mCHG[0m] Device C0:DE:54:15:00:51 Connected: yes
-Failed to pair: org.bluez.Error.AuthenticationFailed
-[[0;93mCHG[0m] Device C0:DE:54:15:00:51 Connected: no
-[[0;91mDEL[0m] Device A4:C1:38:26:4E:DA ATC_264EDA
-[[0;91mDEL[0m] Device 7D:3A:27:49:7C:A9 7D-3A-27-49-7C-A9
-[[0;91mDEL[0m] Device C7:F9:6F:16:65:0A C7-F9-6F-16-65-0A
-[[0;91mDEL[0m] Device 71:BD:CF:B1:C8:D4 71-BD-CF-B1-C8-D4
-[[0;91mDEL[0m] Device C0:DE:54:15:00:51 X54-PAIR

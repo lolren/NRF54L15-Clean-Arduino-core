@@ -113,7 +113,7 @@ If no windows are captured, verify serial path and keep Tools serial routing at
 ## 7. Measurement Matrix
 
 Use this matrix and fill measured values from your instrument.
-You can also fill `measurements/power_profiles_template.csv` directly.
+You can also fill `docs/power_profiles_template.csv` directly.
 
 | ID | Sketch | Tool Options | BLE Link State | Avg mA (run1/run2/run3) | Avg mA mean | P95 mA mean | Peak mA mean | Notes |
 |---|---|---|---|---|---|---|---|---|

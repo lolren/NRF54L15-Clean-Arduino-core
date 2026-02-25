@@ -1,6 +1,0 @@
-SetDiscoveryFilter success
-hci0 type 1 discovering off
-hci0 type 7 discovering on
-Discovery started
-hci0 type 7 discovering off
-hci0 type 7 discovering on

@@ -1,7 +1,0 @@
-Attempting to disconnect from C0:DE:54:15:00:51
-hci0 type 1 discovering off
-hci0 type 1 discovering on
-hci0 C0:DE:54:15:00:51 type LE Random disconnected with reason 2
-Successful disconnected
-[[0;93mCHG[0m] Device C0:DE:54:15:00:51 Paired: no
-[[0;93mCHG[0m] Device C0:DE:54:15:00:51 Connected: no

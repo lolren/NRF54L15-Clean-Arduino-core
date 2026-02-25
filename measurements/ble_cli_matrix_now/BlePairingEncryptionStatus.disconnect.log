@@ -1,7 +1,0 @@
-Attempting to disconnect from C0:DE:54:15:00:51
-hci0 C0:DE:54:15:00:51 auth failed with status 0x05 (Authentication Failed)
-hci0 C0:DE:54:15:00:51 type LE Random disconnected with reason 2
-[[0;93mCHG[0m] Device C0:DE:54:15:00:51 ServicesResolved: no
-Successful disconnected
-[[0;93mCHG[0m] Device C0:DE:54:15:00:51 Connected: no
-[[0;91mDEL[0m] Device A4:C1:38:9D:41:32 ATC_9D4132

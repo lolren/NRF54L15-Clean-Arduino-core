@@ -1,7 +1,0 @@
-Flashing /home/lolren/.cache/arduino/sketches/0AFB60A22890E7EF65C8100DD2C9DFDA/BleBatteryNotifyPeripheral.ino.hex
-Runner: pyocd
-Probe UID: E91217E8
-[---|---|---|---|---|---|---|---|---|----]
-[========================================]
-Upload complete
-New upload port: /dev/ttyACM0 (serial)

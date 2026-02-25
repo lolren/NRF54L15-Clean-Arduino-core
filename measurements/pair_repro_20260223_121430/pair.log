@@ -1,7 +1,0 @@
-Attempting to pair with C0:DE:54:15:00:51
-[[0;91mDEL[0m] Device A4:C1:38:26:4E:DA ATC_264EDA
-[[0;91mDEL[0m] Device C2:0E:9D:18:65:97 C2-0E-9D-18-65-97
-[[0;91mDEL[0m] Device 47:71:B5:AD:CA:2F 47-71-B5-AD-CA-2F
-Failed to pair: org.bluez.Error.AuthenticationCanceled
-[[0;93mCHG[0m] Device C0:DE:54:15:00:51 ServicesResolved: no
-[[0;93mCHG[0m] Device C0:DE:54:15:00:51 Connected: no

@@ -1,3 +1,0 @@
-controller=4C:1D:96:79:7B:F5
-connect_result=connected_yes_then_local_abort
-notes=connection reached Connected: yes; host then aborted locally before full attribute listing.

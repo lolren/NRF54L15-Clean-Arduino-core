@@ -1,8 +1,0 @@
-Attempting to pair with C0:DE:54:15:00:51
-[[0;93mCHG[0m] Device C0:DE:54:15:00:51 Connected: yes
-Failed to pair: org.bluez.Error.AuthenticationFailed
-[[0;93mCHG[0m] Device C0:DE:54:15:00:51 Connected: no
-[[0;91mDEL[0m] Device A4:C1:38:26:4E:DA ATC_264EDA
-[[0;91mDEL[0m] Device A4:C1:38:D0:E4:84 ATC_D0E484
-[[0;91mDEL[0m] Device 46:14:9B:4F:D9:CD 46-14-9B-4F-D9-CD
-[[0;91mDEL[0m] Device 58:C5:50:35:AC:03 58-C5-50-35-AC-03

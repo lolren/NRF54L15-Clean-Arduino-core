@@ -1,7 +1,0 @@
-Flashing /home/lolren/.cache/arduino/sketches/AAFCD898F31B77E52AF56B01A47995B0/BleActiveScanner.ino.hex
-Runner: pyocd
-Probe UID: E91217E8
-[---|---|---|---|---|---|---|---|---|----]
-[========================================]
-Upload complete
-New upload port: /dev/ttyACM0 (serial)
