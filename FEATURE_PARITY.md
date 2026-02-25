@@ -73,7 +73,7 @@ Legend:
 | GATT GAP/GATT/BAS + optional runtime custom services | Partial | Default GAP/GATT/BAS remains built-in; runtime 16-bit custom service/characteristic registration (read/write/notify/indicate + CCCD) is now available via `BleRadio` API. |
 | ATT discovery/read/write subset | Partial | Core operations implemented and validated, including runtime custom 16-bit attributes. |
 | Battery notifications / Service Changed indications | Done | CCCD flows validated. |
-| LL control handling subset | Partial | Broad subset implemented; full edge-case matrix pending. |
+| LL control handling subset | Partial | Broad subset implemented; same-event response path now covers all new LL control requests when TX freshness permits, but host interop edge cases still exist (e.g., repeated `LL_FEATURE_REQ` with no ACK progression on some runs). |
 | SMP legacy pairing flow | Partial | Request/confirm/random + LL encryption entry are implemented. `BlePairingEncryptionStatus` now reaches mostly stable pair/bond on Broadcom (`4/5` pass), while `BleBondPersistenceProbe` still shows start-encryption timeout failures. |
 | Bond persistence | Partial | Record format + retention path + default flash-backed RRAM persistence implemented; stable bonded reconnect validation is still pending. |
 | Central role / multi-role | Planned | Not implemented. |

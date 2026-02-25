@@ -5144,15 +5144,11 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit
   // since each fresh encrypted transmission consumes a new CCM packet counter.
   const bool canSendNewPayloadThisEvent =
       !connectionTxHistoryValid_ || peerAckedLastTx;
-  const bool llControlTimeCritical =
-      (rxLength >= 1U) &&
-      ((rxPacket_[2] == kBleLlCtrlEncReq) ||
-       (rxPacket_[2] == kBleLlCtrlStartEncReq) ||
-       (rxPacket_[2] == kBleLlCtrlStartEncRsp) ||
-       (rxPacket_[2] == kBleLlCtrlPauseEncReq));
+  // Several controllers retransmit the same LL control request until they see
+  // a matching control response (not just an empty ACK). Build and transmit LL
+  // control responses in this event whenever SN/NESN allows a fresh TX payload.
   if (packetIsNew && !terminateInd &&
       (llid == kBlePduLlControl) &&
-      llControlTimeCritical &&
       canSendNewPayloadThisEvent) {
     llControlHandledImmediate = true;
     if (buildLlControlResponse(&rxPacket_[2], rxLength, connectionTxPayload_,

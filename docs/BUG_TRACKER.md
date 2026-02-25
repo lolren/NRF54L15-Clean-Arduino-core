@@ -1,6 +1,6 @@
 # Bug Tracker and Zephyr-Parity Execution Plan
 
-Last updated: 2026-02-24
+Last updated: 2026-02-25
 Target: close the remaining parity gap vs the Zephyr-based core while keeping this clean, standalone Arduino implementation (no Zephyr/nRF Connect runtime dependency).
 
 ## Definition of done for parity
@@ -19,6 +19,8 @@ Target: close the remaining parity gap vs the Zephyr-based core while keeping th
     - `BleBondPersistenceProbe` timing out immediately after SMP random / `LE Start Encryption`.
     - intermittent successful host-side pair/bond despite unstable link continuity.
   - Latest evidence:
+    - `measurements/ble_pair_bond_regression_20260225_000106` (`BlePairingEncryptionStatus`, `hci0`, target sends immediate `LL_FEATURE_RSP`, host still disconnects with `0x3e`).
+    - `measurements/ble_pair_bond_regression_20260224_233855` (`BlePairingEncryptionStatus`, `hci0`, btmon confirms `LE Read Remote Used Features` fails with `Connection Failed to be Established (0x3e)`).
     - `measurements/ble_pair_bond_regression_20260224_212703` (`BlePairingEncryptionStatus`, Broadcom `hci1`, `4/5` pass, `1/5` host-inconclusive).
     - `measurements/ble_pair_bond_regression_20260224_212347` (`BleBondPersistenceProbe`, clean bond storage, repeated timeout during encryption start).
     - `measurements/ble_pair_bond_regression_20260224_224348` (`BlePairingEncryptionStatus`, Broadcom `hci1`, `2/2` host-inconclusive in this session).
@@ -87,6 +89,13 @@ Target: close the remaining parity gap vs the Zephyr-based core while keeping th
 
 - [x] LL instant application now uses the current-event counter basis (aligned with channel selection), reducing off-by-one risk during pending connection/channel-map instant application.
   - File: `hardware/nrf54l15clean/0.1.0/libraries/Nrf54L15-Clean-Implementation/src/nrf54l15_hal.cpp`
+
+- [x] LL control response scheduling widened:
+  - when TX freshness allows, new LL control requests are answered in the same event (not only encryption-critical opcodes);
+  - validated on target logs: repeated `LL_FEATURE_REQ (0x08)` now gets immediate `LL_FEATURE_RSP (0x09)` with feature mask bytes visible in serial output.
+  - Files:
+    - `hardware/nrf54l15clean/0.1.0/libraries/Nrf54L15-Clean-Implementation/src/nrf54l15_hal.cpp`
+    - `hardware/nrf54l15clean/0.1.0/libraries/Nrf54L15-Clean-Implementation/examples/BlePairingEncryptionStatus/BlePairingEncryptionStatus.ino`
 
 - [x] Runtime custom GATT feature-breadth step:
   - new `BleRadio` API for dynamic 16-bit services/chars:

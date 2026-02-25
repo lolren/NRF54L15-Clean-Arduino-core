@@ -1,6 +1,6 @@
 # TODO: Nrf54L15-Clean-Implementation
 
-Last updated: 2026-02-24
+Last updated: 2026-02-25
 
 ## Priority 0: Release quality / packaging
 
@@ -52,6 +52,7 @@ Last updated: 2026-02-24
 - [x] Pair/bond example default TX level improved for better discoverability.
 - [x] Pair/bond examples now fail fast with explicit step diagnostics when BLE init/config fails.
 - [x] LL security path updated to emit immediate `LL_ENC_RSP` handling attempt for improved interop testing.
+- [x] LL control request handling widened to same-event response when TX freshness permits (including `LL_FEATURE_REQ -> LL_FEATURE_RSP`), and pairing example now logs LL rx/tx opcodes for triage.
 - [x] LL instant application aligned to current-event counter basis (connection update/channel map apply path).
 - [x] LL encryption transition hardened:
   - derive session key during TX window to enable same-event encrypted follow-up decode;

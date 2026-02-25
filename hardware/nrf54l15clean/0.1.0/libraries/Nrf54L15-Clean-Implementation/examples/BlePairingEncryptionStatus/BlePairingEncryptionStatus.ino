@@ -382,6 +382,32 @@ void loop() {
     Serial.print(evt.txLlid);
     Serial.print(" txlen=");
     Serial.print(evt.txPayloadLength);
+    if (evt.llControlPacket) {
+      Serial.print(" rxop=0x");
+      if (evt.llControlOpcode < 16U) {
+        Serial.print('0');
+      }
+      Serial.print(evt.llControlOpcode, HEX);
+    }
+    if ((evt.txLlid == 0x03U) &&
+        (evt.txPayloadLength >= 1U) &&
+        (evt.txPayload != nullptr)) {
+      Serial.print(" txop=0x");
+      if (evt.txPayload[0] < 16U) {
+        Serial.print('0');
+      }
+      Serial.print(evt.txPayload[0], HEX);
+      const uint8_t txDump = (evt.txPayloadLength < 4U) ? evt.txPayloadLength : 4U;
+      if (txDump > 1U) {
+        Serial.print(" txb=");
+        for (uint8_t i = 1U; i < txDump; ++i) {
+          if (evt.txPayload[i] < 16U) {
+            Serial.print('0');
+          }
+          Serial.print(evt.txPayload[i], HEX);
+        }
+      }
+    }
     Serial.print(" term=");
     Serial.print(evt.terminateInd ? 1 : 0);
     Serial.print("\r\n");
