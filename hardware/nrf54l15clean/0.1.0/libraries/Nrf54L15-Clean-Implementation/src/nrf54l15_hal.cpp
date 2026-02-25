@@ -326,6 +326,11 @@ constexpr uint8_t kBleConnMicrosPollDivider = 32U;
 // With fast ramp-up enabled, trigger TXEN ~110 us after RX end so packet start
 // lands near the BLE 150 us inter-frame spacing.
 constexpr uint32_t kBleConnTxenAfterRxUs = 100U;
+// Legacy advertising request/response exchanges should complete within hundreds
+// of microseconds around T_IFS. Bound RX listen windows so advertising cadence
+// does not become host-CPU-spin dependent.
+constexpr uint32_t kBleAdvRequestListenMaxUs = 2500U;
+constexpr uint32_t kBleScanRspListenMaxUs = 2500U;
 
 #if defined(NRF54L15_CLEAN_BLE_TIMING_AGGRESSIVE) && (NRF54L15_CLEAN_BLE_TIMING_AGGRESSIVE == 1)
 constexpr uint32_t kBleConnAnchorPrewaitUs = 120U;
@@ -3298,7 +3303,7 @@ BleRadio::BleRadio(uint32_t radioBase, uint32_t ficrBase)
       ficr_(reinterpret_cast<NRF_FICR_Type*>(static_cast<uintptr_t>(ficrBase))),
       initialized_(false),
       addressType_(BleAddressType::kRandomStatic),
-      pduType_(BleAdvPduType::kAdvNonConnInd),
+      pduType_(BleAdvPduType::kAdvInd),
       useChSel2_(true),
       externalAntenna_(false),
       address_{0},
@@ -4295,7 +4300,8 @@ bool BleRadio::advertiseInteractOnce(BleAdvertisingChannel channel,
     radio_->TASKS_RXEN = RADIO_TASKS_RXEN_TASKS_RXEN_Trigger;
   }
 
-  const bool endSeen = waitForEnd(requestListenSpinLimit);
+  const bool endSeen = waitRadioEndBudgeted(
+      radio_, kBleAdvRequestListenMaxUs, requestListenSpinLimit);
   if (!endSeen) {
     radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
     waitDisabled(spinLimit / 2U + 1U);
@@ -6337,7 +6343,8 @@ bool BleRadio::scanActiveOnce(BleAdvertisingChannel channel,
        RADIO_SHORTS_PHYEND_DISABLE_Msk);
   radio_->TASKS_RXEN = RADIO_TASKS_RXEN_TASKS_RXEN_Trigger;
 
-  const bool rspEndSeen = waitForEnd(scanRspListenSpinLimit);
+  const bool rspEndSeen = waitRadioEndBudgeted(
+      radio_, kBleScanRspListenMaxUs, scanRspListenSpinLimit);
   if (!rspEndSeen) {
     radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
     waitDisabled(spinLimit / 2U + 1U);
@@ -6448,7 +6455,8 @@ bool BleRadio::handleRequestAndMaybeRespond(BleAdvertisingChannel channel,
 
   radio_->TASKS_RXEN = RADIO_TASKS_RXEN_TASKS_RXEN_Trigger;
 
-  const bool endSeen = waitForEnd(requestListenSpinLimit);
+  const bool endSeen = waitRadioEndBudgeted(
+      radio_, kBleAdvRequestListenMaxUs, requestListenSpinLimit);
   if (!endSeen) {
     radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
     waitDisabled(spinLimit / 2U + 1U);
@@ -8954,6 +8962,7 @@ bool BleRadio::waitDisabled(uint32_t spinLimit) {
     return false;
   }
 
+  radio_->EVENTS_DISABLED = 0U;
   while (spinLimit-- > 0U) {
     if (radio_->EVENTS_DISABLED != 0U) {
       return true;
