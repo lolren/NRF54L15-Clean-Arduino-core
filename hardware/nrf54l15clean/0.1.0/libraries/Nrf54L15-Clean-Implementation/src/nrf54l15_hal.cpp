@@ -325,7 +325,7 @@ constexpr uint32_t kBleConnSlaveScaPpm = 50UL;
 constexpr uint8_t kBleConnMicrosPollDivider = 32U;
 // With fast ramp-up enabled, trigger TXEN ~110 us after RX end so packet start
 // lands near the BLE 150 us inter-frame spacing.
-constexpr uint32_t kBleConnTxenAfterRxUs = 106U;
+constexpr uint32_t kBleConnTxenAfterRxUs = 100U;
 
 #if defined(NRF54L15_CLEAN_BLE_TIMING_AGGRESSIVE) && (NRF54L15_CLEAN_BLE_TIMING_AGGRESSIVE == 1)
 constexpr uint32_t kBleConnAnchorPrewaitUs = 120U;
@@ -3367,6 +3367,7 @@ BleRadio::BleRadio(uint32_t radioBase, uint32_t ficrBase)
       smpPeerConfirm_{0},
       smpPeerRandom_{0},
       smpLocalRandom_{0},
+      smpLocalConfirm_{0},
       smpStk_{0},
       smpStkValid_(false),
       connectionEncSessionValid_(false),
@@ -4876,7 +4877,7 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit
       connectionEncSessionValid_ &&
       connectionEncStartReqPending_ &&
       (llid == kBlePduLlControl) &&
-      (rxLengthRaw >= kBleMicLen) &&
+      (rxLengthRaw == static_cast<uint8_t>(1U + kBleMicLen)) &&
       !connectionEncKeyDerivationPending_;
   const bool deferAwaitingStartRspDecrypt =
       connectionEncAwaitingStartRsp_ &&
@@ -5603,7 +5604,7 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit
         if (connectionEncSessionValid_ &&
             (connectionEncStartReqPending_ || connectionEncAwaitingStartRsp_) &&
             (llidFollow == kBlePduLlControl) &&
-            (rxLengthFollowRaw >= kBleMicLen)) {
+            (rxLengthFollowRaw == static_cast<uint8_t>(1U + kBleMicLen))) {
           uint64_t rxCounter = connectionEncRxCounter_;
           if (!packetIsNewFollow && (rxCounter > 0ULL)) {
             rxCounter -= 1ULL;
@@ -5937,16 +5938,6 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit
         deferredLlid = kBlePduDataStartOrComplete;
         deferredLength = responseLength;
       }
-    }
-
-    if ((deferredLength == 0U) &&
-        connectionEncSessionValid_ &&
-        connectionEncStartReqTxPending_ &&
-        !connectionEncAwaitingStartRsp_ &&
-        !connectionEncKeyDerivationPending_) {
-      connectionTxPayload_[0] = kBleLlCtrlStartEncReq;
-      deferredLlid = kBlePduLlControl;
-      deferredLength = 1U;
     }
 
     if ((deferredLength == 0U) &&
@@ -7613,7 +7604,15 @@ bool BleRadio::buildL2capResponse(const uint8_t* l2capPayload,
   }
 
   const uint16_t cid = readLe16(&l2capPayload[2]);
+  const bool smpPairingHandshakeActive =
+      (smpPairingState_ == kSmpPairingStateRspSent) ||
+      (smpPairingState_ == kSmpPairingStateConfirmSent);
   if (cid == kBleL2capCidAtt) {
+    // During SMP confirm exchange, prioritize security-channel traffic and keep
+    // ATT off the data path to reduce retransmission churn.
+    if (smpPairingHandshakeActive) {
+      return false;
+    }
     return buildL2capAttResponse(l2capPayload, l2capPayloadLength, outPayload,
                                  outPayloadLength);
   }
@@ -7840,6 +7839,21 @@ bool BleRadio::buildL2capSmpResponse(const uint8_t* l2capPayload,
       smpPairingRsp_[6] = 0x00U;
       smpExpectInitiatorEncKey_ = ((smpPairingRsp_[5] & kSmpKeyDistEncKeyMask) != 0U);
       smpKeySize_ = maxKeySize;
+
+      // Precompute local confirm material here so confirm/random stages avoid
+      // repeated AES work while servicing tight connection events.
+      const uint32_t seed = micros() ^ connectionAccessAddress_ ^
+                            static_cast<uint32_t>(connectionEventCounter_ << 16U);
+      fillPseudoRandomBytes(smpLocalRandom_, sizeof(smpLocalRandom_), seed);
+      const uint8_t tk[16] = {0};
+      const uint8_t iat = connectionPeerAddressRandom_ ? 0x01U : 0x00U;
+      const uint8_t rat =
+          (addressType_ == BleAddressType::kRandomStatic) ? 0x01U : 0x00U;
+      if (!smpC1(tk, smpLocalRandom_, smpPairingReq_, smpPairingRsp_, iat,
+                 connectionPeerAddress_, rat, address_, smpLocalConfirm_)) {
+        return buildSmpPairingFailed(kSmpReasonUnspecified);
+      }
+
       smpPairingState_ = kSmpPairingStateRspSent;
       emitBleTrace("SMP_PAIRING_REQUEST_RX");
       return buildSmpResponse(smpPairingRsp_, kSmpPairingResponseLen);
@@ -7854,20 +7868,9 @@ bool BleRadio::buildL2capSmpResponse(const uint8_t* l2capPayload,
       }
 
       memcpy(smpPeerConfirm_, &smp[1], sizeof(smpPeerConfirm_));
-      const uint32_t seed = micros() ^ connectionAccessAddress_ ^
-                            static_cast<uint32_t>(connectionEventCounter_ << 16U);
-      fillPseudoRandomBytes(smpLocalRandom_, sizeof(smpLocalRandom_), seed);
-
       uint8_t localConfirm[17] = {0};
-      const uint8_t tk[16] = {0};
-      const uint8_t iat = connectionPeerAddressRandom_ ? 0x01U : 0x00U;
-      const uint8_t rat =
-          (addressType_ == BleAddressType::kRandomStatic) ? 0x01U : 0x00U;
-      if (!smpC1(tk, smpLocalRandom_, smpPairingReq_, smpPairingRsp_, iat,
-                 connectionPeerAddress_, rat, address_, &localConfirm[1])) {
-        return buildSmpPairingFailed(kSmpReasonUnspecified);
-      }
       localConfirm[0] = kSmpCodePairingConfirm;
+      memcpy(&localConfirm[1], smpLocalConfirm_, sizeof(smpLocalConfirm_));
       smpPairingState_ = kSmpPairingStateConfirmSent;
       emitBleTrace("SMP_CONFIRM_RX");
       return buildSmpResponse(localConfirm, sizeof(localConfirm));
@@ -7887,16 +7890,12 @@ bool BleRadio::buildL2capSmpResponse(const uint8_t* l2capPayload,
       const uint8_t rat =
           (addressType_ == BleAddressType::kRandomStatic) ? 0x01U : 0x00U;
       uint8_t expectedRemoteConfirm[16] = {0};
-      uint8_t localConfirm[16] = {0};
       if (!smpC1(tk, smpPeerRandom_, smpPairingReq_, smpPairingRsp_, iat,
-                 connectionPeerAddress_, rat, address_, expectedRemoteConfirm) ||
-          !smpC1(tk, smpLocalRandom_, smpPairingReq_, smpPairingRsp_, iat,
-                 connectionPeerAddress_, rat, address_, localConfirm)) {
+                 connectionPeerAddress_, rat, address_, expectedRemoteConfirm)) {
         return buildSmpPairingFailed(kSmpReasonUnspecified);
       }
 
-      if ((memcmp(expectedRemoteConfirm, smpPeerConfirm_, sizeof(smpPeerConfirm_)) != 0) ||
-          (memcmp(expectedRemoteConfirm, localConfirm, sizeof(localConfirm)) == 0)) {
+      if (memcmp(expectedRemoteConfirm, smpPeerConfirm_, sizeof(smpPeerConfirm_)) != 0) {
         return buildSmpPairingFailed(kSmpReasonConfirmValueFailed);
       }
 
@@ -8198,10 +8197,11 @@ bool BleRadio::buildLlControlResponse(const uint8_t* payload, uint8_t length,
         connectionEncSessionValid_ = true;
         connectionEncRxEnabled_ = false;
         connectionEncTxEnabled_ = false;
-        // Peripheral role sequence used by Zephyr LLCP:
-        // send LL_START_ENC_REQ after LL_ENC_RSP, then await LL_START_ENC_RSP.
-        connectionEncStartReqPending_ = false;
-        connectionEncStartReqTxPending_ = true;
+        // Peripheral role sequence per Core LLCP:
+        // after LL_ENC_RSP, wait for initiator LL_START_ENC_REQ and answer with
+        // LL_START_ENC_RSP.
+        connectionEncStartReqPending_ = true;
+        connectionEncStartReqTxPending_ = false;
         connectionEncAwaitingStartRsp_ = false;
         connectionEncEnableTxOnNextEvent_ = false;
         connectionEncRxCounter_ = 0ULL;
@@ -8545,6 +8545,7 @@ void BleRadio::clearSmpPairingState() {
   memset(smpPeerConfirm_, 0, sizeof(smpPeerConfirm_));
   memset(smpPeerRandom_, 0, sizeof(smpPeerRandom_));
   memset(smpLocalRandom_, 0, sizeof(smpLocalRandom_));
+  memset(smpLocalConfirm_, 0, sizeof(smpLocalConfirm_));
   memset(smpStk_, 0, sizeof(smpStk_));
   smpStkValid_ = false;
   smpBondingRequested_ = false;

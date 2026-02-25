@@ -893,6 +893,7 @@ class BleRadio {
   uint8_t smpPeerConfirm_[16];
   uint8_t smpPeerRandom_[16];
   uint8_t smpLocalRandom_[16];
+  uint8_t smpLocalConfirm_[16];
   uint8_t smpStk_[16];
   bool smpStkValid_;
   bool connectionEncSessionValid_;
