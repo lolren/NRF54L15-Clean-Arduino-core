@@ -9,6 +9,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -29,38 +30,53 @@ public:
     }
 
     String(unsigned char value)
+        : String(value, 10)
     {
-        char tmp[8];
-        snprintf(tmp, sizeof(tmp), "%u", value);
-        assign(tmp);
+    }
+
+    String(unsigned char value, unsigned char base)
+    {
+        assignUnsigned(value, base);
     }
 
     String(int value)
+        : String(value, 10)
     {
-        char tmp[16];
-        snprintf(tmp, sizeof(tmp), "%d", value);
-        assign(tmp);
+    }
+
+    String(int value, unsigned char base)
+    {
+        assignSigned(value, base);
     }
 
     String(unsigned int value)
+        : String(value, 10)
     {
-        char tmp[16];
-        snprintf(tmp, sizeof(tmp), "%u", value);
-        assign(tmp);
+    }
+
+    String(unsigned int value, unsigned char base)
+    {
+        assignUnsigned(value, base);
     }
 
     String(long value)
+        : String(value, 10)
     {
-        char tmp[24];
-        snprintf(tmp, sizeof(tmp), "%ld", value);
-        assign(tmp);
+    }
+
+    String(long value, unsigned char base)
+    {
+        assignSigned(value, base);
     }
 
     String(unsigned long value)
+        : String(value, 10)
     {
-        char tmp[24];
-        snprintf(tmp, sizeof(tmp), "%lu", value);
-        assign(tmp);
+    }
+
+    String(unsigned long value, unsigned char base)
+    {
+        assignUnsigned(value, base);
     }
 
     String(float value)
@@ -120,6 +136,99 @@ public:
 
     int toInt() const { return (int)strtol(c_str(), nullptr, 10); }
     float toFloat() const { return strtof(c_str(), nullptr); }
+    void toUpperCase()
+    {
+        if (_data == nullptr) {
+            return;
+        }
+        for (size_t i = 0; i < _length; ++i) {
+            _data[i] = (char)toupper((unsigned char)_data[i]);
+        }
+    }
+
+    int indexOf(char ch, unsigned int fromIndex = 0) const
+    {
+        if (fromIndex >= _length) {
+            return -1;
+        }
+        for (size_t i = fromIndex; i < _length; ++i) {
+            if (_data[i] == ch) {
+                return (int)i;
+            }
+        }
+        return -1;
+    }
+
+    int indexOf(const String& value, unsigned int fromIndex = 0) const
+    {
+        return indexOf(value.c_str(), fromIndex);
+    }
+
+    int indexOf(const char* value, unsigned int fromIndex = 0) const
+    {
+        if (value == nullptr) {
+            return -1;
+        }
+
+        const size_t needleLen = strlen(value);
+        if (needleLen == 0U) {
+            return (fromIndex <= _length) ? (int)fromIndex : -1;
+        }
+        if (fromIndex >= _length || needleLen > _length) {
+            return -1;
+        }
+
+        const char* haystack = c_str();
+        for (size_t i = fromIndex; (i + needleLen) <= _length; ++i) {
+            if (memcmp(haystack + i, value, needleLen) == 0) {
+                return (int)i;
+            }
+        }
+        return -1;
+    }
+
+    String substring(unsigned int beginIndex) const
+    {
+        return substring(beginIndex, (unsigned int)_length);
+    }
+
+    String substring(unsigned int beginIndex, unsigned int endIndex) const
+    {
+        if (beginIndex > endIndex) {
+            const unsigned int tmp = beginIndex;
+            beginIndex = endIndex;
+            endIndex = tmp;
+        }
+
+        if (beginIndex >= _length) {
+            return String("");
+        }
+        if (endIndex > _length) {
+            endIndex = (unsigned int)_length;
+        }
+
+        String out;
+        out.assignRange(c_str() + beginIndex, (size_t)(endIndex - beginIndex));
+        return out;
+    }
+
+    void toCharArray(char* buffer, unsigned int bufferSize, unsigned int index = 0) const
+    {
+        if (buffer == nullptr || bufferSize == 0U) {
+            return;
+        }
+        if (index >= _length) {
+            buffer[0] = '\0';
+            return;
+        }
+
+        size_t copyLen = _length - index;
+        if (copyLen > (size_t)(bufferSize - 1U)) {
+            copyLen = (size_t)(bufferSize - 1U);
+        }
+        memcpy(buffer, c_str() + index, copyLen);
+        buffer[copyLen] = '\0';
+    }
 
     bool equals(const String &other) const { return strcmp(c_str(), other.c_str()) == 0; }
 
@@ -160,15 +269,74 @@ public:
     operator const char *() const { return c_str(); }
 
 private:
+    static unsigned char normalizeBase(unsigned char base)
+    {
+        return (base >= 2U && base <= 36U) ? base : 10U;
+    }
+
+    static size_t formatUnsigned(unsigned long value, unsigned char base, char* out, size_t outSize)
+    {
+        if (out == nullptr || outSize == 0U) {
+            return 0U;
+        }
+
+        base = normalizeBase(base);
+        char tmp[34];
+        size_t idx = 0U;
+
+        do {
+            const unsigned long digit = value % base;
+            tmp[idx++] = (digit < 10UL) ? (char)('0' + digit)
+                                        : (char)('A' + (digit - 10UL));
+            value /= base;
+        } while (value != 0UL && idx < sizeof(tmp));
+
+        size_t outLen = (idx < (outSize - 1U)) ? idx : (outSize - 1U);
+        for (size_t i = 0U; i < outLen; ++i) {
+            out[i] = tmp[idx - i - 1U];
+        }
+        out[outLen] = '\0';
+        return outLen;
+    }
+
+    void assignUnsigned(unsigned long value, unsigned char base)
+    {
+        char tmp[34];
+        (void)formatUnsigned(value, base, tmp, sizeof(tmp));
+        assign(tmp);
+    }
+
+    void assignSigned(long value, unsigned char base)
+    {
+        base = normalizeBase(base);
+        if (base == 10U && value < 0L) {
+            const unsigned long mag =
+                (unsigned long)(-(value + 1L)) + 1UL;  // Avoid overflow for LONG_MIN.
+            char tmp[35];
+            tmp[0] = '-';
+            (void)formatUnsigned(mag, base, tmp + 1, sizeof(tmp) - 1U);
+            assign(tmp);
+            return;
+        }
+        assignUnsigned((unsigned long)value, base);
+    }
+
     void assign(const char *value)
     {
-        size_t len = strlen(value);
-        char *new_buf = (char *)malloc(len + 1);
+        assignRange(value, strlen(value));
+    }
+
+    void assignRange(const char* value, size_t len)
+    {
+        char *new_buf = (char *)malloc(len + 1U);
         if (new_buf == nullptr) {
             return;
         }
 
-        memcpy(new_buf, value, len + 1);
+        if (len > 0U && value != nullptr) {
+            memcpy(new_buf, value, len);
+        }
+        new_buf[len] = '\0';
         free(_data);
         _data = new_buf;
         _length = len;

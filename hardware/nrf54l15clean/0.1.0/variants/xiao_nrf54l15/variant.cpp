@@ -43,9 +43,9 @@ static inline void gpioSetInputHighZ(uint8_t port, uint8_t pin) {
              GPIO_PIN_CNF_PULL_Msk |
              GPIO_PIN_CNF_SENSE_Msk);
     cnf |= (GPIO_PIN_CNF_DIR_Input << GPIO_PIN_CNF_DIR_Pos);
-    cnf |= (GPIO_PIN_CNF_INPUT_Disconnect << GPIO_PIN_CNF_INPUT_Pos);
-    cnf |= (GPIO_PIN_CNF_PULL_Disabled << GPIO_PIN_CNF_PULL_Pos);
-    cnf |= (GPIO_PIN_CNF_SENSE_Disabled << GPIO_PIN_CNF_SENSE_Pos);
+    cnf |= GPIO_PIN_CNF_INPUT_Disconnect;
+    cnf |= GPIO_PIN_CNF_PULL_Disabled;
+    cnf |= GPIO_PIN_CNF_SENSE_Disabled;
     gpio->DIRCLR = bit;
     gpio->PIN_CNF[pin] = cnf;
 }

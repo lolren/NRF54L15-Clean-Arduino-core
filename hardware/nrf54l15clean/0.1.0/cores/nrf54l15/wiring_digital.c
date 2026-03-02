@@ -176,8 +176,8 @@ static void configure_pin_for_interrupt(const pin_desc_t* d)
              GPIO_PIN_CNF_INPUT_Msk |
              GPIO_PIN_CNF_SENSE_Msk);
     cnf |= (GPIO_PIN_CNF_DIR_Input << GPIO_PIN_CNF_DIR_Pos);
-    cnf |= (GPIO_PIN_CNF_INPUT_Connect << GPIO_PIN_CNF_INPUT_Pos);
-    cnf |= (GPIO_PIN_CNF_SENSE_Disabled << GPIO_PIN_CNF_SENSE_Pos);
+    cnf |= GPIO_PIN_CNF_INPUT_Connect;
+    cnf |= GPIO_PIN_CNF_SENSE_Disabled;
     gpio->DIRCLR = bit;
     gpio->PIN_CNF[d->pin] = cnf;
 }
@@ -241,8 +241,8 @@ void pinMode(uint8_t pin, uint8_t mode)
 
     if (mode == OUTPUT) {
         cnf |= (GPIO_PIN_CNF_DIR_Output << GPIO_PIN_CNF_DIR_Pos);
-        cnf |= (GPIO_PIN_CNF_INPUT_Disconnect << GPIO_PIN_CNF_INPUT_Pos);
-        cnf |= (GPIO_PIN_CNF_PULL_Disabled << GPIO_PIN_CNF_PULL_Pos);
+        cnf |= GPIO_PIN_CNF_INPUT_Disconnect;
+        cnf |= GPIO_PIN_CNF_PULL_Disabled;
         gpio->DIRSET = bit;
     } else {
         if (analogWriteDisable != 0) {
@@ -250,14 +250,14 @@ void pinMode(uint8_t pin, uint8_t mode)
         }
 
         cnf |= (GPIO_PIN_CNF_DIR_Input << GPIO_PIN_CNF_DIR_Pos);
-        cnf |= (GPIO_PIN_CNF_INPUT_Connect << GPIO_PIN_CNF_INPUT_Pos);
+        cnf |= GPIO_PIN_CNF_INPUT_Connect;
 
         if (mode == INPUT_PULLUP) {
-            cnf |= (GPIO_PIN_CNF_PULL_Pullup << GPIO_PIN_CNF_PULL_Pos);
+            cnf |= GPIO_PIN_CNF_PULL_Pullup;
         } else if (mode == INPUT_PULLDOWN) {
-            cnf |= (GPIO_PIN_CNF_PULL_Pulldown << GPIO_PIN_CNF_PULL_Pos);
+            cnf |= GPIO_PIN_CNF_PULL_Pulldown;
         } else {
-            cnf |= (GPIO_PIN_CNF_PULL_Disabled << GPIO_PIN_CNF_PULL_Pos);
+            cnf |= GPIO_PIN_CNF_PULL_Disabled;
         }
 
         gpio->DIRCLR = bit;

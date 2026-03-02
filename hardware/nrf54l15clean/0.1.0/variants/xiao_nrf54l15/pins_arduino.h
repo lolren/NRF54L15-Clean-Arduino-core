@@ -36,6 +36,9 @@
 // - SAMD11_RX receives nRF TX (P1.09)
 #define PIN_SAMD11_TX   (19)
 #define PIN_SAMD11_RX   (18)
+// Compatibility aliases used by some sketches/docs.
+#define SAMD11_TX PIN_SAMD11_TX
+#define SAMD11_RX PIN_SAMD11_RX
 
 #define LED_BUILTIN PIN_LED_BUILTIN
 

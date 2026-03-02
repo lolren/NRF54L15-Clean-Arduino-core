@@ -106,9 +106,8 @@ static void configure_pin_input(uint8_t port, uint8_t pin, bool pullup) {
     uint32_t cnf = gpio->PIN_CNF[pin];
     cnf &= ~(GPIO_PIN_CNF_DIR_Msk | GPIO_PIN_CNF_INPUT_Msk | GPIO_PIN_CNF_PULL_Msk);
     cnf |= (GPIO_PIN_CNF_DIR_Input << GPIO_PIN_CNF_DIR_Pos);
-    cnf |= (GPIO_PIN_CNF_INPUT_Connect << GPIO_PIN_CNF_INPUT_Pos);
-    cnf |= ((pullup ? GPIO_PIN_CNF_PULL_Pullup : GPIO_PIN_CNF_PULL_Disabled)
-            << GPIO_PIN_CNF_PULL_Pos);
+    cnf |= GPIO_PIN_CNF_INPUT_Connect;
+    cnf |= (pullup ? GPIO_PIN_CNF_PULL_Pullup : GPIO_PIN_CNF_PULL_Disabled);
     gpio->PIN_CNF[pin] = cnf;
 }
 

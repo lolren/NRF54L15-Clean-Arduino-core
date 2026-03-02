@@ -49,6 +49,12 @@ constexpr Pin kPinA7{1, 14};    // P1.14 / AIN7 (pad)
 constexpr Pin kPinUserLed{2, 0};     // Active low (anode tied to 3V3)
 constexpr Pin kPinUserButton{0, 0};  // Active low with external pull-up
 
+// USB bridge UART nets from schematic page "04 Debug & XIAO Header".
+// - SAMD11_TX drives nRF RX (P1.08)
+// - SAMD11_RX receives nRF TX (P1.09)
+constexpr Pin kPinSAMD11Tx{1, 8};
+constexpr Pin kPinSAMD11Rx{1, 9};
+
 // Battery measurement control from schematic page "03 Power".
 constexpr Pin kPinVbatEnable{1, 15};
 constexpr Pin kPinVbatSense{1, 14};
@@ -75,6 +81,8 @@ constexpr Pin kDefaultSpiMosi = kPinD10;
 constexpr Pin kDefaultSpiMiso = kPinD9;
 constexpr Pin kDefaultUartTx = kPinD6;
 constexpr Pin kDefaultUartRx = kPinD7;
+constexpr Pin kDefaultUsbBridgeUartTx = kPinSAMD11Rx;
+constexpr Pin kDefaultUsbBridgeUartRx = kPinSAMD11Tx;
 
 inline constexpr int8_t saadcInputForPin(const Pin& pin) {
   if (pin.port != 1U) {

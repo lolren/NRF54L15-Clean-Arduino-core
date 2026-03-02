@@ -169,8 +169,8 @@ static void configure_i2c_pin(uint8_t port, uint8_t pin) {
              GPIO_PIN_CNF_PULL_Msk | GPIO_PIN_CNF_DRIVE0_Msk |
              GPIO_PIN_CNF_DRIVE1_Msk);
     cnf |= (GPIO_PIN_CNF_DIR_Input << GPIO_PIN_CNF_DIR_Pos);
-    cnf |= (GPIO_PIN_CNF_INPUT_Connect << GPIO_PIN_CNF_INPUT_Pos);
-    cnf |= (GPIO_PIN_CNF_PULL_Disabled << GPIO_PIN_CNF_PULL_Pos);
+    cnf |= GPIO_PIN_CNF_INPUT_Connect;
+    cnf |= GPIO_PIN_CNF_PULL_Disabled;
     cnf |= (GPIO_PIN_CNF_DRIVE0_S0 << GPIO_PIN_CNF_DRIVE0_Pos);
     cnf |= (GPIO_PIN_CNF_DRIVE1_D1 << GPIO_PIN_CNF_DRIVE1_Pos);
     gpio->PIN_CNF[pin] = cnf;
