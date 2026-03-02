@@ -325,7 +325,7 @@ constexpr uint32_t kBleConnSlaveScaPpm = 50UL;
 constexpr uint8_t kBleConnMicrosPollDivider = 32U;
 // With fast ramp-up enabled, trigger TXEN ~115 us after RX end so packet start
 // lands near the BLE 150 us inter-frame spacing.
-constexpr uint32_t kBleConnTxenAfterRxUs = 115U;
+constexpr uint32_t kBleConnTxenAfterRxUs = 95U;
 // Legacy advertising request/response exchanges should complete within hundreds
 // of microseconds around T_IFS. Bound RX listen windows so advertising cadence
 // does not become host-CPU-spin dependent.
@@ -4665,7 +4665,8 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit
     lateAllowanceUs = connectionFirstEventListenUs_ + 400U;
   }
   const bool useCurrentEventCounterForChannel =
-      timeReachedUs(nowUs, connectionNextEventUs_ + lateAllowanceUs);
+      timeReachedUs(nowUs, connectionNextEventUs_ + lateAllowanceUs) ||
+      (connectionMissedEventCount_ > 0U);
 
   const uint32_t rxStartUs = connectionNextEventUs_ - kBleConnRxStartLeadUs;
   if (!timeReachedUs(nowUs, rxStartUs)) {
@@ -4738,7 +4739,11 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit
        RADIO_SHORTS_PHYEND_DISABLE_Msk);
   radio_->TASKS_RXEN = RADIO_TASKS_RXEN_TASKS_RXEN_Trigger;
 
-  uint32_t rxListenUs = intervalUsForListen;
+  uint32_t rxListenUs =
+      bleConnectionRxListenUs(connectionIntervalUnits_, connectionSca_);
+  if (rxListenUs == 0U) {
+    rxListenUs = intervalUsForListen;
+  }
   if (connectionSyncAttemptsRemaining_ > 0U) {
     // During initial sync after CONNECT_IND, keep RX active from the early
     // pre-anchor lead through the full transmit window (plus margin).
@@ -4840,13 +4845,14 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit
   connectionMissedEventCount_ = 0U;
   if (connectionSyncAttemptsRemaining_ > 0U) {
     // First successful packet may arrive anywhere in the initial transmit
-    // window; re-anchor subsequent events from the observed packet timing.
+    // window; re-anchor once from observed timing, then switch to normal
+    // interval tracking to avoid accumulating processing-latency drift.
     const uint32_t intervalUs =
         (connectionIntervalUnits_ > 0U)
             ? (static_cast<uint32_t>(connectionIntervalUnits_) * 1250UL)
             : 1250UL;
     connectionNextEventUs_ = micros() + intervalUs;
-    --connectionSyncAttemptsRemaining_;
+    connectionSyncAttemptsRemaining_ = 0U;
   }
 
   const uint8_t hdr0 = rxPacket_[0];
@@ -8853,9 +8859,6 @@ uint8_t BleRadio::selectNextDataChannel(bool useCurrentEventCounter) {
     return chanNext;
   }
 
-  if (useCurrentEventCounter) {
-    connectionChanUse_ = static_cast<uint8_t>((connectionChanUse_ + connectionHop_) % 37U);
-  }
   uint8_t chanNext = static_cast<uint8_t>((connectionChanUse_ + connectionHop_) % 37U);
   connectionChanUse_ = chanNext;
   if ((connectionChannelMap_[chanNext >> 3U] & (1U << (chanNext & 0x07U))) == 0U) {
