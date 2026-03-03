@@ -145,6 +145,12 @@ typedef uint8_t pin_size_t;
 #define microsecondsToClockCycles(a) ((a) * clockCyclesPerMicrosecond())
 
 // Flash string macro
+#ifndef PROGMEM
+#define PROGMEM
+#endif
+#ifndef PSTR
+#define PSTR(str_literal) (str_literal)
+#endif
 #define F(str_literal) (str_literal)
 
 // ============================================================================

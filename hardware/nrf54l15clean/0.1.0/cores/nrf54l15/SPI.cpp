@@ -103,7 +103,11 @@ static uint32_t compute_prescaler(uint32_t target_hz) {
 
 }  // namespace
 
+#if defined(NRF54L15_CLEAN_SERIAL_ROUTE_HEADER)
 SPIClass SPI(NRF_SPIM20, PIN_SPI_MOSI, PIN_SPI_MISO, PIN_SPI_SCK, PIN_SPI_SS);
+#else
+SPIClass SPI(NRF_SPIM21, PIN_SPI_MOSI, PIN_SPI_MISO, PIN_SPI_SCK, PIN_SPI_SS);
+#endif
 
 SPIClass::SPIClass(NRF_SPIM_Type* spim, uint8_t mosi, uint8_t miso, uint8_t sck, uint8_t cs)
     : _spim(spim), _mosi(mosi), _miso(miso), _sck(sck), _cs(cs), _settings(),

@@ -61,6 +61,10 @@ sudo udevadm trigger --attr-match=idVendor=2886 --attr-match=idProduct=0066
 | `Serial1` / `Serial2` | `TX=D6(P2.08)`, `RX=D7(P2.07)` | `Serial2` is alias of `Serial1` |
 | `Serial` | USB bridge (default) | Can be switched to header UART via Tools menu |
 
+Peripheral instance routing note:
+- `Serial` is intentionally routed to the opposite serial-fabric instance from default `Wire` and `SPI`, so `Serial` + `Wire` + `SPI` can run together in both Serial Routing modes.
+- `Wire1` shares an instance with `Serial`, and `Serial1/Serial2` share an instance with default `Wire`/`SPI`.
+
 ## Arduino pin map (Arduino -> MCU)
 
 | Arduino pin | MCU pin | ADC input | Typical role |

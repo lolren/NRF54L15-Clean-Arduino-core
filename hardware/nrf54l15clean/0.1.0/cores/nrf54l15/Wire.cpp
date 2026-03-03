@@ -223,8 +223,13 @@ static TwoWire*& twi_owner_slot(const NRF_TWIM_Type* twim) {
 
 }  // namespace
 
+#if defined(NRF54L15_CLEAN_SERIAL_ROUTE_HEADER)
 TwoWire Wire(NRF_TWIM20, PIN_WIRE_SDA, PIN_WIRE_SCL);
 TwoWire Wire1(NRF_TWIM21, PIN_WIRE1_SDA, PIN_WIRE1_SCL);
+#else
+TwoWire Wire(NRF_TWIM21, PIN_WIRE_SDA, PIN_WIRE_SCL);
+TwoWire Wire1(NRF_TWIM20, PIN_WIRE1_SDA, PIN_WIRE1_SCL);
+#endif
 
 extern "C" void TWIM20_IRQHandler(void) {
     if (g_twim20Owner != nullptr) {
@@ -443,6 +448,35 @@ uint8_t TwoWire::endTransmission(bool sendStop) {
     }
 
     const uintptr_t base = reinterpret_cast<uintptr_t>(_twim);
+
+    if (_txBufferLength == 0U && sendStop) {
+        // Zero-length TX does not always issue an address phase on this TWIM
+        // block, which breaks common scanner sketches. Probe with a 1-byte read
+        // to force address+ACK/NACK without modifying user RX buffers.
+        uint8_t probeByte = 0U;
+
+        reg32(base + T_EVENTS_STOPPED) = 0U;
+        reg32(base + T_EVENTS_ERROR) = 0U;
+        reg32(base + T_EVENTS_LASTRX) = 0U;
+        reg32(base + T_TWIM_ERRORSRC) = T_TWIM_ERRORSRC_ALL;
+
+        reg32(base + T_ADDRESS) = _txAddress;
+        reg32(base + T_DMA_RX_PTR) = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&probeByte));
+        reg32(base + T_DMA_RX_MAXCNT) = 1U;
+        reg32(base + T_TASKS_DMA_RX_START) = 1U;
+
+        const bool readOk = wait_event_or_error(base, T_EVENTS_LASTRX, 300000UL);
+        const uint32_t errorsrc = reg32(base + T_TWIM_ERRORSRC) & T_TWIM_ERRORSRC_ALL;
+
+        reg32(base + T_TASKS_STOP) = 1U;
+        const bool stopOk = wait_event(base, T_EVENTS_STOPPED, 300000UL);
+        reg32(base + T_TWIM_ERRORSRC) = T_TWIM_ERRORSRC_ALL;
+
+        _pendingRepeatedStart = false;
+        _txBufferLength = 0U;
+        _lastActivityUs = micros();
+        return end_tx_error_code(readOk, stopOk, errorsrc);
+    }
 
     reg32(base + T_EVENTS_STOPPED) = 0U;
     reg32(base + T_EVENTS_ERROR) = 0U;

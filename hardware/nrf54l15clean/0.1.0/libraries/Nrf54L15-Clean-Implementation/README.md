@@ -8,8 +8,8 @@ This package uses direct peripheral register access from the nRF54L15 datasheet 
 
 - `ClockControl`: HFXO control wrapper (runtime-managed no-op on this Arduino core).
 - `Gpio`: configure/read/write/toggle and open-drain style drive setup for I2C.
-- `Spim`: SPI master (SPIM21 on XIAO header by default) with EasyDMA transfer and runtime frequency control.
-- `Twim`: I2C master (TWIM21 on XIAO header by default) with write/read/writeRead and runtime frequency control.
+- `Spim`: SPI master with route-aware instance selection (`SPIM21` in USB-bridge `Serial` mode, `SPIM20` in header-UART `Serial` mode), plus EasyDMA transfer and runtime frequency control.
+- `Twim`: I2C master with route-aware instance selection (`TWIM21` in USB-bridge `Serial` mode, `TWIM20` in header-UART `Serial` mode), plus write/read/writeRead and runtime frequency control.
 - `Uarte`: UART (UARTE21) with EasyDMA TX/RX.
 - `Saadc`: single-ended ADC sampling and millivolt conversion.
 - `Timer`: timer/counter setup, compare channels, shortcuts, and callback service.
@@ -42,7 +42,8 @@ Default Arduino peripheral pin routes:
 
 Compatibility note:
 
-- `Wire1` and `Serial` both use peripheral instance 21 when `Tools -> Serial Routing -> Header UART on Serial` is selected. Avoid using both simultaneously in that mode.
+- `Serial` is routed to the opposite serial-fabric instance from default `Wire` and `SPI`, so `Serial` + `Wire` + `SPI` can run together in either Serial Routing mode.
+- `Wire1` shares an instance with `Serial`, and `Serial1/Serial2` share an instance with default `Wire`/`SPI`. Avoid those pairings concurrently.
 
 ## BoardControl APIs
 
