@@ -162,19 +162,41 @@ static UarteFormat decode_serial_format(uint16_t config) {
     return fmt;
 }
 
-static bool wait_event(uintptr_t base, uint32_t event_off, uint32_t spin) {
-    while (spin-- > 0U) {
+static bool wait_event_timeout_us(uintptr_t base, uint32_t event_off, uint32_t timeout_us) {
+    const unsigned long start = micros();
+    while ((unsigned long)(micros() - start) < timeout_us) {
         if (reg32(base + event_off) != 0U) {
             return true;
         }
     }
-    return false;
+    return reg32(base + event_off) != 0U;
+}
+
+static uint32_t serial_byte_timeout_us(unsigned long baud, uint32_t bytes) {
+    if (baud == 0UL) {
+        baud = 9600UL;
+    }
+    if (bytes == 0U) {
+        bytes = 1U;
+    }
+    // 12 bits/byte includes start/data/parity/stop margin.
+    const uint32_t per_byte = static_cast<uint32_t>((12000000ULL + baud - 1ULL) / baud);
+    const uint32_t margin = 2000UL;
+    return (per_byte * bytes) + margin;
 }
 
 }  // namespace
 
 HardwareSerial::HardwareSerial(NRF_UARTE_Type* uart, uint8_t txPin, uint8_t rxPin)
-    : _uart(uart), _txPin(txPin), _rxPin(rxPin), _peek(-1), _configured(false), _rxByte(0), _dataMask(0xFFU) {}
+    : _uart(uart),
+      _txPin(txPin),
+      _rxPin(rxPin),
+      _peek(-1),
+      _configured(false),
+      _baud(9600UL),
+      _rxByte(0),
+      _txByte(0),
+      _dataMask(0xFFU) {}
 
 void HardwareSerial::begin(unsigned long baud) {
     begin(baud, SERIAL_8N1);
@@ -206,6 +228,7 @@ void HardwareSerial::begin(unsigned long baud, uint16_t config) {
     reg32(base + U_BAUDRATE) = baud_to_reg(baud);
     reg32(base + U_ENABLE) = UARTE_ENABLE_ENABLE_Enabled;
 
+    _baud = baud;
     _peek = -1;
     _configured = true;
 }
@@ -242,10 +265,11 @@ bool HardwareSerial::beginRxByte() {
     reg32(base + U_DMA_RX_MAXCNT) = 1U;
     reg32(base + U_TASKS_DMA_RX_START) = UARTE_TASKS_DMA_RX_START_START_Trigger;
 
-    const bool ok = wait_event(base, U_EVENTS_DMA_RX_END, 100000UL);
+    const bool ok =
+        wait_event_timeout_us(base, U_EVENTS_DMA_RX_END, serial_byte_timeout_us(_baud, 1U));
 
     reg32(base + U_TASKS_DMA_RX_STOP) = UARTE_TASKS_DMA_RX_STOP_STOP_Trigger;
-    wait_event(base, U_EVENTS_RXTO, 100000UL);
+    wait_event_timeout_us(base, U_EVENTS_RXTO, 2000UL);
 
     if (!ok) {
         reg32(base + U_ERRORSRC) = 0xFFFFFFFFUL;
@@ -292,18 +316,20 @@ size_t HardwareSerial::write(uint8_t value) {
     }
 
     const uintptr_t base = reinterpret_cast<uintptr_t>(_uart);
-    const uint8_t txByte = static_cast<uint8_t>(value & _dataMask);
+    _txByte = static_cast<uint8_t>(value & _dataMask);
 
     reg32(base + U_EVENTS_DMA_TX_END) = 0U;
-    reg32(base + U_EVENTS_TXSTOPPED) = 0U;
-    reg32(base + U_DMA_TX_PTR) = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&txByte));
+    reg32(base + U_DMA_TX_PTR) = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&_txByte));
     reg32(base + U_DMA_TX_MAXCNT) = 1U;
 
     reg32(base + U_TASKS_DMA_TX_START) = UARTE_TASKS_DMA_TX_START_START_Trigger;
-    wait_event(base, U_EVENTS_DMA_TX_END, 100000UL);
-
-    reg32(base + U_TASKS_DMA_TX_STOP) = UARTE_TASKS_DMA_TX_STOP_STOP_Trigger;
-    wait_event(base, U_EVENTS_TXSTOPPED, 100000UL);
+    if (!wait_event_timeout_us(base, U_EVENTS_DMA_TX_END, serial_byte_timeout_us(_baud, 1U))) {
+        // Recover on timeout to prevent partial-frame stream corruption.
+        reg32(base + U_EVENTS_TXSTOPPED) = 0U;
+        reg32(base + U_TASKS_DMA_TX_STOP) = UARTE_TASKS_DMA_TX_STOP_STOP_Trigger;
+        wait_event_timeout_us(base, U_EVENTS_TXSTOPPED, 2000UL);
+        return 0;
+    }
 
     return 1;
 }

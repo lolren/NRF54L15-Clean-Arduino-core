@@ -36,7 +36,9 @@ private:
     uint8_t _rxPin;
     int _peek;
     bool _configured;
+    unsigned long _baud;
     uint8_t _rxByte;
+    uint8_t _txByte;
     uint8_t _dataMask;
 };
 

@@ -47,6 +47,12 @@ If `AnalogReadSerial` is stuck near full-scale (for example always `1023`):
 - make sure no previous sketch is driving `A0` as a digital output
 - retest with `File > Examples > 01.Basics > AnalogReadSerial`
 
+If serial output starts showing random characters during sustained prints:
+
+- update to the latest Boards Manager release (UART TX timeout handling was
+  hardened in `0.1.5`)
+- verify Serial Monitor baud matches the sketch `Serial.begin(...)` value
+
 ## Linux CMSIS-DAP permissions (one-time)
 
 If upload reports `No connected debug probes` but `lsusb` shows
