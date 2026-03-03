@@ -15,6 +15,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <avr/pgmspace.h>
+
 // Legacy Arduino binary constants (B00000000 style).
 #include "binary.h"
 
@@ -30,6 +32,7 @@ typedef bool boolean;
 typedef uint8_t byte;
 typedef unsigned int word;
 typedef uint8_t pin_size_t;
+typedef uint8_t BitOrder;
 
 // Arduino pin constants
 #define HIGH 0x1
@@ -154,7 +157,12 @@ typedef uint8_t pin_size_t;
 #ifndef PSTR
 #define PSTR(str_literal) (str_literal)
 #endif
+#ifdef __cplusplus
+class __FlashStringHelper;
+#define F(str_literal) (reinterpret_cast<const __FlashStringHelper *>(PSTR(str_literal)))
+#else
 #define F(str_literal) (str_literal)
+#endif
 
 // ============================================================================
 // Core Arduino API Function Declarations

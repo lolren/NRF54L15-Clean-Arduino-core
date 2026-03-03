@@ -6,6 +6,7 @@
 #define Pins_Arduino_h
 
 #include <stdint.h>
+#include <nrf54l15.h>
 
 #define NUM_DIGITAL_PINS 20
 #define NUM_ANALOG_INPUTS 8
@@ -79,6 +80,86 @@ enum {
 #define PIN_SPI_MISO (PIN_D9)
 #define PIN_SPI_SCK  (PIN_D8)
 #define PIN_SPI_SS   (PIN_D2)
+
+// Compatibility helpers used by libraries like Adafruit_BusIO on ARM cores.
+typedef volatile uint32_t PortReg;
+typedef uint32_t PortMask;
+
+static inline bool pinToPortPin(uint8_t pin, uint8_t* port, uint8_t* pinInPort)
+{
+    if (port == 0 || pinInPort == 0) {
+        return false;
+    }
+
+    switch (pin) {
+        case PIN_D0: *port = 1; *pinInPort = 4; return true;
+        case PIN_D1: *port = 1; *pinInPort = 5; return true;
+        case PIN_D2: *port = 1; *pinInPort = 6; return true;
+        case PIN_D3: *port = 1; *pinInPort = 7; return true;
+        case PIN_D4: *port = 1; *pinInPort = 10; return true;
+        case PIN_D5: *port = 1; *pinInPort = 11; return true;
+        case PIN_D6: *port = 2; *pinInPort = 8; return true;
+        case PIN_D7: *port = 2; *pinInPort = 7; return true;
+        case PIN_D8: *port = 2; *pinInPort = 1; return true;
+        case PIN_D9: *port = 2; *pinInPort = 4; return true;
+        case PIN_D10: *port = 2; *pinInPort = 2; return true;
+        case PIN_D11: *port = 0; *pinInPort = 3; return true;
+        case PIN_D12: *port = 0; *pinInPort = 4; return true;
+        case PIN_D13: *port = 2; *pinInPort = 10; return true;
+        case PIN_D14: *port = 2; *pinInPort = 9; return true;
+        case PIN_D15: *port = 2; *pinInPort = 6; return true;
+        case PIN_LED_BUILTIN: *port = 2; *pinInPort = 0; return true;
+        case PIN_BUTTON: *port = 0; *pinInPort = 0; return true;
+        case PIN_SAMD11_RX: *port = 1; *pinInPort = 9; return true;
+        case PIN_SAMD11_TX: *port = 1; *pinInPort = 8; return true;
+        default: return false;
+    }
+}
+
+static inline uint8_t digitalPinToPort(uint8_t pin)
+{
+    uint8_t port = 0;
+    uint8_t pinInPort = 0;
+    return pinToPortPin(pin, &port, &pinInPort) ? port : 0xFF;
+}
+
+static inline uint32_t digitalPinToBitMask(uint8_t pin)
+{
+    uint8_t port = 0;
+    uint8_t pinInPort = 0;
+    (void)port;
+    return pinToPortPin(pin, &port, &pinInPort) ? (1UL << pinInPort) : 0UL;
+}
+
+static inline volatile uint32_t* portOutputRegister(uint8_t port)
+{
+    switch (port) {
+        case 0: return &NRF_P0->OUT;
+        case 1: return &NRF_P1->OUT;
+        case 2: return &NRF_P2->OUT;
+        default: return (volatile uint32_t*)0;
+    }
+}
+
+static inline volatile uint32_t* portInputRegister(uint8_t port)
+{
+    switch (port) {
+        case 0: return (volatile uint32_t*)&NRF_P0->IN;
+        case 1: return (volatile uint32_t*)&NRF_P1->IN;
+        case 2: return (volatile uint32_t*)&NRF_P2->IN;
+        default: return (volatile uint32_t*)0;
+    }
+}
+
+static inline volatile uint32_t* portModeRegister(uint8_t port)
+{
+    switch (port) {
+        case 0: return &NRF_P0->DIR;
+        case 1: return &NRF_P1->DIR;
+        case 2: return &NRF_P2->DIR;
+        default: return (volatile uint32_t*)0;
+    }
+}
 
 #define digitalPinHasPWM(p) ((p) == PIN_D6 || (p) == PIN_D7 || (p) == PIN_D8 || (p) == PIN_D9)
 #define digitalPinToInterrupt(p) (p)

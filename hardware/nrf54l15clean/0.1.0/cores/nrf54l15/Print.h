@@ -12,6 +12,8 @@
 
 #include "WString.h"
 
+class __FlashStringHelper;
+
 class Print {
 public:
     virtual ~Print() = default;
@@ -25,6 +27,7 @@ public:
     size_t write(unsigned long value) { return write(static_cast<uint8_t>(value)); }
 
     size_t print(const String &value);
+    size_t print(const __FlashStringHelper *value);
     size_t print(const char *value);
     size_t print(char value);
     size_t print(unsigned char value, int base = 10);
@@ -36,6 +39,7 @@ public:
 
     size_t println(void);
     size_t println(const String &value);
+    size_t println(const __FlashStringHelper *value);
     size_t println(const char *value);
     size_t println(char value);
     size_t println(unsigned char value, int base = 10);

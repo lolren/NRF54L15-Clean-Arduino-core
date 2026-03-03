@@ -60,6 +60,13 @@ If `SSD1306wire` examples fail with `B00101100`/`Bxxxx` compile errors:
 - note: this specific library declares `avr` architecture and may still show
   warnings on ARM cores
 
+If Adafruit GFX / BusIO / SSD1306 examples fail with missing symbols like
+`BitOrder`, `__FlashStringHelper`, `digitalPinToPort`, or `wiring_private.h`:
+
+- update to `0.1.7` or newer
+- this release adds compatibility shims used by those libraries and compiles
+  the common Adafruit SSD1306 example set for this board
+
 ## Linux CMSIS-DAP permissions (one-time)
 
 If upload reports `No connected debug probes` but `lsusb` shows

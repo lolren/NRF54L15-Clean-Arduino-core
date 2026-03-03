@@ -14,6 +14,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+class __FlashStringHelper;
+
 class String {
 public:
     String() { assign(""); }
@@ -21,6 +23,11 @@ public:
     String(const char *value)
     {
         assign(value == nullptr ? "" : value);
+    }
+
+    String(const __FlashStringHelper *value)
+    {
+        assign(value == nullptr ? "" : reinterpret_cast<const char *>(value));
     }
 
     String(char value)

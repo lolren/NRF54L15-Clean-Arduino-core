@@ -37,6 +37,11 @@ size_t Print::print(const String &value)
     return write(value.c_str());
 }
 
+size_t Print::print(const __FlashStringHelper *value)
+{
+    return write(reinterpret_cast<const char *>(value));
+}
+
 size_t Print::print(const char *value)
 {
     return write(value);
@@ -83,6 +88,13 @@ size_t Print::println(void)
 }
 
 size_t Print::println(const String &value)
+{
+    size_t count = print(value);
+    count += println();
+    return count;
+}
+
+size_t Print::println(const __FlashStringHelper *value)
 {
     size_t count = print(value);
     count += println();
