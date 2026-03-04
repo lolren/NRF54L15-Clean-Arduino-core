@@ -71,6 +71,7 @@ constexpr Pin kPinMicData{1, 13};
 
 // RF switch control from schematic page "05 nRF54L15".
 // 0 -> RF1 (onboard chip antenna), 1 -> RF2 (alternate path).
+constexpr Pin kPinRfSwitchPower{2, 3};
 constexpr Pin kPinRfSwitchCtl{2, 5};
 
 // Default peripheral pin groups used in the HAL examples.

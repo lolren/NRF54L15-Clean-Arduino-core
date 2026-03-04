@@ -5,7 +5,21 @@
 
 namespace {
 
+static constexpr uint8_t kRfSwitchPowerPort = 2U;
+static constexpr uint8_t kRfSwitchPowerPin = 3U;
+static constexpr uint8_t kRfSwitchCtlPort = 2U;
+static constexpr uint8_t kRfSwitchCtlPin = 5U;
+static constexpr uint8_t kBatteryEnablePort = 1U;
+static constexpr uint8_t kBatteryEnablePin = 15U;
+static constexpr uint8_t kImuMicEnablePort = 0U;
+static constexpr uint8_t kImuMicEnablePin = 1U;
+static constexpr uint8_t kRfSwitchCeramic = 0U;
+static constexpr uint8_t kRfSwitchExternal = 1U;
+
 static xiao_nrf54l15_antenna_t g_antenna = XIAO_NRF54L15_ANTENNA_CERAMIC;
+static uint8_t g_rfSwitchPower = 0U;
+static uint8_t g_batteryEnable = 0U;
+static uint8_t g_imuMicEnable = 0U;
 
 static inline NRF_GPIO_Type* gpioForPort(uint8_t port) {
     switch (port) {
@@ -50,22 +64,79 @@ static inline void gpioSetInputHighZ(uint8_t port, uint8_t pin) {
     gpio->PIN_CNF[pin] = cnf;
 }
 
+static inline void applyRfSwitchPower(bool enable) {
+    gpioSetOutput(kRfSwitchPowerPort, kRfSwitchPowerPin, enable);
+    g_rfSwitchPower = enable ? 1U : 0U;
+}
+
+static inline void applyBatteryEnable(bool enable) {
+    gpioSetOutput(kBatteryEnablePort, kBatteryEnablePin, enable);
+    g_batteryEnable = enable ? 1U : 0U;
+}
+
+static inline void applyImuMicEnable(bool enable) {
+    gpioSetOutput(kImuMicEnablePort, kImuMicEnablePin, enable);
+    g_imuMicEnable = enable ? 1U : 0U;
+}
+
+static inline void applyRfSwitchSelection(uint8_t selection) {
+    const uint8_t normalized = (selection == kRfSwitchExternal) ? kRfSwitchExternal : kRfSwitchCeramic;
+    applyRfSwitchPower(true);
+    gpioSetOutput(kRfSwitchCtlPort, kRfSwitchCtlPin, normalized == kRfSwitchExternal);
+    g_antenna = (normalized == kRfSwitchExternal) ? XIAO_NRF54L15_ANTENNA_EXTERNAL
+                                                  : XIAO_NRF54L15_ANTENNA_CERAMIC;
+}
+
 }  // namespace
+
+extern "C" uint8_t arduinoXiaoNrf54l15SetAntenna(uint8_t selection) {
+    applyRfSwitchSelection(selection);
+    return 1U;
+}
+
+extern "C" uint8_t arduinoXiaoNrf54l15GetAntenna(void) {
+    return (g_antenna == XIAO_NRF54L15_ANTENNA_EXTERNAL) ? kRfSwitchExternal : kRfSwitchCeramic;
+}
+
+extern "C" uint8_t arduinoXiaoNrf54l15SetRfSwitchPower(uint8_t enabled) {
+    applyRfSwitchPower(enabled != 0U);
+    return 1U;
+}
+
+extern "C" uint8_t arduinoXiaoNrf54l15GetRfSwitchPower(void) {
+    return g_rfSwitchPower;
+}
+
+extern "C" uint8_t arduinoXiaoNrf54l15SetBatteryEnable(uint8_t enabled) {
+    applyBatteryEnable(enabled != 0U);
+    return 1U;
+}
+
+extern "C" uint8_t arduinoXiaoNrf54l15GetBatteryEnable(void) {
+    return g_batteryEnable;
+}
+
+extern "C" uint8_t arduinoXiaoNrf54l15SetImuMicEnable(uint8_t enabled) {
+    applyImuMicEnable(enabled != 0U);
+    return 1U;
+}
+
+extern "C" uint8_t arduinoXiaoNrf54l15GetImuMicEnable(void) {
+    return g_imuMicEnable;
+}
 
 extern "C" void xiaoNrf54l15SetAntenna(xiao_nrf54l15_antenna_t antenna) {
     switch (antenna) {
         case XIAO_NRF54L15_ANTENNA_EXTERNAL:
-            g_antenna = XIAO_NRF54L15_ANTENNA_EXTERNAL;
-            gpioSetOutput(2U, 5U, true);
+            applyRfSwitchSelection(kRfSwitchExternal);
             break;
         case XIAO_NRF54L15_ANTENNA_CONTROL_HIZ:
             g_antenna = XIAO_NRF54L15_ANTENNA_CONTROL_HIZ;
-            gpioSetInputHighZ(2U, 5U);
+            gpioSetInputHighZ(kRfSwitchCtlPort, kRfSwitchCtlPin);
             break;
         case XIAO_NRF54L15_ANTENNA_CERAMIC:
         default:
-            g_antenna = XIAO_NRF54L15_ANTENNA_CERAMIC;
-            gpioSetOutput(2U, 5U, false);
+            applyRfSwitchSelection(kRfSwitchCeramic);
             break;
     }
 }
@@ -75,6 +146,9 @@ extern "C" xiao_nrf54l15_antenna_t xiaoNrf54l15GetAntenna(void) {
 }
 
 extern "C" void initVariant(void) {
+    applyImuMicEnable(false);
+    applyBatteryEnable(false);
+
 #if defined(NRF54L15_CLEAN_ANTENNA_EXTERNAL)
     xiaoNrf54l15SetAntenna(XIAO_NRF54L15_ANTENNA_EXTERNAL);
 #else

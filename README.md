@@ -74,6 +74,12 @@ If `AnalogReadSerial` is stuck near full-scale (for example always `1023`):
 - make sure no previous sketch is driving `A0` as a digital output
 - retest with `File > Examples > 01.Basics > AnalogReadSerial`
 
+If sketch aliases like `IMU_MIC_EN`, `RF_SW`, `RF_SW_CTL`, `VBAT_EN`, `VBAT_READ`
+are reported as not declared:
+
+- update to `0.1.14` or newer
+- these XIAO board-control aliases are exposed in `pins_arduino.h` from that version
+
 If serial output starts showing random characters during sustained prints:
 
 - update to the latest Boards Manager release (UART TX timeout handling was
@@ -159,8 +165,13 @@ Peripheral instance routing note:
 | `PIN_BUTTON` (`17`) | `P0.00` | N/A | User button (active-low) |
 | `PIN_SAMD11_RX` (`18`) | `P1.09` | N/A | USB bridge route |
 | `PIN_SAMD11_TX` (`19`) | `P1.08` | N/A | USB bridge route |
+| `IMU_MIC_EN` / `IMU_MIC` (`20`) | `P0.01` | N/A | Sense IMU/MIC power enable |
+| `RF_SW` (`21`) | `P2.03` | N/A | RF switch power enable |
+| `RF_SW_CTL` (`22`) | `P2.05` | N/A | RF path select (`LOW=ceramic`, `HIGH=external`) |
+| `VBAT_EN` (`23`) | `P1.15` | N/A | VBAT divider enable |
+| `VBAT_READ` / `A7` | `P1.14` | `AIN7` | VBAT divider sense input |
 
-Additional board-control nets exposed in HAL:
+Additional board-control nets in HAL:
 
 | Function | MCU pin | Symbol |
 |---|---|---|
@@ -173,6 +184,7 @@ Additional board-control nets exposed in HAL:
 | MCU pin | Arduino alias |
 |---|---|
 | `P0.00` | `PIN_BUTTON` |
+| `P0.01` | `IMU_MIC_EN` / `IMU_MIC` |
 | `P0.03` | `D11` |
 | `P0.04` | `D12` |
 | `P1.04` | `D0/A0` |
@@ -183,13 +195,14 @@ Additional board-control nets exposed in HAL:
 | `P1.09` | `PIN_SAMD11_RX` |
 | `P1.10` | `D4/A4` |
 | `P1.11` | `D5/A5` |
-| `P1.14` | `A7` / VBAT sense |
-| `P1.15` | VBAT enable |
+| `P1.14` | `A7` / `VBAT_READ` |
+| `P1.15` | `VBAT_EN` |
 | `P2.00` | `LED_BUILTIN` |
 | `P2.01` | `D8` |
 | `P2.02` | `D10` |
+| `P2.03` | `RF_SW` |
 | `P2.04` | `D9` |
-| `P2.05` | RF switch control |
+| `P2.05` | `RF_SW_CTL` |
 | `P2.06` | `D15` |
 | `P2.07` | `D7` |
 | `P2.08` | `D6` |
@@ -241,6 +254,21 @@ BoardControl::setAntennaPath(BoardAntennaPath::kExternal);
 BoardControl::setAntennaPath(BoardAntennaPath::kControlHighImpedance);
 ```
 
+Arduino-level aliases are also available for sketch compatibility:
+
+```cpp
+pinMode(IMU_MIC_EN, OUTPUT);
+pinMode(RF_SW, OUTPUT);
+pinMode(RF_SW_CTL, OUTPUT);
+pinMode(VBAT_EN, OUTPUT);
+
+digitalWrite(IMU_MIC_EN, HIGH);
+digitalWrite(RF_SW, HIGH);
+digitalWrite(RF_SW_CTL, LOW);   // ceramic path
+digitalWrite(VBAT_EN, HIGH);    // enable divider before read
+int raw = analogRead(VBAT_READ);  // alias of A7 / P1.14
+```
+
 Important RF note:
 
 - `kControlHighImpedance` releases `P2.05` drive; it does **not** power-gate the RF switch IC.
@@ -266,6 +294,8 @@ Core examples:
 - `hardware/nrf54l15clean/0.1.0/examples/05.Memory/PreferencesBootCounter/PreferencesBootCounter.ino`
 - `hardware/nrf54l15clean/0.1.0/examples/05.Memory/EEPROMBootCounter/EEPROMBootCounter.ino`
 - `hardware/nrf54l15clean/0.1.0/examples/03.Peripherals/PeripheralProbe/PeripheralProbe.ino`
+- `hardware/nrf54l15clean/0.1.0/examples/03.Peripherals/XiaoBoardControlPins/XiaoBoardControlPins.ino`
+- `hardware/nrf54l15clean/0.1.0/examples/03.Peripherals/VbatReadViaAnalogRead/VbatReadViaAnalogRead.ino`
 - `hardware/nrf54l15clean/0.1.0/examples/03.Peripherals/InterruptPwmApiProbe/InterruptPwmApiProbe.ino`
 - `hardware/nrf54l15clean/0.1.0/examples/03.Peripherals/WireRepeatedStartProbe/WireRepeatedStartProbe.ino`
 - `hardware/nrf54l15clean/0.1.0/examples/03.Peripherals/WireTargetResponder/WireTargetResponder.ino`
