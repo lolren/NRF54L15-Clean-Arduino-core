@@ -122,6 +122,18 @@ static bool wait_event_or_error(uintptr_t base, uint32_t event_off, uint32_t spi
     return false;
 }
 
+static bool wait_tx_done_or_error(uintptr_t base, uint32_t spin) {
+    while (spin-- > 0U) {
+        if (reg32(base + T_EVENTS_LASTTX) != 0U || reg32(base + T_EVENTS_DMA_TX_END) != 0U) {
+            return true;
+        }
+        if (reg32(base + T_EVENTS_ERROR) != 0U) {
+            return false;
+        }
+    }
+    return false;
+}
+
 static bool decode_pin(uint8_t pin, uint8_t* port, uint8_t* p) {
     if (port == nullptr || p == nullptr) {
         return false;
@@ -450,22 +462,22 @@ uint8_t TwoWire::endTransmission(bool sendStop) {
     const uintptr_t base = reinterpret_cast<uintptr_t>(_twim);
 
     if (_txBufferLength == 0U && sendStop) {
-        // Zero-length TX does not always issue an address phase on this TWIM
-        // block, which breaks common scanner sketches. Probe with a 1-byte read
-        // to force address+ACK/NACK without modifying user RX buffers.
-        uint8_t probeByte = 0U;
+        // Force an address phase in write mode so write-only targets
+        // (for example SSD1306) can be detected by begin()/scanner code.
+        uint8_t dummy = 0x00U;
 
         reg32(base + T_EVENTS_STOPPED) = 0U;
         reg32(base + T_EVENTS_ERROR) = 0U;
-        reg32(base + T_EVENTS_LASTRX) = 0U;
+        reg32(base + T_EVENTS_LASTTX) = 0U;
+        reg32(base + T_EVENTS_DMA_TX_END) = 0U;
         reg32(base + T_TWIM_ERRORSRC) = T_TWIM_ERRORSRC_ALL;
 
         reg32(base + T_ADDRESS) = _txAddress;
-        reg32(base + T_DMA_RX_PTR) = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&probeByte));
-        reg32(base + T_DMA_RX_MAXCNT) = 1U;
-        reg32(base + T_TASKS_DMA_RX_START) = 1U;
+        reg32(base + T_DMA_TX_PTR) = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&dummy));
+        reg32(base + T_DMA_TX_MAXCNT) = 1U;
+        reg32(base + T_TASKS_DMA_TX_START) = 1U;
 
-        const bool readOk = wait_event_or_error(base, T_EVENTS_LASTRX, 300000UL);
+        const bool writeOk = wait_tx_done_or_error(base, 300000UL);
         const uint32_t errorsrc = reg32(base + T_TWIM_ERRORSRC) & T_TWIM_ERRORSRC_ALL;
 
         reg32(base + T_TASKS_STOP) = 1U;
@@ -475,7 +487,7 @@ uint8_t TwoWire::endTransmission(bool sendStop) {
         _pendingRepeatedStart = false;
         _txBufferLength = 0U;
         _lastActivityUs = micros();
-        return end_tx_error_code(readOk, stopOk, errorsrc);
+        return end_tx_error_code(writeOk, stopOk, errorsrc);
     }
 
     reg32(base + T_EVENTS_STOPPED) = 0U;

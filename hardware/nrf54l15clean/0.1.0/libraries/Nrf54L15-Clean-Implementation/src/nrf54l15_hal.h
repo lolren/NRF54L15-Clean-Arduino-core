@@ -296,7 +296,7 @@ class BoardControl {
   // Reads VBAT in millivolts (divider-compensated, x2).
   // This method enables the divider path only for the sampling window.
   static bool sampleBatteryMilliVolts(int32_t* outMilliVolts,
-                                      uint32_t settleDelayUs = 250U,
+                                      uint32_t settleDelayUs = 5000U,
                                       uint32_t spinLimit = 500000UL);
 
   // Approximate Li-ion state-of-charge from measured VBAT.
@@ -304,7 +304,7 @@ class BoardControl {
   static bool sampleBatteryPercent(uint8_t* outPercent,
                                    int32_t emptyMilliVolts = 3300,
                                    int32_t fullMilliVolts = 4200,
-                                   uint32_t settleDelayUs = 250U,
+                                   uint32_t settleDelayUs = 5000U,
                                    uint32_t spinLimit = 500000UL);
 };
 

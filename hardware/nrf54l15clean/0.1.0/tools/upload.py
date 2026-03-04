@@ -30,6 +30,18 @@ def tool_available(name: str) -> bool:
     return shutil.which(name) is not None
 
 
+def detect_pyocd_command() -> list[str] | None:
+    pyocd_exe = shutil.which("pyocd")
+    if pyocd_exe:
+        return [pyocd_exe]
+
+    module_probe = run([sys.executable, "-m", "pyocd", "--version"])
+    if module_probe.returncode == 0:
+        return [sys.executable, "-m", "pyocd"]
+
+    return None
+
+
 def resolve_tool(path_or_name: str) -> str | None:
     if not path_or_name:
         return None
@@ -111,20 +123,79 @@ def append_uid(cmd: list[str], uid: str | None) -> list[str]:
     return cmd
 
 
-def flash_hex(target: str, uid: str | None, hex_path: str) -> subprocess.CompletedProcess[str]:
-    cmd = append_uid(["pyocd", "load", "-W", "-t", target], uid)
+def flash_hex(
+    pyocd_cmd: list[str], target: str, uid: str | None, hex_path: str
+) -> subprocess.CompletedProcess[str]:
+    cmd = append_uid([*pyocd_cmd, "load", "-W", "-t", target], uid)
     cmd.extend([hex_path, "--format", "hex"])
     result = run(cmd)
     print_result(result)
     return result
 
 
-def recover_target(target: str, uid: str | None) -> subprocess.CompletedProcess[str]:
+def recover_target(
+    pyocd_cmd: list[str], target: str, uid: str | None
+) -> subprocess.CompletedProcess[str]:
     print("Detected protected target; attempting chip erase and retry...")
-    cmd = append_uid(["pyocd", "erase", "-W", "--chip", "-t", target], uid)
+    cmd = append_uid([*pyocd_cmd, "erase", "-W", "--chip", "-t", target], uid)
     result = run(cmd)
     print_result(result)
     return result
+
+
+def install_pyocd() -> bool:
+    print("Attempting to install pyocd for automatic target recovery...")
+
+    pip_check = run([sys.executable, "-m", "pip", "--version"])
+    if pip_check.returncode != 0:
+        ensurepip = run([sys.executable, "-m", "ensurepip", "--upgrade"])
+        print_result(ensurepip)
+        if ensurepip.returncode != 0:
+            return False
+
+    in_virtualenv = getattr(sys, "base_prefix", sys.prefix) != sys.prefix
+    if in_virtualenv:
+        install_cmds = [
+            [
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                "--upgrade",
+                "--disable-pip-version-check",
+                "pyocd",
+            ]
+        ]
+    else:
+        install_cmds = [
+            [
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                "--user",
+                "--upgrade",
+                "--disable-pip-version-check",
+                "pyocd",
+            ],
+            [
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                "--upgrade",
+                "--disable-pip-version-check",
+                "pyocd",
+            ],
+        ]
+
+    for cmd in install_cmds:
+        install = run(cmd)
+        print_result(install)
+        if install.returncode == 0:
+            return True
+
+    return False
 
 
 def choose_runner(requested: str, openocd_bin: str) -> str:
@@ -132,7 +203,7 @@ def choose_runner(requested: str, openocd_bin: str) -> str:
     if normalized != "auto":
         return normalized
 
-    if tool_available("pyocd"):
+    if detect_pyocd_command() is not None:
         return "pyocd"
     if resolve_tool(openocd_bin):
         return "openocd"
@@ -140,8 +211,14 @@ def choose_runner(requested: str, openocd_bin: str) -> str:
     raise RuntimeError("No supported uploader found (need pyocd or openocd in PATH)")
 
 
-def upload_pyocd(hex_path: str, target: str, requested_uid: str | None) -> int:
-    if not tool_available("pyocd"):
+def upload_pyocd(
+    hex_path: str,
+    target: str,
+    requested_uid: str | None,
+    pyocd_cmd: list[str] | None = None,
+) -> int:
+    pyocd_cmd = pyocd_cmd if pyocd_cmd is not None else detect_pyocd_command()
+    if pyocd_cmd is None:
         print("ERROR: pyocd is not installed or not available in PATH", file=sys.stderr)
         return 3
 
@@ -151,31 +228,33 @@ def upload_pyocd(hex_path: str, target: str, requested_uid: str | None) -> int:
     print(f"Runner: pyocd")
     print(f"Probe UID: {uid or 'auto-select'}")
 
-    load_result = flash_hex(target, uid, hex_path)
+    load_result = flash_hex(pyocd_cmd, target, uid, hex_path)
     if load_result.returncode != 0 and looks_like_locked_target(load_result):
-        erase_result = recover_target(target, uid)
+        erase_result = recover_target(pyocd_cmd, target, uid)
         if erase_result.returncode == 0:
-            load_result = flash_hex(target, uid, hex_path)
+            load_result = flash_hex(pyocd_cmd, target, uid, hex_path)
 
     if load_result.returncode != 0:
         print_linux_probe_permission_hint(load_result)
         return load_result.returncode
 
-    reset_cmd = append_uid(["pyocd", "reset", "-W", "-t", target], uid)
+    reset_cmd = append_uid([*pyocd_cmd, "reset", "-W", "-t", target], uid)
     reset_result = run(reset_cmd)
     print_result(reset_result)
     return 0
 
 
-def upload_openocd(hex_path: str, openocd_script: str, openocd_speed: int, openocd_bin: str) -> int:
+def upload_openocd(
+    hex_path: str, openocd_script: str, openocd_speed: int, openocd_bin: str
+) -> subprocess.CompletedProcess[str]:
     openocd_exe = resolve_tool(openocd_bin)
     if not openocd_exe:
         print(f"ERROR: openocd binary not found: {openocd_bin}", file=sys.stderr)
-        return 4
+        return subprocess.CompletedProcess(args=[openocd_bin], returncode=4, stdout="", stderr="")
 
     if not os.path.isfile(openocd_script):
         print(f"ERROR: OpenOCD config not found: {openocd_script}", file=sys.stderr)
-        return 2
+        return subprocess.CompletedProcess(args=[openocd_script], returncode=2, stdout="", stderr="")
 
     print(f"Flashing {hex_path}")
     print("Runner: openocd")
@@ -193,7 +272,7 @@ def upload_openocd(hex_path: str, openocd_script: str, openocd_speed: int, openo
     print_result(result)
     if result.returncode != 0:
         print_linux_probe_permission_hint(result)
-    return result.returncode
+    return result
 
 
 def main() -> int:
@@ -236,6 +315,13 @@ def main() -> int:
         print(f"ERROR: HEX file not found: {args.hex}", file=sys.stderr)
         return 2
 
+    if requested_runner == "auto" and detect_pyocd_command() is None:
+        print("pyocd not found; attempting one-time installation for reliable flashing...")
+        if install_pyocd():
+            print("pyocd installation succeeded.")
+        else:
+            print("pyocd installation failed; falling back to OpenOCD.", file=sys.stderr)
+
     try:
         runner = choose_runner(requested_runner, args.openocd_bin)
     except Exception as exc:
@@ -246,10 +332,31 @@ def main() -> int:
         rc = upload_pyocd(args.hex, args.target, args.uid)
         if rc != 0 and requested_runner == "auto":
             print("pyocd upload failed in auto mode; trying openocd...")
-            rc = upload_openocd(args.hex, args.openocd_script, args.openocd_speed, args.openocd_bin)
+            rc = upload_openocd(
+                args.hex, args.openocd_script, args.openocd_speed, args.openocd_bin
+            ).returncode
     elif runner == "openocd":
-        rc = upload_openocd(args.hex, args.openocd_script, args.openocd_speed, args.openocd_bin)
-        if rc != 0 and tool_available("pyocd"):
+        openocd_result = upload_openocd(
+            args.hex, args.openocd_script, args.openocd_speed, args.openocd_bin
+        )
+        rc = openocd_result.returncode
+
+        if rc != 0 and looks_like_locked_target(openocd_result):
+            pyocd_cmd = detect_pyocd_command()
+            if pyocd_cmd is None and requested_runner == "auto":
+                if install_pyocd():
+                    pyocd_cmd = detect_pyocd_command()
+
+            if pyocd_cmd is not None:
+                print("OpenOCD indicates protected target; attempting pyocd recover/flash...")
+                rc = upload_pyocd(args.hex, args.target, args.uid, pyocd_cmd)
+            elif requested_runner == "auto":
+                print(
+                    "ERROR: Target appears protected and OpenOCD cannot recover it. "
+                    "Install pyocd and retry (or select pyOCD upload method).",
+                    file=sys.stderr,
+                )
+        elif rc != 0 and detect_pyocd_command() is not None:
             print("OpenOCD upload failed; falling back to pyocd...")
             rc = upload_pyocd(args.hex, args.target, args.uid)
     else:

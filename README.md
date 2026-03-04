@@ -33,6 +33,33 @@ Then install package **`Nrf54L15-Clean-Implementation`** and select board:
 
 - `XIAO nRF54L15 (Nrf54L15-Clean-Implementation)`
 
+## Upload behavior across Linux / Windows / macOS
+
+This core is designed to upload reliably on all three desktop OS families.
+
+Default `Upload Method = Auto` behavior:
+
+1. Try `pyocd` first (most reliable path for this board/probe).
+2. If `pyocd` is missing, attempt a one-time install using the active Python:
+   `python -m pip install ...`
+3. If that install fails, fall back to OpenOCD.
+
+Protected target recovery:
+
+- If OpenOCD/pyOCD detects a protected/locked target (`APPROTECT`, FAULT ACK,
+  `Failed to read memory at 0xe000ed00`, `DP initialisation failed`), the
+  uploader will attempt pyOCD chip-erase recovery and retry flashing.
+
+First-time requirements:
+
+- Python 3 + pip available on the system.
+- Internet access for one-time `pyocd` bootstrap (when `pyocd` is not already installed).
+
+If your environment blocks pip installs:
+
+- Install `pyocd` manually first, then upload again.
+- Or select `Upload Method` explicitly in Tools and use the available runner.
+
 ## Troubleshooting
 
 If Arduino IDE shows two identical `XIAO nRF54L15 (Nrf54L15-Clean-Implementation)` entries:
@@ -66,6 +93,15 @@ If Adafruit GFX / BusIO / SSD1306 examples fail with missing symbols like
 - update to `0.1.7` or newer
 - this release adds compatibility shims used by those libraries and compiles
   the common Adafruit SSD1306 example set for this board
+
+If upload fails with OpenOCD errors like:
+
+- `Failed to read memory at 0xe000ed00`
+- `DP initialisation failed`
+- `AP write error`
+
+this usually indicates a protected/locked target state. Keep `Upload Method` on
+`Auto` (or select `pyOCD`) so the recovery erase/reflash path can run.
 
 ## Linux CMSIS-DAP permissions (one-time)
 

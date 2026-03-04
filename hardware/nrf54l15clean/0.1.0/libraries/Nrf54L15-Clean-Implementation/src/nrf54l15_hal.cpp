@@ -2695,7 +2695,7 @@ bool Saadc::sampleRaw(int16_t* outRaw, uint32_t spinLimit) const {
 
   reg32(base_ + saadc::RESULT_PTR) =
       static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&sample));
-  reg32(base_ + saadc::RESULT_MAXCNT) = 2;
+  reg32(base_ + saadc::RESULT_MAXCNT) = 1;
 
   reg32(base_ + saadc::TASKS_START) = 1;
   if (!waitForEvent(base_, saadc::EVENTS_STARTED, spinLimit)) {
@@ -2712,7 +2712,7 @@ bool Saadc::sampleRaw(int16_t* outRaw, uint32_t spinLimit) const {
     return false;
   }
 
-  if (reg32(base_ + saadc::RESULT_AMOUNT) < 2U) {
+  if (reg32(base_ + saadc::RESULT_AMOUNT) < 1U) {
     return false;
   }
 

@@ -6,6 +6,7 @@
 
 #include "Print.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -201,12 +202,49 @@ size_t Print::printSigned(long value, uint8_t base)
 
 size_t Print::printFloat(double value, uint8_t digits)
 {
-    char buf[48];
-    int precision = digits > 9 ? 9 : static_cast<int>(digits);
-    int written = snprintf(buf, sizeof(buf), "%.*f", precision, value);
-    if (written <= 0) {
-        return 0;
+    if (isnan(value)) {
+        return print("nan");
+    }
+    if (isinf(value)) {
+        return print("inf");
     }
 
-    return write(buf);
+    // Match longstanding Arduino behavior for out-of-range values.
+    if (value > 4294967040.0 || value < -4294967040.0) {
+        return print("ovf");
+    }
+
+    if (digits > 9U) {
+        digits = 9U;
+    }
+
+    size_t count = 0;
+    if (value < 0.0) {
+        count += write('-');
+        value = -value;
+    }
+
+    double rounding = 0.5;
+    for (uint8_t i = 0; i < digits; ++i) {
+        rounding /= 10.0;
+    }
+    value += rounding;
+
+    const unsigned long intPart = static_cast<unsigned long>(value);
+    double remainder = value - static_cast<double>(intPart);
+
+    count += printNumber(intPart, 10);
+
+    if (digits > 0U) {
+        count += write('.');
+    }
+
+    while (digits-- > 0U) {
+        remainder *= 10.0;
+        const uint8_t toPrint = static_cast<uint8_t>(remainder);
+        count += printNumber(toPrint, 10);
+        remainder -= static_cast<double>(toPrint);
+    }
+
+    return count;
 }
