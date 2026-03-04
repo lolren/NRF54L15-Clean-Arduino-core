@@ -1,6 +1,8 @@
 #include "Arduino.h"
+#include "cmsis.h"
 
 extern "C" void nrf54l15_clean_idle_service(void);
+extern "C" size_t nrf54l15_heap_free_bytes(void);
 
 extern "C" void __attribute__((weak)) init(void) {
     initSysTick();
@@ -13,6 +15,29 @@ extern "C" void __attribute__((weak)) yield(void) {
 #else
     __asm volatile("nop");
 #endif
+}
+
+extern "C" void __attribute__((weak)) softReset(void) {
+    static constexpr uintptr_t kScbAircr = 0xE000ED0CUL;
+    static constexpr uint32_t kAircrVectkey = (0x5FAUL << 16);
+    static constexpr uint32_t kAircrSysResetReq = (1UL << 2);
+
+    __DSB();
+    *reinterpret_cast<volatile uint32_t*>(kScbAircr) =
+        kAircrVectkey | kAircrSysResetReq;
+    __DSB();
+    __ISB();
+    while (true) {
+        __NOP();
+    }
+}
+
+extern "C" void __attribute__((weak)) SoftReset(void) {
+    softReset();
+}
+
+extern "C" uint32_t __attribute__((weak)) getFreeHeap(void) {
+    return static_cast<uint32_t>(nrf54l15_heap_free_bytes());
 }
 
 extern "C" void setup(void) __attribute__((weak));

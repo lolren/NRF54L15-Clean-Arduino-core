@@ -227,6 +227,11 @@ void noInterrupts(void);
 // Advanced I/O
 long map(long, long, long, long, long);
 
+// System helpers
+void softReset(void);
+void SoftReset(void);
+uint32_t getFreeHeap(void);
+
 // Sketch functions (defined by user)
 void setup(void);
 void loop(void);

@@ -6,6 +6,7 @@
  */
 
 #include <errno.h>
+#include <stddef.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -47,6 +48,14 @@ caddr_t _sbrk(int incr)
     char *prev_heap_end = heap_end;
     heap_end += incr;
     return (caddr_t)prev_heap_end;
+}
+
+size_t nrf54l15_heap_free_bytes(void)
+{
+    if (heap_end >= &__heap_end__) {
+        return 0U;
+    }
+    return (size_t)(&__heap_end__ - heap_end);
 }
 
 int _write(int file, const char *ptr, int len)
