@@ -100,6 +100,13 @@ If Adafruit GFX / BusIO / SSD1306 examples fail with missing symbols like
 - this release adds compatibility shims used by those libraries and compiles
   the common Adafruit SSD1306 example set for this board
 
+If SPI control pins (for example `CS`/`DC`) toggle but there is no clock on
+`D8` (`SPI SCK`):
+
+- update to `0.1.15` or newer
+- this release routes Arduino `SPI` to the XIAO header SPI fabric instance and
+  hardens EasyDMA transfer handling
+
 If upload fails with OpenOCD errors like:
 
 - `Failed to read memory at 0xe000ed00`
