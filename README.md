@@ -107,6 +107,12 @@ If SPI control pins (for example `CS`/`DC`) toggle but there is no clock on
 - this release routes Arduino `SPI` to the XIAO header SPI fabric instance and
   hardens EasyDMA transfer handling
 
+If `BoardControl::sampleBatteryMilliVolts(...)` fails or reports implausibly low
+voltage:
+
+- update to `0.1.16` or newer
+- this release fixes SAADC EasyDMA sample sizing in the HAL battery read path
+
 If upload fails with OpenOCD errors like:
 
 - `Failed to read memory at 0xe000ed00`

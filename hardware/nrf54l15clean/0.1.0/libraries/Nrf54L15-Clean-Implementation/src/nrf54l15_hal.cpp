@@ -2687,7 +2687,8 @@ bool Saadc::sampleRaw(int16_t* outRaw, uint32_t spinLimit) const {
     return false;
   }
 
-  int16_t sample = 0;
+  // EasyDMA writes this value asynchronously, keep it volatile.
+  volatile int16_t sample = 0;
 
   clearEvent(base_, saadc::EVENTS_STARTED);
   clearEvent(base_, saadc::EVENTS_END);
@@ -2695,7 +2696,8 @@ bool Saadc::sampleRaw(int16_t* outRaw, uint32_t spinLimit) const {
 
   reg32(base_ + saadc::RESULT_PTR) =
       static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&sample));
-  reg32(base_ + saadc::RESULT_MAXCNT) = 1;
+  // On nRF54 SAADC this counter is in bytes.
+  reg32(base_ + saadc::RESULT_MAXCNT) = sizeof(sample);
 
   reg32(base_ + saadc::TASKS_START) = 1;
   if (!waitForEvent(base_, saadc::EVENTS_STARTED, spinLimit)) {
@@ -2712,7 +2714,7 @@ bool Saadc::sampleRaw(int16_t* outRaw, uint32_t spinLimit) const {
     return false;
   }
 
-  if (reg32(base_ + saadc::RESULT_AMOUNT) < 1U) {
+  if (reg32(base_ + saadc::RESULT_AMOUNT) < sizeof(sample)) {
     return false;
   }
 
