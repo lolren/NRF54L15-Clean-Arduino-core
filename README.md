@@ -1,163 +1,154 @@
-# Nrf54L15-Clean-Implementation
+# XIAO nRF54L15 Clean Arduino Core
 
 Open-source Arduino board package for **Seeed XIAO nRF54L15** with a clean register-level implementation.
 
-- Core name: `Nrf54L15-Clean-Implementation`
+- Board package: `Nrf54L15-Clean-Implementation`
 - Board: `XIAO nRF54L15 (Nrf54L15-Clean-Implementation)`
 - FQBN: `nrf54l15clean:nrf54l15clean:xiao_nrf54l15`
 - No Zephyr runtime dependency
 - No nRF Connect SDK runtime dependency
 
-## Why this repo exists
+## What This Is
 
-This repo is intentionally different from the Zephyr-based core:
+This repo provides a normal Arduino Boards Manager package for XIAO nRF54L15.
 
-- Uses direct register programming for core + HAL behavior.
-- Ships as a normal Arduino Boards Manager package.
-- Does not require users to install large external SDKs to build/upload.
+Compared with the Zephyr-based core, it:
 
-## Boards Manager install
+- uses direct register programming for core + HAL behavior
+- keeps build/install flow inside normal Arduino IDE / Arduino CLI workflows
+- does not require a large external SDK just to compile and upload sketches
 
-Add this URL to Arduino IDE / Arduino CLI Additional Boards Manager URLs:
+## Quick Start
+
+Use this Additional Boards Manager URL:
 
 ```text
-https://raw.githubusercontent.com/lolren/NRF54L15-Clean-Arduino-core/main/package_nrf54l15clean_stable_index.json
+https://raw.githubusercontent.com/lolren/NRF54L15-Clean-Arduino-core/main/package_nrf54l15clean_index.json
 ```
 
-If your IDE/CLI already cached an older index, remove cache and update indexes:
+The `package_nrf54l15clean_stable_index.json` URL is kept for compatibility, but the main index above is the supported/default install path.
 
-- Linux: `rm -f ~/.arduino15/package_nrf54l15clean_index.json ~/.arduino15/package_nrf54l15clean_stable_index.json`
-- Then run: `arduino-cli core update-index`
+Then install **`Nrf54L15-Clean-Implementation`** and select:
 
-Then install package **`Nrf54L15-Clean-Implementation`** and select board:
+- board: `XIAO nRF54L15 (Nrf54L15-Clean-Implementation)`
+- upload method: `Auto`
 
-- `XIAO nRF54L15 (Nrf54L15-Clean-Implementation)`
+CLI install example:
 
-## Upload behavior across Linux / Windows / macOS
+```bash
+arduino-cli core update-index \
+  --additional-urls https://raw.githubusercontent.com/lolren/NRF54L15-Clean-Arduino-core/main/package_nrf54l15clean_index.json
 
-This core is designed to upload reliably on all three desktop OS families.
+arduino-cli core install nrf54l15clean:nrf54l15clean \
+  --additional-urls https://raw.githubusercontent.com/lolren/NRF54L15-Clean-Arduino-core/main/package_nrf54l15clean_index.json
+```
+
+If the board does not appear in Boards Manager, jump to `Troubleshooting` first. The most common cause is a local sketchbook override hiding the package entry.
+
+## First Upload
 
 Default `Upload Method = Auto` behavior:
 
-1. Try `pyocd` first (most reliable path for this board/probe).
-2. If `pyocd` is missing, attempt a one-time install using the active Python:
-   `python -m pip install ...`
-3. If that install fails, fall back to OpenOCD.
+1. Try `pyocd` first.
+2. If `pyocd` is missing, try a one-time install through the active Python.
+3. If that fails, fall back to OpenOCD.
 
 Protected target recovery:
 
-- If OpenOCD/pyOCD detects a protected/locked target (`APPROTECT`, FAULT ACK,
-  `Failed to read memory at 0xe000ed00`, `DP initialisation failed`), the
-  uploader will attempt pyOCD chip-erase recovery and retry flashing.
+- if the target is locked (`APPROTECT`, `FAULT ACK`, `Failed to read memory at 0xe000ed00`, `DP initialisation failed`), the uploader will try a recovery erase and retry flashing
 
 First-time requirements:
 
-- Python 3 + pip available on the system.
-- Internet access for one-time `pyocd` bootstrap (when `pyocd` is not already installed).
+- Python 3 + `pip`
+- internet access for one-time `pyocd` bootstrap if `pyocd` is not already installed
 
-If your environment blocks pip installs:
+Linux note:
 
-- Install `pyocd` manually first, then upload again.
-- Or select `Upload Method` explicitly in Tools and use the available runner.
+- if the CMSIS-DAP probe is visible in `lsusb` but upload says `No connected debug probes`, add the udev rule shown in `Troubleshooting`
+
+## Board Overview
+
+![XIAO nRF54L15 default pin routes](docs/xiao_nrf54l15_default_pin_routes.png)
+
+### Default Peripheral Routes
+
+| Peripheral | Default pins | Notes |
+|---|---|---|
+| `Wire` | `SDA=D4(P1.10)`, `SCL=D5(P1.11)` | Dedicated `TWIM22` controller |
+| `Wire1` | `SDA=D12(P0.04)`, `SCL=D11(P0.03)` | Dedicated `TWIM30` controller |
+| `SPI` | `MOSI=D10(P2.02)`, `MISO=D9(P2.04)`, `SCK=D8(P2.01)`, `SS=D2(P1.06)` | Runtime clock via `SPISettings` |
+| `Serial1` / `Serial2` | `TX=D6(P2.08)`, `RX=D7(P2.07)` | `Serial2` is alias of `Serial1` |
+| `Serial` | USB bridge by default | Can be switched to header UART via Tools |
+
+Routing note:
+
+- `Serial` / `Serial1` use the serial-fabric UARTE instances (`20` / `21`)
+- `Wire` and `Wire1` use dedicated I2C controllers (`TWIM22` / `TWIM30`)
+- `Serial` + `Wire` + `Wire1` can run together
+
+Board-control snippet:
+
+```cpp
+#include "nrf54l15_hal.h"
+using namespace xiao_nrf54l15;
+
+int32_t vbatMv = 0;
+BoardControl::sampleBatteryMilliVolts(&vbatMv);
+BoardControl::setAntennaPath(BoardAntennaPath::kCeramic);
+BoardControl::setRfSwitchPowerEnabled(false);
+```
+
+For the full pin maps, Tools menu summary, and board-control notes, see [Board Reference](docs/board-reference.md).
+
+## Examples
+
+Core examples live under [`hardware/nrf54l15clean/0.1.0/examples`](hardware/nrf54l15clean/0.1.0/examples).
+
+Suggested starting points:
+
+- Basics: [`Blink`](hardware/nrf54l15clean/0.1.0/examples/01.Basics/Blink), [`AnalogReadSerial`](hardware/nrf54l15clean/0.1.0/examples/01.Basics/AnalogReadSerial)
+- Peripherals: [`PeripheralProbe`](hardware/nrf54l15clean/0.1.0/examples/03.Peripherals/PeripheralProbe), [`WireImuRemapScanner`](hardware/nrf54l15clean/0.1.0/examples/03.Peripherals/WireImuRemapScanner), [`XiaoBoardControlPins`](hardware/nrf54l15clean/0.1.0/examples/03.Peripherals/XiaoBoardControlPins)
+- Memory: [`PreferencesBootCounter`](hardware/nrf54l15clean/0.1.0/examples/05.Memory/PreferencesBootCounter), [`EEPROMBootCounter`](hardware/nrf54l15clean/0.1.0/examples/05.Memory/EEPROMBootCounter)
+- Power / HAL / BLE examples: [`hardware/nrf54l15clean/0.1.0/libraries/Nrf54L15-Clean-Implementation/examples`](hardware/nrf54l15clean/0.1.0/libraries/Nrf54L15-Clean-Implementation/examples)
+
+Recommended library examples:
+
+- Power: `LowPowerIdleWfi`, `InterruptWatchdogLowPower`, `BoardBatteryAntennaBusControl`
+- BLE: `BleAdvertiser`, `BlePassiveScanner`, `BleActiveScanner`, `BleConnectionPeripheral`, `BleGattBasicPeripheral`
 
 ## Troubleshooting
 
-If Arduino IDE shows two identical `XIAO nRF54L15 (Nrf54L15-Clean-Implementation)` entries:
+### Board Does Not Appear In Boards Manager
 
-- remove any local legacy sketchbook platform copy/symlink (common culprit):
-  `~/Arduino/hardware/nrf54l15clean/0.1.0`
-- keep only the Boards Manager package (`nrf54l15clean:nrf54l15clean`).
+Check these first:
 
-If `AnalogReadSerial` is stuck near full-scale (for example always `1023`):
+- use the standard package index URL shown in `Quick Start`
+- remove any local sketchbook override at `~/Arduino/hardware/nrf54l15clean`
+- clear cached indexes and refresh:
 
-- update to the latest Boards Manager release of this core
-- make sure no previous sketch is driving `A0` as a digital output
-- retest with `File > Examples > 01.Basics > AnalogReadSerial`
+```bash
+rm -f ~/.arduino15/package_nrf54l15clean_index.json \
+      ~/.arduino15/package_nrf54l15clean_stable_index.json
+arduino-cli core update-index
+```
 
-If sketch aliases like `IMU_MIC_EN`, `RF_SW`, `RF_SW_CTL`, `VBAT_EN`, `VBAT_READ`
-are reported as not declared:
+A local sketchbook platform copy or symlink can prevent the Boards Manager package from appearing or being installable.
 
-- update to `0.1.14` or newer
-- these XIAO board-control aliases are exposed in `pins_arduino.h` from that version
+If `package_nrf54l15clean_stable_index.json` does not show the board either, treat that as the same problem. In a clean Arduino CLI home, both index URLs install the package correctly.
 
-If serial output starts showing random characters during sustained prints:
+### Upload Fails With Probe Errors
 
-- update to the latest Boards Manager release (UART TX timeout handling was
-  hardened in `0.1.5`)
-- verify Serial Monitor baud matches the sketch `Serial.begin(...)` value
+If upload reports:
 
-If `SSD1306wire` examples fail with `B00101100`/`Bxxxx` compile errors:
-
-- update to `0.1.6` or newer (legacy binary literal compatibility was added)
-- for this library version, use `oled.begin(&SSD1306_128x64, 0x3C)` argument order
-- note: this specific library declares `avr` architecture and may still show
-  warnings on ARM cores
-
-If Adafruit GFX / BusIO / SSD1306 examples fail with missing symbols like
-`BitOrder`, `__FlashStringHelper`, `digitalPinToPort`, or `wiring_private.h`:
-
-- update to `0.1.7` or newer
-- this release adds compatibility shims used by those libraries and compiles
-  the common Adafruit SSD1306 example set for this board
-
-If SPI control pins (for example `CS`/`DC`) toggle but there is no clock on
-`D8` (`SPI SCK`):
-
-- update to `0.1.15` or newer
-- this release routes Arduino `SPI` to the XIAO header SPI fabric instance and
-  hardens EasyDMA transfer handling
-
-If `BoardControl::sampleBatteryMilliVolts(...)` fails or reports implausibly low
-voltage:
-
-- update to `0.1.16` or newer
-- this release fixes SAADC EasyDMA sample sizing in the HAL battery read path
-
-If compile output repeatedly shows
-`<command-line>: warning: ISO C++11 requires whitespace after the macro name`:
-
-- update to `0.1.17` or newer
-- this release hardens `ARDUINO_ARCH_*` macro emission so legacy local-core IDs
-  no longer generate invalid macro names
-
-If `Tools -> Power Profile -> Low Power (WFI Idle)` causes `Blink` to stall
-or `SYSTEM OFF` sketches show unexpectedly high current / immediate re-wake:
-
-- update to `0.1.18` or newer
-- this release fixes low-power idle timing on nRF54L15 using a GRTC-backed
-  low-power tick and hardens `SYSTEM OFF` entry sequencing (quiesce internal
-  tick sources, stop HFXO, clear `RESETREAS`, and apply reset-path anomaly
-  workaround)
-
-If `RF_SW` / `RF_SW_CTL` changes do not affect RSSI in BLE sketches like
-`BleAdvertiser`:
-
-- update to `0.1.19` or newer
-- this release stops BLE startup from reasserting the Tools antenna route over
-  sketch-managed RF switch GPIO state and adds explicit RF switch power control
-
-If `Wire1.begin()` appears to hang when you are printing over `Serial`:
-
-- update to the latest release of this core
-- current main routes `Wire` to the board's dedicated `TWIM22` controller and
-  `Wire1` to `TWIM30`, so `Serial` + `Wire` + `Wire1` can run together
-- use `Wire.begin()` for `D4/D5` and `Wire1.begin()` for `D12/D11`
-- see:
-  `hardware/nrf54l15clean/0.1.0/examples/03.Peripherals/WireImuRemapScanner/WireImuRemapScanner.ino`
-
-If upload fails with OpenOCD errors like:
-
+- `No connected debug probes`
 - `Failed to read memory at 0xe000ed00`
 - `DP initialisation failed`
 - `AP write error`
 
-this usually indicates a protected/locked target state. Keep `Upload Method` on
-`Auto` (or select `pyOCD`) so the recovery erase/reflash path can run.
+then:
 
-## Linux CMSIS-DAP permissions (one-time)
-
-If upload reports `No connected debug probes` but `lsusb` shows
-`2886:0066 Seeed Studio XIAO nrf54 CMSIS-DAP`, add a udev rule:
+- keep `Upload Method` on `Auto` or explicitly choose `pyOCD`
+- if Linux permissions are the issue, add this rule:
 
 ```bash
 cat <<'RULE' | sudo tee /etc/udev/rules.d/60-seeed-xiao-nrf54-cmsis-dap.rules >/dev/null
@@ -168,278 +159,43 @@ sudo udevadm control --reload-rules
 sudo udevadm trigger --attr-match=idVendor=2886 --attr-match=idProduct=0066
 ```
 
-## Pinout
+### Sketch Compiles Or Runs Wrong On An Older Release
 
-![XIAO nRF54L15 default pin routes](docs/xiao_nrf54l15_default_pin_routes.png)
+Before debugging behavior, update the core to the latest release.
 
-## Default peripheral routes
+That especially applies if you see:
 
-| Peripheral | Default pins | Notes |
-|---|---|---|
-| `Wire` (I2C primary) | `SDA=D4(P1.10)`, `SCL=D5(P1.11)` | Dedicated `TWIM22` controller |
-| `Wire1` (I2C secondary) | `SDA=D12(P0.04)`, `SCL=D11(P0.03)` | Dedicated `TWIM30` controller |
-| `SPI` | `MOSI=D10(P2.02)`, `MISO=D9(P2.04)`, `SCK=D8(P2.01)`, `SS=D2(P1.06)` | Runtime clock via `SPISettings` |
-| `Serial1` / `Serial2` | `TX=D6(P2.08)`, `RX=D7(P2.07)` | `Serial2` is alias of `Serial1` |
-| `Serial` | USB bridge (default) | Can be switched to header UART via Tools menu |
+- missing sketch aliases like `IMU_MIC_EN`, `RF_SW`, `VBAT_EN`
+- `Wire1.begin()` / USB serial interaction from older releases
+- low-power issues on old builds
+- RF switch / BLE antenna routing surprises from old builds
+- old Adafruit / SSD1306 compatibility failures already fixed in newer releases
 
-Peripheral instance routing note:
-- `Serial`/`Serial1` use the serial-fabric UARTE instances (`20` / `21`).
-- Arduino `Wire` uses the board's dedicated `TWIM22` controller for `D4/D5`.
-- Arduino `Wire1` uses the board's dedicated `TWIM30` controller for `D12/D11`.
-- Because those I2C buses are not sharing the UART serial-fabric instances,
-  `Serial` + `Wire` + `Wire1` can run together.
-- `Wire.setPins(...)` remains available for manual remap experiments, but it is
-  no longer required just to keep USB `Serial` alive while talking to `D11/D12`.
+### `AnalogReadSerial` Is Stuck Near Full Scale
 
-## Arduino pin map (Arduino -> MCU)
+- make sure a previous sketch is not still driving `A0` as a digital output
+- retest with [`AnalogReadSerial`](hardware/nrf54l15clean/0.1.0/examples/01.Basics/AnalogReadSerial)
 
-| Arduino pin | MCU pin | ADC input | Typical role |
-|---|---|---|---|
-| `D0` / `A0` | `P1.04` | `AIN0` | GPIO / ADC |
-| `D1` / `A1` | `P1.05` | `AIN1` | GPIO / ADC |
-| `D2` / `A2` | `P1.06` | `AIN2` | GPIO / ADC / `SS` |
-| `D3` / `A3` | `P1.07` | `AIN3` | GPIO / ADC |
-| `D4` / `A4` | `P1.10` | N/A | `Wire SDA` |
-| `D5` / `A5` | `P1.11` | `AIN4` | `Wire SCL` |
-| `D6` | `P2.08` | N/A | `Serial1/2 TX` |
-| `D7` | `P2.07` | N/A | `Serial1/2 RX` |
-| `D8` | `P2.01` | N/A | `SPI SCK` |
-| `D9` | `P2.04` | N/A | `SPI MISO` |
-| `D10` | `P2.02` | N/A | `SPI MOSI` |
-| `D11` | `P0.03` | N/A | Back pad / `Wire1 SCL` |
-| `D12` | `P0.04` | N/A | Back pad / `Wire1 SDA` |
-| `D13` | `P2.10` | N/A | Back pad GPIO |
-| `D14` | `P2.09` | N/A | Back pad GPIO |
-| `D15` | `P2.06` | N/A | Back pad GPIO |
-| `LED_BUILTIN` (`16`) | `P2.00` | N/A | User LED (active-low) |
-| `PIN_BUTTON` (`17`) | `P0.00` | N/A | User button (active-low) |
-| `PIN_SAMD11_RX` (`18`) | `P1.09` | N/A | USB bridge route |
-| `PIN_SAMD11_TX` (`19`) | `P1.08` | N/A | USB bridge route |
-| `IMU_MIC_EN` / `IMU_MIC` (`20`) | `P0.01` | N/A | Sense IMU/MIC power enable |
-| `RF_SW` (`21`) | `P2.03` | N/A | RF switch power enable |
-| `RF_SW_CTL` (`22`) | `P2.05` | N/A | RF path select (`LOW=ceramic`, `HIGH=external`) |
-| `VBAT_EN` (`23`) | `P1.15` | N/A | VBAT divider enable |
-| `VBAT_READ` / `A7` | `P1.14` | `AIN7` | VBAT divider sense input |
+### Serial Output Looks Corrupted
 
-Additional board-control nets in HAL:
+- verify Serial Monitor baud matches `Serial.begin(...)`
+- update to the latest release before investigating further
 
-| Function | MCU pin | Symbol |
-|---|---|---|
-| VBAT divider enable | `P1.15` | `kPinVbatEnable` |
-| VBAT ADC sense | `P1.14` | `kPinVbatSense` / `A7` |
-| RF switch control | `P2.05` | `kPinRfSwitchCtl` |
+### `Wire1` And USB Logging
 
-## MCU pin map (MCU -> Arduino)
+Current main routes:
 
-| MCU pin | Arduino alias |
-|---|---|
-| `P0.00` | `PIN_BUTTON` |
-| `P0.01` | `IMU_MIC_EN` / `IMU_MIC` |
-| `P0.03` | `D11` |
-| `P0.04` | `D12` |
-| `P1.04` | `D0/A0` |
-| `P1.05` | `D1/A1` |
-| `P1.06` | `D2/A2` |
-| `P1.07` | `D3/A3` |
-| `P1.08` | `PIN_SAMD11_TX` |
-| `P1.09` | `PIN_SAMD11_RX` |
-| `P1.10` | `D4/A4` |
-| `P1.11` | `D5/A5` |
-| `P1.14` | `A7` / `VBAT_READ` |
-| `P1.15` | `VBAT_EN` |
-| `P2.00` | `LED_BUILTIN` |
-| `P2.01` | `D8` |
-| `P2.02` | `D10` |
-| `P2.03` | `RF_SW` |
-| `P2.04` | `D9` |
-| `P2.05` | `RF_SW_CTL` |
-| `P2.06` | `D15` |
-| `P2.07` | `D7` |
-| `P2.08` | `D6` |
-| `P2.09` | `D14` |
-| `P2.10` | `D13` |
+- `Wire` -> `TWIM22` on `D4/D5`
+- `Wire1` -> `TWIM30` on `D12/D11`
 
-## Implemented Arduino core APIs
+So `Serial` + `Wire` + `Wire1` can run together. For the `D11/D12` bus, use `Wire1.begin()` directly.
 
-- GPIO: `pinMode`, `digitalRead`, `digitalWrite`, `attachInterrupt`, `detachInterrupt`
-- ADC/PWM: `analogRead`, `analogReadResolution(bits)`, `analogWrite`, `analogWriteResolution`
-- UART: `Serial`, `Serial1`, `Serial2`
-- I2C: `Wire` + `Wire1`, repeated-start, target/slave callbacks
-- SPI: transactions + runtime frequency/mode/order
-- Timing/power: `millis`, `micros`, delays, optional low-power idle profile
-- Stream parser helpers: `setTimeout`, `find*`, `parseInt/parseFloat`, `readBytes*`, `readString*`
-- Print/Printable compatibility: `Printable`, `print(const Printable&)`, `println(const Printable&)`
-- Persistent storage: `Preferences` key/value API (flash-backed)
-- EEPROM compatibility: `EEPROM` (`begin/read/write/update/get/put/commit/end`)
-- Legacy compatibility hooks: `cli()/sei()`, `makeWord(...)`, AVR-like port access helpers
-- Network base compatibility headers: `IPAddress`, `Client`, `Server`, `Udp/UDP`
+## More Docs
 
-## HAL blocks in bundled library
-
-Library path:
-
-- `hardware/nrf54l15clean/0.1.0/libraries/Nrf54L15-Clean-Implementation`
-
-Implemented blocks:
-
-- `ClockControl`, `Gpio`, `Spim`, `Twim`, `Uarte`
-- `Saadc`, `Timer`, `Pwm`, `Gpiote`
-- `PowerManager`, `Grtc`, `TempSensor`, `Watchdog`, `Pdm`
-- `BleRadio` (custom peripheral LL + ATT/GATT subset)
-- `BoardControl` (battery sense + antenna route control)
-
-## Board control helpers (battery + RF switch)
-
-```cpp
-#include "nrf54l15_hal.h"
-using namespace xiao_nrf54l15;
-
-int32_t vbatMv = 0;
-uint8_t vbatPct = 0;
-BoardControl::sampleBatteryMilliVolts(&vbatMv);
-BoardControl::sampleBatteryPercent(&vbatPct);
-
-BoardControl::setAntennaPath(BoardAntennaPath::kCeramic);
-BoardControl::setAntennaPath(BoardAntennaPath::kExternal);
-BoardControl::setAntennaPath(BoardAntennaPath::kControlHighImpedance);
-BoardControl::setRfSwitchPowerEnabled(false);  // power-gate the switch IC
-```
-
-Arduino-level aliases are also available for sketch compatibility:
-
-```cpp
-pinMode(IMU_MIC_EN, OUTPUT);
-pinMode(RF_SW, OUTPUT);
-pinMode(RF_SW_CTL, OUTPUT);
-pinMode(VBAT_EN, OUTPUT);
-
-digitalWrite(IMU_MIC_EN, HIGH);
-digitalWrite(RF_SW, HIGH);
-digitalWrite(RF_SW_CTL, LOW);   // ceramic path
-digitalWrite(VBAT_EN, HIGH);    // enable divider before read
-int raw = analogRead(VBAT_READ);  // alias of A7 / P1.14
-```
-
-Important RF note:
-
-- `Tools > Antenna` sets the startup default only. Sketches can override the RF switch later with `BoardControl`, `digitalWrite(...)`, or direct register writes, and BLE startup will not force the Tools setting back.
-- `BoardControl::setAntennaPath(...)` powers `RF_SW` (`P2.03`) on so the selected route takes effect.
-- `BoardControl::setRfSwitchPowerEnabled(false)` or `digitalWrite(RF_SW, LOW)` powers the RF switch off when you do not need it.
-- `kControlHighImpedance` releases `P2.05` drive; it does **not** power-gate the RF switch IC.
-
-## Tools menu options
-
-- Upload method: Auto / pyOCD / OpenOCD
-- CPU frequency: 64 MHz / 128 MHz
-- BLE support: On / Off
-- BLE TX power: `-20`, `-8`, `0`, `+8` dBm
-- BLE timing profile: Interop / Balanced low-power / Aggressive low-power
-- BLE trace: Off / On
-- Power profile: Balanced / Low power (WFI idle)
-- Peripheral auto-gating: Off / 2 ms / 200 us
-- Antenna route: Ceramic / External U.FL
-- Serial routing: USB bridge / Header UART
-
-## Example sketches
-
-Core examples:
-
-- `hardware/nrf54l15clean/0.1.0/examples/01.Basics/AnalogReadSerial/AnalogReadSerial.ino`
-- `hardware/nrf54l15clean/0.1.0/examples/05.Memory/PreferencesBootCounter/PreferencesBootCounter.ino`
-- `hardware/nrf54l15clean/0.1.0/examples/05.Memory/EEPROMBootCounter/EEPROMBootCounter.ino`
-- `hardware/nrf54l15clean/0.1.0/examples/03.Peripherals/PeripheralProbe/PeripheralProbe.ino`
-- `hardware/nrf54l15clean/0.1.0/examples/03.Peripherals/XiaoBoardControlPins/XiaoBoardControlPins.ino`
-- `hardware/nrf54l15clean/0.1.0/examples/03.Peripherals/VbatReadViaAnalogRead/VbatReadViaAnalogRead.ino`
-- `hardware/nrf54l15clean/0.1.0/examples/03.Peripherals/InterruptPwmApiProbe/InterruptPwmApiProbe.ino`
-- `hardware/nrf54l15clean/0.1.0/examples/03.Peripherals/WireRepeatedStartProbe/WireRepeatedStartProbe.ino`
-- `hardware/nrf54l15clean/0.1.0/examples/03.Peripherals/WireTargetResponder/WireTargetResponder.ino`
-- `hardware/nrf54l15clean/0.1.0/examples/03.Peripherals/WireImuRemapScanner/WireImuRemapScanner.ino`
-
-Library examples (HAL + BLE + power):
-
-- `.../examples/BoardBatteryAntennaBusControl/BoardBatteryAntennaBusControl.ino`
-- `.../examples/InterruptWatchdogLowPower/InterruptWatchdogLowPower.ino`
-- `.../examples/BleAdvertiser/BleAdvertiser.ino`
-- `.../examples/BlePassiveScanner/BlePassiveScanner.ino`
-- `.../examples/BleActiveScanner/BleActiveScanner.ino`
-- `.../examples/BleConnectionPeripheral/BleConnectionPeripheral.ino`
-- `.../examples/BleGattBasicPeripheral/BleGattBasicPeripheral.ino`
-- `.../examples/BleCustomGattRuntime/BleCustomGattRuntime.ino`
-- `.../examples/BleBatteryNotifyPeripheral/BleBatteryNotifyPeripheral.ino`
-- `.../examples/BlePairingEncryptionStatus/BlePairingEncryptionStatus.ino`
-- `.../examples/BleBondPersistenceProbe/BleBondPersistenceProbe.ino`
-- `.../examples/BleConnectionTimingMetrics/BleConnectionTimingMetrics.ino`
-
-## BLE status (current)
-
-Validated and stable with host adapter + hardware:
-
-- Advertising
-- Passive scanning
-- Active scanning (`SCAN_REQ` / `SCAN_RSP`)
-- Connect/disconnect
-- GATT discovery/read
-- Battery notify CCCD flow
-
-Current gap (tracked):
-
-- Pairing/bond persistence is still **partial**.
-  - Successful `Paired: yes` / `Bonded: yes` outcomes are observed.
-  - Repeated runs are still unstable due intermittent auth timeouts and Intel host-controller crash artifacts (`Hardware Error 0x0c`).
-
-Channel sounding status:
-
-- BLE channel sounding / AoA/AoD style feature parity is **not implemented yet** in this clean core.
-- It is tracked as advanced future work due significant PHY + timing + controller complexity.
-
-## Validation artifacts
-
-- `FEATURE_PARITY.md`
-- `TODO.md`
-- `POWER_PROFILE_MEASUREMENTS.md`
-- `docs/BLE_CLI_MATRIX_SUMMARY.md`
-- `docs/BLE_REGRESSION_RUNBOOK.md`
-- `docs/BUG_TRACKER.md`
-- `scripts/ble_cli_matrix.sh`
-- `scripts/ble_pair_bond_regression.sh`
-
-## Local development workflow
-
-Use one of:
-
-- `~/Arduino/hardware/...` sketchbook override (active development)
-- `~/.arduino15/packages/...` package-layout override
-
-Example compile:
-
-```bash
-arduino-cli compile --fqbn nrf54l15clean:nrf54l15clean:xiao_nrf54l15 \
-  hardware/nrf54l15clean/0.1.0/examples/03.Peripherals/InterruptPwmApiProbe/InterruptPwmApiProbe.ino
-```
-
-Example BLE matrix run:
-
-```bash
-bash scripts/ble_cli_matrix.sh --port /dev/ttyACM0 --sudo
-```
-
-Example pair/bond regression run:
-
-```bash
-bash scripts/ble_pair_bond_regression.sh --port /dev/ttyACM0 --sudo --attempts 10 --mode pair-bond
-```
-
-Example bonded reconnect regression run:
-
-```bash
-bash scripts/ble_pair_bond_regression.sh --port /dev/ttyACM0 --sudo --attempts 5 --mode bonded-reconnect --example BleBondPersistenceProbe
-```
-
-If multiple host adapters are present:
-
-```bash
-bash scripts/ble_pair_bond_regression.sh --sudo --controller AA:BB:CC:DD:EE:FF --btmon-iface hci1
-```
+- [Board Reference](docs/board-reference.md)
+- [Development Notes](docs/development.md)
+- [Bundled HAL / BLE library README](hardware/nrf54l15clean/0.1.0/libraries/Nrf54L15-Clean-Implementation/README.md)
+- [Releases](https://github.com/lolren/NRF54L15-Clean-Arduino-core/releases)
 
 ## Support
 
