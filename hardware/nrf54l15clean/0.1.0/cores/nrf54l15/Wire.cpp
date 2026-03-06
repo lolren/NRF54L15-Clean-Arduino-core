@@ -426,6 +426,40 @@ void TwoWire::end() {
     _lastActivityUs = micros();
 }
 
+bool TwoWire::setPins(uint8_t sda, uint8_t scl) {
+    if (_twim == nullptr) {
+        return false;
+    }
+
+    uint8_t sclPort = 0, sclPin = 0, sdaPort = 0, sdaPin = 0;
+    if (!decode_pin(scl, &sclPort, &sclPin) || !decode_pin(sda, &sdaPort, &sdaPin)) {
+        return false;
+    }
+
+    const bool wasInitialized = _initialized;
+    const bool wasTarget = _targetRegistered;
+    const uint8_t targetAddress = _targetAddress;
+
+    if (wasInitialized) {
+        end();
+    }
+
+    _sda = sda;
+    _scl = scl;
+
+    if (!wasInitialized) {
+        return true;
+    }
+
+    if (wasTarget) {
+        begin(targetAddress);
+    } else {
+        begin();
+    }
+
+    return _initialized;
+}
+
 void TwoWire::setClock(uint32_t freq) {
     _frequency = freq;
     if (_initialized && !_targetRegistered && _twim != nullptr) {

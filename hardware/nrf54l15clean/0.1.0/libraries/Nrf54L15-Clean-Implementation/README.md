@@ -44,6 +44,9 @@ Compatibility note:
 
 - `Serial` is routed to the opposite serial-fabric instance from default `Wire` and `SPI`, so `Serial` + `Wire` + `SPI` can run together in either Serial Routing mode.
 - `Wire1` shares an instance with `Serial`, and `Serial1/Serial2` share an instance with default `Wire`/`SPI`. Avoid those pairings concurrently.
+- If you need `Serial` plus the IMU/back-pad bus on `D12/D11`, remap `Wire`
+  with `Wire.setPins(PIN_WIRE1_SDA, PIN_WIRE1_SCL)` before `Wire.begin()`.
+  This reuses the primary `Wire` controller on the alternate pins.
 
 ## BoardControl APIs
 

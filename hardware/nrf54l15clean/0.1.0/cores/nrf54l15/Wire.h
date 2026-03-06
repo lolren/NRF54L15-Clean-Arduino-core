@@ -33,6 +33,7 @@ public:
     void begin(uint8_t address);
     void begin(int address);
     void end();
+    bool setPins(uint8_t sda, uint8_t scl);
     void setClock(uint32_t freq);
 
     void beginTransmission(uint8_t address);

@@ -136,6 +136,16 @@ If `RF_SW` / `RF_SW_CTL` changes do not affect RSSI in BLE sketches like
 - this release stops BLE startup from reasserting the Tools antenna route over
   sketch-managed RF switch GPIO state and adds explicit RF switch power control
 
+If `Wire1.begin()` appears to hang when you are printing over `Serial`:
+
+- update to `0.1.20` or newer
+- `Wire1` shares a serial-fabric instance with `Serial`, so the next
+  `Serial.print(...)` after `Wire1.begin()` can go silent
+- remap `Wire` onto the IMU/back-pad pins instead:
+  `Wire.setPins(PIN_WIRE1_SDA, PIN_WIRE1_SCL); Wire.begin();`
+- see:
+  `hardware/nrf54l15clean/0.1.0/examples/03.Peripherals/WireImuRemapScanner/WireImuRemapScanner.ino`
+
 If upload fails with OpenOCD errors like:
 
 - `Failed to read memory at 0xe000ed00`
@@ -176,6 +186,9 @@ sudo udevadm trigger --attr-match=idVendor=2886 --attr-match=idProduct=0066
 Peripheral instance routing note:
 - `Serial` is intentionally routed to the opposite serial-fabric instance from default `Wire` and `SPI`, so `Serial` + `Wire` + `SPI` can run together in both Serial Routing modes.
 - `Wire1` shares an instance with `Serial`, and `Serial1/Serial2` share an instance with default `Wire`/`SPI`.
+- When you need `Serial` plus the IMU/back-pad bus on `D12/D11`, remap `Wire`
+  with `Wire.setPins(PIN_WIRE1_SDA, PIN_WIRE1_SCL)`. That keeps the
+  non-conflicting controller instance, but `Wire` is then no longer on `D4/D5`.
 
 ## Arduino pin map (Arduino -> MCU)
 
@@ -339,6 +352,7 @@ Core examples:
 - `hardware/nrf54l15clean/0.1.0/examples/03.Peripherals/InterruptPwmApiProbe/InterruptPwmApiProbe.ino`
 - `hardware/nrf54l15clean/0.1.0/examples/03.Peripherals/WireRepeatedStartProbe/WireRepeatedStartProbe.ino`
 - `hardware/nrf54l15clean/0.1.0/examples/03.Peripherals/WireTargetResponder/WireTargetResponder.ino`
+- `hardware/nrf54l15clean/0.1.0/examples/03.Peripherals/WireImuRemapScanner/WireImuRemapScanner.ino`
 
 Library examples (HAL + BLE + power):
 
