@@ -143,6 +143,9 @@ If `Wire1.begin()` appears to hang when you are printing over `Serial`:
   `Serial.print(...)` after `Wire1.begin()` can go silent
 - remap `Wire` onto the IMU/back-pad pins instead:
   `Wire.setPins(PIN_WIRE1_SDA, PIN_WIRE1_SCL); Wire.begin();`
+- this keeps `Serial` alive while probing the optional `D11/D12` IMU bus, but
+  it moves `Wire` off `D4/D5`, so it does not provide both hardware I2C buses
+  plus serial at the same time
 - see:
   `hardware/nrf54l15clean/0.1.0/examples/03.Peripherals/WireImuRemapScanner/WireImuRemapScanner.ino`
 
@@ -189,6 +192,9 @@ Peripheral instance routing note:
 - When you need `Serial` plus the IMU/back-pad bus on `D12/D11`, remap `Wire`
   with `Wire.setPins(PIN_WIRE1_SDA, PIN_WIRE1_SCL)`. That keeps the
   non-conflicting controller instance, but `Wire` is then no longer on `D4/D5`.
+- Using `D6/D7` for serial logs does not remove that limit: any live UART still
+  consumes one of the same two fabric instances that the two hardware I2C buses
+  would need.
 
 ## Arduino pin map (Arduino -> MCU)
 

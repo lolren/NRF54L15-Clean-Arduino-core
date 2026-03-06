@@ -1,11 +1,18 @@
 /*
   WireImuRemapScanner
 
-  Keeps Serial logging alive while scanning the IMU/back-pad I2C bus on D12/D11.
+  Keeps Serial logging alive while probing the optional IMU/back-pad I2C bus
+  on D12/D11.
 
   On this core, Wire1 shares a serial-fabric instance with Serial, so sketches
   that call Wire1.begin() and then print to Serial can look like they hang.
   The workaround is to remap Wire onto the IMU/back-pad pins instead.
+
+  Notes:
+  - The D11/D12 IMU footprint is only populated on XIAO nRF54L15 Sense boards.
+  - This example intentionally probes the known IMU addresses instead of doing
+    a full 1..126 scan, because an empty bus can take a long time to scan with
+    the current software timeout path.
 
   Hardware:
   - IMU/back-pad SDA: D12 / P0.04
@@ -15,25 +22,54 @@
 
 #include <Wire.h>
 
-static void scanBus(TwoWire& bus) {
-  uint8_t found = 0;
+static constexpr uint8_t kImuWhoAmIReg = 0x0FU;
+static const uint8_t kImuAddresses[] = {0x6AU, 0x6BU};
 
-  Serial.println("Scanning remapped Wire bus...");
-  for (uint8_t address = 1; address < 127; ++address) {
-    bus.beginTransmission(address);
-    const uint8_t error = bus.endTransmission();
-    if (error == 0U) {
-      Serial.print("Found device at 0x");
+static bool readWhoAmI(TwoWire& bus, uint8_t address, uint8_t* whoAmI) {
+  if (whoAmI == nullptr) {
+    return false;
+  }
+
+  bus.beginTransmission(address);
+  bus.write(kImuWhoAmIReg);
+  if (bus.endTransmission(false) != 0U) {
+    return false;
+  }
+
+  const int received = bus.requestFrom(static_cast<int>(address), 1, 1);
+  if (received != 1 || bus.available() <= 0) {
+    return false;
+  }
+
+  *whoAmI = static_cast<uint8_t>(bus.read());
+  return true;
+}
+
+static void probeImuBus(TwoWire& bus) {
+  bool found = false;
+
+  Serial.println("Probing D12/D11 for optional IMU...");
+  for (uint8_t i = 0; i < (sizeof(kImuAddresses) / sizeof(kImuAddresses[0])); ++i) {
+    const uint8_t address = kImuAddresses[i];
+    uint8_t whoAmI = 0U;
+    if (readWhoAmI(bus, address, &whoAmI)) {
+      Serial.print("IMU responded at 0x");
       if (address < 16U) {
         Serial.print('0');
       }
-      Serial.println(address, HEX);
-      ++found;
+      Serial.print(address, HEX);
+      Serial.print(" WHO_AM_I=0x");
+      if (whoAmI < 16U) {
+        Serial.print('0');
+      }
+      Serial.println(whoAmI, HEX);
+      found = true;
     }
   }
 
-  if (found == 0U) {
-    Serial.println("No devices found on D12/D11");
+  if (!found) {
+    Serial.println("No IMU response at 0x6A/0x6B on D12/D11");
+    Serial.println("This is expected on non-Sense boards or if the optional IMU is not populated.");
   }
   Serial.println();
 }
@@ -58,10 +94,10 @@ void setup() {
   Wire.begin();
   Wire.setClock(400000);
 
-  Serial.println("Wire remapped to D12/D11 for IMU/back-pad scan");
+  Serial.println("Wire remapped to D12/D11 for optional IMU probe");
 }
 
 void loop() {
-  scanBus(Wire);
+  probeImuBus(Wire);
   delay(1000);
 }

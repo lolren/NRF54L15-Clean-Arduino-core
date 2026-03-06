@@ -47,6 +47,9 @@ Compatibility note:
 - If you need `Serial` plus the IMU/back-pad bus on `D12/D11`, remap `Wire`
   with `Wire.setPins(PIN_WIRE1_SDA, PIN_WIRE1_SCL)` before `Wire.begin()`.
   This reuses the primary `Wire` controller on the alternate pins.
+- That workaround keeps one I2C bus plus serial alive; it does not provide both
+  hardware I2C buses plus serial at the same time. Using `D6/D7` for logging
+  still consumes one of the same two fabric instances.
 
 ## BoardControl APIs
 
