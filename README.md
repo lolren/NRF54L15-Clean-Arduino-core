@@ -138,14 +138,10 @@ If `RF_SW` / `RF_SW_CTL` changes do not affect RSSI in BLE sketches like
 
 If `Wire1.begin()` appears to hang when you are printing over `Serial`:
 
-- update to `0.1.20` or newer
-- `Wire1` shares a serial-fabric instance with `Serial`, so the next
-  `Serial.print(...)` after `Wire1.begin()` can go silent
-- remap `Wire` onto the IMU/back-pad pins instead:
-  `Wire.setPins(PIN_WIRE1_SDA, PIN_WIRE1_SCL); Wire.begin();`
-- this keeps `Serial` alive while probing the optional `D11/D12` IMU bus, but
-  it moves `Wire` off `D4/D5`, so it does not provide both hardware I2C buses
-  plus serial at the same time
+- update to the latest release of this core
+- current main routes `Wire` to the board's dedicated `TWIM22` controller and
+  `Wire1` to `TWIM30`, so `Serial` + `Wire` + `Wire1` can run together
+- use `Wire.begin()` for `D4/D5` and `Wire1.begin()` for `D12/D11`
 - see:
   `hardware/nrf54l15clean/0.1.0/examples/03.Peripherals/WireImuRemapScanner/WireImuRemapScanner.ino`
 
@@ -180,21 +176,20 @@ sudo udevadm trigger --attr-match=idVendor=2886 --attr-match=idProduct=0066
 
 | Peripheral | Default pins | Notes |
 |---|---|---|
-| `Wire` (I2C primary) | `SDA=D4(P1.10)`, `SCL=D5(P1.11)` | Sketch compatibility default |
-| `Wire1` (I2C secondary) | `SDA=D12(P0.04)`, `SCL=D11(P0.03)` | Back-pad bus |
+| `Wire` (I2C primary) | `SDA=D4(P1.10)`, `SCL=D5(P1.11)` | Dedicated `TWIM22` controller |
+| `Wire1` (I2C secondary) | `SDA=D12(P0.04)`, `SCL=D11(P0.03)` | Dedicated `TWIM30` controller |
 | `SPI` | `MOSI=D10(P2.02)`, `MISO=D9(P2.04)`, `SCK=D8(P2.01)`, `SS=D2(P1.06)` | Runtime clock via `SPISettings` |
 | `Serial1` / `Serial2` | `TX=D6(P2.08)`, `RX=D7(P2.07)` | `Serial2` is alias of `Serial1` |
 | `Serial` | USB bridge (default) | Can be switched to header UART via Tools menu |
 
 Peripheral instance routing note:
-- `Serial` is intentionally routed to the opposite serial-fabric instance from default `Wire` and `SPI`, so `Serial` + `Wire` + `SPI` can run together in both Serial Routing modes.
-- `Wire1` shares an instance with `Serial`, and `Serial1/Serial2` share an instance with default `Wire`/`SPI`.
-- When you need `Serial` plus the IMU/back-pad bus on `D12/D11`, remap `Wire`
-  with `Wire.setPins(PIN_WIRE1_SDA, PIN_WIRE1_SCL)`. That keeps the
-  non-conflicting controller instance, but `Wire` is then no longer on `D4/D5`.
-- Using `D6/D7` for serial logs does not remove that limit: any live UART still
-  consumes one of the same two fabric instances that the two hardware I2C buses
-  would need.
+- `Serial`/`Serial1` use the serial-fabric UARTE instances (`20` / `21`).
+- Arduino `Wire` uses the board's dedicated `TWIM22` controller for `D4/D5`.
+- Arduino `Wire1` uses the board's dedicated `TWIM30` controller for `D12/D11`.
+- Because those I2C buses are not sharing the UART serial-fabric instances,
+  `Serial` + `Wire` + `Wire1` can run together.
+- `Wire.setPins(...)` remains available for manual remap experiments, but it is
+  no longer required just to keep USB `Serial` alive while talking to `D11/D12`.
 
 ## Arduino pin map (Arduino -> MCU)
 

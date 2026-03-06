@@ -1,12 +1,13 @@
 /*
   WireImuRemapScanner
 
-  Keeps Serial logging alive while probing the optional IMU/back-pad I2C bus
-  on D12/D11.
+  Probes the optional IMU/back-pad I2C bus on D12/D11 while keeping USB Serial
+  logging active.
 
-  On this core, Wire1 shares a serial-fabric instance with Serial, so sketches
-  that call Wire1.begin() and then print to Serial can look like they hang.
-  The workaround is to remap Wire onto the IMU/back-pad pins instead.
+  Historical note:
+  - this example kept its original filename for continuity with issue links
+  - current main no longer needs a Wire remap workaround for this use case
+  - use Wire1 directly for the D12/D11 bus
 
   Notes:
   - The D11/D12 IMU footprint is only populated on XIAO nRF54L15 Sense boards.
@@ -84,20 +85,13 @@ void setup() {
   digitalWrite(IMU_MIC_EN, HIGH);
   delay(10);
 
-  if (!Wire.setPins(PIN_WIRE1_SDA, PIN_WIRE1_SCL)) {
-    Serial.println("Wire.setPins failed");
-    while (true) {
-      delay(1000);
-    }
-  }
+  Wire1.begin();
+  Wire1.setClock(400000);
 
-  Wire.begin();
-  Wire.setClock(400000);
-
-  Serial.println("Wire remapped to D12/D11 for optional IMU probe");
+  Serial.println("Wire1 active on D12/D11 for optional IMU probe");
 }
 
 void loop() {
-  probeImuBus(Wire);
+  probeImuBus(Wire1);
   delay(1000);
 }

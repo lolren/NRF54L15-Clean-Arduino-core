@@ -214,34 +214,71 @@ static uint8_t end_tx_error_code(bool transactionOk, bool stopOk, uint32_t error
     return 4U;
 }
 
-static IRQn_Type twi_irqn_for_instance(const NRF_TWIM_Type* twim) {
+static bool twi_try_irqn_for_instance(const NRF_TWIM_Type* twim, IRQn_Type* irqn) {
+    if (irqn == nullptr) {
+        return false;
+    }
+
     const uintptr_t base = reinterpret_cast<uintptr_t>(twim);
     if (base == reinterpret_cast<uintptr_t>(NRF_TWIM21)) {
-        return TWIM21_IRQn;
+        *irqn = TWIM21_IRQn;
+        return true;
     }
-    return TWIM20_IRQn;
+    if (base == reinterpret_cast<uintptr_t>(NRF_TWIM20)) {
+        *irqn = TWIM20_IRQn;
+        return true;
+    }
+    return false;
 }
 
 static TwoWire* g_twim20Owner = nullptr;
 static TwoWire* g_twim21Owner = nullptr;
+static TwoWire* g_twim22Owner = nullptr;
+static TwoWire* g_twim30Owner = nullptr;
+static TwoWire* g_unknownOwner = nullptr;
 
 static TwoWire*& twi_owner_slot(const NRF_TWIM_Type* twim) {
     const uintptr_t base = reinterpret_cast<uintptr_t>(twim);
+    if (base == reinterpret_cast<uintptr_t>(NRF_TWIM20)) {
+        return g_twim20Owner;
+    }
     if (base == reinterpret_cast<uintptr_t>(NRF_TWIM21)) {
         return g_twim21Owner;
     }
-    return g_twim20Owner;
+    if (base == reinterpret_cast<uintptr_t>(NRF_TWIM22)) {
+        return g_twim22Owner;
+    }
+    if (base == reinterpret_cast<uintptr_t>(NRF_TWIM30)) {
+        return g_twim30Owner;
+    }
+    return g_unknownOwner;
+}
+
+static void twi_clear_owner_if_target_active(const NRF_TWIM_Type* twim, TwoWire* ownerToClear) {
+    TwoWire*& owner = twi_owner_slot(twim);
+    if (owner != ownerToClear) {
+        return;
+    }
+
+    IRQn_Type irqn = Reset_IRQn;
+    if (twi_try_irqn_for_instance(twim, &irqn)) {
+        NVIC_DisableIRQ(irqn);
+    }
+    owner = nullptr;
+}
+
+static bool twi_supports_target_mode(const NRF_TWIM_Type* twim) {
+    IRQn_Type irqn = Reset_IRQn;
+    return twi_try_irqn_for_instance(twim, &irqn);
 }
 
 }  // namespace
 
-#if defined(NRF54L15_CLEAN_SERIAL_ROUTE_HEADER)
-TwoWire Wire(NRF_TWIM20, PIN_WIRE_SDA, PIN_WIRE_SCL);
-TwoWire Wire1(NRF_TWIM21, PIN_WIRE1_SDA, PIN_WIRE1_SCL);
-#else
-TwoWire Wire(NRF_TWIM21, PIN_WIRE_SDA, PIN_WIRE_SCL);
-TwoWire Wire1(NRF_TWIM20, PIN_WIRE1_SDA, PIN_WIRE1_SCL);
-#endif
+// The XIAO nRF54L15 board routes its two hardware I2C buses onto dedicated
+// controllers (D4/D5 -> TWIM22, D12/D11 -> TWIM30), not the serial-fabric
+// instances used by Serial/Serial1.
+TwoWire Wire(NRF_TWIM22, PIN_WIRE_SDA, PIN_WIRE_SCL);
+TwoWire Wire1(NRF_TWIM30, PIN_WIRE1_SDA, PIN_WIRE1_SCL);
 
 extern "C" void TWIM20_IRQHandler(void) {
     if (g_twim20Owner != nullptr) {
@@ -296,11 +333,7 @@ void TwoWire::begin() {
 
     const uintptr_t base = reinterpret_cast<uintptr_t>(_twim);
 
-    TwoWire*& owner = twi_owner_slot(_twim);
-    if (owner == this) {
-        NVIC_DisableIRQ(twi_irqn_for_instance(_twim));
-        owner = nullptr;
-    }
+    twi_clear_owner_if_target_active(_twim, this);
 
     reg32(base + T_INTENCLR) = T_TWIS_INT_MASK;
     reg32(base + T_SHORTS) = 0U;
@@ -327,6 +360,10 @@ void TwoWire::begin(uint8_t address) {
     if (_twim == nullptr) {
         return;
     }
+    if (!twi_supports_target_mode(_twim)) {
+        end();
+        return;
+    }
 
     uint8_t sclPort = 0, sclPin = 0, sdaPort = 0, sdaPin = 0;
     if (!decode_pin(_scl, &sclPort, &sclPin) || !decode_pin(_sda, &sdaPort, &sdaPin)) {
@@ -337,13 +374,15 @@ void TwoWire::begin(uint8_t address) {
     configure_i2c_pin(sdaPort, sdaPin);
 
     const uintptr_t base = reinterpret_cast<uintptr_t>(_twim);
-    const IRQn_Type irqn = twi_irqn_for_instance(_twim);
+    IRQn_Type irqn = Reset_IRQn;
+    const bool hasIqn = twi_try_irqn_for_instance(_twim, &irqn);
     TwoWire*& owner = twi_owner_slot(_twim);
-
-    if (owner == this) {
-        NVIC_DisableIRQ(irqn);
-        owner = nullptr;
+    if (!hasIqn) {
+        end();
+        return;
     }
+
+    twi_clear_owner_if_target_active(_twim, this);
 
     reg32(base + T_ENABLE) = T_ENABLE_DISABLED;
     reg32(base + T_INTENCLR) = T_TWIS_INT_MASK;
@@ -399,13 +438,7 @@ void TwoWire::end() {
     }
 
     const uintptr_t base = reinterpret_cast<uintptr_t>(_twim);
-    const IRQn_Type irqn = twi_irqn_for_instance(_twim);
-    TwoWire*& owner = twi_owner_slot(_twim);
-
-    if (owner == this) {
-        NVIC_DisableIRQ(irqn);
-        owner = nullptr;
-    }
+    twi_clear_owner_if_target_active(_twim, this);
 
     reg32(base + T_INTENCLR) = T_TWIS_INT_MASK;
     reg32(base + T_SHORTS) = 0U;

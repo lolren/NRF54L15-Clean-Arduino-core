@@ -9,7 +9,9 @@ This package uses direct peripheral register access from the nRF54L15 datasheet 
 - `ClockControl`: HFXO control wrapper (runtime-managed no-op on this Arduino core).
 - `Gpio`: configure/read/write/toggle and open-drain style drive setup for I2C.
 - `Spim`: SPI master with route-aware instance selection (`SPIM21` in USB-bridge `Serial` mode, `SPIM20` in header-UART `Serial` mode), plus EasyDMA transfer and runtime frequency control.
-- `Twim`: I2C master with route-aware instance selection (`TWIM21` in USB-bridge `Serial` mode, `TWIM20` in header-UART `Serial` mode), plus write/read/writeRead and runtime frequency control.
+- `Twim`: I2C master on a caller-selected controller base (for example `TWIM22`
+  for `D4/D5`, `TWIM30` for `D12/D11`), plus write/read/writeRead and runtime
+  frequency control.
 - `Uarte`: UART (UARTE21) with EasyDMA TX/RX.
 - `Saadc`: single-ended ADC sampling and millivolt conversion.
 - `Timer`: timer/counter setup, compare channels, shortcuts, and callback service.
@@ -42,14 +44,12 @@ Default Arduino peripheral pin routes:
 
 Compatibility note:
 
-- `Serial` is routed to the opposite serial-fabric instance from default `Wire` and `SPI`, so `Serial` + `Wire` + `SPI` can run together in either Serial Routing mode.
-- `Wire1` shares an instance with `Serial`, and `Serial1/Serial2` share an instance with default `Wire`/`SPI`. Avoid those pairings concurrently.
-- If you need `Serial` plus the IMU/back-pad bus on `D12/D11`, remap `Wire`
-  with `Wire.setPins(PIN_WIRE1_SDA, PIN_WIRE1_SCL)` before `Wire.begin()`.
-  This reuses the primary `Wire` controller on the alternate pins.
-- That workaround keeps one I2C bus plus serial alive; it does not provide both
-  hardware I2C buses plus serial at the same time. Using `D6/D7` for logging
-  still consumes one of the same two fabric instances.
+- Arduino `Wire` now routes `D4/D5` to dedicated `TWIM22`, and `Wire1` routes
+  `D12/D11` to dedicated `TWIM30`.
+- Because those are separate from the serial-fabric UARTE instances used by
+  `Serial` / `Serial1`, both I2C buses can coexist with serial logging.
+- The lower-level `Twim` HAL remains explicit: choose the controller base that
+  matches the pins you want to drive.
 
 ## BoardControl APIs
 
