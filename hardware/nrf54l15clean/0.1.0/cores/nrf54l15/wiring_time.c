@@ -14,12 +14,12 @@ static const uint32_t kScbScrSleepOnExit_Msk = (1UL << 1);
 
 #if defined(NRF54L15_CLEAN_POWER_LOW)
 #ifdef NRF_TRUSTZONE_NONSECURE
-static const uintptr_t kGrtcBase = 0x400E2000UL;
+#define NRF54L15_CLEAN_GRTC_BASE 0x400E2000UL
 #else
-static const uintptr_t kGrtcBase = 0x500E2000UL;
+#define NRF54L15_CLEAN_GRTC_BASE 0x500E2000UL
 #endif
 static NRF_GRTC_Type* const g_low_power_grtc =
-    (NRF_GRTC_Type*)kGrtcBase;
+    (NRF_GRTC_Type*)NRF54L15_CLEAN_GRTC_BASE;
 static const uint8_t kLowPowerTickChannel = 11U;
 static const uint32_t kLowPowerTickUs = 1000UL;
 
