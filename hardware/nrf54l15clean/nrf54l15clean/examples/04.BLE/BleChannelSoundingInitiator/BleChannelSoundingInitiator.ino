@@ -28,11 +28,10 @@ static uint32_t g_targetRspRssiCount = 0;
 
 static constexpr uint32_t kAdvListenSpinPerChannel = 1200000UL;
 static constexpr uint32_t kScanRspListenSpin = 300000UL;
-// Log-distance model constants for rough BLE ranging.
 static constexpr float kRefRssiAtOneMeterDbm = -59.0f;
 static constexpr float kPathLossExponent = 2.0f;
 
-// Must match BleChannelSoundingReflector address.
+// Must match CoreBleChannelSoundingReflector address.
 static const uint8_t kReflectorAddress[6] = {0x5A, 0x15, 0x54, 0x15, 0xDE, 0xC0};
 
 static bool addressMatches(const uint8_t* a, const uint8_t* b) {
@@ -140,7 +139,7 @@ void setup() {
   Serial.begin(115200);
   delay(350);
 
-  Serial.print("\r\nBleChannelSoundingInitiator start\r\n");
+  Serial.print("\r\nCoreBleChannelSoundingInitiator start\r\n");
   Gpio::configure(kPinUserLed, GpioDirection::kOutput, GpioPull::kDisabled);
   Gpio::write(kPinUserLed, true);
 
@@ -156,6 +155,7 @@ void setup() {
   Serial.print("dBm n=");
   Serial.print(kPathLossExponent);
   Serial.print("\r\n");
+  Serial.print("pair_with=CoreBleChannelSoundingReflector\r\n");
   if (!g_ready) {
     Serial.print("Hint: enable Tools -> BLE Support = Enabled\r\n");
   }

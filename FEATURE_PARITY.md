@@ -78,7 +78,7 @@ Legend:
 | Bond persistence | Partial | Record format + retention path + default flash-backed RRAM persistence implemented; stable bonded reconnect validation is still pending. |
 | Central role / multi-role | Planned | Not implemented. |
 | Extended advertising / periodic advertising | Planned | Not implemented. |
-| Channel sounding / AoA/AoD parity | Partial | RSSI-based two-board channel sounding examples added (`BleChannelSoundingInitiator`/`BleChannelSoundingReflector`) on legacy adv channels; full Bluetooth CS/AoA/AoD LL procedure is still not implemented. |
+| Channel sounding / AoA/AoD parity | Partial | RSSI-based two-board channel sounding examples are available in both core examples and bundled HAL library (`BleChannelSoundingInitiator`/`BleChannelSoundingReflector`), including `dist_cm`/`dist_mm` estimate output; full Bluetooth CS/AoA/AoD LL procedure is still not implemented. |
 
 ## CLI validation status (hardware-tested)
 

@@ -108,6 +108,7 @@ Suggested starting points:
 
 - Basics: [`Blink`](hardware/nrf54l15clean/nrf54l15clean/examples/01.Basics/Blink), [`AnalogReadSerial`](hardware/nrf54l15clean/nrf54l15clean/examples/01.Basics/AnalogReadSerial)
 - Peripherals: [`PeripheralProbe`](hardware/nrf54l15clean/nrf54l15clean/examples/03.Peripherals/PeripheralProbe), [`WireImuRemapScanner`](hardware/nrf54l15clean/nrf54l15clean/examples/03.Peripherals/WireImuRemapScanner), [`XiaoBoardControlPins`](hardware/nrf54l15clean/nrf54l15clean/examples/03.Peripherals/XiaoBoardControlPins)
+- Core BLE: [`BleBeaconMinimal`](hardware/nrf54l15clean/nrf54l15clean/examples/04.BLE/BleBeaconMinimal), [`BleChannelSoundingReflector`](hardware/nrf54l15clean/nrf54l15clean/examples/04.BLE/BleChannelSoundingReflector), [`BleChannelSoundingInitiator`](hardware/nrf54l15clean/nrf54l15clean/examples/04.BLE/BleChannelSoundingInitiator)
 - Memory: [`PreferencesBootCounter`](hardware/nrf54l15clean/nrf54l15clean/examples/05.Memory/PreferencesBootCounter), [`EEPROMBootCounter`](hardware/nrf54l15clean/nrf54l15clean/examples/05.Memory/EEPROMBootCounter)
 - Power / HAL / BLE examples: [`hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples`](hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples)
 
@@ -115,6 +116,7 @@ Recommended library examples:
 
 - Power: `LowPowerIdleWfi`, `InterruptWatchdogLowPower`, `BoardBatteryAntennaBusControl`
 - BLE: `BleAdvertiser`, `BlePassiveScanner`, `BleActiveScanner`, `BleConnectionPeripheral`, `BleGattBasicPeripheral`
+- Channel sounding note: `BleChannelSoundingInitiator` prints `dist_cm` and `dist_mm` as RSSI-based distance estimates (rough model, environment dependent)
 
 ## Troubleshooting
 
@@ -143,6 +145,21 @@ This means a stale FQBN is still being used from an older local-platform layout.
 - use FQBN: `nrf54l15clean:nrf54l15clean:xiao_nrf54l15`
 - reselect board in IDE: `Tools -> Board -> XIAO nRF54L15 (Nrf54L15-Clean-Implementation)`
 - if needed, remove local sketchbook override `~/Arduino/hardware/nrf54l15clean` and reinstall from Boards Manager
+
+### Core Examples Not Visible In Arduino IDE
+
+If `File -> Examples -> Examples for XIAO nRF54L15 (Nrf54L15-Clean-Implementation)` is empty or missing expected sketches:
+
+- confirm board selection is exactly `XIAO nRF54L15 (Nrf54L15-Clean-Implementation)`
+- remove stale sketchbook override `~/Arduino/hardware/nrf54l15clean` (it can shadow package files)
+- reinstall the core from Boards Manager
+- restart Arduino IDE after reinstall so examples are re-indexed
+
+CLI sanity check:
+
+```bash
+find ~/.arduino15/packages/nrf54l15clean/hardware -path "*/examples/04.BLE/*/*.ino" -print
+```
 
 ### Upload Fails With Probe Errors
 

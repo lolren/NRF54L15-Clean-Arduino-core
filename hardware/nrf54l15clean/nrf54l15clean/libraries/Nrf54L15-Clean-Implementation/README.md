@@ -162,7 +162,7 @@ BLE examples:
   - Replies to `SCAN_REQ` and reports per-channel reflector-side RSSI aggregates.
 - `examples/BleChannelSoundingInitiator/BleChannelSoundingInitiator.ino`
   - Active scanner role that filters the reflector address and builds per-channel RSSI stats.
-  - Reports live channel quality summary and best channel hint from measured averages.
+  - Reports live channel quality summary, best channel hint, and RSSI-based distance estimate (`dist_cm`, `dist_mm`).
 
 ## Low-Power Examples
 
