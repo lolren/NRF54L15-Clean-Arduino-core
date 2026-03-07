@@ -24,6 +24,7 @@ constexpr uint32_t SPIM21_BASE = static_cast<uint32_t>(NRF_TWIM21_BASE);
 constexpr uint32_t SAADC_BASE = static_cast<uint32_t>(NRF_SAADC_BASE);
 constexpr uint32_t PWM20_BASE = static_cast<uint32_t>(NRF_PWM20_BASE);
 constexpr uint32_t OSCILLATORS_BASE = static_cast<uint32_t>(NRF_OSCILLATORS_BASE);
+constexpr uint32_t CLOCK_BASE = static_cast<uint32_t>(NRF_CLOCK_BASE);
 constexpr uint32_t FICR_BASE = 0x00FFC000UL;
 
 #ifdef NRF_TRUSTZONE_NONSECURE
@@ -36,6 +37,7 @@ constexpr uint32_t GPIOTE30_BASE = 0x4010C000UL;
 constexpr uint32_t PDM20_BASE = 0x400D0000UL;
 constexpr uint32_t TEMP_BASE = 0x400D7000UL;
 constexpr uint32_t RADIO_BASE = 0x4008A000UL;
+constexpr uint32_t MEMCONF_BASE = 0x400CF000UL;
 constexpr uint32_t GRTC_BASE = 0x400E2000UL;
 constexpr uint32_t WDT31_BASE = 0x40109000UL;
 constexpr uint32_t POWER_BASE = 0x4010E000UL;
@@ -51,6 +53,7 @@ constexpr uint32_t GPIOTE30_BASE = 0x5010C000UL;
 constexpr uint32_t PDM20_BASE = 0x500D0000UL;
 constexpr uint32_t TEMP_BASE = 0x500D7000UL;
 constexpr uint32_t RADIO_BASE = 0x5008A000UL;
+constexpr uint32_t MEMCONF_BASE = 0x500CF000UL;
 constexpr uint32_t GRTC_BASE = 0x500E2000UL;
 constexpr uint32_t WDT31_BASE = 0x50109000UL;
 constexpr uint32_t POWER_BASE = 0x5010E000UL;

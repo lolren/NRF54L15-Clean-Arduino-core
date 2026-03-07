@@ -26,11 +26,15 @@ extern "C" {
 #include "nrf54l15_types.h"
 
 // ============================================================================
-// Non-secure peripheral base addresses used by this core
+// Peripheral base addresses used by this core
 // ============================================================================
 
 #define NRF_P2_NS_BASE         0x40050400UL
 #define NRF_P2_S_BASE          0x50050400UL
+#define NRF_MEMCONF_NS_BASE    0x400CF000UL
+#define NRF_MEMCONF_S_BASE     0x500CF000UL
+#define NRF_GRTC_NS_BASE       0x400E2000UL
+#define NRF_GRTC_S_BASE        0x500E2000UL
 #define NRF_SPIM00_NS_BASE     0x4004A000UL
 #define NRF_SPIM00_S_BASE      0x5004A000UL
 #define NRF_SPIM20_NS_BASE     0x400C6000UL
@@ -61,11 +65,21 @@ extern "C" {
 #define NRF_P1_S_BASE          0x500D8200UL
 #define NRF_P0_NS_BASE         0x4010A000UL
 #define NRF_P0_S_BASE          0x5010A000UL
+#define NRF_CLOCK_NS_BASE      0x4010E000UL
+#define NRF_CLOCK_S_BASE       0x5010E000UL
+#define NRF_POWER_NS_BASE      0x4010E000UL
+#define NRF_POWER_S_BASE       0x5010E000UL
+#define NRF_RESET_NS_BASE      0x4010E000UL
+#define NRF_RESET_S_BASE       0x5010E000UL
+#define NRF_REGULATORS_NS_BASE 0x40120000UL
+#define NRF_REGULATORS_S_BASE  0x50120000UL
 
 #ifdef NRF_TRUSTZONE_NONSECURE
 #define NRF_P0_BASE            NRF_P0_NS_BASE
 #define NRF_P1_BASE            NRF_P1_NS_BASE
 #define NRF_P2_BASE            NRF_P2_NS_BASE
+#define NRF_MEMCONF_BASE       NRF_MEMCONF_NS_BASE
+#define NRF_GRTC_BASE          NRF_GRTC_NS_BASE
 #define NRF_SPIM00_BASE        NRF_SPIM00_NS_BASE
 #define NRF_SPIM20_BASE        NRF_SPIM20_NS_BASE
 #define NRF_SPIM21_BASE        NRF_SPIM21_NS_BASE
@@ -78,11 +92,17 @@ extern "C" {
 #define NRF_PWM20_BASE         NRF_PWM20_NS_BASE
 #define NRF_PWM21_BASE         NRF_PWM21_NS_BASE
 #define NRF_SAADC_BASE         NRF_SAADC_NS_BASE
+#define NRF_CLOCK_BASE         NRF_CLOCK_NS_BASE
 #define NRF_OSCILLATORS_BASE   NRF_OSCILLATORS_NS_BASE
+#define NRF_POWER_BASE         NRF_POWER_NS_BASE
+#define NRF_RESET_BASE         NRF_RESET_NS_BASE
+#define NRF_REGULATORS_BASE    NRF_REGULATORS_NS_BASE
 #else
 #define NRF_P0_BASE            NRF_P0_S_BASE
 #define NRF_P1_BASE            NRF_P1_S_BASE
 #define NRF_P2_BASE            NRF_P2_S_BASE
+#define NRF_MEMCONF_BASE       NRF_MEMCONF_S_BASE
+#define NRF_GRTC_BASE          NRF_GRTC_S_BASE
 #define NRF_SPIM00_BASE        NRF_SPIM00_S_BASE
 #define NRF_SPIM20_BASE        NRF_SPIM20_S_BASE
 #define NRF_SPIM21_BASE        NRF_SPIM21_S_BASE
@@ -95,7 +115,11 @@ extern "C" {
 #define NRF_PWM20_BASE         NRF_PWM20_S_BASE
 #define NRF_PWM21_BASE         NRF_PWM21_S_BASE
 #define NRF_SAADC_BASE         NRF_SAADC_S_BASE
+#define NRF_CLOCK_BASE         NRF_CLOCK_S_BASE
 #define NRF_OSCILLATORS_BASE   NRF_OSCILLATORS_S_BASE
+#define NRF_POWER_BASE         NRF_POWER_S_BASE
+#define NRF_RESET_BASE         NRF_RESET_S_BASE
+#define NRF_REGULATORS_BASE    NRF_REGULATORS_S_BASE
 #endif
 
 // ============================================================================
@@ -105,6 +129,8 @@ extern "C" {
 #define NRF_P0        ((NRF_GPIO_Type *)NRF_P0_BASE)
 #define NRF_P1        ((NRF_GPIO_Type *)NRF_P1_BASE)
 #define NRF_P2        ((NRF_GPIO_Type *)NRF_P2_BASE)
+#define NRF_MEMCONF   ((NRF_MEMCONF_Type *)NRF_MEMCONF_BASE)
+#define NRF_GRTC      ((NRF_GRTC_Type *)NRF_GRTC_BASE)
 
 #define NRF_SPIM00    ((NRF_SPIM_Type *)NRF_SPIM00_BASE)
 #define NRF_SPIM20    ((NRF_SPIM_Type *)NRF_SPIM20_BASE)
@@ -118,7 +144,44 @@ extern "C" {
 #define NRF_PWM20     ((NRF_PWM_Type *)NRF_PWM20_BASE)
 #define NRF_PWM21     ((NRF_PWM_Type *)NRF_PWM21_BASE)
 #define NRF_SAADC     ((NRF_SAADC_Type *)NRF_SAADC_BASE)
+#define NRF_CLOCK     ((NRF_CLOCK_Type *)NRF_CLOCK_BASE)
 #define NRF_OSCILLATORS ((NRF_OSCILLATORS_Type *)NRF_OSCILLATORS_BASE)
+#define NRF_POWER     ((NRF_POWER_Type *)NRF_POWER_BASE)
+#define NRF_RESET     ((NRF_RESET_Type *)NRF_RESET_BASE)
+#define NRF_REGULATORS ((NRF_REGULATORS_Type *)NRF_REGULATORS_BASE)
+
+// ============================================================================
+// GRTC domain helpers
+// ============================================================================
+
+#if defined(NRF_FLPR)
+#define NRF54L15_GRTC_IRQ_GROUP 0U
+#elif defined(NRF_APPLICATION)
+  #ifdef NRF_TRUSTZONE_NONSECURE
+    #define NRF54L15_GRTC_IRQ_GROUP 1U
+  #else
+    #define NRF54L15_GRTC_IRQ_GROUP 2U
+  #endif
+#else
+#define NRF54L15_GRTC_IRQ_GROUP 0U
+#endif
+
+#define NRF54L15_GRTC_SYSCOUNTER_INDEX NRF54L15_GRTC_IRQ_GROUP
+#define NRF54L15_GRTC_SYSCOUNTER(grtc) ((grtc)->SYSCOUNTER[NRF54L15_GRTC_SYSCOUNTER_INDEX])
+
+#if NRF54L15_GRTC_IRQ_GROUP == 0U
+  #define NRF54L15_GRTC_INTEN_REG(grtc) ((grtc)->INTEN0)
+  #define NRF54L15_GRTC_INTENSET_REG(grtc) ((grtc)->INTENSET0)
+  #define NRF54L15_GRTC_INTENCLR_REG(grtc) ((grtc)->INTENCLR0)
+#elif NRF54L15_GRTC_IRQ_GROUP == 1U
+  #define NRF54L15_GRTC_INTEN_REG(grtc) ((grtc)->INTEN1)
+  #define NRF54L15_GRTC_INTENSET_REG(grtc) ((grtc)->INTENSET1)
+  #define NRF54L15_GRTC_INTENCLR_REG(grtc) ((grtc)->INTENCLR1)
+#else
+  #define NRF54L15_GRTC_INTEN_REG(grtc) ((grtc)->INTEN2)
+  #define NRF54L15_GRTC_INTENSET_REG(grtc) ((grtc)->INTENSET2)
+  #define NRF54L15_GRTC_INTENCLR_REG(grtc) ((grtc)->INTENCLR2)
+#endif
 
 // ============================================================================
 // Compatibility aliases for pre-shifted field values expected by core code

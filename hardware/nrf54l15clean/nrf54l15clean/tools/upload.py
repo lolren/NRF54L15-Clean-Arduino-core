@@ -81,6 +81,15 @@ def looks_like_locked_target(result: subprocess.CompletedProcess[str]) -> bool:
     return any(token in details for token in indicators)
 
 
+def looks_like_nrf54l_mass_erase_timeout(result: subprocess.CompletedProcess[str]) -> bool:
+    details = ((result.stdout or "") + "\n" + (result.stderr or "")).lower()
+    indicators = (
+        "mass erase timeout waiting for eraseallstatus",
+        "no cores were discovered",
+    )
+    return any(token in details for token in indicators)
+
+
 def looks_like_no_probe_error(result: subprocess.CompletedProcess[str]) -> bool:
     details = ((result.stdout or "") + "\n" + (result.stderr or "")).lower()
     indicators = (
@@ -90,6 +99,52 @@ def looks_like_no_probe_error(result: subprocess.CompletedProcess[str]) -> bool:
         "unable to find a matching cmsis-dap device",
     )
     return any(token in details for token in indicators)
+
+
+def force_nrf54l_unlock_workaround(
+    pyocd_cmd: list[str], target: str, uid: str | None
+) -> subprocess.CompletedProcess[str]:
+    if target.strip().lower() != "nrf54l":
+        return subprocess.CompletedProcess(
+            args=[*pyocd_cmd, "commander"], returncode=2, stdout="", stderr=""
+        )
+
+    print("pyocd nRF54L unlock workaround: forcing CTRL-AP erase/reset sequence...")
+
+    script_lines = [
+        "initdp",
+        "writeap 2 0x04 1",
+        "sleep 500",
+        "readap 2 0x08",
+        "sleep 500",
+        "readap 2 0x08",
+        "writeap 2 0x00 2",
+        "writeap 2 0x00 0",
+        "sleep 500",
+        "readap 2 0x08",
+        "readap 0 0x00",
+        "readap 1 0x00",
+    ]
+
+    import tempfile
+
+    with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as script_file:
+        script_file.write("\n".join(script_lines))
+        script_path = script_file.name
+
+    try:
+        cmd = append_uid(
+            [*pyocd_cmd, "commander", "-N", "-O", "auto_unlock=false", "-x", script_path],
+            uid,
+        )
+        result = run(cmd)
+        print_result(result)
+        return result
+    finally:
+        try:
+            os.unlink(script_path)
+        except OSError:
+            pass
 
 
 def print_linux_probe_permission_hint(result: subprocess.CompletedProcess[str]) -> None:
@@ -124,9 +179,12 @@ def append_uid(cmd: list[str], uid: str | None) -> list[str]:
 
 
 def flash_hex(
-    pyocd_cmd: list[str], target: str, uid: str | None, hex_path: str
+    pyocd_cmd: list[str], target: str, uid: str | None, hex_path: str,
+    *, auto_unlock: bool = True
 ) -> subprocess.CompletedProcess[str]:
     cmd = append_uid([*pyocd_cmd, "load", "-W", "-t", target], uid)
+    if not auto_unlock:
+        cmd.extend(["-O", "auto_unlock=false"])
     cmd.extend([hex_path, "--format", "hex"])
     result = run(cmd)
     print_result(result)
@@ -233,12 +291,20 @@ def upload_pyocd(
         erase_result = recover_target(pyocd_cmd, target, uid)
         if erase_result.returncode == 0:
             load_result = flash_hex(pyocd_cmd, target, uid, hex_path)
+        elif looks_like_nrf54l_mass_erase_timeout(erase_result):
+            workaround_result = force_nrf54l_unlock_workaround(pyocd_cmd, target, uid)
+            if workaround_result.returncode == 0:
+                load_result = flash_hex(
+                    pyocd_cmd, target, uid, hex_path, auto_unlock=False
+                )
 
     if load_result.returncode != 0:
         print_linux_probe_permission_hint(load_result)
         return load_result.returncode
 
     reset_cmd = append_uid([*pyocd_cmd, "reset", "-W", "-t", target], uid)
+    if target.strip().lower() == "nrf54l":
+        reset_cmd.extend(["-O", "auto_unlock=false"])
     reset_result = run(reset_cmd)
     print_result(reset_result)
     return 0

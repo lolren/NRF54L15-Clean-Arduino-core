@@ -64,10 +64,12 @@ g_pfnVectors:
     .rept 6
     .word   Default_Handler
     .endr
-    /* IRQ 226: GRTC_0 used for low-power tick in the clean core. */
+    /* IRQ 226..228: GRTC interrupt groups. */
     .word   GRTC_0_IRQHandler
-    /* IRQ 227..239 */
-    .rept 13
+    .word   GRTC_1_IRQHandler
+    .word   GRTC_2_IRQHandler
+    /* IRQ 229..239 */
+    .rept 11
     .word   Default_Handler
     .endr
 
@@ -206,6 +208,18 @@ TWIM21_IRQHandler:
 GRTC_0_IRQHandler:
     b .
     .size GRTC_0_IRQHandler, .-GRTC_0_IRQHandler
+
+    .weak GRTC_1_IRQHandler
+    .type GRTC_1_IRQHandler, %function
+GRTC_1_IRQHandler:
+    b .
+    .size GRTC_1_IRQHandler, .-GRTC_1_IRQHandler
+
+    .weak GRTC_2_IRQHandler
+    .type GRTC_2_IRQHandler, %function
+GRTC_2_IRQHandler:
+    b .
+    .size GRTC_2_IRQHandler, .-GRTC_2_IRQHandler
 
     .weak Default_Handler
     .type Default_Handler, %function

@@ -25,6 +25,7 @@ uint8_t arduinoXiaoNrf54l15SetBatteryEnable(uint8_t enabled);
 uint8_t arduinoXiaoNrf54l15GetBatteryEnable(void);
 uint8_t arduinoXiaoNrf54l15SetImuMicEnable(uint8_t enabled);
 uint8_t arduinoXiaoNrf54l15GetImuMicEnable(void);
+void xiaoNrf54l15EnterLowestPowerBoardState(void);
 
 #ifdef __cplusplus
 }

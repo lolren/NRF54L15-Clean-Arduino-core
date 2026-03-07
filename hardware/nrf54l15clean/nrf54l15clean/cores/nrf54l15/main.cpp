@@ -5,7 +5,9 @@ extern "C" void nrf54l15_clean_idle_service(void);
 extern "C" size_t nrf54l15_heap_free_bytes(void);
 
 extern "C" void __attribute__((weak)) init(void) {
+#if !defined(NRF54L15_CLEAN_LOWPOWER_BOOT_MINIMAL)
     initSysTick();
+#endif
 }
 extern "C" void __attribute__((weak)) initVariant(void) {}
 extern "C" void __attribute__((weak)) yield(void) {

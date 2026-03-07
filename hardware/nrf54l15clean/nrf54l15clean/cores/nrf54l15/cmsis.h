@@ -104,6 +104,8 @@ typedef enum IRQn {
     GPIOTE20_0_IRQn        = 218,
     GPIOTE20_1_IRQn        = 219,
     GRTC_0_IRQn            = 226,
+    GRTC_1_IRQn            = 227,
+    GRTC_2_IRQn            = 228,
 } IRQn_Type;
 
 // ============================================================================

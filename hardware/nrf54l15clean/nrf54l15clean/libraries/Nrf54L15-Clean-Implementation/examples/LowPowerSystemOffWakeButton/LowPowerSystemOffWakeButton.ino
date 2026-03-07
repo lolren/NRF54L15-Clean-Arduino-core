@@ -5,6 +5,8 @@
 
 using namespace xiao_nrf54l15;
 
+static PowerManager g_powerManager;
+
 // Datasheet-guided low-power strategy:
 // - Stay in variable-latency low-power mode in System ON.
 // - Run CPU at 64 MHz for this control workload.
@@ -18,19 +20,15 @@ static constexpr uint32_t kLedPulseMs = 5UL;
 #ifdef NRF_TRUSTZONE_NONSECURE
 static constexpr uintptr_t kPowerBase = 0x4010E000UL;
 static constexpr uintptr_t kResetBase = 0x4010E000UL;
-static constexpr uintptr_t kRegulatorsBase = 0x40120000UL;
 #else
 static constexpr uintptr_t kPowerBase = 0x5010E000UL;
 static constexpr uintptr_t kResetBase = 0x5010E000UL;
-static constexpr uintptr_t kRegulatorsBase = 0x50120000UL;
 #endif
 
 static NRF_POWER_Type* const g_power =
     reinterpret_cast<NRF_POWER_Type*>(kPowerBase);
 static NRF_RESET_Type* const g_reset =
     reinterpret_cast<NRF_RESET_Type*>(kResetBase);
-static NRF_REGULATORS_Type* const g_regulators =
-    reinterpret_cast<NRF_REGULATORS_Type*>(kRegulatorsBase);
 
 static uint32_t g_bootMs = 0UL;
 static uint32_t g_lastPulseMs = 0UL;
@@ -102,11 +100,7 @@ static void enterSystemOff() {
   Serial.flush();
   delay(2);
 
-  g_regulators->SYSTEMOFF = REGULATORS_SYSTEMOFF_SYSTEMOFF_Enter;
-  __asm volatile("dsb 0xF" ::: "memory");
-  while (true) {
-    cpuIdleWfi();
-  }
+  g_powerManager.systemOffNoRetention();
 }
 
 static void printResetSummary(uint32_t resetReason, uint8_t gpregret0) {

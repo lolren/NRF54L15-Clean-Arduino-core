@@ -13,6 +13,10 @@ static constexpr uint8_t kBatteryEnablePort = 1U;
 static constexpr uint8_t kBatteryEnablePin = 15U;
 static constexpr uint8_t kImuMicEnablePort = 0U;
 static constexpr uint8_t kImuMicEnablePin = 1U;
+static constexpr uint8_t kSamd11TxPort = 1U;
+static constexpr uint8_t kSamd11TxPin = 8U;
+static constexpr uint8_t kSamd11RxPort = 1U;
+static constexpr uint8_t kSamd11RxPin = 9U;
 static constexpr uint8_t kRfSwitchCeramic = 0U;
 static constexpr uint8_t kRfSwitchExternal = 1U;
 
@@ -170,9 +174,24 @@ extern "C" void initVariant(void) {
     applyImuMicEnable(false);
     applyBatteryEnable(false);
 
+#if defined(NRF54L15_CLEAN_LOWPOWER_BOOT_MINIMAL)
+    xiaoNrf54l15EnterLowestPowerBoardState();
+    return;
+#endif
+
 #if defined(NRF54L15_CLEAN_ANTENNA_EXTERNAL)
     xiaoNrf54l15SetAntenna(XIAO_NRF54L15_ANTENNA_EXTERNAL);
 #else
     xiaoNrf54l15SetAntenna(XIAO_NRF54L15_ANTENNA_CERAMIC);
 #endif
+}
+
+extern "C" void xiaoNrf54l15EnterLowestPowerBoardState(void) {
+    applyImuMicEnable(false);
+    applyBatteryEnable(false);
+    applyRfSwitchPower(false);
+
+    gpioSetInputHighZ(kRfSwitchCtlPort, kRfSwitchCtlPin);
+    gpioSetInputHighZ(kSamd11TxPort, kSamd11TxPin);
+    gpioSetInputHighZ(kSamd11RxPort, kSamd11RxPin);
 }

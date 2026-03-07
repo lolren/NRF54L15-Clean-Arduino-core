@@ -108,7 +108,7 @@ Suggested starting points:
 
 - Basics: [`Blink`](hardware/nrf54l15clean/nrf54l15clean/examples/Basics/Blink), [`AnalogReadSerial`](hardware/nrf54l15clean/nrf54l15clean/examples/Basics/AnalogReadSerial)
 - Peripherals: [`PeripheralProbe`](hardware/nrf54l15clean/nrf54l15clean/examples/Peripherals/PeripheralProbe), [`WireImuRemapScanner`](hardware/nrf54l15clean/nrf54l15clean/examples/Peripherals/WireImuRemapScanner), [`XiaoBoardControlPins`](hardware/nrf54l15clean/nrf54l15clean/examples/Peripherals/XiaoBoardControlPins)
-- Core BLE: [`BleBeaconMinimal`](hardware/nrf54l15clean/nrf54l15clean/examples/BLE/BleBeaconMinimal), [`BleChannelSoundingReflector`](hardware/nrf54l15clean/nrf54l15clean/examples/BLE/BleChannelSoundingReflector), [`BleChannelSoundingInitiator`](hardware/nrf54l15clean/nrf54l15clean/examples/BLE/BleChannelSoundingInitiator)
+- Core BLE: [`BleBeaconMinimal`](hardware/nrf54l15clean/nrf54l15clean/examples/BLE/BleBeaconMinimal), [`BleAdvertiserLowestPowerContinuous`](hardware/nrf54l15clean/nrf54l15clean/examples/BLE/BleAdvertiserLowestPowerContinuous), [`BleAdvertiserRfSwitchDutyCycle`](hardware/nrf54l15clean/nrf54l15clean/examples/BLE/BleAdvertiserRfSwitchDutyCycle), [`BleAdvertiserHybridDutyCycle`](hardware/nrf54l15clean/nrf54l15clean/examples/BLE/BleAdvertiserHybridDutyCycle), [`BleAdvertiserBurstSystemOff`](hardware/nrf54l15clean/nrf54l15clean/examples/BLE/BleAdvertiserBurstSystemOff), [`BleAdvertiserProbe`](hardware/nrf54l15clean/nrf54l15clean/examples/BLE/BleAdvertiserProbe), [`BleChannelSoundingReflector`](hardware/nrf54l15clean/nrf54l15clean/examples/BLE/BleChannelSoundingReflector), [`BleChannelSoundingInitiator`](hardware/nrf54l15clean/nrf54l15clean/examples/BLE/BleChannelSoundingInitiator)
 - Core Zigbee (IEEE 802.15.4 PHY/MAC-lite): [`ZigbeeCoordinator`](hardware/nrf54l15clean/nrf54l15clean/examples/Zigbee/ZigbeeCoordinator), [`ZigbeeEndDevice`](hardware/nrf54l15clean/nrf54l15clean/examples/Zigbee/ZigbeeEndDevice), [`ZigbeeRouter`](hardware/nrf54l15clean/nrf54l15clean/examples/Zigbee/ZigbeeRouter), [`ZigbeePingInitiator`](hardware/nrf54l15clean/nrf54l15clean/examples/Zigbee/ZigbeePingInitiator), [`ZigbeePongResponder`](hardware/nrf54l15clean/nrf54l15clean/examples/Zigbee/ZigbeePongResponder)
 - Memory: [`PreferencesBootCounter`](hardware/nrf54l15clean/nrf54l15clean/examples/Memory/PreferencesBootCounter), [`EEPROMBootCounter`](hardware/nrf54l15clean/nrf54l15clean/examples/Memory/EEPROMBootCounter)
 - Power / HAL / BLE examples: [`hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples`](hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples)
@@ -116,7 +116,9 @@ Suggested starting points:
 Recommended library examples:
 
 - Power: `LowPowerIdleWfi`, `InterruptWatchdogLowPower`, `BoardBatteryAntennaBusControl`
-- BLE: `BleAdvertiser`, `BlePassiveScanner`, `BleActiveScanner`, `BleConnectionPeripheral`, `BleGattBasicPeripheral`
+- Zephyr-parity power floor: `LowPowerZephyrParityBlink`
+- BLE: `BleAdvertiser`, `BleAdvertiserLowestPowerContinuous`, `BleAdvertiserRfSwitchDutyCycle`, `BleAdvertiserHybridDutyCycle`, `BleAdvertiserBurstSystemOff`, `BleAdvertiserProbe`, `BlePassiveScanner`, `BleActiveScanner`, `BleConnectionPeripheral`, `BleGattBasicPeripheral`
+  Low-power BLE examples honor Arduino Tools -> `BLE LP Example Preset`.
 - Channel sounding note: `BleChannelSoundingInitiator` prints `dist_cm` and `dist_mm` as RSSI-based distance estimates (rough model, environment dependent)
 - Zigbee note: `ZigbeeCoordinator`/`ZigbeeEndDevice`/`ZigbeeRouter` add role-oriented join + app messaging over IEEE 802.15.4 (with `dist_cm`/`dist_mm` output). This is still not a full Zigbee stack (NWK/APS/ZCL/security interoperability is not implemented yet).
 
@@ -220,6 +222,8 @@ So `Serial` + `Wire` + `Wire1` can run together. For the `D11/D12` bus, use `Wir
 ## More Docs
 
 - [Board Reference](docs/board-reference.md)
+- [Zephyr low-power parity](docs/low-power-zephyr-parity.md)
+- [Low-power BLE patterns](docs/low-power-ble-patterns.md)
 - [Development Notes](docs/development.md)
 - [Bundled HAL / BLE library README](hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/README.md)
 - [Releases](https://github.com/lolren/NRF54L15-Clean-Arduino-core/releases)

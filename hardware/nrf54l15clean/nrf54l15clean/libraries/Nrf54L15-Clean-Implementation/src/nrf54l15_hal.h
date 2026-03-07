@@ -290,6 +290,10 @@ class BoardControl {
   static bool setAntennaPath(BoardAntennaPath path);
   static BoardAntennaPath antennaPath();
 
+  // Controls the shared IMU + microphone power/enable rail on XIAO nRF54L15.
+  static bool setImuMicEnabled(bool enable);
+  static bool imuMicEnabled();
+
   // Enables/disables the battery-divider path used for VBAT sense.
   static bool setBatterySenseEnabled(bool enable);
 
@@ -297,6 +301,19 @@ class BoardControl {
   // RF path and can be disabled to remove the switch quiescent current.
   static bool setRfSwitchPowerEnabled(bool enable);
   static bool rfSwitchPowerEnabled();
+
+  // Powers the RF switch and applies the requested route for an active RF
+  // window such as a BLE TX/RX event.
+  static bool enableRfPath(BoardAntennaPath path = BoardAntennaPath::kCeramic);
+
+  // Releases RF_SW_CTL to the requested idle state and optionally removes the
+  // RF switch supply to collapse board-side quiescent current while idle.
+  static bool collapseRfPathIdle(
+      BoardAntennaPath idlePath = BoardAntennaPath::kControlHighImpedance,
+      bool disablePower = true);
+
+  // Applies the board-level lowest-power state used before System OFF.
+  static void enterLowestPowerState();
 
   // Reads VBAT in millivolts (divider-compensated, x2).
   // This method enables the divider path only for the sampling window.
@@ -335,7 +352,15 @@ class PowerManager {
 
   bool enableMainDcdc(bool enable);
 
+  // Default system-off paths preserve .noinit RAM retention.
   [[noreturn]] void systemOff();
+  [[noreturn]] void systemOffTimedWakeMs(uint32_t delayMs);
+  [[noreturn]] void systemOffTimedWakeUs(uint32_t delayUs);
+
+  // Explicit low-power paths that clear RAM retention before SYSTEM OFF.
+  [[noreturn]] void systemOffNoRetention();
+  [[noreturn]] void systemOffTimedWakeMsNoRetention(uint32_t delayMs);
+  [[noreturn]] void systemOffTimedWakeUsNoRetention(uint32_t delayUs);
 
  private:
   NRF_POWER_Type* power_;

@@ -5,6 +5,8 @@
 
 using namespace xiao_nrf54l15;
 
+static PowerManager g_powerManager;
+
 // Datasheet-guided low-power strategy:
 // - Keep CPU at 64 MHz and variable-latency low-power mode in System ON.
 // - Program GRTC compare as wake source.
@@ -20,12 +22,10 @@ static constexpr uint32_t kBlinkOnMs = 6UL;
 #ifdef NRF_TRUSTZONE_NONSECURE
 static constexpr uintptr_t kPowerBase = 0x4010E000UL;
 static constexpr uintptr_t kResetBase = 0x4010E000UL;
-static constexpr uintptr_t kRegulatorsBase = 0x40120000UL;
 static constexpr uintptr_t kGrtcBase = 0x400E2000UL;
 #else
 static constexpr uintptr_t kPowerBase = 0x5010E000UL;
 static constexpr uintptr_t kResetBase = 0x5010E000UL;
-static constexpr uintptr_t kRegulatorsBase = 0x50120000UL;
 static constexpr uintptr_t kGrtcBase = 0x500E2000UL;
 #endif
 
@@ -33,8 +33,6 @@ static NRF_POWER_Type* const g_power =
     reinterpret_cast<NRF_POWER_Type*>(kPowerBase);
 static NRF_RESET_Type* const g_reset =
     reinterpret_cast<NRF_RESET_Type*>(kResetBase);
-static NRF_REGULATORS_Type* const g_regulators =
-    reinterpret_cast<NRF_REGULATORS_Type*>(kRegulatorsBase);
 static NRF_GRTC_Type* const g_grtc =
     reinterpret_cast<NRF_GRTC_Type*>(kGrtcBase);
 
@@ -144,11 +142,7 @@ static void enterSystemOffWithRtcWake(uint32_t wakeDelayMs) {
   Serial.flush();
   delay(2);
 
-  g_regulators->SYSTEMOFF = REGULATORS_SYSTEMOFF_SYSTEMOFF_Enter;
-  __asm volatile("dsb 0xF" ::: "memory");
-  while (true) {
-    cpuIdleWfi();
-  }
+  g_powerManager.systemOffTimedWakeUsNoRetention(wakeDelayUs);
 }
 
 void setup() {
