@@ -12,6 +12,8 @@
 #include "nrf54l15.h"
 
 uint32_t SystemCoreClock = 64000000UL;
+static uint32_t g_idleCpuTargetRaw = OSCILLATORS_PLL_CURRENTFREQ_CURRENTFREQ_CK64M;
+static bool g_idleCpuScalingEnabled = false;
 
 #if !defined(NRF_TRUSTZONE_NONSECURE)
 static const NRF_FICR_Type *const kFicr =
@@ -33,6 +35,35 @@ static inline volatile uint32_t *reg32(uintptr_t address)
     return (volatile uint32_t *)address;
 }
 
+static uint32_t currentPllFrequencyRaw(void)
+{
+    return (NRF_OSCILLATORS->PLL.CURRENTFREQ &
+            OSCILLATORS_PLL_CURRENTFREQ_CURRENTFREQ_Msk) >>
+           OSCILLATORS_PLL_CURRENTFREQ_CURRENTFREQ_Pos;
+}
+
+static uint32_t cpuFrequencyHzFromRaw(uint32_t raw)
+{
+    if (raw == OSCILLATORS_PLL_CURRENTFREQ_CURRENTFREQ_CK128M) {
+        return 128000000UL;
+    }
+    if (raw == OSCILLATORS_PLL_CURRENTFREQ_CURRENTFREQ_CK64M) {
+        return 64000000UL;
+    }
+    return 0UL;
+}
+
+static uint32_t cpuFrequencyRawFromHz(uint32_t hz)
+{
+    if (hz >= 128000000UL) {
+        return OSCILLATORS_PLL_CURRENTFREQ_CURRENTFREQ_CK128M;
+    }
+    if (hz >= 64000000UL) {
+        return OSCILLATORS_PLL_CURRENTFREQ_CURRENTFREQ_CK64M;
+    }
+    return 0UL;
+}
+
 static void setPllFrequency(uint32_t targetFrequency)
 {
     NRF_OSCILLATORS->PLL.FREQ = targetFrequency;
@@ -48,15 +79,8 @@ static void setPllFrequency(uint32_t targetFrequency)
 
 void SystemCoreClockUpdate(void)
 {
-    uint32_t current = (NRF_OSCILLATORS->PLL.CURRENTFREQ &
-                        OSCILLATORS_PLL_CURRENTFREQ_CURRENTFREQ_Msk) >>
-                       OSCILLATORS_PLL_CURRENTFREQ_CURRENTFREQ_Pos;
-
-    if (current == OSCILLATORS_PLL_CURRENTFREQ_CURRENTFREQ_CK128M) {
-        SystemCoreClock = 128000000UL;
-    } else {
-        SystemCoreClock = 64000000UL;
-    }
+    const uint32_t hz = cpuFrequencyHzFromRaw(currentPllFrequencyRaw());
+    SystemCoreClock = (hz == 0UL) ? 64000000UL : hz;
 }
 
 #if !defined(NRF_TRUSTZONE_NONSECURE)
@@ -191,5 +215,76 @@ void SystemInit(void)
     zephyrApplyClockTrimParity();
 #endif
 
+    SystemCoreClockUpdate();
+}
+
+bool nrf54l15_core_set_cpu_frequency_hz(uint32_t hz)
+{
+    const uint32_t raw = cpuFrequencyRawFromHz(hz);
+    if (raw == 0UL) {
+        return false;
+    }
+
+    setPllFrequency(raw);
+    SystemCoreClockUpdate();
+    return currentPllFrequencyRaw() == raw;
+}
+
+uint32_t nrf54l15_core_get_cpu_frequency_hz(void)
+{
+    SystemCoreClockUpdate();
+    return SystemCoreClock;
+}
+
+bool nrf54l15_core_set_idle_cpu_scaling_hz(uint32_t hz, bool enable)
+{
+    if (!enable) {
+        g_idleCpuScalingEnabled = false;
+        return true;
+    }
+
+    const uint32_t raw = cpuFrequencyRawFromHz(hz);
+    if (raw == 0UL) {
+        return false;
+    }
+
+    g_idleCpuTargetRaw = raw;
+    g_idleCpuScalingEnabled = true;
+    return true;
+}
+
+bool nrf54l15_core_get_idle_cpu_scaling_enabled(void)
+{
+    return g_idleCpuScalingEnabled;
+}
+
+uint32_t nrf54l15_core_get_idle_cpu_frequency_hz(void)
+{
+    return cpuFrequencyHzFromRaw(g_idleCpuTargetRaw);
+}
+
+uint32_t nrf54l15_core_enter_idle_cpu_scaling(void)
+{
+    if (!g_idleCpuScalingEnabled) {
+        return 0UL;
+    }
+
+    const uint32_t currentRaw = currentPllFrequencyRaw();
+    if ((currentRaw == 0UL) || (currentRaw == g_idleCpuTargetRaw)) {
+        return 0UL;
+    }
+
+    setPllFrequency(g_idleCpuTargetRaw);
+    SystemCoreClockUpdate();
+    return currentRaw;
+}
+
+void nrf54l15_core_exit_idle_cpu_scaling(uint32_t previousRaw)
+{
+    if (previousRaw == 0UL) {
+        return;
+    }
+
+    setPllFrequency(previousRaw);
     SystemCoreClockUpdate();
 }

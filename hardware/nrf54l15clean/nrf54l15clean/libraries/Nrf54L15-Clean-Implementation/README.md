@@ -6,7 +6,7 @@ This package uses direct peripheral register access from the nRF54L15 datasheet 
 
 ## Implemented HAL blocks
 
-- `ClockControl`: HFXO control wrapper (runtime-managed no-op on this Arduino core).
+- `ClockControl`: HFXO control plus runtime CPU-frequency and idle clock-scaling helpers.
 - `Gpio`: configure/read/write/toggle and open-drain style drive setup for I2C.
 - `Spim`: SPI master with route-aware instance selection (`SPIM21` in USB-bridge `Serial` mode, `SPIM20` in header-UART `Serial` mode), plus EasyDMA transfer and runtime frequency control.
 - `Twim`: I2C master on a caller-selected controller base (for example `TWIM22`
@@ -179,14 +179,19 @@ The following sketches focus on low-power behavior called out in the nRF54L15 da
 
 - CPU enters System ON idle using `WFI/WFE` when no work is pending
 - Keep CPU frequency at 64 MHz when full performance is not needed
+- Optionally run active work at 128 MHz and drop to 64 MHz automatically during `delay()` / `yield()`
 - Duty-cycle peripherals so they are enabled only during short active windows
 - Optional core-level peripheral auto-gating for idle windows (SPI/Wire)
+- Use timed `SYSTEM OFF` when cold-boot wake semantics are acceptable
 
 Examples:
 
 - `examples/LowPower/LowPowerIdleWfi/LowPowerIdleWfi.ino`
   - Minimal heartbeat workload with `__WFI()` between events.
   - Uses 64 MHz CPU by default, switches to 128 MHz while button is held.
+- `examples/LowPower/LowPowerIdleCpuScaling/LowPowerIdleCpuScaling.ino`
+  - Demonstrates explicit idle CPU scaling: active work at 128 MHz, automatic idle drop to 64 MHz.
+  - `delay()` / `yield()` restore the previous CPU speed after wake.
 - `examples/LowPower/LowPowerDutyCycleAdc/LowPowerDutyCycleAdc.ino`
   - Periodic ADC sampling with SAADC enabled only during sample windows.
   - VBAT divider path is enabled only for the measurement interval.
@@ -199,6 +204,9 @@ Examples:
 - `examples/LowPower/LowPowerSystemOffWakeRtc/LowPowerSystemOffWakeRtc.ino`
   - Enters true System OFF and wakes on a programmed GRTC compare timeout.
   - Uses `RESETREAS` + `GPREGRET` to verify timed wake path after reboot.
+- `examples/LowPower/LowPowerDelaySystemOff/LowPowerDelaySystemOff.ino`
+  - Demonstrates the Arduino-style `delaySystemOff(ms)` helper.
+  - Uses timed `SYSTEM OFF` for long sleeps while preserving `.noinit` RAM by default.
 - `examples/BLE/LowPowerBleBeaconDutyCycle/LowPowerBleBeaconDutyCycle.ino`
   - Sends short BLE advertising bursts, then sleeps with `WFI` between bursts.
   - Uses low-power latency mode and 64 MHz CPU clock to reduce average current.

@@ -8,6 +8,11 @@
 
 namespace xiao_nrf54l15 {
 
+enum class CpuFrequency : uint32_t {
+  k64MHz = 64000000UL,
+  k128MHz = 128000000UL,
+};
+
 enum class GpioDirection : uint8_t {
   kInput = 0,
   kOutput = 1,
@@ -23,6 +28,12 @@ class ClockControl {
  public:
   static bool startHfxo(bool waitForTuned = true, uint32_t spinLimit = 1000000UL);
   static void stopHfxo();
+  static bool setCpuFrequency(CpuFrequency frequency);
+  static CpuFrequency cpuFrequency();
+  static bool enableIdleCpuScaling(CpuFrequency idleFrequency = CpuFrequency::k64MHz);
+  static void disableIdleCpuScaling();
+  static bool idleCpuScalingEnabled();
+  static CpuFrequency idleCpuFrequency();
 };
 
 class Gpio {

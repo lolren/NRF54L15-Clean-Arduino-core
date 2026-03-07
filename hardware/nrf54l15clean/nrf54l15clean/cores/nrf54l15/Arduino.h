@@ -200,6 +200,8 @@ unsigned long millis(void);
 unsigned long micros(void);
 void delay(unsigned long ms);
 void delayMicroseconds(unsigned int us);
+void delaySystemOff(unsigned long ms);
+void delaySystemOffNoRetention(unsigned long ms);
 
 // Tone generation (noTone is defined in C++ section with overloaded version)
 void tone(uint8_t pin, unsigned int frequency, unsigned long duration);
@@ -231,6 +233,13 @@ long map(long, long, long, long, long);
 void softReset(void);
 void SoftReset(void);
 uint32_t getFreeHeap(void);
+bool nrf54l15_core_set_cpu_frequency_hz(uint32_t hz);
+uint32_t nrf54l15_core_get_cpu_frequency_hz(void);
+bool nrf54l15_core_set_idle_cpu_scaling_hz(uint32_t hz, bool enable);
+bool nrf54l15_core_get_idle_cpu_scaling_enabled(void);
+uint32_t nrf54l15_core_get_idle_cpu_frequency_hz(void);
+uint32_t nrf54l15_core_enter_idle_cpu_scaling(void);
+void nrf54l15_core_exit_idle_cpu_scaling(uint32_t previousRaw);
 
 // Sketch functions (defined by user)
 void setup(void);

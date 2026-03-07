@@ -17,8 +17,10 @@ extern "C" void __attribute__((weak)) yield(void) {
 
     nrf54l15_clean_idle_service();
     if ((__get_PRIMASK() & 1U) == 0U) {
+        const uint32_t restoreRaw = nrf54l15_core_enter_idle_cpu_scaling();
         *kScbScr &= ~(kScbScrSleepDeep_Msk | kScbScrSleepOnExit_Msk);
         __asm volatile("wfi");
+        nrf54l15_core_exit_idle_cpu_scaling(restoreRaw);
     } else {
         __asm volatile("nop");
     }

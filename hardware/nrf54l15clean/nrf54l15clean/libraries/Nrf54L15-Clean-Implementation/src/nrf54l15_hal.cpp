@@ -1956,6 +1956,37 @@ void ClockControl::stopHfxo() {
   clock->TASKS_XOSTOP = CLOCK_TASKS_XOSTOP_TASKS_XOSTOP_Trigger;
 }
 
+bool ClockControl::setCpuFrequency(CpuFrequency frequency) {
+  return nrf54l15_core_set_cpu_frequency_hz(static_cast<uint32_t>(frequency));
+}
+
+CpuFrequency ClockControl::cpuFrequency() {
+  return (nrf54l15_core_get_cpu_frequency_hz() >=
+          static_cast<uint32_t>(CpuFrequency::k128MHz))
+             ? CpuFrequency::k128MHz
+             : CpuFrequency::k64MHz;
+}
+
+bool ClockControl::enableIdleCpuScaling(CpuFrequency idleFrequency) {
+  return nrf54l15_core_set_idle_cpu_scaling_hz(
+      static_cast<uint32_t>(idleFrequency), true);
+}
+
+void ClockControl::disableIdleCpuScaling() {
+  (void)nrf54l15_core_set_idle_cpu_scaling_hz(0UL, false);
+}
+
+bool ClockControl::idleCpuScalingEnabled() {
+  return nrf54l15_core_get_idle_cpu_scaling_enabled();
+}
+
+CpuFrequency ClockControl::idleCpuFrequency() {
+  return (nrf54l15_core_get_idle_cpu_frequency_hz() >=
+          static_cast<uint32_t>(CpuFrequency::k128MHz))
+             ? CpuFrequency::k128MHz
+             : CpuFrequency::k64MHz;
+}
+
 bool Gpio::configure(const Pin& pin, GpioDirection direction, GpioPull pull) {
   if (!isConnected(pin)) {
     return false;

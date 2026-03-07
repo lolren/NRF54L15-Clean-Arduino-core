@@ -64,6 +64,7 @@ In Arduino IDE they should appear under:
 Suggested starting points:
 
 - Basics: [`Blink`](hardware/nrf54l15clean/nrf54l15clean/examples/nRF54L15/Basics/Blink), [`AnalogReadSerial`](hardware/nrf54l15clean/nrf54l15clean/examples/nRF54L15/Basics/AnalogReadSerial)
+- Power: [`LowPowerIdleTicker`](hardware/nrf54l15clean/nrf54l15clean/examples/nRF54L15/Power/LowPowerIdleTicker), [`DelaySystemOffBlink`](hardware/nrf54l15clean/nrf54l15clean/examples/nRF54L15/Power/DelaySystemOffBlink), [`IdleCpuScalingBlink`](hardware/nrf54l15clean/nrf54l15clean/examples/nRF54L15/Power/IdleCpuScalingBlink)
 - Peripherals: [`PeripheralProbe`](hardware/nrf54l15clean/nrf54l15clean/examples/nRF54L15/Peripherals/PeripheralProbe), [`WireImuRemapScanner`](hardware/nrf54l15clean/nrf54l15clean/examples/nRF54L15/Peripherals/WireImuRemapScanner), [`XiaoBoardControlPins`](hardware/nrf54l15clean/nrf54l15clean/examples/nRF54L15/Peripherals/XiaoBoardControlPins)
 - BLE: [`BleBeaconMinimal`](hardware/nrf54l15clean/nrf54l15clean/examples/nRF54L15/BLE/BleBeaconMinimal), [`BleChannelSoundingReflector`](hardware/nrf54l15clean/nrf54l15clean/examples/nRF54L15/BLE/BleChannelSoundingReflector), [`BleChannelSoundingInitiator`](hardware/nrf54l15clean/nrf54l15clean/examples/nRF54L15/BLE/BleChannelSoundingInitiator)
 - Memory: [`PreferencesBootCounter`](hardware/nrf54l15clean/nrf54l15clean/examples/nRF54L15/Memory/PreferencesBootCounter), [`EEPROMBootCounter`](hardware/nrf54l15clean/nrf54l15clean/examples/nRF54L15/Memory/EEPROMBootCounter)
@@ -83,6 +84,8 @@ In Arduino IDE they now appear under:
 Recommended library examples:
 
 - Low-power floor: `LowPowerZephyrParityBlink`
+- Arduino-style timed system off: `LowPowerDelaySystemOff`
+- Idle CPU scaling: `LowPowerIdleCpuScaling`
 - Continuous low-power BLE: `BleAdvertiserLowestPowerContinuous`, `BleAdvertiserRfSwitchDutyCycle`
 - Burst/beacon BLE: `BleAdvertiserHybridDutyCycle`, `BleAdvertiserBurstSystemOff`
 - BLE diagnostics: `BleAdvertiserProbe`, `BlePassiveScanner`, `BleActiveScanner`, `BleConnectionPeripheral`, `BleGattBasicPeripheral`
@@ -105,8 +108,15 @@ Practical result on the XIAO board from local validation:
 
 - true `SYSTEM OFF` blink / burst-beacon paths: **tens of uA**
 - continuous low-power BLE with RF-switch duty-cycling: about **0.1 mA**
+- `delay()` / `yield()` low-power idle path: around **0.1 mA** on this board after the core WFI and tickless-delay fixes
 
 That puts the `SYSTEM OFF` path in the same broad regime as the Zephyr result on this board.
+
+New core-level low-power helpers:
+
+- `delaySystemOff(ms)`: timed `SYSTEM OFF` sleep with cold-boot wake, preserving `.noinit` RAM by default
+- `delaySystemOffNoRetention(ms)`: same path, but clears RAM retention for the lowest current
+- `ClockControl::enableIdleCpuScaling(CpuFrequency::k64MHz)`: keep active code at the current CPU speed, but drop to 64 MHz around `delay()` / `yield()` idle windows and restore on wake
 
 Important distinction:
 
