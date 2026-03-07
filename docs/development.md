@@ -45,7 +45,7 @@ Current gap:
 
 - pairing/bond persistence is still partial
 - full Bluetooth channel sounding / AoA / AoD parity is not implemented yet (RSSI-based two-board sounding examples are available)
-- full Zigbee stack layers (commissioning, NWK/APS/ZCL/security profiles) are not implemented yet; current support is IEEE 802.15.4 PHY/MAC-lite
+- full Zigbee stack layers (commissioning, NWK/APS/ZCL/security profiles) are not implemented yet; current support is IEEE 802.15.4 PHY/MAC-lite with coordinator/router/end-device role demos
 
 ## Validation Artifacts
 

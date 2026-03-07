@@ -109,7 +109,7 @@ Suggested starting points:
 - Basics: [`Blink`](hardware/nrf54l15clean/nrf54l15clean/examples/01.Basics/Blink), [`AnalogReadSerial`](hardware/nrf54l15clean/nrf54l15clean/examples/01.Basics/AnalogReadSerial)
 - Peripherals: [`PeripheralProbe`](hardware/nrf54l15clean/nrf54l15clean/examples/03.Peripherals/PeripheralProbe), [`WireImuRemapScanner`](hardware/nrf54l15clean/nrf54l15clean/examples/03.Peripherals/WireImuRemapScanner), [`XiaoBoardControlPins`](hardware/nrf54l15clean/nrf54l15clean/examples/03.Peripherals/XiaoBoardControlPins)
 - Core BLE: [`BleBeaconMinimal`](hardware/nrf54l15clean/nrf54l15clean/examples/04.BLE/BleBeaconMinimal), [`BleChannelSoundingReflector`](hardware/nrf54l15clean/nrf54l15clean/examples/04.BLE/BleChannelSoundingReflector), [`BleChannelSoundingInitiator`](hardware/nrf54l15clean/nrf54l15clean/examples/04.BLE/BleChannelSoundingInitiator)
-- Core Zigbee (IEEE 802.15.4 PHY/MAC-lite): [`ZigbeePingInitiator`](hardware/nrf54l15clean/nrf54l15clean/examples/06.Zigbee/ZigbeePingInitiator), [`ZigbeePongResponder`](hardware/nrf54l15clean/nrf54l15clean/examples/06.Zigbee/ZigbeePongResponder)
+- Core Zigbee (IEEE 802.15.4 PHY/MAC-lite): [`ZigbeeCoordinator`](hardware/nrf54l15clean/nrf54l15clean/examples/06.Zigbee/ZigbeeCoordinator), [`ZigbeeEndDevice`](hardware/nrf54l15clean/nrf54l15clean/examples/06.Zigbee/ZigbeeEndDevice), [`ZigbeeRouter`](hardware/nrf54l15clean/nrf54l15clean/examples/06.Zigbee/ZigbeeRouter), [`ZigbeePingInitiator`](hardware/nrf54l15clean/nrf54l15clean/examples/06.Zigbee/ZigbeePingInitiator), [`ZigbeePongResponder`](hardware/nrf54l15clean/nrf54l15clean/examples/06.Zigbee/ZigbeePongResponder)
 - Memory: [`PreferencesBootCounter`](hardware/nrf54l15clean/nrf54l15clean/examples/05.Memory/PreferencesBootCounter), [`EEPROMBootCounter`](hardware/nrf54l15clean/nrf54l15clean/examples/05.Memory/EEPROMBootCounter)
 - Power / HAL / BLE examples: [`hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples`](hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples)
 
@@ -118,7 +118,7 @@ Recommended library examples:
 - Power: `LowPowerIdleWfi`, `InterruptWatchdogLowPower`, `BoardBatteryAntennaBusControl`
 - BLE: `BleAdvertiser`, `BlePassiveScanner`, `BleActiveScanner`, `BleConnectionPeripheral`, `BleGattBasicPeripheral`
 - Channel sounding note: `BleChannelSoundingInitiator` prints `dist_cm` and `dist_mm` as RSSI-based distance estimates (rough model, environment dependent)
-- Zigbee note: `ZigbeePingInitiator`/`ZigbeePongResponder` implement IEEE 802.15.4 PHY/MAC-lite exchange. Full Zigbee stack layers are not yet implemented.
+- Zigbee note: `ZigbeeCoordinator`/`ZigbeeEndDevice`/`ZigbeeRouter` add role-oriented join + app messaging over IEEE 802.15.4 (with `dist_cm`/`dist_mm` output). This is still not a full Zigbee stack (NWK/APS/ZCL/security interoperability is not implemented yet).
 
 ## Troubleshooting
 

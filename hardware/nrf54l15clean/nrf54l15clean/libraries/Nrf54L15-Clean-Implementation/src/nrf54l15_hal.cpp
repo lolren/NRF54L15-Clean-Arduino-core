@@ -3783,6 +3783,44 @@ bool ZigbeeRadio::buildDataFrameShort(uint8_t sequence, uint16_t panId,
   return true;
 }
 
+bool ZigbeeRadio::buildMacCommandFrameShort(
+    uint8_t sequence, uint16_t panId, uint16_t destinationShort,
+    uint16_t sourceShort, uint8_t commandId, const uint8_t* payload,
+    uint8_t payloadLength, uint8_t* outPsdu, uint8_t* outLength,
+    bool requestAck) {
+  if (outPsdu == nullptr || outLength == nullptr) {
+    return false;
+  }
+  if (payloadLength > 0U && payload == nullptr) {
+    return false;
+  }
+
+  // MAC command frame with PAN compression, destination short, source short.
+  // Header layout: FCF(2), Seq(1), DstPAN(2), DstShort(2), SrcShort(2),
+  // CommandId(1).
+  constexpr uint8_t kHeaderLen = 10U;
+  if (payloadLength > static_cast<uint8_t>(127U - kHeaderLen)) {
+    return false;
+  }
+
+  uint16_t frameControl = 0x9843U;
+  if (requestAck) {
+    frameControl |= (1U << 5U);
+  }
+
+  writeLe16(&outPsdu[0], frameControl);
+  outPsdu[2] = sequence;
+  writeLe16(&outPsdu[3], panId);
+  writeLe16(&outPsdu[5], destinationShort);
+  writeLe16(&outPsdu[7], sourceShort);
+  outPsdu[9] = commandId;
+  if (payloadLength > 0U) {
+    memcpy(&outPsdu[kHeaderLen], payload, payloadLength);
+  }
+  *outLength = static_cast<uint8_t>(kHeaderLen + payloadLength);
+  return true;
+}
+
 bool ZigbeeRadio::parseDataFrameShort(const uint8_t* psdu, uint8_t length,
                                       ZigbeeDataFrameView* outView) {
   if (outView != nullptr) {
@@ -3835,6 +3873,63 @@ bool ZigbeeRadio::parseDataFrameShort(const uint8_t* psdu, uint8_t length,
   outView->panId = sourcePan;
   outView->destinationShort = destinationShort;
   outView->sourceShort = sourceShort;
+  outView->payloadLength = static_cast<uint8_t>(length - offset);
+  outView->payload = &psdu[offset];
+  return true;
+}
+
+bool ZigbeeRadio::parseMacCommandFrameShort(const uint8_t* psdu, uint8_t length,
+                                            ZigbeeMacCommandView* outView) {
+  if (outView != nullptr) {
+    memset(outView, 0, sizeof(*outView));
+  }
+  if (psdu == nullptr || outView == nullptr || length < 10U) {
+    return false;
+  }
+
+  const uint16_t frameControl = readLe16(&psdu[0]);
+  const uint8_t frameType = static_cast<uint8_t>(frameControl & 0x0007U);
+  const bool panCompression = ((frameControl >> 6U) & 0x1U) != 0U;
+  const uint8_t dstAddrMode = static_cast<uint8_t>((frameControl >> 10U) & 0x03U);
+  const uint8_t srcAddrMode = static_cast<uint8_t>((frameControl >> 14U) & 0x03U);
+
+  if (frameType != 0x03U || dstAddrMode != 0x02U || srcAddrMode != 0x02U) {
+    return false;
+  }
+
+  uint8_t offset = 3U;
+  if (length < static_cast<uint8_t>(offset + 2U + 2U)) {
+    return false;
+  }
+  const uint16_t destinationPan = readLe16(&psdu[offset]);
+  offset = static_cast<uint8_t>(offset + 2U);
+  const uint16_t destinationShort = readLe16(&psdu[offset]);
+  offset = static_cast<uint8_t>(offset + 2U);
+
+  uint16_t sourcePan = destinationPan;
+  if (!panCompression) {
+    if (length < static_cast<uint8_t>(offset + 2U)) {
+      return false;
+    }
+    sourcePan = readLe16(&psdu[offset]);
+    offset = static_cast<uint8_t>(offset + 2U);
+  }
+
+  if (length < static_cast<uint8_t>(offset + 2U + 1U)) {
+    return false;
+  }
+  const uint16_t sourceShort = readLe16(&psdu[offset]);
+  offset = static_cast<uint8_t>(offset + 2U);
+  const uint8_t commandId = psdu[offset];
+  offset = static_cast<uint8_t>(offset + 1U);
+
+  outView->valid = true;
+  outView->ackRequested = ((frameControl >> 5U) & 0x1U) != 0U;
+  outView->sequence = psdu[2];
+  outView->panId = sourcePan;
+  outView->destinationShort = destinationShort;
+  outView->sourceShort = sourceShort;
+  outView->commandId = commandId;
   outView->payloadLength = static_cast<uint8_t>(length - offset);
   outView->payload = &psdu[offset];
   return true;

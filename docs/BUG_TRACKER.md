@@ -61,8 +61,9 @@ Target: close the remaining parity gap vs the Zephyr-based core while keeping th
     `examples/BleChannelSoundingReflector/BleChannelSoundingReflector.ino` and
     `examples/BleChannelSoundingInitiator/BleChannelSoundingInitiator.ino`.
 - [ ] RF-ZB-01: Full Zigbee stack layers (commissioning + NWK/APS/ZCL/security profiles) over 802.15.4.
-  - Partial progress: `ZigbeeRadio` IEEE 802.15.4 PHY/MAC-lite path with two-board
-    `ZigbeePingInitiator` / `ZigbeePongResponder` examples is implemented.
+  - Partial progress: `ZigbeeRadio` IEEE 802.15.4 PHY/MAC-lite path now includes
+    coordinator/router/end-device role demos (`ZigbeeCoordinator` / `ZigbeeEndDevice` /
+    `ZigbeeRouter`) plus two-board `ZigbeePingInitiator` / `ZigbeePongResponder`.
 
 ## Priority 2 tooling and regression
 

@@ -55,6 +55,12 @@ jobs:
             options: clean_ble=off,clean_cpu=cpu64,clean_power=low
           - sketch: hardware/nrf54l15clean/nrf54l15clean/examples/06.Zigbee/ZigbeePongResponder
             options: clean_ble=off,clean_cpu=cpu64,clean_power=low
+          - sketch: hardware/nrf54l15clean/nrf54l15clean/examples/06.Zigbee/ZigbeeCoordinator
+            options: clean_ble=off,clean_cpu=cpu64,clean_power=low
+          - sketch: hardware/nrf54l15clean/nrf54l15clean/examples/06.Zigbee/ZigbeeEndDevice
+            options: clean_ble=off,clean_cpu=cpu64,clean_power=low
+          - sketch: hardware/nrf54l15clean/nrf54l15clean/examples/06.Zigbee/ZigbeeRouter
+            options: clean_ble=off,clean_cpu=cpu64,clean_power=low
           - sketch: hardware/nrf54l15clean/nrf54l15clean/examples/01.Basics/AnalogReadSerial
             options: clean_ble=off,clean_serial=bridge,clean_cpu=cpu64,clean_power=balanced
 

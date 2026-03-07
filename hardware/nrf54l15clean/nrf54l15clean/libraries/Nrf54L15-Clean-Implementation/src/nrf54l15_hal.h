@@ -450,6 +450,18 @@ struct ZigbeeDataFrameView {
   uint8_t payloadLength;
 };
 
+struct ZigbeeMacCommandView {
+  bool valid;
+  bool ackRequested;
+  uint8_t sequence;
+  uint16_t panId;
+  uint16_t destinationShort;
+  uint16_t sourceShort;
+  uint8_t commandId;
+  const uint8_t* payload;
+  uint8_t payloadLength;
+};
+
 class ZigbeeRadio {
  public:
   explicit ZigbeeRadio(uint32_t radioBase = nrf54l15::RADIO_BASE);
@@ -473,8 +485,18 @@ class ZigbeeRadio {
                                   const uint8_t* payload, uint8_t payloadLength,
                                   uint8_t* outPsdu, uint8_t* outLength,
                                   bool requestAck = false);
+  static bool buildMacCommandFrameShort(uint8_t sequence, uint16_t panId,
+                                        uint16_t destinationShort,
+                                        uint16_t sourceShort,
+                                        uint8_t commandId,
+                                        const uint8_t* payload,
+                                        uint8_t payloadLength, uint8_t* outPsdu,
+                                        uint8_t* outLength,
+                                        bool requestAck = false);
   static bool parseDataFrameShort(const uint8_t* psdu, uint8_t length,
                                   ZigbeeDataFrameView* outView);
+  static bool parseMacCommandFrameShort(const uint8_t* psdu, uint8_t length,
+                                        ZigbeeMacCommandView* outView);
 
  private:
   bool configureIeee802154();
