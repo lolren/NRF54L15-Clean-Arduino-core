@@ -1,4 +1,5 @@
 #include <nrf54l15_hal.h>
+#include <variant.h>
 
 using namespace xiao_nrf54l15;
 
@@ -10,21 +11,31 @@ using namespace xiao_nrf54l15;
 // down-clock the CPU to 64 MHz before WFI and restore the previous speed after
 // wake.
 
-static constexpr unsigned long kBlinkOnMs = 20UL;
+static constexpr uint8_t kLedPin = 0U;  // XIAO LED = P2.0, active low.
+static constexpr unsigned long kBlinkOnUs = 80000UL;
 static constexpr unsigned long kIdleMs = 1000UL;
 
+static void ledInit() {
+  NRF_P2->DIRSET = (1UL << kLedPin);
+  NRF_P2->OUTSET = (1UL << kLedPin);
+}
+
+static void ledOn() { NRF_P2->OUTCLR = (1UL << kLedPin); }
+
+static void ledOff() { NRF_P2->OUTSET = (1UL << kLedPin); }
+
 void setup() {
-  pinMode(LED_BUILTIN, OUTPUT);
-  digitalWrite(LED_BUILTIN, LOW);
+  xiaoNrf54l15EnterLowestPowerBoardState();
+  ledInit();
 
   (void)ClockControl::setCpuFrequency(CpuFrequency::k128MHz);
   (void)ClockControl::enableIdleCpuScaling(CpuFrequency::k64MHz);
 }
 
 void loop() {
-  digitalWrite(LED_BUILTIN, HIGH);
-  delay(kBlinkOnMs);
-  digitalWrite(LED_BUILTIN, LOW);
+  ledOn();
+  delayMicroseconds(kBlinkOnUs);
+  ledOff();
 
   delay(kIdleMs);
 }

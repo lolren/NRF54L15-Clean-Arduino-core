@@ -16,6 +16,17 @@ extern "C" void __attribute__((weak)) yield(void) {
     static constexpr uint32_t kScbScrSleepOnExit_Msk = (1UL << 1);
 
     nrf54l15_clean_idle_service();
+#if defined(NRF54L15_CLEAN_POWER_LOW)
+    // Low-power mode uses a tickless GRTC-backed timebase. Unlike the balanced
+    // SysTick path, there is no guaranteed periodic interrupt to wake an
+    // unconditional WFI here after loop() returns. Sleeping in yield() would
+    // therefore deadlock ordinary sketches after their first iteration unless
+    // they happened to have another wake source armed already.
+    if ((__get_PRIMASK() & 1U) != 0U) {
+        __asm volatile("nop");
+    }
+    return;
+#else
     if ((__get_PRIMASK() & 1U) == 0U) {
         const uint32_t restoreRaw = nrf54l15_core_enter_idle_cpu_scaling();
         *kScbScr &= ~(kScbScrSleepDeep_Msk | kScbScrSleepOnExit_Msk);
@@ -24,6 +35,7 @@ extern "C" void __attribute__((weak)) yield(void) {
     } else {
         __asm volatile("nop");
     }
+#endif
 }
 
 extern "C" void __attribute__((weak)) softReset(void) {
