@@ -56,7 +56,10 @@ Target: close the remaining parity gap vs the Zephyr-based core while keeping th
 
 - [ ] GAP-BLE-CENTRAL-01: Minimal central role (initiate + basic client interactions).
 - [ ] GAP-BLE-EXTADV-01: Extended/periodic advertising feasibility and implementation plan.
-- [ ] GAP-BLE-CS-01: Channel sounding feasibility/capability (document exact hardware/runtime constraints).
+- [ ] GAP-BLE-CS-01: Full Bluetooth Channel Sounding LL capability (document exact hardware/runtime constraints and host control model).
+  - Partial progress: RSSI-based two-board channel sounding baseline now available via
+    `examples/BleChannelSoundingReflector/BleChannelSoundingReflector.ino` and
+    `examples/BleChannelSoundingInitiator/BleChannelSoundingInitiator.ino`.
 
 ## Priority 2 tooling and regression
 

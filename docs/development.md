@@ -43,7 +43,7 @@ Validated and stable with host adapter + hardware:
 Current gap:
 
 - pairing/bond persistence is still partial
-- BLE channel sounding / AoA / AoD style feature parity is not implemented yet
+- full Bluetooth channel sounding / AoA / AoD parity is not implemented yet (RSSI-based two-board sounding examples are available)
 
 ## Validation Artifacts
 

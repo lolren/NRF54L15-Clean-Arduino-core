@@ -157,6 +157,12 @@ BLE examples:
 - `examples/BleBondPersistenceProbe/BleBondPersistenceProbe.ino`
   - Demonstrates bond retention across resets and reconnect-side encryption reuse.
   - Hold user button at boot to clear persistent bond state.
+- `examples/BleChannelSoundingReflector/BleChannelSoundingReflector.ino`
+  - Scannable reflector role used for two-board RSSI channel sounding on BLE adv channels.
+  - Replies to `SCAN_REQ` and reports per-channel reflector-side RSSI aggregates.
+- `examples/BleChannelSoundingInitiator/BleChannelSoundingInitiator.ino`
+  - Active scanner role that filters the reflector address and builds per-channel RSSI stats.
+  - Reports live channel quality summary and best channel hint from measured averages.
 
 ## Low-Power Examples
 
@@ -239,6 +245,7 @@ Examples:
     - Retention-backed bond record in `.noinit` RAM
     - Optional callback hooks for flash-backed load/save/clear policies
 - Not implemented yet:
+  - Bluetooth Channel Sounding LL procedure and HCI/host control plane (full spec feature).
   - Full LL procedure/state-machine compliance (full control procedure matrix and deep corner-cases)
   - Full security feature set (LE Secure Connections, full key distribution matrix, signing)
   - Privacy (RPA rotation/resolving list)
