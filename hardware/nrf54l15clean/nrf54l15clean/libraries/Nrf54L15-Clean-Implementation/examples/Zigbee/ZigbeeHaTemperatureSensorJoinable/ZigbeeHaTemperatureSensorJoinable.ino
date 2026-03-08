@@ -1,0 +1,720 @@
+#include <Arduino.h>
+#include <string.h>
+
+#include "nrf54l15_hal.h"
+#include "zigbee_persistence.h"
+#include "zigbee_security.h"
+#include "zigbee_stack.h"
+
+#if defined(NRF54L15_CLEAN_ZIGBEE_ENABLED) && (NRF54L15_CLEAN_ZIGBEE_ENABLED == 0)
+#error "Enable Tools > Zigbee Support to build ZigbeeHaTemperatureSensorJoinable."
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_CHANNEL
+#define NRF54L15_CLEAN_ZIGBEE_CHANNEL 15
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_PAN_ID
+#define NRF54L15_CLEAN_ZIGBEE_PAN_ID 0x1234
+#endif
+
+using namespace xiao_nrf54l15;
+
+namespace {
+
+static ZigbeeRadio g_radio;
+static ZigbeeHomeAutomationDevice g_device;
+static ZigbeePersistentStateStore g_store;
+static TempSensor g_temp;
+
+static uint8_t g_macSequence = 1U;
+static uint8_t g_nwkSequence = 1U;
+static uint32_t g_nwkSecurityFrameCounter = 1U;
+static uint32_t g_lastInboundSecurityFrameCounter = 0U;
+static uint8_t g_apsCounter = 1U;
+static uint8_t g_zdoSequence = 1U;
+static uint32_t g_lastJoinAttemptMs = 0U;
+static uint32_t g_lastStatusMs = 0U;
+static uint32_t g_lastPollMs = 0U;
+static uint32_t g_lastSampleMs = 0U;
+static uint32_t g_lastReportMs[8] = {0U};
+static bool g_joined = false;
+static bool g_securityEnabled = false;
+
+static ZigbeePersistentState g_restoredState{};
+static bool g_haveRestoredState = false;
+
+static constexpr uint8_t kPreferredChannel =
+    static_cast<uint8_t>(NRF54L15_CLEAN_ZIGBEE_CHANNEL);
+static constexpr uint16_t kPreferredPanId =
+    static_cast<uint16_t>(NRF54L15_CLEAN_ZIGBEE_PAN_ID);
+static constexpr uint16_t kCoordinatorShort = 0x0000U;
+static constexpr uint16_t kTempShort = 0x7E11U;
+static constexpr uint8_t kLocalEndpoint = 1U;
+static constexpr uint8_t kCoordinatorEndpoint = 1U;
+static constexpr uint64_t kCoordinatorIeee = 0x00124B000054A11FULL;
+static constexpr uint64_t kIeeeAddress = 0x00124B0001AC2001ULL;
+static constexpr uint8_t kStateFlagJoined = 0x01U;
+static constexpr uint8_t kStateFlagSecurityEnabled = 0x02U;
+static constexpr uint8_t kDemoNetworkKeySequence = 0x01U;
+static const uint8_t kDemoNetworkKey[16] = {0xA1U, 0xB2U, 0xC3U, 0xD4U,
+                                            0xE5U, 0xF6U, 0x07U, 0x18U,
+                                            0x29U, 0x3AU, 0x4BU, 0x5CU,
+                                            0x6DU, 0x7EU, 0x8FU, 0x90U};
+
+static uint8_t g_channel = kPreferredChannel;
+static uint16_t g_panId = kPreferredPanId;
+static uint16_t g_localShort = kTempShort;
+static uint16_t g_parentShort = kCoordinatorShort;
+static uint64_t g_extendedPanId = 0U;
+
+struct ScanResult {
+  bool valid = false;
+  uint8_t channel = 0U;
+  int8_t rssiDbm = -127;
+  ZigbeeMacBeaconView beacon{};
+};
+
+void applyDefaultReporting() {
+  g_device.configureReporting(kZigbeeClusterTemperatureMeasurement, 0x0000U,
+                              ZigbeeZclDataType::kInt16, 5U, 60U, 25U);
+  g_device.configureReporting(kZigbeeClusterPowerConfiguration, 0x0020U,
+                              ZigbeeZclDataType::kUint8, 30U, 300U, 1U);
+  g_device.configureReporting(kZigbeeClusterPowerConfiguration, 0x0021U,
+                              ZigbeeZclDataType::kUint8, 30U, 300U, 2U);
+}
+
+void applyReportingState() {
+  if (!g_haveRestoredState || g_restoredState.reportingCount == 0U) {
+    applyDefaultReporting();
+    return;
+  }
+
+  for (uint8_t i = 0U; i < g_restoredState.reportingCount && i < 8U; ++i) {
+    if (!g_restoredState.reporting[i].used) {
+      continue;
+    }
+    g_device.configureReporting(g_restoredState.reporting[i].clusterId,
+                                g_restoredState.reporting[i].attributeId,
+                                g_restoredState.reporting[i].dataType,
+                                g_restoredState.reporting[i].minimumIntervalSeconds,
+                                g_restoredState.reporting[i].maximumIntervalSeconds,
+                                g_restoredState.reporting[i].reportableChange);
+  }
+}
+
+void applyBindingState() {
+  if (!g_haveRestoredState || g_restoredState.bindingCount == 0U) {
+    return;
+  }
+
+  for (uint8_t i = 0U; i < g_restoredState.bindingCount && i < 8U; ++i) {
+    if (!g_restoredState.bindings[i].used) {
+      continue;
+    }
+    (void)g_device.addBinding(g_restoredState.bindings[i].sourceEndpoint,
+                              g_restoredState.bindings[i].clusterId,
+                              g_restoredState.bindings[i].destinationAddressMode,
+                              g_restoredState.bindings[i].destinationGroup,
+                              g_restoredState.bindings[i].destinationIeee,
+                              g_restoredState.bindings[i].destinationEndpoint);
+  }
+}
+
+void sampleSensors() {
+  int32_t tempMilliC = 0;
+  if (g_temp.sampleMilliDegreesC(&tempMilliC, 400000UL)) {
+    g_device.setTemperatureState(static_cast<int16_t>(tempMilliC / 10L), -4000,
+                                 12500, 50U);
+  }
+
+  int32_t vbatMv = 0;
+  uint8_t vbatPercent = 0;
+  if (BoardControl::sampleBatteryMilliVolts(&vbatMv) &&
+      BoardControl::sampleBatteryPercent(&vbatPercent)) {
+    const uint8_t decivolts =
+        static_cast<uint8_t>(vbatMv <= 0 ? 0 : (vbatMv / 100));
+    const uint8_t halfPercent =
+        static_cast<uint8_t>(vbatPercent >= 100U ? 200U : vbatPercent * 2U);
+    g_device.setBatteryStatus(decivolts, halfPercent);
+  }
+}
+
+void applyJoinLed() {
+  Gpio::write(kPinUserLed, g_joined ? false : true);
+}
+
+void configureDeviceForCurrentNetwork() {
+  ZigbeeBasicClusterConfig basic{};
+  basic.manufacturerName = "CleanCore";
+  basic.modelIdentifier = "X54-JOIN-TEMP";
+  basic.swBuildId = "0.2.0";
+  basic.powerSource = 0x03U;
+  g_device.configureTemperatureSensor(kLocalEndpoint, kIeeeAddress, g_localShort,
+                                      g_panId, basic, 0x0000U);
+  applyReportingState();
+  applyBindingState();
+  sampleSensors();
+}
+
+bool persistState() {
+  ZigbeePersistentState state{};
+  ZigbeePersistentStateStore::initialize(&state);
+  state.channel = g_channel;
+  state.logicalType = static_cast<uint8_t>(ZigbeeLogicalType::kEndDevice);
+  state.panId = g_panId;
+  state.nwkAddress = g_localShort;
+  state.parentShort = g_parentShort;
+  state.manufacturerCode = g_device.config().manufacturerCode;
+  state.ieeeAddress = kIeeeAddress;
+  state.extendedPanId = g_extendedPanId;
+  state.nwkFrameCounter = g_nwkSecurityFrameCounter;
+  state.apsFrameCounter = g_apsCounter;
+  state.keySequence = kDemoNetworkKeySequence;
+  memcpy(state.networkKey, kDemoNetworkKey, sizeof(state.networkKey));
+  state.incomingNwkFrameCounter = g_lastInboundSecurityFrameCounter;
+  state.flags = g_joined ? kStateFlagJoined : 0U;
+  if (g_securityEnabled) {
+    state.flags |= kStateFlagSecurityEnabled;
+  }
+
+  const ZigbeeReportingConfiguration* reporting = g_device.reportingConfigurations();
+  uint8_t copied = 0U;
+  for (uint8_t i = 0U; i < 8U && copied < 8U; ++i) {
+    if (!reporting[i].used) {
+      continue;
+    }
+    state.reporting[copied++] = reporting[i];
+  }
+  state.reportingCount = copied;
+  const ZigbeeBindingEntry* bindings = g_device.bindings();
+  copied = 0U;
+  for (uint8_t i = 0U; i < 8U && copied < 8U; ++i) {
+    if (!bindings[i].used) {
+      continue;
+    }
+    state.bindings[copied++] = bindings[i];
+  }
+  state.bindingCount = copied;
+  return g_store.save(state);
+}
+
+void restoreState() {
+  memset(&g_restoredState, 0, sizeof(g_restoredState));
+  g_haveRestoredState = false;
+  g_joined = false;
+  g_securityEnabled = false;
+  g_lastInboundSecurityFrameCounter = 0U;
+  g_channel = kPreferredChannel;
+  g_panId = kPreferredPanId;
+  g_localShort = kTempShort;
+  g_parentShort = kCoordinatorShort;
+  g_extendedPanId = 0U;
+  g_nwkSecurityFrameCounter = 1U;
+
+  ZigbeePersistentState state{};
+  if (g_store.load(&state) && state.ieeeAddress == kIeeeAddress) {
+    g_restoredState = state;
+    g_haveRestoredState = true;
+    g_channel = (state.channel >= 11U && state.channel <= 26U) ? state.channel
+                                                                : kPreferredChannel;
+    g_panId = (state.panId != 0U) ? state.panId : kPreferredPanId;
+    g_parentShort = (state.parentShort != 0U) ? state.parentShort : kCoordinatorShort;
+    g_extendedPanId = state.extendedPanId;
+    g_nwkSequence = 1U;
+    g_nwkSecurityFrameCounter =
+        (state.nwkFrameCounter != 0U) ? state.nwkFrameCounter : 1U;
+    g_lastInboundSecurityFrameCounter = state.incomingNwkFrameCounter;
+    g_apsCounter = static_cast<uint8_t>(state.apsFrameCounter & 0xFFU);
+    g_securityEnabled = (state.flags & kStateFlagSecurityEnabled) != 0U;
+    if ((state.flags & kStateFlagJoined) != 0U && state.nwkAddress != 0U &&
+        state.nwkAddress != 0xFFFFU) {
+      g_localShort = state.nwkAddress;
+      g_joined = true;
+    }
+  }
+
+  configureDeviceForCurrentNetwork();
+  applyJoinLed();
+}
+
+void clearJoinState(bool clearStore) {
+  g_joined = false;
+  g_securityEnabled = false;
+  g_lastInboundSecurityFrameCounter = 0U;
+  g_channel = kPreferredChannel;
+  g_panId = kPreferredPanId;
+  g_localShort = kTempShort;
+  g_parentShort = kCoordinatorShort;
+  g_extendedPanId = 0U;
+  if (clearStore) {
+    memset(&g_restoredState, 0, sizeof(g_restoredState));
+    g_haveRestoredState = false;
+  }
+  configureDeviceForCurrentNetwork();
+  applyJoinLed();
+  if (clearStore) {
+    g_store.clear();
+  } else {
+    persistState();
+  }
+}
+
+bool sendApsFrame(uint16_t destinationShort, uint8_t destinationEndpoint,
+                  uint16_t clusterId, uint16_t profileId, uint8_t sourceEndpoint,
+                  const uint8_t* payload, uint8_t payloadLength) {
+  if (!g_joined) {
+    return false;
+  }
+
+  ZigbeeApsDataFrame aps{};
+  aps.frameType = ZigbeeApsFrameType::kData;
+  aps.destinationEndpoint = destinationEndpoint;
+  aps.clusterId = clusterId;
+  aps.profileId = profileId;
+  aps.sourceEndpoint = sourceEndpoint;
+  aps.counter = g_apsCounter++;
+
+  uint8_t apsFrame[127] = {0U};
+  uint8_t apsLength = 0U;
+  if (!ZigbeeCodec::buildApsDataFrame(aps, payload, payloadLength, apsFrame,
+                                      &apsLength)) {
+    return false;
+  }
+
+  ZigbeeNetworkFrame nwk{};
+  nwk.frameType = ZigbeeNwkFrameType::kData;
+  nwk.securityEnabled = g_securityEnabled;
+  nwk.destinationShort = destinationShort;
+  nwk.sourceShort = g_localShort;
+  nwk.radius = 30U;
+  nwk.sequence = g_nwkSequence++;
+
+  uint8_t nwkFrame[127] = {0U};
+  uint8_t nwkLength = 0U;
+  if (g_securityEnabled) {
+    ZigbeeNwkSecurityHeader security{};
+    security.valid = true;
+    security.securityControl = kZigbeeSecurityControlNwkEncMic32;
+    security.frameCounter = g_nwkSecurityFrameCounter++;
+    security.sourceIeee = kIeeeAddress;
+    security.keySequence = kDemoNetworkKeySequence;
+    if (!ZigbeeSecurity::buildSecuredNwkFrame(nwk, security, kDemoNetworkKey,
+                                              apsFrame, apsLength, nwkFrame,
+                                              &nwkLength)) {
+      return false;
+    }
+  } else if (!ZigbeeCodec::buildNwkFrame(nwk, apsFrame, apsLength, nwkFrame,
+                                         &nwkLength)) {
+    return false;
+  }
+
+  uint8_t psdu[127] = {0U};
+  uint8_t psduLength = 0U;
+  if (!ZigbeeRadio::buildDataFrameShort(g_macSequence++, g_panId,
+                                        destinationShort, g_localShort, nwkFrame,
+                                        nwkLength, psdu, &psduLength, false)) {
+    return false;
+  }
+
+  return g_radio.transmit(psdu, psduLength, false, 1200000UL);
+}
+
+bool sendDeviceAnnounce() {
+  uint8_t payload[127] = {0U};
+  uint8_t payloadLength = 0U;
+  if (!g_device.buildDeviceAnnounce(g_zdoSequence++, payload, &payloadLength)) {
+    return false;
+  }
+  return sendApsFrame(g_parentShort, 0U, kZigbeeZdoDeviceAnnounce,
+                      kZigbeeProfileZdo, 0U, payload, payloadLength);
+}
+
+bool sendAttributeReport(uint16_t clusterId) {
+  uint8_t zclFrame[127] = {0U};
+  uint8_t zclLength = 0U;
+  if (!g_device.buildAttributeReport(clusterId, g_zdoSequence++, zclFrame,
+                                     &zclLength) ||
+      zclLength == 0U) {
+    return false;
+  }
+  uint64_t destinationIeee = 0U;
+  uint8_t destinationEndpoint = kCoordinatorEndpoint;
+  if (g_device.resolveBindingDestination(kLocalEndpoint, clusterId,
+                                         &destinationIeee,
+                                         &destinationEndpoint) &&
+      destinationEndpoint != 0U) {
+    return sendApsFrame(g_parentShort, destinationEndpoint, clusterId,
+                        kZigbeeProfileHomeAutomation, kLocalEndpoint, zclFrame,
+                        zclLength);
+  }
+  return sendApsFrame(g_parentShort, kCoordinatorEndpoint, clusterId,
+                      kZigbeeProfileHomeAutomation, kLocalEndpoint, zclFrame,
+                      zclLength);
+}
+
+bool activeScan(ScanResult* outResult) {
+  if (outResult == nullptr) {
+    return false;
+  }
+  memset(outResult, 0, sizeof(*outResult));
+
+  uint8_t request[127] = {0U};
+  uint8_t requestLength = 0U;
+  if (!ZigbeeCodec::buildBeaconRequest(g_macSequence++, request, &requestLength)) {
+    return false;
+  }
+
+  bool found = false;
+  for (uint8_t channel = 11U; channel <= 26U; ++channel) {
+    if (!g_radio.setChannel(channel)) {
+      continue;
+    }
+    (void)g_radio.transmit(request, requestLength, false, 1200000UL);
+
+    const uint32_t deadline = millis() + 70U;
+    while (static_cast<int32_t>(millis() - deadline) < 0) {
+      ZigbeeFrame frame{};
+      if (!g_radio.receive(&frame, 4000U, 300000UL)) {
+        continue;
+      }
+
+      ZigbeeMacBeaconView beacon{};
+      if (!ZigbeeCodec::parseBeaconFrame(frame.psdu, frame.length, &beacon) ||
+          !beacon.valid || !beacon.associationPermit) {
+        continue;
+      }
+
+      if (!found || frame.rssiDbm > outResult->rssiDbm) {
+        outResult->valid = true;
+        outResult->channel = channel;
+        outResult->rssiDbm = frame.rssiDbm;
+        outResult->beacon = beacon;
+        found = true;
+      }
+    }
+  }
+
+  if (found) {
+    g_radio.setChannel(outResult->channel);
+  } else {
+    g_radio.setChannel(kPreferredChannel);
+  }
+  return found;
+}
+
+bool waitForAssociationResponse(uint16_t* outAssignedShort) {
+  if (outAssignedShort == nullptr) {
+    return false;
+  }
+
+  const uint32_t deadline = millis() + 1500U;
+  while (static_cast<int32_t>(millis() - deadline) < 0) {
+    uint8_t pollFrame[127] = {0U};
+    uint8_t pollLength = 0U;
+    if (!ZigbeeCodec::buildDataRequest(g_macSequence++, g_panId, g_parentShort,
+                                       kIeeeAddress, pollFrame, &pollLength)) {
+      return false;
+    }
+    (void)g_radio.transmit(pollFrame, pollLength, false, 1200000UL);
+
+    const uint32_t listenDeadline = millis() + 90U;
+    while (static_cast<int32_t>(millis() - listenDeadline) < 0) {
+      ZigbeeFrame frame{};
+      if (!g_radio.receive(&frame, 5000U, 350000UL)) {
+        continue;
+      }
+
+      ZigbeeMacAssociationResponseView response{};
+      if (!ZigbeeCodec::parseAssociationResponse(frame.psdu, frame.length,
+                                                 &response) ||
+          !response.valid ||
+          response.destinationExtended != kIeeeAddress ||
+          response.panId != g_panId || response.status != 0x00U) {
+        continue;
+      }
+
+      *outAssignedShort = response.assignedShort;
+      return true;
+    }
+
+    delay(25);
+  }
+
+  return false;
+}
+
+bool performJoin() {
+  ScanResult result{};
+  if (!activeScan(&result) || !result.valid) {
+    return false;
+  }
+
+  g_channel = result.channel;
+  g_panId = result.beacon.panId;
+  g_parentShort = result.beacon.sourceShort;
+  g_extendedPanId = result.beacon.network.extendedPanId;
+
+  const uint8_t capabilityInformation = 0xC0U;
+  uint8_t request[127] = {0U};
+  uint8_t requestLength = 0U;
+  if (!ZigbeeCodec::buildAssociationRequest(g_macSequence++, g_panId,
+                                            g_parentShort, kIeeeAddress,
+                                            capabilityInformation, request,
+                                            &requestLength) ||
+      !g_radio.transmit(request, requestLength, false, 1200000UL)) {
+    return false;
+  }
+
+  uint16_t assignedShort = 0U;
+  if (!waitForAssociationResponse(&assignedShort)) {
+    return false;
+  }
+
+  g_localShort = assignedShort;
+  g_joined = true;
+  g_securityEnabled = true;
+  configureDeviceForCurrentNetwork();
+  applyJoinLed();
+  persistState();
+  return true;
+}
+
+void processIncomingFrame(const ZigbeeFrame& frame) {
+  ZigbeeDataFrameView macData{};
+  if (!ZigbeeRadio::parseDataFrameShort(frame.psdu, frame.length, &macData) ||
+      !macData.valid || macData.panId != g_panId ||
+      macData.destinationShort != g_localShort) {
+    return;
+  }
+
+  ZigbeeNetworkFrame nwk{};
+  ZigbeeNwkSecurityHeader security{};
+  uint8_t decryptedPayload[127] = {0U};
+  uint8_t decryptedPayloadLength = 0U;
+  bool nwkValid = false;
+  if (g_securityEnabled) {
+    nwkValid = ZigbeeSecurity::parseSecuredNwkFrame(
+        macData.payload, macData.payloadLength, kDemoNetworkKey, &nwk,
+        &security, decryptedPayload, &decryptedPayloadLength);
+    if (nwkValid &&
+        (!security.valid || security.sourceIeee != kCoordinatorIeee ||
+         security.keySequence != kDemoNetworkKeySequence ||
+         security.frameCounter <= g_lastInboundSecurityFrameCounter)) {
+      return;
+    }
+  }
+  if (!nwkValid) {
+    nwkValid =
+        ZigbeeCodec::parseNwkFrame(macData.payload, macData.payloadLength, &nwk);
+  }
+  if (!nwkValid || !nwk.valid || nwk.destinationShort != g_localShort) {
+    return;
+  }
+  if (security.valid) {
+    g_lastInboundSecurityFrameCounter = security.frameCounter;
+  }
+
+  ZigbeeApsDataFrame aps{};
+  if (!ZigbeeCodec::parseApsDataFrame(nwk.payload, nwk.payloadLength, &aps) ||
+      !aps.valid) {
+    return;
+  }
+
+  if (aps.profileId == kZigbeeProfileZdo) {
+    uint16_t responseClusterId = 0U;
+    uint8_t responsePayload[127] = {0U};
+    uint8_t responseLength = 0U;
+    if (g_device.handleZdoRequest(aps.clusterId, aps.payload, aps.payloadLength,
+                                  &responseClusterId, responsePayload,
+                                  &responseLength) &&
+        responseLength > 0U) {
+      (void)sendApsFrame(nwk.sourceShort, 0U, responseClusterId,
+                         kZigbeeProfileZdo, 0U, responsePayload, responseLength);
+    }
+    return;
+  }
+
+  if (aps.profileId != kZigbeeProfileHomeAutomation ||
+      aps.destinationEndpoint != kLocalEndpoint) {
+    return;
+  }
+
+  uint8_t responseFrame[127] = {0U};
+  uint8_t responseLength = 0U;
+  if (!g_device.handleZclRequest(aps.clusterId, aps.payload, aps.payloadLength,
+                                 responseFrame, &responseLength)) {
+    return;
+  }
+
+  persistState();
+  Serial.print("zcl cluster=0x");
+  Serial.print(aps.clusterId, HEX);
+  Serial.print("\r\n");
+  if (responseLength > 0U) {
+    (void)sendApsFrame(nwk.sourceShort, aps.sourceEndpoint, aps.clusterId,
+                       aps.profileId, aps.destinationEndpoint, responseFrame,
+                       responseLength);
+  }
+}
+
+void pollCoordinator() {
+  if (!g_joined) {
+    return;
+  }
+
+  uint8_t request[127] = {0U};
+  uint8_t requestLength = 0U;
+  if (!ZigbeeCodec::buildDataRequest(g_macSequence++, g_panId, g_parentShort,
+                                     kIeeeAddress, request, &requestLength)) {
+    return;
+  }
+  if (!g_radio.transmit(request, requestLength, false, 1200000UL)) {
+    return;
+  }
+
+  const uint32_t deadline = millis() + 80U;
+  while (static_cast<int32_t>(millis() - deadline) < 0) {
+    ZigbeeFrame frame{};
+    if (!g_radio.receive(&frame, 4000U, 250000UL)) {
+      continue;
+    }
+    processIncomingFrame(frame);
+    return;
+  }
+}
+
+void maybeSendScheduledReports(uint32_t nowMs) {
+  if (!g_joined) {
+    return;
+  }
+
+  const ZigbeeReportingConfiguration* reporting = g_device.reportingConfigurations();
+  for (uint8_t i = 0U; i < 8U; ++i) {
+    if (!reporting[i].used || reporting[i].maximumIntervalSeconds == 0U ||
+        reporting[i].maximumIntervalSeconds == 0xFFFFU) {
+      continue;
+    }
+
+    const uint32_t periodMs =
+        static_cast<uint32_t>(reporting[i].maximumIntervalSeconds) * 1000UL;
+    if ((nowMs - g_lastReportMs[i]) < periodMs) {
+      continue;
+    }
+
+    if (sendAttributeReport(reporting[i].clusterId)) {
+      g_lastReportMs[i] = nowMs;
+    }
+  }
+}
+
+void handleSerialCommands() {
+  while (Serial.available() > 0) {
+    const int ch = Serial.read();
+    if (ch == 'r') {
+      const bool tempOk = sendAttributeReport(kZigbeeClusterTemperatureMeasurement);
+      const bool powerOk = sendAttributeReport(kZigbeeClusterPowerConfiguration);
+      Serial.print("report temp=");
+      Serial.print(tempOk ? "OK" : "FAIL");
+      Serial.print(" power=");
+      Serial.print(powerOk ? "OK" : "FAIL");
+      Serial.print("\r\n");
+    } else if (ch == 'j') {
+      clearJoinState(false);
+      Serial.print("rejoin requested\r\n");
+    } else if (ch == 'c') {
+      clearJoinState(true);
+      Serial.print("state cleared\r\n");
+    } else if (ch == 's') {
+      Serial.print("state joined=");
+      Serial.print(g_joined ? "yes" : "no");
+      Serial.print(" ch=");
+      Serial.print(g_channel);
+      Serial.print(" pan=0x");
+      Serial.print(g_panId, HEX);
+      Serial.print(" short=0x");
+      Serial.print(g_localShort, HEX);
+      Serial.print(" reports=");
+      Serial.print(g_device.reportingConfigurationCount());
+      Serial.print("\r\n");
+    }
+  }
+}
+
+}  // namespace
+
+void setup() {
+  Serial.begin(115200);
+  delay(300);
+
+  Gpio::configure(kPinUserLed, GpioDirection::kOutput, GpioPull::kDisabled);
+  g_store.begin("zbjoints");
+  restoreState();
+
+  const bool ok = g_radio.begin(g_channel, 8);
+  Serial.print("\r\nZigbeeHaTemperatureSensorJoinable start\r\n");
+  Serial.print("radio=");
+  Serial.print(ok ? "OK" : "FAIL");
+  Serial.print(" preferred_channel=");
+  Serial.print(kPreferredChannel);
+  Serial.print(" joined=");
+  Serial.print(g_joined ? "yes" : "no");
+  Serial.print("\r\n");
+  Serial.print("serial commands: r=report s=status j=rejoin c=clear\r\n");
+
+  if (g_joined) {
+    g_radio.setChannel(g_channel);
+    (void)sendDeviceAnnounce();
+  }
+}
+
+void loop() {
+  handleSerialCommands();
+
+  const uint32_t now = millis();
+  if (!g_joined) {
+    if ((now - g_lastJoinAttemptMs) >= 2000U) {
+      g_lastJoinAttemptMs = now;
+      Serial.print("scan_join start\r\n");
+      if (performJoin()) {
+        Serial.print("join OK ch=");
+        Serial.print(g_channel);
+        Serial.print(" pan=0x");
+        Serial.print(g_panId, HEX);
+        Serial.print(" short=0x");
+        Serial.print(g_localShort, HEX);
+        Serial.print("\r\n");
+        (void)sendDeviceAnnounce();
+      } else {
+        Serial.print("join MISS\r\n");
+      }
+    }
+    delay(1);
+    return;
+  }
+
+  if ((now - g_lastPollMs) >= 250U) {
+    g_lastPollMs = now;
+    pollCoordinator();
+  }
+  if ((now - g_lastSampleMs) >= 5000U) {
+    g_lastSampleMs = now;
+    sampleSensors();
+  }
+  maybeSendScheduledReports(now);
+
+  if ((now - g_lastStatusMs) >= 5000U) {
+    g_lastStatusMs = now;
+    Serial.print("alive ch=");
+    Serial.print(g_channel);
+    Serial.print(" pan=0x");
+    Serial.print(g_panId, HEX);
+    Serial.print(" short=0x");
+    Serial.print(g_localShort, HEX);
+    Serial.print(" reports=");
+    Serial.print(g_device.reportingConfigurationCount());
+    Serial.print("\r\n");
+  }
+
+  delay(1);
+}

@@ -28,6 +28,8 @@ This package uses direct peripheral register access from the nRF54L15 datasheet 
 - `I2sDuplex`: reusable full-duplex `I2S20` wrapper with shared stop/restart handling, TX refill callback, and RX delivery callback.
 - `BleRadio`: register-level BLE 1M link layer + minimal ATT/GATT peripheral path via `RADIO`.
 - `ZigbeeRadio`: IEEE 802.15.4 PHY/MAC-lite data-frame + MAC-command frame TX/RX helpers via `RADIO`.
+- `zigbee_stack`: clean MAC/NWK/APS/ZDO/ZCL codec, beacon/join helpers, APS group-address transport, ZDO Bind/Unbind handling, and Home Assistant-oriented device-model foundation, including Level Control plus clean Identify/Groups/Scenes support for lights.
+- `zigbee_persistence`: Preferences-backed storage for Zigbee-oriented persistent state, reporting configuration, binding tables, and HA endpoint state such as on/off and brightness.
 - `RawRadioLink`: proprietary 1 Mbit packet TX/RX helper via `RADIO`.
 - `nrf_to_nrf`: thin RF24-style compatibility wrapper for common sketch flows on top of `RawRadioLink`.
 
@@ -243,6 +245,24 @@ Zigbee examples:
   - Two-board request/response initiator for timing and RSSI checks.
 - `examples/Zigbee/ZigbeePongResponder/ZigbeePongResponder.ino`
   - Companion responder for the two-board Zigbee ping flow.
+- `examples/Zigbee/ZigbeeStackCodecSelfTest/ZigbeeStackCodecSelfTest.ino`
+  - Compile-safe self-test for the clean Zigbee MAC/NWK/APS/ZDO/ZCL foundation, including demo secured-NWK AES-CCM* coverage, APS group delivery, beacon parsing, and client-side request handling.
+- `examples/Zigbee/ZigbeeHaCoordinatorJoinDemo/ZigbeeHaCoordinatorJoinDemo.ino`
+  - Clean coordinator-side demo with beaconing, association, queued MAC polling delivery, descriptor/reporting discovery, binding setup, demo secured-NWK traffic, and demo group-based On/Off plus Level Control commands for joined HA lights.
+- `examples/Zigbee/ZigbeeHaOnOffLightStatic/ZigbeeHaOnOffLightStatic.ino`
+  - Static-network Home Assistant-style On/Off Light endpoint with ZDO/ZCL handling, reporting, and persistence.
+- `examples/Zigbee/ZigbeeHaOnOffLightJoinable/ZigbeeHaOnOffLightJoinable.ino`
+  - Joinable Home Assistant-style On/Off Light endpoint with active scan, association, device announce, polling, demo secured-NWK traffic, replay checks, and persisted joined-state restore.
+- `examples/Zigbee/ZigbeeHaDimmableLightStatic/ZigbeeHaDimmableLightStatic.ino`
+  - Static-network Home Assistant-style Dimmable Light endpoint with Level Control, PWM LED output, reporting, and persistence.
+- `examples/Zigbee/ZigbeeHaDimmableLightJoinable/ZigbeeHaDimmableLightJoinable.ino`
+  - Joinable Home Assistant-style Dimmable Light endpoint with active scan, association, device announce, polling, Level Control, PWM LED output, demo secured-NWK traffic, replay checks, and persisted joined-state restore.
+- `examples/Zigbee/ZigbeeHaTemperatureSensorStatic/ZigbeeHaTemperatureSensorStatic.ino`
+  - Static-network Home Assistant-style Temperature Sensor endpoint with on-die temperature sampling, reporting, and persistence.
+- `examples/Zigbee/ZigbeeHaTemperatureSensorJoinable/ZigbeeHaTemperatureSensorJoinable.ino`
+  - Joinable Home Assistant-style Temperature Sensor endpoint with active scan, association, device announce, polling, sensor reporting, demo secured-NWK traffic, replay checks, and persisted joined-state restore.
+
+See `docs/ZIGBEE_FEATURE_MATRIX.md` at the repo root for the current boundary between the raw 802.15.4 implementation and the missing work for real Home Assistant or Zigbee2MQTT interoperability.
 
 ## Low-Power Examples
 

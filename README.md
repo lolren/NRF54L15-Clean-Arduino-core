@@ -73,6 +73,8 @@ Suggested starting points:
 - Memory: [`PreferencesBootCounter`](hardware/nrf54l15clean/nrf54l15clean/examples/Memory/PreferencesBootCounter), [`EEPROMBootCounter`](hardware/nrf54l15clean/nrf54l15clean/examples/Memory/EEPROMBootCounter)
 - Zigbee: [`ZigbeeCoordinator`](hardware/nrf54l15clean/nrf54l15clean/examples/Zigbee/ZigbeeCoordinator), [`ZigbeeEndDevice`](hardware/nrf54l15clean/nrf54l15clean/examples/Zigbee/ZigbeeEndDevice)
 
+Current stack status is tracked in [Zigbee Feature Matrix](docs/ZIGBEE_FEATURE_MATRIX.md). The older checked-in coordinator/router/end-device sketches are still PHY/MAC-lite demos, while the clean stack now also includes joinable coordinator/light/dimmable-light/temperature-sensor demos on top of `zigbee_stack.h/.cpp`, along with clean Identify/Groups/Scenes handling for HA light endpoints, ZDO bind/unbind support, and demo APS group-addressed light control.
+
 ### Library Examples
 
 The bundled HAL/BLE library examples live under [`hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples`](hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples).
@@ -93,7 +95,7 @@ Recommended library examples:
 - Idle CPU scaling: `LowPowerIdleCpuScaling`
 - Continuous low-power BLE: `BleAdvertiserLowestPowerContinuous`, `BleAdvertiserRfSwitchDutyCycle`
 - Burst/beacon BLE: `BleAdvertiserPhoneBeacon15s`, `BleAdvertiserHybridDutyCycle`, `BleAdvertiserBurstSystemOff`
-- Zigbee: `ZigbeeCoordinator`, `ZigbeeRouter`, `ZigbeeEndDevice`, `ZigbeePingInitiator`, `ZigbeePongResponder`
+- Zigbee: `ZigbeeCoordinator`, `ZigbeeRouter`, `ZigbeeEndDevice`, `ZigbeePingInitiator`, `ZigbeePongResponder`, `ZigbeeStackCodecSelfTest`, `ZigbeeHaCoordinatorJoinDemo`, `ZigbeeHaOnOffLightStatic`, `ZigbeeHaOnOffLightJoinable`, `ZigbeeHaDimmableLightStatic`, `ZigbeeHaDimmableLightJoinable`, `ZigbeeHaTemperatureSensorStatic`, `ZigbeeHaTemperatureSensorJoinable`
 - BLE diagnostics: `BleAdvertiserProbe`, `BlePassiveScanner`, `BleActiveScanner`, `BleConnectionPeripheral`, `BleGattBasicPeripheral`
 - Peripheral bring-up: `RawI2sTxInterrupt`, `I2sTxWrapperInterrupt`, `I2sRxWrapperInterrupt`, `I2sDuplexWrapperInterrupt`, `RawRadioPacketTx`, `RawRadioPacketRx`, `RawRadioAckRequester`, `RawRadioAckResponder`, `nrf_to_nrfGettingStarted`, `nrf_to_nrfAcknowledgementPayloads`
 - `I2sTxWrapperInterrupt` shows the callback-based refill path, where the next buffer is generated from the I2S IRQ instead of managed manually in the sketch loop
@@ -107,6 +109,8 @@ Two-board `nrf_to_nrf` regression:
 - expects two XIAO nRF54L15 boards on separate `/dev/ttyACM*` ports
 - auto-resolves each board's CMSIS-DAP UID from the serial port and flashes deterministically
 - Bring-up: `CleanBringUp`, `PeripheralSelfTest`, `FeatureParitySelfTest`
+
+The Zigbee examples now include a clean demo-network secured NWK path with AES-CCM* MIC-32 protection, persisted frame counters, and replay checks between the joinable HA examples and `ZigbeeHaCoordinatorJoinDemo`. Zigbee 3.0 commissioning, APS transport-key handling, and third-party coordinator interoperability are still not implemented; see `docs/ZIGBEE_FEATURE_MATRIX.md`.
 
 ## Power And Zephyr Parity
 

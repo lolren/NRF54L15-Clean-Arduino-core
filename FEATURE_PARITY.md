@@ -1,6 +1,6 @@
 # Feature Parity: Nrf54L15-Clean-Implementation
 
-Last updated: 2026-02-24
+Last updated: 2026-03-08
 
 This project targets practical Arduino parity for XIAO nRF54L15 using a clean OSS core:
 
@@ -76,7 +76,7 @@ Legend:
 | LL control handling subset | Partial | Broad subset implemented; same-event response path now covers all new LL control requests when TX freshness permits, but host interop edge cases still exist (e.g., repeated `LL_FEATURE_REQ` with no ACK progression on some runs). |
 | SMP legacy pairing flow | Partial | Request/confirm/random + LL encryption entry are implemented. `BlePairingEncryptionStatus` now reaches mostly stable pair/bond on Broadcom (`4/5` pass), while `BleBondPersistenceProbe` still shows start-encryption timeout failures. |
 | Bond persistence | Partial | Record format + retention path + default flash-backed RRAM persistence implemented; stable bonded reconnect validation is still pending. |
-| Zigbee / IEEE 802.15.4 support | Partial | `ZigbeeRadio` PHY/MAC-lite support now includes role-oriented coordinator/router/end-device join + app messaging examples (`ZigbeeCoordinator` / `ZigbeeEndDevice` / `ZigbeeRouter`) plus ping/pong examples, with RSSI-based `dist_cm`/`dist_mm` output. Full Zigbee stack layers (commissioning, NWK/APS/ZCL/security profiles) are not implemented. |
+| Zigbee / IEEE 802.15.4 support | Partial | `ZigbeeRadio` still provides the raw radio path, and the clean stack layer now also includes generic MAC/NWK/APS/ZCL codecs, demo-network secured NWK framing with AES-CCM* MIC-32 protection, APS group-address transport, ZDO Bind/Unbind handling, client/server ZDO+ZCL helpers, reporting support, Preferences-backed persistence scaffolding with secure-frame counters, HA light Identify/Groups/Scenes behavior, a joinable clean coordinator demo with binding plus demo-group setup, and HA On/Off Light, Dimmable Light, and Temperature Sensor examples in both static and joinable forms. Zigbee 3.0 commissioning, trust-center APS key transport, and third-party coordinator interoperability remain open. See `docs/ZIGBEE_FEATURE_MATRIX.md`. |
 | Central role / multi-role | Planned | Not implemented. |
 | Extended advertising / periodic advertising | Planned | Not implemented. |
 | Channel sounding / AoA/AoD parity | Partial | RSSI-based two-board channel sounding examples are available in both core examples and bundled HAL library (`BleChannelSoundingInitiator`/`BleChannelSoundingReflector`), including `dist_cm`/`dist_mm` estimate output; full Bluetooth CS/AoA/AoD LL procedure is still not implemented. |
