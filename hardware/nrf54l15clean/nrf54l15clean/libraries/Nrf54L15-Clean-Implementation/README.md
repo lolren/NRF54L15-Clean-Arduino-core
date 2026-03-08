@@ -25,6 +25,7 @@ This package uses direct peripheral register access from the nRF54L15 datasheet 
 - `Pdm`: digital microphone interface setup and blocking capture with EasyDMA.
 - `I2sTx`: reusable TX-only `I2S20` wrapper with buffer rotation, IRQ service, optional auto-restart, and callback-based buffer refill.
 - `I2sRx`: reusable RX-only `I2S20` wrapper with double-buffer capture, IRQ service, optional auto-restart, and callback-based buffer delivery.
+- `I2sDuplex`: reusable full-duplex `I2S20` wrapper with shared stop/restart handling, TX refill callback, and RX delivery callback.
 - `BleRadio`: register-level BLE 1M link layer + minimal ATT/GATT peripheral path via `RADIO`.
 - `ZigbeeRadio`: IEEE 802.15.4 PHY/MAC-lite data-frame + MAC-command frame TX/RX helpers via `RADIO`.
 - `RawRadioLink`: proprietary 1 Mbit packet TX/RX helper via `RADIO`.
@@ -162,11 +163,16 @@ Peripheral examples:
   - Uses the reusable `I2sRx` wrapper to keep a double-buffer receive path armed from `I2S20_IRQHandler`.
   - Delivers completed RX buffers through a callback and keeps the same visible stop/restart cycle as the TX wrapper.
   - Can be smoke-tested with `SDIN` floating, or fed from an external I2S source for real capture.
+- `examples/Peripherals/I2sDuplexWrapperInterrupt/I2sDuplexWrapperInterrupt.ino`
+  - Uses the reusable `I2sDuplex` wrapper to run TX and RX together on one `I2S20` instance.
+  - Keeps the same visible stop/restart cycle while reporting both `TXPTRUPD` and `RXPTRUPD`.
+  - Supports a one-board loopback by jumpering `SDOUT=D11` to `SDIN=D15`.
 
 Callback note:
 
 - `I2sTx::setRefillCallback(...)` runs from the `I2S20` IRQ context.
 - `I2sRx::setReceiveCallback(...)` also runs from the `I2S20` IRQ context.
+- `I2sDuplex::setTxRefillCallback(...)` and `I2sDuplex::setRxReceiveCallback(...)` run from the same `I2S20` IRQ context.
 - Keep the callback short, non-blocking, and free of any serial/logging work.
 - `examples/Peripherals/RawRadioPacketTx/RawRadioPacketTx.ino`
   - Uses `RawRadioLink` to send proprietary 1 Mbit packets on a fixed pipe and channel.
