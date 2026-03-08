@@ -185,6 +185,31 @@ static bool testApsCommandCodec() {
        parsedKey.destinationIeee == transportKey.destinationIeee &&
        parsedKey.sourceIeee == transportKey.sourceIeee;
 
+  uint8_t linkKey[16] = {0U};
+  ZigbeeApsSecurityHeader apsSecurity{};
+  apsSecurity.valid = true;
+  apsSecurity.securityControl = kZigbeeSecurityControlApsEncMic32;
+  apsSecurity.frameCounter = 0x01020304UL;
+  apsSecurity.sourceIeee = 0x00124B000054A11FULL;
+  ok = ok && ZigbeeSecurity::loadZigbeeAlliance09LinkKey(linkKey) &&
+       ZigbeeSecurity::buildSecuredApsTransportKeyCommand(
+           transportKey, apsSecurity, linkKey, 0x34U, encoded, &encodedLength);
+  ZigbeeApsTransportKey parsedSecuredKey{};
+  ZigbeeApsSecurityHeader parsedApsSecurity{};
+  parsedCounter = 0U;
+  ok = ok && ZigbeeSecurity::parseSecuredApsTransportKeyCommand(
+                   encoded, encodedLength, linkKey, &parsedSecuredKey,
+                   &parsedApsSecurity, &parsedCounter) &&
+       parsedCounter == 0x34U && parsedSecuredKey.valid &&
+       parsedSecuredKey.keySequence == transportKey.keySequence &&
+       memcmp(parsedSecuredKey.key, transportKey.key,
+              sizeof(parsedSecuredKey.key)) == 0 &&
+       parsedSecuredKey.destinationIeee == transportKey.destinationIeee &&
+       parsedSecuredKey.sourceIeee == transportKey.sourceIeee &&
+       parsedApsSecurity.valid &&
+       parsedApsSecurity.frameCounter == apsSecurity.frameCounter &&
+       parsedApsSecurity.sourceIeee == apsSecurity.sourceIeee;
+
   ZigbeeApsUpdateDevice updateDevice{};
   updateDevice.valid = true;
   updateDevice.deviceIeee = 0x00124B0001AC1001ULL;

@@ -369,8 +369,13 @@ bool sendAttributeReport(uint16_t clusterId) {
 
 bool handleApsCommand(const uint8_t* frame, uint8_t length) {
   uint8_t counter = 0U;
+  uint8_t linkKey[16] = {0U};
+  (void)ZigbeeSecurity::loadZigbeeAlliance09LinkKey(linkKey);
+  ZigbeeApsSecurityHeader apsSecurity{};
   ZigbeeApsTransportKey transportKey{};
-  if (ZigbeeCodec::parseApsTransportKeyCommand(frame, length, &transportKey,
+  if (ZigbeeSecurity::parseSecuredApsTransportKeyCommand(
+          frame, length, linkKey, &transportKey, &apsSecurity, &counter) ||
+      ZigbeeCodec::parseApsTransportKeyCommand(frame, length, &transportKey,
                                                &counter)) {
     if (!transportKey.valid ||
         transportKey.keyType != kZigbeeApsTransportKeyStandardNetworkKey ||
@@ -388,6 +393,10 @@ bool handleApsCommand(const uint8_t* frame, uint8_t length) {
     Serial.print(g_activeNetworkKeySequence);
     Serial.print(" ctr=");
     Serial.print(counter);
+    if (apsSecurity.valid) {
+      Serial.print(" aps_sec_fc=");
+      Serial.print(apsSecurity.frameCounter);
+    }
     Serial.print("\r\n");
     (void)sendDeviceAnnounce();
     return true;

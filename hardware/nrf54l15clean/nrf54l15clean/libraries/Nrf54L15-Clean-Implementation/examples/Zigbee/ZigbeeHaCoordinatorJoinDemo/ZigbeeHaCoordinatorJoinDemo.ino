@@ -25,6 +25,7 @@ static ZigbeeRadio g_radio;
 static uint8_t g_macSequence = 1U;
 static uint8_t g_nwkSequence = 1U;
 static uint32_t g_nwkSecurityFrameCounter = 1U;
+static uint32_t g_apsTrustCenterFrameCounter = 1U;
 static uint8_t g_apsCounter = 1U;
 static uint8_t g_zclSequence = 1U;
 static uint8_t g_zdoSequence = 1U;
@@ -300,6 +301,11 @@ bool sendTransportKey(NodeEntry* node) {
     return false;
   }
 
+  uint8_t linkKey[16] = {0U};
+  if (!ZigbeeSecurity::loadZigbeeAlliance09LinkKey(linkKey)) {
+    return false;
+  }
+
   ZigbeeApsTransportKey transportKey{};
   transportKey.valid = true;
   transportKey.keyType = kZigbeeApsTransportKeyStandardNetworkKey;
@@ -310,8 +316,14 @@ bool sendTransportKey(NodeEntry* node) {
 
   uint8_t apsFrame[127] = {0U};
   uint8_t apsLength = 0U;
-  if (!ZigbeeCodec::buildApsTransportKeyCommand(transportKey, g_apsCounter++,
-                                                apsFrame, &apsLength)) {
+  ZigbeeApsSecurityHeader security{};
+  security.valid = true;
+  security.securityControl = kZigbeeSecurityControlApsEncMic32;
+  security.frameCounter = g_apsTrustCenterFrameCounter++;
+  security.sourceIeee = kCoordinatorIeee;
+  if (!ZigbeeSecurity::buildSecuredApsTransportKeyCommand(
+          transportKey, security, linkKey, g_apsCounter++, apsFrame,
+          &apsLength)) {
     return false;
   }
 
