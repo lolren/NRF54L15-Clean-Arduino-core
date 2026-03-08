@@ -4059,6 +4059,308 @@ bool ZigbeeRadio::sampleEnergyDetect(uint8_t* outEdLevel, uint32_t spinLimit) {
   return true;
 }
 
+RawRadioLink::RawRadioLink(uint32_t radioBase)
+    : radio_(reinterpret_cast<NRF_RADIO_Type*>(static_cast<uintptr_t>(radioBase))),
+      power_(),
+      config_(),
+      initialized_(false),
+      receiverArmed_(false),
+      txPacket_{0},
+      rxPacket_{0} {}
+
+bool RawRadioLink::configureProprietary1M() {
+  if (radio_ == nullptr) {
+    return false;
+  }
+  if (config_.maxPayloadLength == 0U) {
+    return false;
+  }
+
+  radio_->SHORTS = 0U;
+  radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
+  waitRadioDisabledBudgeted(radio_, 0U, 200000UL);
+  radio_->TASKS_SOFTRESET = RADIO_TASKS_SOFTRESET_TASKS_SOFTRESET_Trigger;
+
+  radio_->MODE = ((RADIO_MODE_MODE_Nrf_1Mbit << RADIO_MODE_MODE_Pos) &
+                  RADIO_MODE_MODE_Msk);
+  radio_->TIMING = ((RADIO_TIMING_RU_Fast << RADIO_TIMING_RU_Pos) &
+                    RADIO_TIMING_RU_Msk);
+
+  uint32_t pcnf0 = 0U;
+  pcnf0 |= (8UL << RADIO_PCNF0_LFLEN_Pos) & RADIO_PCNF0_LFLEN_Msk;
+  pcnf0 |= (0UL << RADIO_PCNF0_S0LEN_Pos) & RADIO_PCNF0_S0LEN_Msk;
+  pcnf0 |= (0UL << RADIO_PCNF0_S1LEN_Pos) & RADIO_PCNF0_S1LEN_Msk;
+  pcnf0 |= (RADIO_PCNF0_S1INCL_Automatic << RADIO_PCNF0_S1INCL_Pos) &
+           RADIO_PCNF0_S1INCL_Msk;
+  pcnf0 |= (RADIO_PCNF0_PLEN_8bit << RADIO_PCNF0_PLEN_Pos) &
+           RADIO_PCNF0_PLEN_Msk;
+  pcnf0 |= (RADIO_PCNF0_CRCINC_Exclude << RADIO_PCNF0_CRCINC_Pos) &
+           RADIO_PCNF0_CRCINC_Msk;
+  radio_->PCNF0 = pcnf0;
+
+  uint32_t pcnf1 = 0U;
+  pcnf1 |= (static_cast<uint32_t>(config_.maxPayloadLength)
+            << RADIO_PCNF1_MAXLEN_Pos) & RADIO_PCNF1_MAXLEN_Msk;
+  pcnf1 |= (0UL << RADIO_PCNF1_STATLEN_Pos) & RADIO_PCNF1_STATLEN_Msk;
+  pcnf1 |= (4UL << RADIO_PCNF1_BALEN_Pos) & RADIO_PCNF1_BALEN_Msk;
+  pcnf1 |= ((config_.bigEndian ? RADIO_PCNF1_ENDIAN_Big
+                               : RADIO_PCNF1_ENDIAN_Little)
+            << RADIO_PCNF1_ENDIAN_Pos) & RADIO_PCNF1_ENDIAN_Msk;
+  pcnf1 |= ((config_.whiteningEnabled ? RADIO_PCNF1_WHITEEN_Enabled
+                                      : RADIO_PCNF1_WHITEEN_Disabled)
+            << RADIO_PCNF1_WHITEEN_Pos) & RADIO_PCNF1_WHITEEN_Msk;
+  radio_->PCNF1 = pcnf1;
+
+  radio_->BASE0 = (config_.addressBase0 & RADIO_BASE0_BASE0_Msk);
+  radio_->PREFIX0 =
+      ((static_cast<uint32_t>(config_.addressPrefix0) << RADIO_PREFIX0_AP0_Pos) &
+       RADIO_PREFIX0_AP0_Msk);
+  radio_->TXADDRESS =
+      (0UL << RADIO_TXADDRESS_TXADDRESS_Pos) & RADIO_TXADDRESS_TXADDRESS_Msk;
+  radio_->RXADDRESSES =
+      (RADIO_RXADDRESSES_ADDR0_Enabled << RADIO_RXADDRESSES_ADDR0_Pos) &
+      RADIO_RXADDRESSES_ADDR0_Msk;
+
+  uint32_t crccnf = 0U;
+  crccnf |= (RADIO_CRCCNF_LEN_Two << RADIO_CRCCNF_LEN_Pos) &
+            RADIO_CRCCNF_LEN_Msk;
+  crccnf |= (RADIO_CRCCNF_SKIPADDR_Include << RADIO_CRCCNF_SKIPADDR_Pos) &
+            RADIO_CRCCNF_SKIPADDR_Msk;
+  radio_->CRCCNF = crccnf;
+  radio_->CRCPOLY = (config_.crcPolynomial & RADIO_CRCPOLY_CRCPOLY_Msk);
+  radio_->CRCINIT = (config_.crcInit & RADIO_CRCINIT_CRCINIT_Msk);
+
+  return setFrequencyOffsetMhz(config_.frequencyOffsetMhz) &&
+         setTxPowerDbm(config_.txPowerDbm);
+}
+
+bool RawRadioLink::begin(const RawRadioConfig& config) {
+  if (radio_ == nullptr || config.maxPayloadLength == 0U) {
+    initialized_ = false;
+    receiverArmed_ = false;
+    return false;
+  }
+
+  if (!ClockControl::startHfxo(true, 1500000UL)) {
+    initialized_ = false;
+    receiverArmed_ = false;
+    return false;
+  }
+
+  config_ = config;
+  power_.setLatencyMode(PowerLatencyMode::kConstantLatency);
+
+  if (!configureProprietary1M()) {
+    initialized_ = false;
+    receiverArmed_ = false;
+    return false;
+  }
+
+  clearRadioCoreEvents(radio_);
+  memset(txPacket_, 0, sizeof(txPacket_));
+  memset(rxPacket_, 0, sizeof(rxPacket_));
+  initialized_ = true;
+  receiverArmed_ = false;
+  return true;
+}
+
+void RawRadioLink::end() {
+  if (radio_ == nullptr) {
+    initialized_ = false;
+    receiverArmed_ = false;
+    return;
+  }
+
+  radio_->SHORTS = 0U;
+  radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
+  waitRadioDisabledBudgeted(radio_, 0U, 200000UL);
+  clearRadioCoreEvents(radio_);
+  initialized_ = false;
+  receiverArmed_ = false;
+}
+
+bool RawRadioLink::setFrequencyOffsetMhz(uint8_t frequencyOffsetMhz) {
+  if (radio_ == nullptr) {
+    return false;
+  }
+
+  config_.frequencyOffsetMhz = frequencyOffsetMhz;
+  radio_->FREQUENCY =
+      ((static_cast<uint32_t>(config_.frequencyOffsetMhz)
+        << RADIO_FREQUENCY_FREQUENCY_Pos) &
+       RADIO_FREQUENCY_FREQUENCY_Msk) |
+      (0UL << RADIO_FREQUENCY_MAP_Pos);
+  return true;
+}
+
+bool RawRadioLink::setPipe(uint32_t addressBase0, uint8_t addressPrefix0) {
+  if (radio_ == nullptr) {
+    return false;
+  }
+
+  config_.addressBase0 = addressBase0;
+  config_.addressPrefix0 = addressPrefix0;
+  radio_->BASE0 = (config_.addressBase0 & RADIO_BASE0_BASE0_Msk);
+  radio_->PREFIX0 =
+      ((static_cast<uint32_t>(config_.addressPrefix0) << RADIO_PREFIX0_AP0_Pos) &
+       RADIO_PREFIX0_AP0_Msk);
+  return true;
+}
+
+bool RawRadioLink::setTxPowerDbm(int8_t dbm) {
+  if (radio_ == nullptr) {
+    return false;
+  }
+
+  config_.txPowerDbm = dbm;
+  const uint32_t regValue = radioTxPowerRegFromDbm(dbm);
+  radio_->TXPOWER = ((regValue << RADIO_TXPOWER_TXPOWER_Pos) &
+                     RADIO_TXPOWER_TXPOWER_Msk);
+  return true;
+}
+
+bool RawRadioLink::transmit(const uint8_t* payload, uint8_t length,
+                            uint32_t spinLimit) {
+  if (!initialized_ || radio_ == nullptr || payload == nullptr) {
+    return false;
+  }
+  if (length == 0U || length > config_.maxPayloadLength) {
+    return false;
+  }
+
+  txPacket_[0] = length;
+  memcpy(&txPacket_[1], payload, length);
+
+  clearRadioCoreEvents(radio_);
+  receiverArmed_ = false;
+  radio_->PACKETPTR = reinterpret_cast<uint32_t>(txPacket_);
+  radio_->SHORTS =
+      ((RADIO_SHORTS_TXREADY_START_Enabled << RADIO_SHORTS_TXREADY_START_Pos) &
+       RADIO_SHORTS_TXREADY_START_Msk) |
+      ((RADIO_SHORTS_PHYEND_DISABLE_Enabled << RADIO_SHORTS_PHYEND_DISABLE_Pos) &
+       RADIO_SHORTS_PHYEND_DISABLE_Msk);
+
+  radio_->TASKS_TXEN = RADIO_TASKS_TXEN_TASKS_TXEN_Trigger;
+  const bool endSeen = waitRadioEndBudgeted(radio_, 12000U, spinLimit);
+  radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
+  const bool disabled = waitRadioDisabledBudgeted(radio_, 3000U, spinLimit);
+  radio_->SHORTS = 0U;
+  clearRadioCoreEvents(radio_);
+  return endSeen && disabled;
+}
+
+bool RawRadioLink::armReceive() {
+  if (!initialized_ || radio_ == nullptr) {
+    return false;
+  }
+
+  memset(rxPacket_, 0, sizeof(rxPacket_));
+  clearRadioCoreEvents(radio_);
+  radio_->PACKETPTR = reinterpret_cast<uint32_t>(rxPacket_);
+  radio_->SHORTS =
+      ((RADIO_SHORTS_RXREADY_START_Enabled << RADIO_SHORTS_RXREADY_START_Pos) &
+       RADIO_SHORTS_RXREADY_START_Msk) |
+      ((RADIO_SHORTS_PHYEND_DISABLE_Enabled << RADIO_SHORTS_PHYEND_DISABLE_Pos) &
+       RADIO_SHORTS_PHYEND_DISABLE_Msk) |
+      ((RADIO_SHORTS_ADDRESS_RSSISTART_Enabled
+        << RADIO_SHORTS_ADDRESS_RSSISTART_Pos) &
+       RADIO_SHORTS_ADDRESS_RSSISTART_Msk);
+  radio_->TASKS_RXEN = RADIO_TASKS_RXEN_TASKS_RXEN_Trigger;
+  receiverArmed_ = true;
+  return true;
+}
+
+RawRadioReceiveStatus RawRadioLink::finishReceive(RawRadioPacket* outPacket,
+                                                  uint32_t spinLimit,
+                                                  bool timedOut) {
+  if (radio_ == nullptr || !receiverArmed_) {
+    return RawRadioReceiveStatus::kError;
+  }
+
+  const int8_t rssiDbm = radioRssiDbm(radio_);
+  const bool disabled = waitRadioDisabledBudgeted(radio_, 3000U, spinLimit);
+  radio_->SHORTS = 0U;
+  receiverArmed_ = false;
+  if (!disabled) {
+    clearRadioCoreEvents(radio_);
+    return RawRadioReceiveStatus::kError;
+  }
+
+  if (timedOut ||
+      ((radio_->EVENTS_CRCOK == 0U) && (radio_->EVENTS_CRCERROR == 0U))) {
+    clearRadioCoreEvents(radio_);
+    return RawRadioReceiveStatus::kIdle;
+  }
+
+  const uint32_t crcStatus =
+      (radio_->CRCSTATUS & RADIO_CRCSTATUS_CRCSTATUS_Msk) >>
+      RADIO_CRCSTATUS_CRCSTATUS_Pos;
+  const bool crcOkEvent = (radio_->EVENTS_CRCOK != 0U);
+  const bool crcOk = crcOkEvent || (crcStatus == RADIO_CRCSTATUS_CRCSTATUS_CRCOk);
+  if (!crcOk) {
+    clearRadioCoreEvents(radio_);
+    return RawRadioReceiveStatus::kCrcError;
+  }
+
+  const uint8_t length = minU8(rxPacket_[0], config_.maxPayloadLength);
+  if (length == 0U) {
+    clearRadioCoreEvents(radio_);
+    return RawRadioReceiveStatus::kError;
+  }
+
+  if (outPacket != nullptr) {
+    outPacket->length = length;
+    outPacket->rssiDbm = rssiDbm;
+    memcpy(outPacket->payload, &rxPacket_[1], length);
+  }
+
+  clearRadioCoreEvents(radio_);
+  return RawRadioReceiveStatus::kPacket;
+}
+
+RawRadioReceiveStatus RawRadioLink::pollReceive(RawRadioPacket* outPacket,
+                                                uint32_t spinLimit) {
+  if (!initialized_ || radio_ == nullptr) {
+    return RawRadioReceiveStatus::kError;
+  }
+  if (!receiverArmed_) {
+    return RawRadioReceiveStatus::kIdle;
+  }
+
+  if ((radio_->EVENTS_CRCOK == 0U) && (radio_->EVENTS_CRCERROR == 0U) &&
+      (radio_->EVENTS_END == 0U)) {
+    return RawRadioReceiveStatus::kIdle;
+  }
+
+  return finishReceive(outPacket, spinLimit, false);
+}
+
+RawRadioReceiveStatus RawRadioLink::waitForReceive(RawRadioPacket* outPacket,
+                                                   uint32_t listenWindowUs,
+                                                   uint32_t spinLimit) {
+  if (!initialized_ || radio_ == nullptr) {
+    return RawRadioReceiveStatus::kError;
+  }
+  if (!receiverArmed_ && !armReceive()) {
+    return RawRadioReceiveStatus::kError;
+  }
+
+  const bool rxDone = waitRadioRxDoneBudgeted(radio_, listenWindowUs, spinLimit);
+  if (!rxDone) {
+    radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
+  }
+
+  return finishReceive(outPacket, spinLimit, !rxDone);
+}
+
+bool RawRadioLink::initialized() const { return initialized_; }
+
+bool RawRadioLink::receiverArmed() const { return receiverArmed_; }
+
+uint8_t RawRadioLink::maxPayloadLength() const { return config_.maxPayloadLength; }
+
+const RawRadioConfig& RawRadioLink::config() const { return config_; }
+
 bool ZigbeeRadio::buildDataFrameShort(uint8_t sequence, uint16_t panId,
                                       uint16_t destinationShort,
                                       uint16_t sourceShort, const uint8_t* payload,

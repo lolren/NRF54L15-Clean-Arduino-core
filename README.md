@@ -19,6 +19,7 @@ Current scope:
 
 - GPIO, clock, SPI, I2C, UART, ADC, TIMER, PWM, GPIOTE, TEMP, WDT, PDM
 - Raw `NRF_RADIO` and `NRF_I2S` register access for low-level library ports
+- `RawRadioLink` helper for proprietary 1 Mbit packet TX/RX on `RADIO`
 - POWER / RESET / REGULATORS / GRTC control
 - BLE legacy advertising, active/passive scan, connectable/scannable advertiser flow, and minimal ATT/GATT peripheral path
 - Zigbee-oriented 802.15.4 PHY/MAC-lite examples
@@ -93,7 +94,7 @@ Recommended library examples:
 - Burst/beacon BLE: `BleAdvertiserHybridDutyCycle`, `BleAdvertiserBurstSystemOff`
 - Zigbee: `ZigbeeCoordinator`, `ZigbeeRouter`, `ZigbeeEndDevice`, `ZigbeePingInitiator`, `ZigbeePongResponder`
 - BLE diagnostics: `BleAdvertiserProbe`, `BlePassiveScanner`, `BleActiveScanner`, `BleConnectionPeripheral`, `BleGattBasicPeripheral`
-- Peripheral bring-up: `RawI2sTxInterrupt`
+- Peripheral bring-up: `RawI2sTxInterrupt`, `RawRadioPacketTx`, `RawRadioPacketRx`, `RawRadioAckRequester`, `RawRadioAckResponder`
 - Bring-up: `CleanBringUp`, `PeripheralSelfTest`, `FeatureParitySelfTest`
 
 ## Power And Zephyr Parity

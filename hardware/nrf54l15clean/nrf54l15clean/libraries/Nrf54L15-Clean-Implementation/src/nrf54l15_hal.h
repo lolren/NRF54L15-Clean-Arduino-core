@@ -545,6 +545,71 @@ class ZigbeeRadio {
   alignas(4) uint8_t rxPacket_[1 + 127];
 };
 
+struct RawRadioConfig {
+  uint8_t frequencyOffsetMhz = 8U;
+  uint32_t addressBase0 = 0xC2C2C2C2UL;
+  uint8_t addressPrefix0 = 0xC2U;
+  int8_t txPowerDbm = -8;
+  uint8_t maxPayloadLength = 32U;
+  uint32_t crcPolynomial = 0x11021UL;
+  uint32_t crcInit = 0xFFFFUL;
+  bool whiteningEnabled = false;
+  bool bigEndian = true;
+};
+
+struct RawRadioPacket {
+  uint8_t length;
+  int8_t rssiDbm;
+  uint8_t payload[255];
+};
+
+enum class RawRadioReceiveStatus : uint8_t {
+  kIdle = 0,
+  kPacket = 1,
+  kCrcError = 2,
+  kError = 3,
+};
+
+class RawRadioLink {
+ public:
+  explicit RawRadioLink(uint32_t radioBase = nrf54l15::RADIO_BASE);
+
+  bool begin(const RawRadioConfig& config = RawRadioConfig());
+  void end();
+
+  bool setFrequencyOffsetMhz(uint8_t frequencyOffsetMhz);
+  bool setPipe(uint32_t addressBase0, uint8_t addressPrefix0);
+  bool setTxPowerDbm(int8_t dbm);
+
+  bool transmit(const uint8_t* payload, uint8_t length,
+                uint32_t spinLimit = 3000000UL);
+  bool armReceive();
+  RawRadioReceiveStatus pollReceive(RawRadioPacket* outPacket = nullptr,
+                                    uint32_t spinLimit = 3000000UL);
+  RawRadioReceiveStatus waitForReceive(RawRadioPacket* outPacket,
+                                       uint32_t listenWindowUs,
+                                       uint32_t spinLimit = 3000000UL);
+
+  bool initialized() const;
+  bool receiverArmed() const;
+  uint8_t maxPayloadLength() const;
+  const RawRadioConfig& config() const;
+
+ private:
+  bool configureProprietary1M();
+  RawRadioReceiveStatus finishReceive(RawRadioPacket* outPacket,
+                                      uint32_t spinLimit,
+                                      bool timedOut);
+
+  NRF_RADIO_Type* radio_;
+  PowerManager power_;
+  RawRadioConfig config_;
+  bool initialized_;
+  bool receiverArmed_;
+  alignas(4) uint8_t txPacket_[1U + 255U];
+  alignas(4) uint8_t rxPacket_[1U + 255U];
+};
+
 enum class BleAddressType : uint8_t {
   kPublic = 0,
   kRandomStatic = 1,

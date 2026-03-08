@@ -25,6 +25,7 @@ This package uses direct peripheral register access from the nRF54L15 datasheet 
 - `Pdm`: digital microphone interface setup and blocking capture with EasyDMA.
 - `BleRadio`: register-level BLE 1M link layer + minimal ATT/GATT peripheral path via `RADIO`.
 - `ZigbeeRadio`: IEEE 802.15.4 PHY/MAC-lite data-frame + MAC-command frame TX/RX helpers via `RADIO`.
+- `RawRadioLink`: proprietary 1 Mbit packet TX/RX helper via `RADIO`.
 
 Raw peripheral compatibility exposed by the core:
 
@@ -150,6 +151,14 @@ Peripheral examples:
 - `examples/Peripherals/RawI2sTxInterrupt/RawI2sTxInterrupt.ino`
   - Uses `I2S20` with `TXPTRUPD` and `STOPPED` interrupts instead of polling.
   - Keeps the TX buffer armed from `I2S20_IRQHandler` and intentionally cycles stop/restart so both interrupt paths are visible over UART.
+- `examples/Peripherals/RawRadioPacketTx/RawRadioPacketTx.ino`
+  - Uses `RawRadioLink` to send proprietary 1 Mbit packets on a fixed pipe and channel.
+- `examples/Peripherals/RawRadioPacketRx/RawRadioPacketRx.ino`
+  - Uses `RawRadioLink::armReceive()` and `pollReceive()` for non-blocking packet reception.
+- `examples/Peripherals/RawRadioAckRequester/RawRadioAckRequester.ino`
+  - Builds a simple software ACK exchange on top of `RawRadioLink::transmit()` and `waitForReceive()`.
+- `examples/Peripherals/RawRadioAckResponder/RawRadioAckResponder.ino`
+  - Companion responder for the requester example, still using the same raw proprietary helper.
 
 BLE examples:
 
