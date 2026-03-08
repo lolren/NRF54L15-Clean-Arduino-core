@@ -3,6 +3,8 @@
 
   Reads VBAT via analogRead(VBAT_READ).
   On this board the VBAT divider is gated, so VBAT_EN must be HIGH during reads.
+  The exact voltage estimate depends on ADC reference/resolution assumptions,
+  so treat it as a practical board-level check rather than a precision gauge.
 */
 
 void setup() {

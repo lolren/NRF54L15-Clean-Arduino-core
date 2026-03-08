@@ -1,5 +1,10 @@
 #include "nrf_to_nrf.h"
 
+// Compatibility-layer example for the `nrf_to_nrf` API surface.
+//
+// This follows the familiar upstream role-switch pattern, but it runs on the
+// raw proprietary radio implementation in this core rather than Nordic ESB.
+
 nrf_to_nrf radio;
 
 uint8_t address[][6] = {"1Node", "2Node"};
@@ -33,6 +38,7 @@ void setup() {
   Serial.println(static_cast<int>(radioNumber));
   Serial.println(F("Press 'T' for TX role, 'R' for RX role. Defaults to RX."));
 
+  // PA level here maps to the compatibility layer, not to BLE TX power.
   radio.setPALevel(NRF_PA_LOW);
   radio.setPayloadSize(sizeof(payload));
   radio.openWritingPipe(address[radioNumber]);

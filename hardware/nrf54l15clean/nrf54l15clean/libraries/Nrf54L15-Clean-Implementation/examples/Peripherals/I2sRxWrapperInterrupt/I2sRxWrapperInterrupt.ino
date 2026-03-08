@@ -7,6 +7,16 @@ using namespace xiao_nrf54l15;
 
 namespace {
 
+// Reusable I2S RX wrapper example.
+//
+// This uses the same XIAO I2S route as the TX example, but with SDIN on D11:
+// - D11 = SDIN
+// - D12 = LRCK
+// - D13 = SCK
+// - D14 = MCK
+//
+// For a real capture test, feed D11 from an external source that shares LRCK/SCK.
+
 static constexpr uint32_t kFrameWordCount = 64U;
 static constexpr uint32_t kHeartbeatMs = 1000U;
 static constexpr uint32_t kStopCycleMs = 4000U;
@@ -68,6 +78,7 @@ void configureBoard() {
 
 I2sRxConfig makeConfig() {
   I2sRxConfig config;
+  // Keep the board route explicit at the top-level config so pin changes are local.
   config.sdin = kPinD11;
   config.lrck = kPinD12;
   config.sck = kPinD13;
@@ -94,6 +105,7 @@ void setup() {
 
   gI2s.setReceiveCallback(captureBuffer, &gCaptureState);
 
+  // makeActive() claims the shared I2S20 IRQ path for this wrapper instance.
   if (!gI2s.makeActive() || !gI2s.start()) {
     Serial.println(F("I2S RX wrapper start failed"));
     while (true) {
@@ -109,6 +121,7 @@ void setup() {
 }
 
 void loop() {
+  // service() handles deferred restart work outside IRQ context.
   gI2s.service();
 
   const uint32_t now = millis();

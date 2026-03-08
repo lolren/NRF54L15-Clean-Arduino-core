@@ -7,6 +7,18 @@ using namespace xiao_nrf54l15;
 
 namespace {
 
+// Reusable full-duplex I2S wrapper example.
+//
+// XIAO route used by this example:
+// - D11 = SDOUT
+// - D15 = SDIN
+// - D12 = LRCK
+// - D13 = SCK
+// - D14 = MCK
+//
+// Jumper D11 -> D15 for one-board loopback. Without that jumper, this sketch is
+// still useful as an IRQ/service smoke test.
+
 static constexpr uint32_t kFrameWordCount = 64U;
 static constexpr uint32_t kHeartbeatMs = 1000U;
 static constexpr uint32_t kStopCycleMs = 4000U;
@@ -93,6 +105,7 @@ void configureBoard() {
 
 I2sDuplexConfig makeConfig() {
   I2sDuplexConfig config;
+  // Duplex config is explicit so the whole route is visible in one place.
   config.sdout = kPinD11;
   config.lrck = kPinD12;
   config.sck = kPinD13;
@@ -123,6 +136,7 @@ void setup() {
   gI2s.setTxRefillCallback(refillTxBuffer, &gTxState);
   gI2s.setRxReceiveCallback(captureRxBuffer, &gRxState);
 
+  // makeActive() claims the shared I2S20 IRQ path for this wrapper instance.
   if (!gI2s.makeActive() || !gI2s.start()) {
     Serial.println(F("I2S duplex start failed"));
     while (true) {
@@ -138,6 +152,7 @@ void setup() {
 }
 
 void loop() {
+  // service() handles deferred restart work outside IRQ context.
   gI2s.service();
 
   const uint32_t now = millis();

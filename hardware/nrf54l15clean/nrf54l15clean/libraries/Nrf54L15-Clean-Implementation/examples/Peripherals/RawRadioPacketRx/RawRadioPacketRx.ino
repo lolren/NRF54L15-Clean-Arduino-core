@@ -6,6 +6,13 @@ using namespace xiao_nrf54l15;
 
 namespace {
 
+// Raw proprietary radio RX example.
+//
+// Pair with RawRadioPacketTx. This listens in proprietary `Nrf_1Mbit` mode and
+// prints the received counter/tag payload.
+
+static constexpr BoardAntennaPath kAntennaPath = BoardAntennaPath::kCeramic;
+
 static constexpr uint8_t kConfigFrequencyOffsetMhz = 8U;  // 2408 MHz
 static constexpr uint32_t kConfigAddressBase0 = 0xC2C2C2C2UL;
 static constexpr uint8_t kConfigAddressPrefix0 = 0xC2U;
@@ -67,7 +74,7 @@ void configureBoard() {
 
   BoardControl::setBatterySenseEnabled(false);
   BoardControl::setImuMicEnabled(false);
-  if (!BoardControl::enableRfPath(BoardAntennaPath::kCeramic)) {
+  if (!BoardControl::enableRfPath(kAntennaPath)) {
     failStage(1);
   }
 }

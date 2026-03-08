@@ -1,6 +1,12 @@
 #include <SPI.h>
 #include <Wire.h>
 
+// Minimal peripheral smoke test using the standard Arduino APIs only.
+//
+// This intentionally does not use the low-level HAL wrappers. It is a quick
+// sanity check that Wire, SPI, ADC, and the built-in LED path all compile and
+// run together.
+
 void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
 

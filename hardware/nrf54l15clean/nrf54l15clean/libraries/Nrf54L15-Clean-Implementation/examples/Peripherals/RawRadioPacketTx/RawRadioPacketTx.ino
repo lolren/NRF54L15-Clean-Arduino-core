@@ -6,6 +6,16 @@ using namespace xiao_nrf54l15;
 
 namespace {
 
+// Raw proprietary radio TX example.
+//
+// This does not use BLE. It uses the RawRadioLink helper in proprietary
+// `Nrf_1Mbit` mode and sends a fixed-format payload to the matching RX example.
+//
+// Board-specific choice:
+// - kAntennaPath selects the XIAO ceramic vs external RF path.
+// - Use kExternal only if an external antenna is actually attached.
+
+static constexpr BoardAntennaPath kAntennaPath = BoardAntennaPath::kCeramic;
 static constexpr uint8_t kConfigFrequencyOffsetMhz = 8U;  // 2408 MHz
 static constexpr uint32_t kConfigAddressBase0 = 0xC2C2C2C2UL;
 static constexpr uint8_t kConfigAddressPrefix0 = 0xC2U;
@@ -81,7 +91,7 @@ void buildPayload() {
 }
 
 bool transmitOnce() {
-  if (!BoardControl::enableRfPath(BoardAntennaPath::kCeramic)) {
+  if (!BoardControl::enableRfPath(kAntennaPath)) {
     return false;
   }
 

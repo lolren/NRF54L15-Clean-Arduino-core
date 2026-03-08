@@ -8,6 +8,12 @@ using namespace xiao_nrf54l15;
 
 namespace {
 
+// Raw register-level I2S TX example.
+//
+// Use this when you want to see the actual `NRF_I2S` bring-up without the
+// higher-level wrapper abstractions. The wrapper examples are usually the better
+// starting point for application code.
+
 // Default XIAO back-pad route:
 // D11 -> SDOUT
 // D12 -> LRCK
@@ -107,6 +113,8 @@ void configureBoard() {
 }
 
 void configureI2s() {
+  // This is the low-level register sequence. It intentionally avoids the
+  // wrapper so ports can inspect each register write directly.
   NRF_I2S->TASKS_STOP = I2S_TASKS_STOP_TASKS_STOP_Trigger;
   NRF_I2S->ENABLE =
       (I2S_ENABLE_ENABLE_Disabled << I2S_ENABLE_ENABLE_Pos) &

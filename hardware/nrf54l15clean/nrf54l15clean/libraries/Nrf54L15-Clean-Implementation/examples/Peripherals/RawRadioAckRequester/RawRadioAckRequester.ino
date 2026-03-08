@@ -6,6 +6,13 @@ using namespace xiao_nrf54l15;
 
 namespace {
 
+// Software-ACK requester built on the raw proprietary radio helper.
+//
+// This is a thin application-level ACK/retry loop, not hardware ESB auto-ack.
+// Pair with RawRadioAckResponder.
+
+static constexpr BoardAntennaPath kAntennaPath = BoardAntennaPath::kCeramic;
+
 static constexpr uint8_t kConfigFrequencyOffsetMhz = 8U;  // 2408 MHz
 static constexpr uint32_t kConfigAddressBase0 = 0xC2C2C2C2UL;
 static constexpr uint8_t kConfigAddressPrefix0 = 0xC2U;
@@ -93,7 +100,7 @@ bool exchangeWithAck(uint8_t sequence, uint8_t* outAttemptUsed) {
     *outAttemptUsed = 0U;
   }
 
-  if (!BoardControl::enableRfPath(BoardAntennaPath::kCeramic)) {
+  if (!BoardControl::enableRfPath(kAntennaPath)) {
     return false;
   }
 

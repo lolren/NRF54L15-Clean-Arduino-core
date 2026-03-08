@@ -18,6 +18,14 @@
 
 using namespace xiao_nrf54l15;
 
+// End-device role demo for the raw Zigbee helper path.
+//
+// Flow:
+// 1) boot with a temporary short address
+// 2) join through the coordinator
+// 3) send periodic telemetry frames
+// 4) wait for coordinator ACKs and drop back to join state if the link is lost
+
 static ZigbeeRadio g_zb;
 static uint8_t g_sequence = 1U;
 static uint8_t g_joinNonce = 1U;
@@ -31,6 +39,8 @@ static uint32_t g_telemetryAck = 0U;
 static uint32_t g_telemetryMiss = 0U;
 static uint8_t g_missStreak = 0U;
 
+// Network configuration comes from the Tools menu defaults unless overridden by
+// the macros above.
 static constexpr uint8_t kChannel =
     static_cast<uint8_t>(NRF54L15_CLEAN_ZIGBEE_CHANNEL);
 static constexpr uint16_t kPanId =

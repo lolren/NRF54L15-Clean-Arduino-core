@@ -6,6 +6,13 @@ using namespace xiao_nrf54l15;
 
 namespace {
 
+// Software-ACK responder built on the raw proprietary radio helper.
+//
+// Pair with RawRadioAckRequester. This example listens for REQ frames and sends
+// a minimal ACK frame back with the same sequence number.
+
+static constexpr BoardAntennaPath kAntennaPath = BoardAntennaPath::kCeramic;
+
 static constexpr uint8_t kConfigFrequencyOffsetMhz = 8U;  // 2408 MHz
 static constexpr uint32_t kConfigAddressBase0 = 0xC2C2C2C2UL;
 static constexpr uint8_t kConfigAddressPrefix0 = 0xC2U;
@@ -73,7 +80,7 @@ void configureBoard() {
 
   BoardControl::setBatterySenseEnabled(false);
   BoardControl::setImuMicEnabled(false);
-  if (!BoardControl::enableRfPath(BoardAntennaPath::kCeramic)) {
+  if (!BoardControl::enableRfPath(kAntennaPath)) {
     failStage(1);
   }
 }

@@ -7,6 +7,21 @@ using namespace xiao_nrf54l15;
 
 namespace {
 
+// Reusable I2S TX wrapper example.
+//
+// This sketch demonstrates the higher-level I2sTx helper:
+// - wrapper-owned peripheral setup
+// - interrupt-driven TX buffer rotation
+// - callback-based buffer refill
+//
+// XIAO route used by this example:
+// - D11 = SDOUT
+// - D12 = LRCK
+// - D13 = SCK
+// - D14 = MCK
+//
+// These are board-specific XIAO route choices, not generic Arduino pin names.
+
 static constexpr uint32_t kFrameWordCount = 64U;
 static constexpr uint32_t kHeartbeatMs = 1000U;
 static constexpr uint32_t kStopCycleMs = 4000U;
@@ -69,6 +84,7 @@ void configureBoard() {
 
 I2sTxConfig makeConfig() {
   I2sTxConfig config;
+  // Wrapper config is explicit so you can remap the board route in one place.
   config.sdout = kPinD11;
   config.lrck = kPinD12;
   config.sck = kPinD13;
@@ -95,6 +111,7 @@ void setup() {
 
   gI2s.setRefillCallback(refillBuffer, &gWaveState);
 
+  // makeActive() claims the shared I2S20 IRQ path for this wrapper instance.
   if (!gI2s.makeActive() || !gI2s.start()) {
     Serial.println(F("I2S wrapper start failed"));
     while (true) {
@@ -110,6 +127,7 @@ void setup() {
 }
 
 void loop() {
+  // service() handles deferred restart work outside IRQ context.
   gI2s.service();
 
   const uint32_t now = millis();

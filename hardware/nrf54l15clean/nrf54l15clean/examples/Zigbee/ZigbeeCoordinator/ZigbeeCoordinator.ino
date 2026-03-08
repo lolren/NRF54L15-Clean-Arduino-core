@@ -18,6 +18,12 @@
 
 using namespace xiao_nrf54l15;
 
+// Simple Zigbee coordinator role for the raw 802.15.4/Zigbee helper path.
+//
+// This is a teaching/demo sketch, not a full Zigbee stack. It accepts join
+// requests, assigns short addresses, receives app payloads, and returns a small
+// ACK-like application response.
+
 static ZigbeeRadio g_zb;
 static uint8_t g_sequence = 1U;
 static uint32_t g_lastStatusMs = 0U;
@@ -26,6 +32,8 @@ static uint32_t g_joinAccepted = 0U;
 static uint32_t g_appRx = 0U;
 static uint16_t g_nextShortAddress = 0x0100U;
 
+// Network configuration comes from the Tools menu defaults unless overridden by
+// the macros above.
 static constexpr uint8_t kChannel =
     static_cast<uint8_t>(NRF54L15_CLEAN_ZIGBEE_CHANNEL);
 static constexpr uint16_t kPanId =
@@ -36,6 +44,7 @@ static constexpr uint8_t kJoinRspCmdId = 0xA2U;
 static constexpr uint8_t kRoleCoordinator = 0U;
 static constexpr uint8_t kRoleRouter = 1U;
 static constexpr uint8_t kRoleEndDevice = 2U;
+// Rough RSSI-based distance heuristic for logs only.
 static constexpr float kRefRssiAtOneMeterDbm = -59.0f;
 static constexpr float kPathLossExponent = 2.0f;
 

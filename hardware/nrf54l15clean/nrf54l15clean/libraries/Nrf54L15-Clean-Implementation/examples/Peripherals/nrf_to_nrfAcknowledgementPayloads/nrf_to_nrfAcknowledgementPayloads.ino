@@ -1,5 +1,10 @@
 #include "nrf_to_nrf.h"
 
+// Compatibility-layer acknowledgement-payload example.
+//
+// This follows the upstream `nrf_to_nrf` style, but the underlying link here is
+// the raw proprietary radio helper in this core, not hardware ESB auto-ack.
+
 nrf_to_nrf radio;
 
 uint8_t address[][6] = {"1Node", "2Node"};
@@ -39,6 +44,7 @@ void setup() {
   Serial.println(static_cast<int>(radioNumber));
   Serial.println(F("Press 'T' for TX role, 'R' for RX role. Defaults to RX."));
 
+  // These are compatibility-layer features, not BLE features.
   radio.setPALevel(NRF_PA_LOW);
   radio.enableDynamicPayloads();
   radio.enableAckPayload();

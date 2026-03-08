@@ -18,12 +18,19 @@
 
 using namespace xiao_nrf54l15;
 
+// Point-to-point Zigbee pong responder demo.
+//
+// Pair with ZigbeePingInitiator. This listens for PING frames and immediately
+// returns a PONG carrying the same sequence byte.
+
 static ZigbeeRadio g_zb;
 static uint32_t g_rxFrames = 0U;
 static uint32_t g_pingRx = 0U;
 static uint32_t g_pongTx = 0U;
 static uint32_t g_lastStatusMs = 0U;
 
+// Network configuration comes from the Tools menu defaults unless overridden by
+// the macros above.
 static constexpr uint8_t kChannel =
     static_cast<uint8_t>(NRF54L15_CLEAN_ZIGBEE_CHANNEL);
 static constexpr uint16_t kPanId =

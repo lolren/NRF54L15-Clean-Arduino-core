@@ -18,6 +18,11 @@
 
 using namespace xiao_nrf54l15;
 
+// Point-to-point Zigbee ping initiator demo.
+//
+// This is the simplest two-node raw Zigbee data-frame exchange in the repo:
+// send PING, wait for PONG, log RSSI and rough distance heuristic.
+
 static ZigbeeRadio g_zb;
 static uint8_t g_sequence = 1U;
 static uint32_t g_lastPingMs = 0U;
@@ -26,6 +31,8 @@ static uint32_t g_pingReply = 0U;
 static uint32_t g_pingMiss = 0U;
 static uint32_t g_lastStatusMs = 0U;
 
+// Network configuration comes from the Tools menu defaults unless overridden by
+// the macros above.
 static constexpr uint8_t kChannel =
     static_cast<uint8_t>(NRF54L15_CLEAN_ZIGBEE_CHANNEL);
 static constexpr uint16_t kPanId =

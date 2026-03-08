@@ -18,6 +18,14 @@
 
 using namespace xiao_nrf54l15;
 
+// Router role demo for the raw Zigbee helper path.
+//
+// Flow:
+// 1) boot with a temporary short address
+// 2) send a join request to the coordinator
+// 3) switch to the assigned short address on success
+// 4) send periodic router heartbeat frames and wait for coordinator ACKs
+
 static ZigbeeRadio g_zb;
 static uint8_t g_sequence = 1U;
 static uint8_t g_joinNonce = 1U;
@@ -30,6 +38,8 @@ static uint32_t g_heartbeatSent = 0U;
 static uint32_t g_ackOk = 0U;
 static uint32_t g_ackMiss = 0U;
 
+// Network configuration comes from the Tools menu defaults unless overridden by
+// the macros above.
 static constexpr uint8_t kChannel =
     static_cast<uint8_t>(NRF54L15_CLEAN_ZIGBEE_CHANNEL);
 static constexpr uint16_t kPanId =
