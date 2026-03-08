@@ -35,6 +35,8 @@ extern "C" {
 #define NRF_MEMCONF_S_BASE     0x500CF000UL
 #define NRF_GRTC_NS_BASE       0x400E2000UL
 #define NRF_GRTC_S_BASE        0x500E2000UL
+#define NRF_RADIO_NS_BASE      0x4008A000UL
+#define NRF_RADIO_S_BASE       0x5008A000UL
 #define NRF_SPIM00_NS_BASE     0x4004A000UL
 #define NRF_SPIM00_S_BASE      0x5004A000UL
 #define NRF_SPIM20_NS_BASE     0x400C6000UL
@@ -56,10 +58,12 @@ extern "C" {
 #define NRF_PWM20_NS_BASE      0x400D2000UL
 #define NRF_PWM21_NS_BASE      0x400D3000UL
 #define NRF_SAADC_NS_BASE      0x400D5000UL
+#define NRF_I2S20_NS_BASE      0x400DD000UL
 #define NRF_OSCILLATORS_NS_BASE 0x40120000UL
 #define NRF_PWM20_S_BASE       0x500D2000UL
 #define NRF_PWM21_S_BASE       0x500D3000UL
 #define NRF_SAADC_S_BASE       0x500D5000UL
+#define NRF_I2S20_S_BASE       0x500DD000UL
 #define NRF_OSCILLATORS_S_BASE  0x50120000UL
 #define NRF_P1_NS_BASE         0x400D8200UL
 #define NRF_P1_S_BASE          0x500D8200UL
@@ -80,6 +84,7 @@ extern "C" {
 #define NRF_P2_BASE            NRF_P2_NS_BASE
 #define NRF_MEMCONF_BASE       NRF_MEMCONF_NS_BASE
 #define NRF_GRTC_BASE          NRF_GRTC_NS_BASE
+#define NRF_RADIO_BASE         NRF_RADIO_NS_BASE
 #define NRF_SPIM00_BASE        NRF_SPIM00_NS_BASE
 #define NRF_SPIM20_BASE        NRF_SPIM20_NS_BASE
 #define NRF_SPIM21_BASE        NRF_SPIM21_NS_BASE
@@ -92,6 +97,7 @@ extern "C" {
 #define NRF_PWM20_BASE         NRF_PWM20_NS_BASE
 #define NRF_PWM21_BASE         NRF_PWM21_NS_BASE
 #define NRF_SAADC_BASE         NRF_SAADC_NS_BASE
+#define NRF_I2S20_BASE         NRF_I2S20_NS_BASE
 #define NRF_CLOCK_BASE         NRF_CLOCK_NS_BASE
 #define NRF_OSCILLATORS_BASE   NRF_OSCILLATORS_NS_BASE
 #define NRF_POWER_BASE         NRF_POWER_NS_BASE
@@ -103,6 +109,7 @@ extern "C" {
 #define NRF_P2_BASE            NRF_P2_S_BASE
 #define NRF_MEMCONF_BASE       NRF_MEMCONF_S_BASE
 #define NRF_GRTC_BASE          NRF_GRTC_S_BASE
+#define NRF_RADIO_BASE         NRF_RADIO_S_BASE
 #define NRF_SPIM00_BASE        NRF_SPIM00_S_BASE
 #define NRF_SPIM20_BASE        NRF_SPIM20_S_BASE
 #define NRF_SPIM21_BASE        NRF_SPIM21_S_BASE
@@ -115,6 +122,7 @@ extern "C" {
 #define NRF_PWM20_BASE         NRF_PWM20_S_BASE
 #define NRF_PWM21_BASE         NRF_PWM21_S_BASE
 #define NRF_SAADC_BASE         NRF_SAADC_S_BASE
+#define NRF_I2S20_BASE         NRF_I2S20_S_BASE
 #define NRF_CLOCK_BASE         NRF_CLOCK_S_BASE
 #define NRF_OSCILLATORS_BASE   NRF_OSCILLATORS_S_BASE
 #define NRF_POWER_BASE         NRF_POWER_S_BASE
@@ -131,6 +139,7 @@ extern "C" {
 #define NRF_P2        ((NRF_GPIO_Type *)NRF_P2_BASE)
 #define NRF_MEMCONF   ((NRF_MEMCONF_Type *)NRF_MEMCONF_BASE)
 #define NRF_GRTC      ((NRF_GRTC_Type *)NRF_GRTC_BASE)
+#define NRF_RADIO     ((NRF_RADIO_Type *)NRF_RADIO_BASE)
 
 #define NRF_SPIM00    ((NRF_SPIM_Type *)NRF_SPIM00_BASE)
 #define NRF_SPIM20    ((NRF_SPIM_Type *)NRF_SPIM20_BASE)
@@ -144,11 +153,16 @@ extern "C" {
 #define NRF_PWM20     ((NRF_PWM_Type *)NRF_PWM20_BASE)
 #define NRF_PWM21     ((NRF_PWM_Type *)NRF_PWM21_BASE)
 #define NRF_SAADC     ((NRF_SAADC_Type *)NRF_SAADC_BASE)
+#define NRF_I2S20     ((NRF_I2S_Type *)NRF_I2S20_BASE)
 #define NRF_CLOCK     ((NRF_CLOCK_Type *)NRF_CLOCK_BASE)
 #define NRF_OSCILLATORS ((NRF_OSCILLATORS_Type *)NRF_OSCILLATORS_BASE)
 #define NRF_POWER     ((NRF_POWER_Type *)NRF_POWER_BASE)
 #define NRF_RESET     ((NRF_RESET_Type *)NRF_RESET_BASE)
 #define NRF_REGULATORS ((NRF_REGULATORS_Type *)NRF_REGULATORS_BASE)
+
+// Compatibility aliases used by Nordic HALs and low-level external libraries.
+#define NRF_I2S0      NRF_I2S20
+#define NRF_I2S       NRF_I2S20
 
 // ============================================================================
 // GRTC domain helpers

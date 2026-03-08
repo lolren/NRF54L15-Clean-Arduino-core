@@ -22,6 +22,7 @@ constexpr uint32_t UARTE21_BASE = static_cast<uint32_t>(NRF_UARTE21_BASE);
 // SPIM and TWIM/UARTE share serial fabric instances on this SoC family.
 constexpr uint32_t SPIM21_BASE = static_cast<uint32_t>(NRF_TWIM21_BASE);
 constexpr uint32_t SAADC_BASE = static_cast<uint32_t>(NRF_SAADC_BASE);
+constexpr uint32_t I2S20_BASE = static_cast<uint32_t>(NRF_I2S20_BASE);
 constexpr uint32_t PWM20_BASE = static_cast<uint32_t>(NRF_PWM20_BASE);
 constexpr uint32_t OSCILLATORS_BASE = static_cast<uint32_t>(NRF_OSCILLATORS_BASE);
 constexpr uint32_t CLOCK_BASE = static_cast<uint32_t>(NRF_CLOCK_BASE);
