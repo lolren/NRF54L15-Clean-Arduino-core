@@ -28,14 +28,9 @@ The explicit `NoRetention` helpers are for the lowest-current sketches. The
 default `systemOff*()` helpers preserve `.noinit` RAM so retained state and BLE
 bond data are not discarded implicitly.
 
-The low-power BLE examples also honor Arduino Tools -> `BLE LP Example Preset`,
-which injects compile-time overrides for:
-
-- `NRF54L15_CLEAN_BLE_LP_ADV_INTERVAL_MS`
-- `NRF54L15_CLEAN_BLE_LP_BURST_EVENTS`
-- `NRF54L15_CLEAN_BLE_LP_BURST_GAP_US`
-- `NRF54L15_CLEAN_BLE_LP_BURST_PERIOD_MS`
-- `NRF54L15_CLEAN_BLE_LP_SYSTEMOFF_MS`
+The low-power BLE examples are now sketch-owned. Advertising cadence, burst
+count, burst gap, and system-off interval live as plain top-of-sketch
+constants inside each example instead of hidden board-menu overrides.
 
 ## Mode 1: Continuous Advertising With RF-Switch Duty-Cycling
 
@@ -57,7 +52,7 @@ Tradeoff:
 Observed result in local testing:
 
 - user-measured around `0.1 mA` with the validated sketch configuration
-- use `BLE LP Example Preset -> Scan-Friendly` if you want a shorter advertising cadence without editing the sketch
+- change `kAdvertisingIntervalMs` in the sketch to `1000UL` if you want easier scanner visibility
 
 ## Mode 2: Hybrid Burst Advertising In System ON
 
@@ -120,7 +115,7 @@ Validated baseline:
 - `1000 ms` timed `SYSTEM OFF`
 - `clean_power=low`
 - default boot profile
-- use `BLE LP Example Preset -> Beacon 5 s` if you want a sparser default wake cadence without editing the sketch
+- change `kSystemOffIntervalMs` in the sketch to `5000UL` if you want a sparser wake cadence
 
 ## Choosing A Mode
 

@@ -5,23 +5,13 @@
 using namespace xiao_nrf54l15;
 
 namespace {
-
-#ifndef NRF54L15_CLEAN_BLE_LP_BURST_EVENTS
-#define NRF54L15_CLEAN_BLE_LP_BURST_EVENTS 2U
-#endif
-
-#ifndef NRF54L15_CLEAN_BLE_LP_BURST_GAP_US
-#define NRF54L15_CLEAN_BLE_LP_BURST_GAP_US 20000UL
-#endif
-
-#ifndef NRF54L15_CLEAN_BLE_LP_BURST_PERIOD_MS
-#define NRF54L15_CLEAN_BLE_LP_BURST_PERIOD_MS 10000UL
-#endif
-
 constexpr int8_t kTxPowerDbm = -10;
-constexpr uint8_t kBurstEvents = NRF54L15_CLEAN_BLE_LP_BURST_EVENTS;
-constexpr uint32_t kBurstGapUs = NRF54L15_CLEAN_BLE_LP_BURST_GAP_US;
-constexpr uint32_t kBurstPeriodMs = NRF54L15_CLEAN_BLE_LP_BURST_PERIOD_MS;
+// Sketch-owned preset:
+// - validated default: 2 events, 20 ms gap, 10 s period
+// - sparser tested variant: keep events/gap, change period to 30000 ms
+constexpr uint8_t kBurstEvents = 2U;
+constexpr uint32_t kBurstGapUs = 20000UL;
+constexpr uint32_t kBurstPeriodMs = 10000UL;
 constexpr uint32_t kInterChannelDelayUs = 350UL;
 constexpr uint32_t kAdvertisingSpinLimit = 700000UL;
 

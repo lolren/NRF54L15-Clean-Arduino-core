@@ -5,11 +5,6 @@
 using namespace xiao_nrf54l15;
 
 namespace {
-
-#ifndef NRF54L15_CLEAN_BLE_LP_ADV_INTERVAL_MS
-#define NRF54L15_CLEAN_BLE_LP_ADV_INTERVAL_MS 3000UL
-#endif
-
 // Lowest validated continuous-advertising baseline for the current raw BLE path.
 // This is not yet Zephyr-controller parity. The combinations below were not
 // discoverable in local validation and are intentionally avoided here:
@@ -25,7 +20,10 @@ namespace {
 // - default FICR-derived address
 // - ADV_IND
 constexpr int8_t kTxPowerDbm = -10;
-constexpr uint32_t kAdvertisingIntervalMs = NRF54L15_CLEAN_BLE_LP_ADV_INTERVAL_MS;
+// Sketch-owned preset:
+// - validated default: 3000 ms
+// - easier scanner visibility: 1000 ms
+constexpr uint32_t kAdvertisingIntervalMs = 3000UL;
 constexpr uint32_t kInterChannelDelayUs = 350UL;
 constexpr uint32_t kAdvertisingSpinLimit = 700000UL;
 

@@ -5,13 +5,11 @@
 using namespace xiao_nrf54l15;
 
 namespace {
-
-#ifndef NRF54L15_CLEAN_BLE_LP_ADV_INTERVAL_MS
-#define NRF54L15_CLEAN_BLE_LP_ADV_INTERVAL_MS 3000UL
-#endif
-
 constexpr int8_t kTxPowerDbm = -10;
-constexpr uint32_t kAdvertisingIntervalMs = NRF54L15_CLEAN_BLE_LP_ADV_INTERVAL_MS;
+// Sketch-owned preset:
+// - tested low-power default: 3000 ms
+// - easier scanner visibility: 1000 ms
+constexpr uint32_t kAdvertisingIntervalMs = 3000UL;
 constexpr uint32_t kInterChannelDelayUs = 350UL;
 constexpr uint32_t kAdvertisingSpinLimit = 700000UL;
 
