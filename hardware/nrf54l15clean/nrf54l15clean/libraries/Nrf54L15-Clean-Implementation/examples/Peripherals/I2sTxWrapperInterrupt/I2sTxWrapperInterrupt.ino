@@ -16,6 +16,12 @@ I2sTx gI2s;
 uint32_t gLastHeartbeatMs = 0U;
 uint32_t gLastStopMs = 0U;
 
+struct WaveState {
+  uint8_t phase = 0U;
+};
+
+WaveState gWaveState{};
+
 void ledOn() { (void)Gpio::write(kPinUserLed, false); }
 void ledOff() { (void)Gpio::write(kPinUserLed, true); }
 
@@ -37,9 +43,14 @@ void fillStereoBuffer(uint32_t* frames, uint8_t phaseOffset) {
   }
 }
 
-void fillBuffers() {
-  fillStereoBuffer(gFrames[0], 0U);
-  fillStereoBuffer(gFrames[1], 1U);
+void refillBuffer(uint32_t* buffer, uint32_t wordCount, void* context) {
+  if (buffer == nullptr || context == nullptr || wordCount != kFrameWordCount) {
+    return;
+  }
+
+  auto* state = static_cast<WaveState*>(context);
+  fillStereoBuffer(buffer, state->phase);
+  ++state->phase;
 }
 
 void configureBoard() {
@@ -73,11 +84,19 @@ extern "C" void I2S20_IRQHandler(void) { I2sTx::irqHandler(); }
 
 void setup() {
   configureBoard();
-  fillBuffers();
 
-  if (!gI2s.begin(makeConfig(), gFrames[0], gFrames[1], kFrameWordCount) ||
-      !gI2s.makeActive() || !gI2s.start()) {
-    Serial.println(F("I2S wrapper begin/start failed"));
+  if (!gI2s.begin(makeConfig(), gFrames[0], gFrames[1], kFrameWordCount)) {
+    Serial.println(F("I2S wrapper begin failed"));
+    while (true) {
+      pulse(80U, 200U);
+      delay(600U);
+    }
+  }
+
+  gI2s.setRefillCallback(refillBuffer, &gWaveState);
+
+  if (!gI2s.makeActive() || !gI2s.start()) {
+    Serial.println(F("I2S wrapper start failed"));
     while (true) {
       pulse(80U, 200U);
       delay(600U);
@@ -86,7 +105,7 @@ void setup() {
 
   Serial.println(F("I2S TX wrapper interrupt example"));
   Serial.println(F("Pins: SDOUT=D11 LRCK=D12 SCK=D13 MCK=D14"));
-  Serial.println(F("Wrapper owns setup/start/IRQ service; loop just services and prints stats."));
+  Serial.println(F("Wrapper owns setup/start/IRQ service and refills buffers through a callback."));
   pulse(40U, 80U);
 }
 

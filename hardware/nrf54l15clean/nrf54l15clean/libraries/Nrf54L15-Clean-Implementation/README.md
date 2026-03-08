@@ -23,7 +23,7 @@ This package uses direct peripheral register access from the nRF54L15 datasheet 
 - `Watchdog`: WDT configuration, start/stop (when enabled), feed, and status reads.
 - `BoardControl`: board-level helpers for battery measurement path and antenna switch control.
 - `Pdm`: digital microphone interface setup and blocking capture with EasyDMA.
-- `I2sTx`: reusable TX-only `I2S20` wrapper with buffer rotation, IRQ service, and optional auto-restart.
+- `I2sTx`: reusable TX-only `I2S20` wrapper with buffer rotation, IRQ service, optional auto-restart, and callback-based buffer refill.
 - `BleRadio`: register-level BLE 1M link layer + minimal ATT/GATT peripheral path via `RADIO`.
 - `ZigbeeRadio`: IEEE 802.15.4 PHY/MAC-lite data-frame + MAC-command frame TX/RX helpers via `RADIO`.
 - `RawRadioLink`: proprietary 1 Mbit packet TX/RX helper via `RADIO`.
@@ -156,6 +156,12 @@ Peripheral examples:
 - `examples/Peripherals/I2sTxWrapperInterrupt/I2sTxWrapperInterrupt.ino`
   - Uses the reusable `I2sTx` wrapper instead of touching `NRF_I2S` directly in the sketch.
   - Keeps the same visible stop/restart cycle as the raw interrupt example, but with the register setup and IRQ state machine moved into the HAL.
+  - Refills the next audio buffer from the wrapper callback path instead of managing the ring by hand in `loop()`.
+
+Callback note:
+
+- `I2sTx::setRefillCallback(...)` runs from the `I2S20` IRQ context.
+- Keep the callback short, non-blocking, and free of any serial/logging work.
 - `examples/Peripherals/RawRadioPacketTx/RawRadioPacketTx.ino`
   - Uses `RawRadioLink` to send proprietary 1 Mbit packets on a fixed pipe and channel.
 - `examples/Peripherals/RawRadioPacketRx/RawRadioPacketRx.ino`

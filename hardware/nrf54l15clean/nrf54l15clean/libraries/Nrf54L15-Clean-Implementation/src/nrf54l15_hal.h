@@ -487,6 +487,9 @@ struct I2sTxConfig {
 
 class I2sTx {
  public:
+  using RefillCallback = void (*)(uint32_t* buffer, uint32_t wordCount,
+                                  void* context);
+
   explicit I2sTx(uint32_t base = nrf54l15::I2S20_BASE);
 
   bool begin(const I2sTxConfig& config, uint32_t* buffer0, uint32_t* buffer1,
@@ -499,6 +502,7 @@ class I2sTx {
   void onIrq();
 
   bool setBuffers(uint32_t* buffer0, uint32_t* buffer1, uint32_t wordCount);
+  void setRefillCallback(RefillCallback callback, void* context = nullptr);
   bool makeActive();
   static void irqHandler();
 
@@ -518,6 +522,8 @@ class I2sTx {
   I2sTxConfig config_;
   uint32_t* buffers_[2];
   uint32_t wordCount_;
+  RefillCallback refillCallback_;
+  void* refillContext_;
   uint8_t nextBufferIndex_;
   bool configured_;
   bool running_;

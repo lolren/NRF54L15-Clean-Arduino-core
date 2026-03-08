@@ -3752,6 +3752,8 @@ I2sTx::I2sTx(uint32_t base)
       config_(),
       buffers_{nullptr, nullptr},
       wordCount_(0U),
+      refillCallback_(nullptr),
+      refillContext_(nullptr),
       nextBufferIndex_(1U),
       configured_(false),
       running_(false),
@@ -3778,6 +3780,11 @@ bool I2sTx::setBuffers(uint32_t* buffer0, uint32_t* buffer1, uint32_t wordCount)
   buffers_[1] = buffer1;
   wordCount_ = wordCount;
   return true;
+}
+
+void I2sTx::setRefillCallback(RefillCallback callback, void* context) {
+  refillCallback_ = callback;
+  refillContext_ = context;
 }
 
 bool I2sTx::begin(const I2sTxConfig& config, uint32_t* buffer0, uint32_t* buffer1,
@@ -3845,6 +3852,10 @@ bool I2sTx::begin(const I2sTxConfig& config, uint32_t* buffer0, uint32_t* buffer
                        I2S_RXTXD_MAXCNT_MAXCNT_Msk;
   i2s_->INTENCLR = I2S_INTENCLR_TXPTRUPD_Msk | I2S_INTENCLR_STOPPED_Msk;
   clearEvents();
+  if (refillCallback_ != nullptr) {
+    refillCallback_(buffers_[0], wordCount_, refillContext_);
+    refillCallback_(buffers_[1], wordCount_, refillContext_);
+  }
   armBuffer(0U);
 
   i2s_->ENABLE = (I2S_ENABLE_ENABLE_Enabled << I2S_ENABLE_ENABLE_Pos) &
@@ -3927,8 +3938,12 @@ void I2sTx::onIrq() {
 
   if (i2s_->EVENTS_TXPTRUPD != 0U) {
     i2s_->EVENTS_TXPTRUPD = 0U;
-    armBuffer(nextBufferIndex_);
+    const uint8_t queuedIndex = nextBufferIndex_;
+    armBuffer(queuedIndex);
     nextBufferIndex_ ^= 1U;
+    if (refillCallback_ != nullptr) {
+      refillCallback_(buffers_[nextBufferIndex_], wordCount_, refillContext_);
+    }
     ++txPtrUpdCount_;
   }
 
