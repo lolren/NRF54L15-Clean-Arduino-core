@@ -607,6 +607,7 @@ bool nrf_to_nrf::waitForAck(uint8_t sequence, uint8_t* outAttemptsUsed) {
 
   rxPipe_ = pipe;
   rxLength_ = payloadLength;
+  lastPayloadLength_ = payloadLength;
   rxAvailable_ = (payloadLength > 0U);
   if (payloadLength > 0U) {
     memcpy(rxPayload_, payload, payloadLength);
