@@ -7,17 +7,21 @@ using namespace xiao_nrf54l15;
 
 namespace {
 
-static constexpr uint8_t kRadioFrequencyOffsetMhz = 8U;  // 2408 MHz
-static constexpr uint32_t kAddressBase0 = 0xC2C2C2C2UL;
-static constexpr uint8_t kAddressPrefix0 = 0xC2U;
+// Radio configuration for this sketch.
+static constexpr uint8_t kConfigFrequencyOffsetMhz = 8U;  // 2408 MHz
+static constexpr uint32_t kConfigAddressBase0 = 0xC2C2C2C2UL;
+static constexpr uint8_t kConfigAddressPrefix0 = 0xC2U;
+static constexpr uint32_t kConfigTxPowerReg = RADIO_TXPOWER_TXPOWER_Neg8dBm;
+static constexpr uint8_t kConfigPayloadLength = 8U;
+static constexpr char kConfigPayloadTag[] = "RAWTX1";
+
 static constexpr uint32_t kCrcPolynomial = 0x11021UL;
 static constexpr uint32_t kCrcInit = 0xFFFFUL;
 static constexpr uint32_t kTxIntervalMs = 1000U;
 static constexpr uint32_t kRadioSpinLimit = 3000000UL;
-static constexpr uint8_t kPayloadLength = 8U;
 
 PowerManager gPower;
-alignas(4) uint8_t gPacket[1U + kPayloadLength];
+alignas(4) uint8_t gPacket[1U + kConfigPayloadLength];
 uint32_t gCounter = 0U;
 uint32_t gLastTxMs = 0U;
 
@@ -108,10 +112,10 @@ bool configureRadio() {
       (RADIO_MODE_MODE_Nrf_1Mbit << RADIO_MODE_MODE_Pos) &
       RADIO_MODE_MODE_Msk;
   NRF_RADIO->TXPOWER =
-      (RADIO_TXPOWER_TXPOWER_Neg8dBm << RADIO_TXPOWER_TXPOWER_Pos) &
+      (kConfigTxPowerReg << RADIO_TXPOWER_TXPOWER_Pos) &
       RADIO_TXPOWER_TXPOWER_Msk;
   NRF_RADIO->FREQUENCY =
-      ((static_cast<uint32_t>(kRadioFrequencyOffsetMhz)
+      ((static_cast<uint32_t>(kConfigFrequencyOffsetMhz)
         << RADIO_FREQUENCY_FREQUENCY_Pos) &
        RADIO_FREQUENCY_FREQUENCY_Msk) |
       (0UL << RADIO_FREQUENCY_MAP_Pos);
@@ -129,7 +133,7 @@ bool configureRadio() {
   NRF_RADIO->PCNF0 = pcnf0;
 
   uint32_t pcnf1 = 0U;
-  pcnf1 |= (kPayloadLength << RADIO_PCNF1_MAXLEN_Pos) & RADIO_PCNF1_MAXLEN_Msk;
+  pcnf1 |= (kConfigPayloadLength << RADIO_PCNF1_MAXLEN_Pos) & RADIO_PCNF1_MAXLEN_Msk;
   pcnf1 |= (0UL << RADIO_PCNF1_STATLEN_Pos) & RADIO_PCNF1_STATLEN_Msk;
   pcnf1 |= (4UL << RADIO_PCNF1_BALEN_Pos) & RADIO_PCNF1_BALEN_Msk;
   pcnf1 |= (RADIO_PCNF1_ENDIAN_Big << RADIO_PCNF1_ENDIAN_Pos) &
@@ -138,9 +142,9 @@ bool configureRadio() {
            RADIO_PCNF1_WHITEEN_Msk;
   NRF_RADIO->PCNF1 = pcnf1;
 
-  NRF_RADIO->BASE0 = kAddressBase0 & RADIO_BASE0_BASE0_Msk;
+  NRF_RADIO->BASE0 = kConfigAddressBase0 & RADIO_BASE0_BASE0_Msk;
   NRF_RADIO->PREFIX0 =
-      ((static_cast<uint32_t>(kAddressPrefix0) << RADIO_PREFIX0_AP0_Pos) &
+      ((static_cast<uint32_t>(kConfigAddressPrefix0) << RADIO_PREFIX0_AP0_Pos) &
        RADIO_PREFIX0_AP0_Msk);
   NRF_RADIO->TXADDRESS =
       (0UL << RADIO_TXADDRESS_TXADDRESS_Pos) & RADIO_TXADDRESS_TXADDRESS_Msk;
@@ -161,15 +165,13 @@ bool configureRadio() {
 }
 
 void buildPacket() {
-  gPacket[0] = kPayloadLength;
+  gPacket[0] = kConfigPayloadLength;
   gPacket[1] = static_cast<uint8_t>(gCounter & 0xFFU);
   gPacket[2] = static_cast<uint8_t>((gCounter >> 8U) & 0xFFU);
-  gPacket[3] = 'R';
-  gPacket[4] = 'A';
-  gPacket[5] = 'W';
-  gPacket[6] = 'T';
-  gPacket[7] = 'X';
-  gPacket[8] = '1';
+  for (uint8_t i = 0; i < (kConfigPayloadLength - 2U); ++i) {
+    const char ch = kConfigPayloadTag[i];
+    gPacket[3U + i] = (ch != '\0') ? static_cast<uint8_t>(ch) : static_cast<uint8_t>('.');
+  }
 }
 
 bool transmitOnce() {
@@ -203,7 +205,13 @@ void setup() {
 
   Serial.println(F("Raw RADIO packet TX"));
   Serial.println(F("Mode: NRF 1Mbit proprietary"));
-  Serial.println(F("Pipe: BASE0=0xC2C2C2C2 PREFIX0=0xC2 FREQ=2408 MHz"));
+  Serial.print(F("Pipe: BASE0=0x"));
+  Serial.print(kConfigAddressBase0, HEX);
+  Serial.print(F(" PREFIX0=0x"));
+  Serial.print(kConfigAddressPrefix0, HEX);
+  Serial.print(F(" FREQ=24"));
+  Serial.print(kConfigFrequencyOffsetMhz);
+  Serial.println(F(" MHz"));
   pulse(40U, 80U);
 }
 

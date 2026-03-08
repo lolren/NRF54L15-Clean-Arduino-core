@@ -7,15 +7,19 @@ using namespace xiao_nrf54l15;
 
 namespace {
 
-static constexpr uint8_t kRadioFrequencyOffsetMhz = 8U;  // 2408 MHz
-static constexpr uint32_t kAddressBase0 = 0xC2C2C2C2UL;
-static constexpr uint8_t kAddressPrefix0 = 0xC2U;
+// Radio / retry configuration for this sketch.
+static constexpr uint8_t kConfigFrequencyOffsetMhz = 8U;  // 2408 MHz
+static constexpr uint32_t kConfigAddressBase0 = 0xC2C2C2C2UL;
+static constexpr uint8_t kConfigAddressPrefix0 = 0xC2U;
+static constexpr uint32_t kConfigTxPowerReg = RADIO_TXPOWER_TXPOWER_Neg8dBm;
+static constexpr uint32_t kConfigExchangeIntervalMs = 1000U;
+static constexpr uint32_t kConfigAckWindowUs = 15000U;
+static constexpr uint8_t kConfigMaxRetries = 3U;
+static constexpr char kConfigPayloadTag[] = "REQ";
+
 static constexpr uint32_t kCrcPolynomial = 0x11021UL;
 static constexpr uint32_t kCrcInit = 0xFFFFUL;
-static constexpr uint32_t kExchangeIntervalMs = 1000U;
-static constexpr uint32_t kAckWindowUs = 15000U;
 static constexpr uint32_t kRadioSpinLimit = 3000000UL;
-static constexpr uint8_t kMaxRetries = 3U;
 
 static constexpr uint8_t kPacketTypeData = 0xA1U;
 static constexpr uint8_t kPacketTypeAck = 0xA2U;
@@ -118,10 +122,10 @@ bool configureRadio() {
       (RADIO_MODE_MODE_Nrf_1Mbit << RADIO_MODE_MODE_Pos) &
       RADIO_MODE_MODE_Msk;
   NRF_RADIO->TXPOWER =
-      (RADIO_TXPOWER_TXPOWER_Neg8dBm << RADIO_TXPOWER_TXPOWER_Pos) &
+      (kConfigTxPowerReg << RADIO_TXPOWER_TXPOWER_Pos) &
       RADIO_TXPOWER_TXPOWER_Msk;
   NRF_RADIO->FREQUENCY =
-      ((static_cast<uint32_t>(kRadioFrequencyOffsetMhz)
+      ((static_cast<uint32_t>(kConfigFrequencyOffsetMhz)
         << RADIO_FREQUENCY_FREQUENCY_Pos) &
        RADIO_FREQUENCY_FREQUENCY_Msk) |
       (0UL << RADIO_FREQUENCY_MAP_Pos);
@@ -148,9 +152,9 @@ bool configureRadio() {
            RADIO_PCNF1_WHITEEN_Msk;
   NRF_RADIO->PCNF1 = pcnf1;
 
-  NRF_RADIO->BASE0 = kAddressBase0 & RADIO_BASE0_BASE0_Msk;
+  NRF_RADIO->BASE0 = kConfigAddressBase0 & RADIO_BASE0_BASE0_Msk;
   NRF_RADIO->PREFIX0 =
-      ((static_cast<uint32_t>(kAddressPrefix0) << RADIO_PREFIX0_AP0_Pos) &
+      ((static_cast<uint32_t>(kConfigAddressPrefix0) << RADIO_PREFIX0_AP0_Pos) &
        RADIO_PREFIX0_AP0_Msk);
   NRF_RADIO->TXADDRESS =
       (0UL << RADIO_TXADDRESS_TXADDRESS_Pos) & RADIO_TXADDRESS_TXADDRESS_Msk;
@@ -175,9 +179,10 @@ void buildDataPacket(uint8_t sequence, uint8_t attempt) {
   gTxPacket[1] = kPacketTypeData;
   gTxPacket[2] = sequence;
   gTxPacket[3] = attempt;
-  gTxPacket[4] = 'R';
-  gTxPacket[5] = 'E';
-  gTxPacket[6] = 'Q';
+  for (uint8_t i = 0; i < (kDataPayloadLength - 3U); ++i) {
+    const char ch = kConfigPayloadTag[i];
+    gTxPacket[4U + i] = (ch != '\0') ? static_cast<uint8_t>(ch) : static_cast<uint8_t>('.');
+  }
 }
 
 bool transmitDataPacket(uint8_t sequence, uint8_t attempt) {
@@ -213,7 +218,7 @@ bool waitForAck(uint8_t sequence) {
     if ((NRF_RADIO->EVENTS_CRCOK != 0U) || (NRF_RADIO->EVENTS_CRCERROR != 0U)) {
       break;
     }
-    if (static_cast<uint32_t>(micros() - startUs) >= kAckWindowUs) {
+    if (static_cast<uint32_t>(micros() - startUs) >= kConfigAckWindowUs) {
       break;
     }
   }
@@ -247,7 +252,7 @@ bool exchangeWithAck(uint8_t sequence, uint8_t* outAttemptUsed) {
     return false;
   }
 
-  for (uint8_t attempt = 1U; attempt <= kMaxRetries; ++attempt) {
+  for (uint8_t attempt = 1U; attempt <= kConfigMaxRetries; ++attempt) {
     if (outAttemptUsed != nullptr) {
       *outAttemptUsed = attempt;
     }
@@ -273,13 +278,19 @@ void setup() {
 
   Serial.println(F("Raw RADIO ACK requester"));
   Serial.println(F("Requester sends REQ and waits for software ACK"));
-  Serial.println(F("Pair with RawRadioAckResponder on the same RF channel"));
+  Serial.print(F("Pipe: BASE0=0x"));
+  Serial.print(kConfigAddressBase0, HEX);
+  Serial.print(F(" PREFIX0=0x"));
+  Serial.print(kConfigAddressPrefix0, HEX);
+  Serial.print(F(" FREQ=24"));
+  Serial.print(kConfigFrequencyOffsetMhz);
+  Serial.println(F(" MHz"));
   pulse(1U, 40U, 70U);
 }
 
 void loop() {
   const uint32_t now = millis();
-  if ((now - gLastExchangeMs) < kExchangeIntervalMs) {
+  if ((now - gLastExchangeMs) < kConfigExchangeIntervalMs) {
     delay(10U);
     return;
   }
