@@ -38,8 +38,11 @@ static uint32_t g_lastJoinAttemptMs = 0U;
 static uint32_t g_lastStatusMs = 0U;
 static uint32_t g_lastPollMs = 0U;
 static uint32_t g_lastReportMs[8] = {0U};
+static uint8_t g_activeNetworkKey[16] = {0U};
+static uint8_t g_activeNetworkKeySequence = 0U;
 static bool g_joined = false;
 static bool g_securityEnabled = false;
+static bool g_haveActiveNetworkKey = false;
 static bool g_savedOnOffState = false;
 static uint8_t g_savedLevelState = 0x80U;
 static bool g_pwmReady = false;
@@ -59,11 +62,6 @@ static constexpr uint64_t kCoordinatorIeee = 0x00124B000054A11FULL;
 static constexpr uint64_t kIeeeAddress = 0x00124B0001AC1002ULL;
 static constexpr uint8_t kStateFlagJoined = 0x01U;
 static constexpr uint8_t kStateFlagSecurityEnabled = 0x02U;
-static constexpr uint8_t kDemoNetworkKeySequence = 0x01U;
-static const uint8_t kDemoNetworkKey[16] = {0xA1U, 0xB2U, 0xC3U, 0xD4U,
-                                            0xE5U, 0xF6U, 0x07U, 0x18U,
-                                            0x29U, 0x3AU, 0x4BU, 0x5CU,
-                                            0x6DU, 0x7EU, 0x8FU, 0x90U};
 
 static uint8_t g_channel = kPreferredChannel;
 static uint16_t g_panId = kPreferredPanId;
@@ -141,6 +139,12 @@ void applyLedState() {
   (void)Gpio::write(kPinUserLed, dutyPermille == 0U);
 }
 
+void clearActiveNetworkKey() {
+  memset(g_activeNetworkKey, 0, sizeof(g_activeNetworkKey));
+  g_activeNetworkKeySequence = 0U;
+  g_haveActiveNetworkKey = false;
+}
+
 void configureDeviceForCurrentNetwork() {
   ZigbeeBasicClusterConfig basic{};
   basic.manufacturerName = "CleanCore";
@@ -168,8 +172,10 @@ bool persistState() {
   state.extendedPanId = g_extendedPanId;
   state.nwkFrameCounter = g_nwkSecurityFrameCounter;
   state.apsFrameCounter = g_apsCounter;
-  state.keySequence = kDemoNetworkKeySequence;
-  memcpy(state.networkKey, kDemoNetworkKey, sizeof(state.networkKey));
+  state.keySequence = g_haveActiveNetworkKey ? g_activeNetworkKeySequence : 0U;
+  if (g_haveActiveNetworkKey) {
+    memcpy(state.networkKey, g_activeNetworkKey, sizeof(state.networkKey));
+  }
   state.incomingNwkFrameCounter = g_lastInboundSecurityFrameCounter;
   state.flags = g_joined ? kStateFlagJoined : 0U;
   if (g_securityEnabled) {
@@ -207,6 +213,7 @@ void restoreState() {
   g_joined = false;
   g_securityEnabled = false;
   g_lastInboundSecurityFrameCounter = 0U;
+  clearActiveNetworkKey();
   g_channel = kPreferredChannel;
   g_panId = kPreferredPanId;
   g_localShort = kLightShort;
@@ -234,6 +241,11 @@ void restoreState() {
         (state.nwkFrameCounter != 0U) ? state.nwkFrameCounter : 1U;
     g_lastInboundSecurityFrameCounter = state.incomingNwkFrameCounter;
     g_apsCounter = static_cast<uint8_t>(state.apsFrameCounter & 0xFFU);
+    g_activeNetworkKeySequence = state.keySequence;
+    if (state.keySequence != 0U) {
+      memcpy(g_activeNetworkKey, state.networkKey, sizeof(g_activeNetworkKey));
+      g_haveActiveNetworkKey = true;
+    }
     g_securityEnabled = (state.flags & kStateFlagSecurityEnabled) != 0U;
     if ((state.flags & kStateFlagJoined) != 0U && state.nwkAddress != 0U &&
         state.nwkAddress != 0xFFFFU) {
@@ -250,6 +262,7 @@ void clearJoinState(bool clearStore) {
   g_joined = false;
   g_securityEnabled = false;
   g_lastInboundSecurityFrameCounter = 0U;
+  clearActiveNetworkKey();
   g_channel = kPreferredChannel;
   g_panId = kPreferredPanId;
   g_localShort = kLightShort;
@@ -276,6 +289,7 @@ bool sendApsFrame(uint16_t destinationShort, uint8_t destinationEndpoint,
   if (!g_joined) {
     return false;
   }
+  const bool useSecurity = g_securityEnabled && g_haveActiveNetworkKey;
 
   ZigbeeApsDataFrame aps{};
   aps.frameType = ZigbeeApsFrameType::kData;
@@ -294,7 +308,7 @@ bool sendApsFrame(uint16_t destinationShort, uint8_t destinationEndpoint,
 
   ZigbeeNetworkFrame nwk{};
   nwk.frameType = ZigbeeNwkFrameType::kData;
-  nwk.securityEnabled = g_securityEnabled;
+  nwk.securityEnabled = useSecurity;
   nwk.destinationShort = destinationShort;
   nwk.sourceShort = g_localShort;
   nwk.radius = 30U;
@@ -302,14 +316,14 @@ bool sendApsFrame(uint16_t destinationShort, uint8_t destinationEndpoint,
 
   uint8_t nwkFrame[127] = {0U};
   uint8_t nwkLength = 0U;
-  if (g_securityEnabled) {
+  if (useSecurity) {
     ZigbeeNwkSecurityHeader security{};
     security.valid = true;
     security.securityControl = kZigbeeSecurityControlNwkEncMic32;
     security.frameCounter = g_nwkSecurityFrameCounter++;
     security.sourceIeee = kIeeeAddress;
-    security.keySequence = kDemoNetworkKeySequence;
-    if (!ZigbeeSecurity::buildSecuredNwkFrame(nwk, security, kDemoNetworkKey,
+    security.keySequence = g_activeNetworkKeySequence;
+    if (!ZigbeeSecurity::buildSecuredNwkFrame(nwk, security, g_activeNetworkKey,
                                               apsFrame, apsLength, nwkFrame,
                                               &nwkLength)) {
       return false;
@@ -362,6 +376,48 @@ bool sendAttributeReport(uint16_t clusterId) {
   return sendApsFrame(g_parentShort, kCoordinatorEndpoint, clusterId,
                       kZigbeeProfileHomeAutomation, kLocalEndpoint, zclFrame,
                       zclLength);
+}
+
+bool handleApsCommand(const uint8_t* frame, uint8_t length) {
+  uint8_t counter = 0U;
+  ZigbeeApsTransportKey transportKey{};
+  if (ZigbeeCodec::parseApsTransportKeyCommand(frame, length, &transportKey,
+                                               &counter)) {
+    if (!transportKey.valid ||
+        transportKey.keyType != kZigbeeApsTransportKeyStandardNetworkKey ||
+        transportKey.destinationIeee != kIeeeAddress ||
+        transportKey.sourceIeee != kCoordinatorIeee) {
+      return false;
+    }
+    memcpy(g_activeNetworkKey, transportKey.key, sizeof(g_activeNetworkKey));
+    g_activeNetworkKeySequence = transportKey.keySequence;
+    g_haveActiveNetworkKey = true;
+    g_securityEnabled = true;
+    g_lastInboundSecurityFrameCounter = 0U;
+    persistState();
+    Serial.print("transport_key seq=");
+    Serial.print(g_activeNetworkKeySequence);
+    Serial.print(" ctr=");
+    Serial.print(counter);
+    Serial.print("\r\n");
+    (void)sendDeviceAnnounce();
+    return true;
+  }
+
+  ZigbeeApsUpdateDevice updateDevice{};
+  if (ZigbeeCodec::parseApsUpdateDeviceCommand(frame, length, &updateDevice,
+                                               &counter)) {
+    if (updateDevice.valid && updateDevice.deviceIeee == kIeeeAddress) {
+      Serial.print("update_device short=0x");
+      Serial.print(updateDevice.deviceShort, HEX);
+      Serial.print(" status=0x");
+      Serial.print(updateDevice.status, HEX);
+      Serial.print("\r\n");
+    }
+    return true;
+  }
+
+  return false;
 }
 
 bool activeScan(ScanResult* outResult) {
@@ -484,7 +540,7 @@ bool performJoin() {
 
   g_localShort = assignedShort;
   g_joined = true;
-  g_securityEnabled = true;
+  g_securityEnabled = false;
   configureDeviceForCurrentNetwork();
   applyLedState();
   persistState();
@@ -504,13 +560,13 @@ void processIncomingFrame(const ZigbeeFrame& frame) {
   uint8_t decryptedPayload[127] = {0U};
   uint8_t decryptedPayloadLength = 0U;
   bool nwkValid = false;
-  if (g_securityEnabled) {
+  if (g_securityEnabled && g_haveActiveNetworkKey) {
     nwkValid = ZigbeeSecurity::parseSecuredNwkFrame(
-        macData.payload, macData.payloadLength, kDemoNetworkKey, &nwk,
+        macData.payload, macData.payloadLength, g_activeNetworkKey, &nwk,
         &security, decryptedPayload, &decryptedPayloadLength);
     if (nwkValid &&
         (!security.valid || security.sourceIeee != kCoordinatorIeee ||
-         security.keySequence != kDemoNetworkKeySequence ||
+         security.keySequence != g_activeNetworkKeySequence ||
          security.frameCounter <= g_lastInboundSecurityFrameCounter)) {
       return;
     }
@@ -529,6 +585,7 @@ void processIncomingFrame(const ZigbeeFrame& frame) {
   ZigbeeApsDataFrame aps{};
   if (!ZigbeeCodec::parseApsDataFrame(nwk.payload, nwk.payloadLength, &aps) ||
       !aps.valid) {
+    (void)handleApsCommand(nwk.payload, nwk.payloadLength);
     return;
   }
 
@@ -731,7 +788,9 @@ void setup() {
 
   if (g_joined) {
     g_radio.setChannel(g_channel);
-    (void)sendDeviceAnnounce();
+    if (g_securityEnabled && g_haveActiveNetworkKey) {
+      (void)sendDeviceAnnounce();
+    }
   }
 }
 
@@ -751,7 +810,6 @@ void loop() {
         Serial.print(" short=0x");
         Serial.print(g_localShort, HEX);
         Serial.print("\r\n");
-        (void)sendDeviceAnnounce();
       } else {
         Serial.print("join MISS\r\n");
       }

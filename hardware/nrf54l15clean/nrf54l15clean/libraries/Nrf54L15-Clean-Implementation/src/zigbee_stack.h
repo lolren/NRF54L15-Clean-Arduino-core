@@ -43,6 +43,10 @@ constexpr uint8_t kZigbeeApsDeliveryUnicast = 0x00U;
 constexpr uint8_t kZigbeeApsDeliveryIndirect = 0x01U;
 constexpr uint8_t kZigbeeApsDeliveryBroadcast = 0x02U;
 constexpr uint8_t kZigbeeApsDeliveryGroup = 0x03U;
+constexpr uint8_t kZigbeeApsCommandTransportKey = 0x05U;
+constexpr uint8_t kZigbeeApsCommandUpdateDevice = 0x06U;
+constexpr uint8_t kZigbeeApsTransportKeyStandardNetworkKey = 0x01U;
+constexpr uint8_t kZigbeeApsUpdateDeviceStatusStandardSecureRejoin = 0x00U;
 
 constexpr uint8_t kZigbeeMacCommandAssociationRequest = 0x01U;
 constexpr uint8_t kZigbeeMacCommandAssociationResponse = 0x02U;
@@ -203,6 +207,34 @@ struct ZigbeeApsDataFrame {
   uint8_t counter = 0U;
   const uint8_t* payload = nullptr;
   uint8_t payloadLength = 0U;
+};
+
+struct ZigbeeApsCommandFrame {
+  bool valid = false;
+  ZigbeeApsFrameType frameType = ZigbeeApsFrameType::kCommand;
+  uint8_t deliveryMode = kZigbeeApsDeliveryUnicast;
+  bool securityEnabled = false;
+  bool ackRequested = false;
+  uint8_t counter = 0U;
+  uint8_t commandId = 0U;
+  const uint8_t* payload = nullptr;
+  uint8_t payloadLength = 0U;
+};
+
+struct ZigbeeApsTransportKey {
+  bool valid = false;
+  uint8_t keyType = kZigbeeApsTransportKeyStandardNetworkKey;
+  uint8_t key[16] = {0U};
+  uint8_t keySequence = 0U;
+  uint64_t destinationIeee = 0U;
+  uint64_t sourceIeee = 0U;
+};
+
+struct ZigbeeApsUpdateDevice {
+  bool valid = false;
+  uint64_t deviceIeee = 0U;
+  uint16_t deviceShort = 0U;
+  uint8_t status = 0U;
 };
 
 struct ZigbeeZclFrame {
@@ -445,6 +477,24 @@ class ZigbeeCodec {
                                 uint8_t* outFrame, uint8_t* outLength);
   static bool parseApsDataFrame(const uint8_t* frame, uint8_t length,
                                 ZigbeeApsDataFrame* outFrame);
+  static bool buildApsCommandFrame(const ZigbeeApsCommandFrame& frame,
+                                   const uint8_t* payload,
+                                   uint8_t payloadLength, uint8_t* outFrame,
+                                   uint8_t* outLength);
+  static bool parseApsCommandFrame(const uint8_t* frame, uint8_t length,
+                                   ZigbeeApsCommandFrame* outFrame);
+  static bool buildApsTransportKeyCommand(const ZigbeeApsTransportKey& key,
+                                          uint8_t counter, uint8_t* outFrame,
+                                          uint8_t* outLength);
+  static bool parseApsTransportKeyCommand(const uint8_t* frame, uint8_t length,
+                                          ZigbeeApsTransportKey* outKey,
+                                          uint8_t* outCounter);
+  static bool buildApsUpdateDeviceCommand(const ZigbeeApsUpdateDevice& device,
+                                          uint8_t counter, uint8_t* outFrame,
+                                          uint8_t* outLength);
+  static bool parseApsUpdateDeviceCommand(const uint8_t* frame, uint8_t length,
+                                          ZigbeeApsUpdateDevice* outDevice,
+                                          uint8_t* outCounter);
 
   static bool buildZclFrame(const ZigbeeZclFrame& frame,
                             const uint8_t* payload, uint8_t payloadLength,

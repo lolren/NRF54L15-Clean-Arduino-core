@@ -85,6 +85,7 @@ struct NodeEntry {
   uint32_t lastSeenMs = 0U;
   bool secureNwkSeen = false;
   uint32_t lastInboundSecurityFrameCounter = 0U;
+  bool pendingTransportKey = false;
   bool pendingAssociationResponse = false;
   uint16_t pendingAssignedShort = 0U;
   uint8_t pendingAssociationStatus = 0U;
@@ -202,7 +203,8 @@ bool queuePendingApsFrameExtended(NodeEntry* node, uint8_t deliveryMode,
   if (payloadLength > 0U && payload == nullptr) {
     return false;
   }
-  if (node->pendingAssociationResponse || node->pending.used ||
+  if (node->pendingAssociationResponse || node->pendingTransportKey ||
+      node->pending.used ||
       payloadLength > kPendingPayloadMax) {
     return false;
   }
@@ -293,6 +295,52 @@ bool sendApsFrameExtended(uint16_t destinationShort, uint8_t deliveryMode,
   return sendPsdu(psdu, psduLength);
 }
 
+bool sendTransportKey(NodeEntry* node) {
+  if (node == nullptr || node->shortAddress == 0U || node->ieeeAddress == 0U) {
+    return false;
+  }
+
+  ZigbeeApsTransportKey transportKey{};
+  transportKey.valid = true;
+  transportKey.keyType = kZigbeeApsTransportKeyStandardNetworkKey;
+  memcpy(transportKey.key, kDemoNetworkKey, sizeof(transportKey.key));
+  transportKey.keySequence = kDemoNetworkKeySequence;
+  transportKey.destinationIeee = node->ieeeAddress;
+  transportKey.sourceIeee = kCoordinatorIeee;
+
+  uint8_t apsFrame[127] = {0U};
+  uint8_t apsLength = 0U;
+  if (!ZigbeeCodec::buildApsTransportKeyCommand(transportKey, g_apsCounter++,
+                                                apsFrame, &apsLength)) {
+    return false;
+  }
+
+  ZigbeeNetworkFrame nwk{};
+  nwk.frameType = ZigbeeNwkFrameType::kData;
+  nwk.securityEnabled = false;
+  nwk.destinationShort = node->shortAddress;
+  nwk.sourceShort = kCoordinatorShort;
+  nwk.radius = 30U;
+  nwk.sequence = g_nwkSequence++;
+
+  uint8_t nwkFrame[127] = {0U};
+  uint8_t nwkLength = 0U;
+  if (!ZigbeeCodec::buildNwkFrame(nwk, apsFrame, apsLength, nwkFrame,
+                                  &nwkLength)) {
+    return false;
+  }
+
+  uint8_t psdu[127] = {0U};
+  uint8_t psduLength = 0U;
+  if (!ZigbeeRadio::buildDataFrameShort(g_macSequence++, kPanId,
+                                        node->shortAddress, kCoordinatorShort,
+                                        nwkFrame, nwkLength, psdu,
+                                        &psduLength, false)) {
+    return false;
+  }
+  return sendPsdu(psdu, psduLength);
+}
+
 bool sendApsFrame(uint16_t destinationShort, uint8_t destinationEndpoint,
                   uint16_t clusterId, uint16_t profileId,
                   uint8_t sourceEndpoint, const uint8_t* payload,
@@ -300,6 +348,15 @@ bool sendApsFrame(uint16_t destinationShort, uint8_t destinationEndpoint,
   return sendApsFrameExtended(destinationShort, kZigbeeApsDeliveryUnicast, 0U,
                               destinationEndpoint, clusterId, profileId,
                               sourceEndpoint, payload, payloadLength);
+}
+
+bool queuePendingTransportKey(NodeEntry* node) {
+  if (node == nullptr || node->pendingAssociationResponse ||
+      node->pendingTransportKey || node->pending.used) {
+    return false;
+  }
+  node->pendingTransportKey = true;
+  return true;
 }
 
 bool sendPendingAssociationResponse(NodeEntry* node) {
@@ -320,12 +377,25 @@ bool sendPendingAssociationResponse(NodeEntry* node) {
     node->pendingAssociationResponse = false;
     node->shortAddress = node->pendingAssignedShort;
     node->lastSeenMs = millis();
+    if (node->pendingAssociationStatus == 0x00U) {
+      (void)queuePendingTransportKey(node);
+    }
   }
   return sent;
 }
 
 bool sendPendingApsFrame(NodeEntry* node) {
-  if (node == nullptr || !node->pending.used) {
+  if (node == nullptr) {
+    return false;
+  }
+  if (node->pendingTransportKey) {
+    const bool sent = sendTransportKey(node);
+    if (sent) {
+      node->pendingTransportKey = false;
+    }
+    return sent;
+  }
+  if (!node->pending.used) {
     return false;
   }
 

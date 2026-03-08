@@ -110,7 +110,7 @@ Two-board `nrf_to_nrf` regression:
 - auto-resolves each board's CMSIS-DAP UID from the serial port and flashes deterministically
 - Bring-up: `CleanBringUp`, `PeripheralSelfTest`, `FeatureParitySelfTest`
 
-The Zigbee examples now include a clean demo-network secured NWK path with AES-CCM* MIC-32 protection, persisted frame counters, and replay checks between the joinable HA examples and `ZigbeeHaCoordinatorJoinDemo`. Zigbee 3.0 commissioning, APS transport-key handling, and third-party coordinator interoperability are still not implemented; see `docs/ZIGBEE_FEATURE_MATRIX.md`.
+The Zigbee examples now include a clean demo-network secured NWK path with AES-CCM* MIC-32 protection, persisted frame counters, replay checks, and a demo APS Transport Key install step between the joinable HA examples and `ZigbeeHaCoordinatorJoinDemo`. Zigbee 3.0 commissioning, APS link-key security, and third-party coordinator interoperability are still not implemented; see `docs/ZIGBEE_FEATURE_MATRIX.md`.
 
 ## Power And Zephyr Parity
 

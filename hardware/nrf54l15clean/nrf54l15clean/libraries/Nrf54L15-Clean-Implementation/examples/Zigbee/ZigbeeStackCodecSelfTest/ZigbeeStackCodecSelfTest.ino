@@ -137,6 +137,74 @@ static bool testApsCodec() {
   return ok;
 }
 
+static bool testApsCommandCodec() {
+  static const uint8_t kPayload[] = {0xAAU, 0x55U, 0x01U};
+
+  ZigbeeApsCommandFrame command{};
+  command.frameType = ZigbeeApsFrameType::kCommand;
+  command.deliveryMode = kZigbeeApsDeliveryUnicast;
+  command.counter = 0x31U;
+  command.commandId = kZigbeeApsCommandTransportKey;
+
+  uint8_t encoded[127] = {0U};
+  uint8_t encodedLength = 0U;
+  bool ok = ZigbeeCodec::buildApsCommandFrame(command, kPayload,
+                                              sizeof(kPayload), encoded,
+                                              &encodedLength);
+
+  ZigbeeApsCommandFrame parsed{};
+  ok = ok && ZigbeeCodec::parseApsCommandFrame(encoded, encodedLength, &parsed) &&
+       parsed.valid &&
+       parsed.frameType == ZigbeeApsFrameType::kCommand &&
+       parsed.deliveryMode == kZigbeeApsDeliveryUnicast &&
+       parsed.counter == command.counter &&
+       parsed.commandId == command.commandId &&
+       parsed.payloadLength == sizeof(kPayload) &&
+       memcmp(parsed.payload, kPayload, sizeof(kPayload)) == 0;
+
+  ZigbeeApsTransportKey transportKey{};
+  transportKey.valid = true;
+  transportKey.keyType = kZigbeeApsTransportKeyStandardNetworkKey;
+  for (uint8_t i = 0U; i < sizeof(transportKey.key); ++i) {
+    transportKey.key[i] = static_cast<uint8_t>(0x10U + i);
+  }
+  transportKey.keySequence = 0x02U;
+  transportKey.destinationIeee = 0x00124B0001ABCDEFULL;
+  transportKey.sourceIeee = 0x00124B000054A11FULL;
+
+  ok = ok && ZigbeeCodec::buildApsTransportKeyCommand(
+                   transportKey, 0x32U, encoded, &encodedLength);
+  uint8_t parsedCounter = 0U;
+  ZigbeeApsTransportKey parsedKey{};
+  ok = ok && ZigbeeCodec::parseApsTransportKeyCommand(
+                   encoded, encodedLength, &parsedKey, &parsedCounter) &&
+       parsedCounter == 0x32U && parsedKey.valid &&
+       parsedKey.keyType == transportKey.keyType &&
+       memcmp(parsedKey.key, transportKey.key, sizeof(parsedKey.key)) == 0 &&
+       parsedKey.keySequence == transportKey.keySequence &&
+       parsedKey.destinationIeee == transportKey.destinationIeee &&
+       parsedKey.sourceIeee == transportKey.sourceIeee;
+
+  ZigbeeApsUpdateDevice updateDevice{};
+  updateDevice.valid = true;
+  updateDevice.deviceIeee = 0x00124B0001AC1001ULL;
+  updateDevice.deviceShort = 0x3344U;
+  updateDevice.status = kZigbeeApsUpdateDeviceStatusStandardSecureRejoin;
+  ok = ok && ZigbeeCodec::buildApsUpdateDeviceCommand(
+                   updateDevice, 0x33U, encoded, &encodedLength);
+  ZigbeeApsUpdateDevice parsedDevice{};
+  parsedCounter = 0U;
+  ok = ok && ZigbeeCodec::parseApsUpdateDeviceCommand(
+                   encoded, encodedLength, &parsedDevice, &parsedCounter) &&
+       parsedCounter == 0x33U && parsedDevice.valid &&
+       parsedDevice.deviceIeee == updateDevice.deviceIeee &&
+       parsedDevice.deviceShort == updateDevice.deviceShort &&
+       parsedDevice.status == updateDevice.status;
+
+  reportResult("APS Command Codec", ok, "command+transport_key+update_device");
+  return ok;
+}
+
 static bool testMacCodec() {
   uint8_t encoded[127] = {0};
   uint8_t encodedLength = 0U;
@@ -976,6 +1044,7 @@ void setup() {
 
   testNwkCodec();
   testApsCodec();
+  testApsCommandCodec();
   testMacCodec();
   testBeaconAndZdoClientCodec();
   testNwkSecurityCodec();
