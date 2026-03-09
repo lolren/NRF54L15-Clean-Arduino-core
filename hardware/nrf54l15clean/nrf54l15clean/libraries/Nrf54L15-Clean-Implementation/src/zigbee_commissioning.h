@@ -170,6 +170,9 @@ struct ZigbeeSwitchKeyAcceptance {
 
 class ZigbeeCommissioning {
  public:
+  static void buildSteeringScanMasks(const ZigbeeCommissioningPolicy& policy,
+                                     uint32_t outMasks[2],
+                                     uint8_t* outCount);
   static bool channelInMask(uint32_t mask, uint8_t channel);
   static bool scoreBeacon(const ZigbeeCommissioningPolicy& policy,
                           uint8_t channel, int8_t rssiDbm,

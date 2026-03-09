@@ -685,6 +685,25 @@ static bool testInstallCodeAndCommissioningPolicy() {
   policy.preferredPanId = 0x1234U;
   policy.preferredExtendedPanId = 0x00124B000054C0DEULL;
 
+  uint32_t steeringMasks[2] = {0UL, 0UL};
+  uint8_t steeringMaskCount = 0U;
+  ZigbeeCommissioning::buildSteeringScanMasks(policy, steeringMasks,
+                                              &steeringMaskCount);
+
+  ZigbeeCommissioningPolicy secondaryOnlyPolicy{};
+  secondaryOnlyPolicy.secondaryChannelMask = (1UL << 25U) | (1UL << 26U);
+  uint32_t secondaryOnlyMasks[2] = {0UL, 0UL};
+  uint8_t secondaryOnlyCount = 0U;
+  ZigbeeCommissioning::buildSteeringScanMasks(secondaryOnlyPolicy,
+                                              secondaryOnlyMasks,
+                                              &secondaryOnlyCount);
+
+  ZigbeeCommissioningPolicy defaultPolicy{};
+  uint32_t defaultMasks[2] = {0UL, 0UL};
+  uint8_t defaultMaskCount = 0U;
+  ZigbeeCommissioning::buildSteeringScanMasks(defaultPolicy, defaultMasks,
+                                              &defaultMaskCount);
+
   ZigbeeMacBeaconView preferredBeacon{};
   preferredBeacon.valid = true;
   preferredBeacon.panId = 0x1234U;
@@ -715,6 +734,14 @@ static bool testInstallCodeAndCommissioningPolicy() {
   int16_t wrongNetworkScore = 0;
   ok = ok && ZigbeeCommissioning::channelInMask(policy.primaryChannelMask, 15U) &&
        !ZigbeeCommissioning::channelInMask(policy.primaryChannelMask, 11U) &&
+       steeringMaskCount == 2U &&
+       steeringMasks[0] == policy.primaryChannelMask &&
+       steeringMasks[1] == policy.secondaryChannelMask &&
+       secondaryOnlyCount == 1U &&
+       secondaryOnlyMasks[0] == secondaryOnlyPolicy.secondaryChannelMask &&
+       defaultMaskCount == 1U &&
+       ZigbeeCommissioning::channelInMask(defaultMasks[0], 11U) &&
+       ZigbeeCommissioning::channelInMask(defaultMasks[0], 26U) &&
        ZigbeeCommissioning::scoreBeacon(policy, 15U, -45, preferredBeacon,
                                         &preferredScore) &&
        ZigbeeCommissioning::scoreBeacon(policy, 25U, -40, secondaryBeacon,

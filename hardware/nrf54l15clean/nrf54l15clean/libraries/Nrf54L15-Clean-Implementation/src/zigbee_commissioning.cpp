@@ -14,6 +14,15 @@ constexpr uint8_t kPersistentFlagAlternateKeyPresent = 0x08U;
 constexpr uint8_t kMinZigbeeChannel = 11U;
 constexpr uint8_t kMaxZigbeeChannel = 26U;
 
+uint32_t allZigbeeChannelsMask() {
+  uint32_t mask = 0UL;
+  for (uint8_t channel = kMinZigbeeChannel; channel <= kMaxZigbeeChannel;
+       ++channel) {
+    mask |= (1UL << channel);
+  }
+  return mask;
+}
+
 bool attemptBudgetExceeded(uint32_t attempts, uint8_t maxAttempts) {
   return maxAttempts != 0U && attempts >= maxAttempts;
 }
@@ -38,25 +47,160 @@ void appendScanMaskChannels(uint32_t mask, bool seenChannels[32],
   }
 }
 
-void buildScanChannelOrder(const ZigbeeCommissioningPolicy& policy,
-                           uint8_t outChannels[16], uint8_t* outCount) {
-  if (outChannels == nullptr || outCount == nullptr) {
+void normalizeSteeringScanMasks(const ZigbeeCommissioningPolicy& policy,
+                                uint32_t* outPrimaryMask,
+                                uint32_t* outSecondaryMask) {
+  if (outPrimaryMask == nullptr || outSecondaryMask == nullptr) {
     return;
   }
 
-  *outCount = 0U;
+  const uint32_t validMask = allZigbeeChannelsMask();
+  uint32_t primaryMask = policy.primaryChannelMask & validMask;
+  uint32_t secondaryMask = policy.secondaryChannelMask & validMask;
+  secondaryMask &= ~primaryMask;
+
+  if (primaryMask == 0UL && secondaryMask == 0UL) {
+    primaryMask = validMask;
+  } else if (primaryMask == 0UL) {
+    primaryMask = secondaryMask;
+    secondaryMask = 0UL;
+  }
+
+  *outPrimaryMask = primaryMask;
+  *outSecondaryMask = secondaryMask;
+}
+
+bool activeScanForMask(ZigbeeRadio& radio, uint8_t* ioMacSequence,
+                       uint32_t channelMask,
+                       const ZigbeeCommissioningPolicy& policy,
+                       ZigbeeBeaconCandidate* outResult) {
+  if (ioMacSequence == nullptr || outResult == nullptr || channelMask == 0UL) {
+    return false;
+  }
+
+  memset(outResult, 0, sizeof(*outResult));
+
+  uint8_t request[127] = {0U};
+  uint8_t requestLength = 0U;
+  if (!ZigbeeCodec::buildBeaconRequest((*ioMacSequence)++, request,
+                                       &requestLength)) {
+    return false;
+  }
+
+  uint8_t channels[16] = {0U};
+  uint8_t channelCount = 0U;
   bool seenChannels[32] = {false};
-  appendScanMaskChannels(policy.primaryChannelMask, seenChannels, outChannels,
-                         outCount);
-  appendScanMaskChannels(policy.secondaryChannelMask, seenChannels, outChannels,
-                         outCount);
-  if (*outCount != 0U) {
-    return;
+  appendScanMaskChannels(channelMask, seenChannels, channels, &channelCount);
+
+  bool found = false;
+  for (uint8_t i = 0U; i < channelCount; ++i) {
+    const uint8_t channel = channels[i];
+    if (!radio.setChannel(channel)) {
+      continue;
+    }
+    (void)radio.transmit(request, requestLength, false, 1200000UL);
+
+    const uint32_t deadline = millis() + 70U;
+    while (static_cast<int32_t>(millis() - deadline) < 0) {
+      ZigbeeFrame frame{};
+      if (!radio.receive(&frame, 4000U, 300000UL)) {
+        continue;
+      }
+
+      ZigbeeMacBeaconView beacon{};
+      if (!ZigbeeCodec::parseBeaconFrame(frame.psdu, frame.length, &beacon) ||
+          !beacon.valid) {
+        continue;
+      }
+
+      int16_t score = 0;
+      if (!ZigbeeCommissioning::scoreBeacon(policy, channel, frame.rssiDbm,
+                                            beacon, &score)) {
+        continue;
+      }
+
+      ZigbeeBeaconCandidate candidate{};
+      candidate.valid = true;
+      candidate.channel = channel;
+      candidate.rssiDbm = frame.rssiDbm;
+      candidate.score = score;
+      candidate.beacon = beacon;
+      if (!found || ZigbeeCommissioning::shouldReplaceCandidate(*outResult,
+                                                                candidate)) {
+        *outResult = candidate;
+        found = true;
+      }
+    }
   }
-  for (uint8_t channel = kMinZigbeeChannel; channel <= kMaxZigbeeChannel;
-       ++channel) {
-    outChannels[(*outCount)++] = channel;
+
+  return found;
+}
+
+bool scanKnownNetworkForMask(ZigbeeRadio& radio, uint8_t* ioMacSequence,
+                             uint32_t channelMask,
+                             const ZigbeeEndDeviceCommonState& state,
+                             ZigbeeBeaconCandidate* outResult) {
+  if (ioMacSequence == nullptr || outResult == nullptr || channelMask == 0UL) {
+    return false;
   }
+
+  memset(outResult, 0, sizeof(*outResult));
+
+  uint8_t request[127] = {0U};
+  uint8_t requestLength = 0U;
+  if (!ZigbeeCodec::buildBeaconRequest((*ioMacSequence)++, request,
+                                       &requestLength)) {
+    return false;
+  }
+
+  uint8_t channels[16] = {0U};
+  uint8_t channelCount = 0U;
+  bool seenChannels[32] = {false};
+  appendScanMaskChannels(channelMask, seenChannels, channels, &channelCount);
+
+  bool found = false;
+  for (uint8_t i = 0U; i < channelCount; ++i) {
+    const uint8_t channel = channels[i];
+    if (!radio.setChannel(channel)) {
+      continue;
+    }
+    (void)radio.transmit(request, requestLength, false, 1200000UL);
+
+    const uint32_t deadline = millis() + 70U;
+    while (static_cast<int32_t>(millis() - deadline) < 0) {
+      ZigbeeFrame frame{};
+      if (!radio.receive(&frame, 4000U, 300000UL)) {
+        continue;
+      }
+
+      ZigbeeMacBeaconView beacon{};
+      if (!ZigbeeCodec::parseBeaconFrame(frame.psdu, frame.length, &beacon) ||
+          !beacon.valid) {
+        continue;
+      }
+
+      int16_t score = 0;
+      if (!ZigbeeCommissioning::scoreKnownNetworkBeacon(state, channel,
+                                                        frame.rssiDbm, beacon,
+                                                        &score)) {
+        continue;
+      }
+
+      ZigbeeBeaconCandidate candidate{};
+      candidate.valid = true;
+      candidate.channel = channel;
+      candidate.rssiDbm = frame.rssiDbm;
+      candidate.score = score;
+      candidate.beacon = beacon;
+      if (!found || ZigbeeCommissioning::shouldReplaceCandidate(*outResult,
+                                                                candidate)) {
+        *outResult = candidate;
+        found = true;
+      }
+    }
+  }
+
+  return found;
 }
 
 void clearNetworkKey(ZigbeeEndDeviceCommonState* state) {
@@ -595,57 +739,20 @@ bool scanForKnownNetwork(ZigbeeRadio& radio, uint8_t* ioMacSequence,
   state->state = ZigbeeCommissioningState::kScanning;
   state->lastFailure = ZigbeeCommissioningFailure::kNone;
 
-  uint8_t request[127] = {0U};
-  uint8_t requestLength = 0U;
-  if (!ZigbeeCodec::buildBeaconRequest((*ioMacSequence)++, request,
-                                       &requestLength)) {
-    state->lastFailure = ZigbeeCommissioningFailure::kAssociationRequestFailed;
-    state->state = ZigbeeCommissioningState::kFailed;
-    return false;
-  }
-
-  uint8_t channels[16] = {0U};
-  uint8_t channelCount = 0U;
-  buildScanChannelOrder(state->policy, channels, &channelCount);
+  uint32_t scanMasks[2] = {0UL, 0UL};
+  uint8_t maskCount = 0U;
+  ZigbeeCommissioning::buildSteeringScanMasks(state->policy, scanMasks,
+                                              &maskCount);
 
   bool found = false;
-  for (uint8_t i = 0U; i < channelCount; ++i) {
-    const uint8_t channel = channels[i];
-    if (!radio.setChannel(channel)) {
+  for (uint8_t maskIndex = 0U; maskIndex < maskCount; ++maskIndex) {
+    if (!scanKnownNetworkForMask(radio, ioMacSequence, scanMasks[maskIndex],
+                                 *state, outResult)) {
       continue;
     }
-    (void)radio.transmit(request, requestLength, false, 1200000UL);
-
-    const uint32_t deadline = millis() + 70U;
-    while (static_cast<int32_t>(millis() - deadline) < 0) {
-      ZigbeeFrame frame{};
-      if (!radio.receive(&frame, 4000U, 300000UL)) {
-        continue;
-      }
-
-      ZigbeeMacBeaconView beacon{};
-      if (!ZigbeeCodec::parseBeaconFrame(frame.psdu, frame.length, &beacon) ||
-          !beacon.valid) {
-        continue;
-      }
-
-      int16_t score = 0;
-      if (!ZigbeeCommissioning::scoreKnownNetworkBeacon(
-              *state, channel, frame.rssiDbm, beacon, &score)) {
-        continue;
-      }
-
-      ZigbeeBeaconCandidate candidate{};
-      candidate.valid = true;
-      candidate.channel = channel;
-      candidate.rssiDbm = frame.rssiDbm;
-      candidate.score = score;
-      candidate.beacon = beacon;
-      if (!found || ZigbeeCommissioning::shouldReplaceCandidate(*outResult,
-                                                                candidate)) {
-        *outResult = candidate;
-        found = true;
-      }
+    found = outResult->valid;
+    if (found) {
+      break;
     }
   }
 
@@ -661,6 +768,26 @@ bool scanForKnownNetwork(ZigbeeRadio& radio, uint8_t* ioMacSequence,
 }
 
 }  // namespace
+
+void ZigbeeCommissioning::buildSteeringScanMasks(
+    const ZigbeeCommissioningPolicy& policy, uint32_t outMasks[2],
+    uint8_t* outCount) {
+  if (outMasks == nullptr || outCount == nullptr) {
+    return;
+  }
+
+  uint32_t primaryMask = 0UL;
+  uint32_t secondaryMask = 0UL;
+  normalizeSteeringScanMasks(policy, &primaryMask, &secondaryMask);
+
+  *outCount = 0U;
+  if (primaryMask != 0UL) {
+    outMasks[(*outCount)++] = primaryMask;
+  }
+  if (secondaryMask != 0UL) {
+    outMasks[(*outCount)++] = secondaryMask;
+  }
+}
 
 bool ZigbeeCommissioning::channelInMask(uint32_t mask, uint8_t channel) {
   if (channel > 31U) {
@@ -1234,55 +1361,19 @@ bool ZigbeeCommissioning::activeScan(ZigbeeRadio& radio,
   state->state = ZigbeeCommissioningState::kScanning;
   state->lastFailure = ZigbeeCommissioningFailure::kNone;
 
-  uint8_t request[127] = {0U};
-  uint8_t requestLength = 0U;
-  if (!ZigbeeCodec::buildBeaconRequest((*ioMacSequence)++, request,
-                                       &requestLength)) {
-    state->lastFailure = ZigbeeCommissioningFailure::kAssociationRequestFailed;
-    state->state = ZigbeeCommissioningState::kFailed;
-    return false;
-  }
-
-  uint8_t channels[16] = {0U};
-  uint8_t channelCount = 0U;
-  buildScanChannelOrder(state->policy, channels, &channelCount);
+  uint32_t scanMasks[2] = {0UL, 0UL};
+  uint8_t maskCount = 0U;
+  buildSteeringScanMasks(state->policy, scanMasks, &maskCount);
 
   bool found = false;
-  for (uint8_t i = 0U; i < channelCount; ++i) {
-    const uint8_t channel = channels[i];
-    if (!radio.setChannel(channel)) {
+  for (uint8_t maskIndex = 0U; maskIndex < maskCount; ++maskIndex) {
+    if (!activeScanForMask(radio, ioMacSequence, scanMasks[maskIndex],
+                           state->policy, outResult)) {
       continue;
     }
-    (void)radio.transmit(request, requestLength, false, 1200000UL);
-
-    const uint32_t deadline = millis() + 70U;
-    while (static_cast<int32_t>(millis() - deadline) < 0) {
-      ZigbeeFrame frame{};
-      if (!radio.receive(&frame, 4000U, 300000UL)) {
-        continue;
-      }
-
-      ZigbeeMacBeaconView beacon{};
-      if (!ZigbeeCodec::parseBeaconFrame(frame.psdu, frame.length, &beacon) ||
-          !beacon.valid) {
-        continue;
-      }
-
-      int16_t score = 0;
-      if (!scoreBeacon(state->policy, channel, frame.rssiDbm, beacon, &score)) {
-        continue;
-      }
-
-      ZigbeeBeaconCandidate candidate{};
-      candidate.valid = true;
-      candidate.channel = channel;
-      candidate.rssiDbm = frame.rssiDbm;
-      candidate.score = score;
-      candidate.beacon = beacon;
-      if (!found || shouldReplaceCandidate(*outResult, candidate)) {
-        *outResult = candidate;
-        found = true;
-      }
+    found = outResult->valid;
+    if (found) {
+      break;
     }
   }
 
