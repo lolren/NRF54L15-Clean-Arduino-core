@@ -13,6 +13,21 @@ typedef enum {
     XIAO_NRF54L15_ANTENNA_CONTROL_HIZ = 2,
 } xiao_nrf54l15_antenna_t;
 
+typedef struct {
+    uint32_t pinCnf;
+    uint8_t isOutput;
+    uint8_t outputHigh;
+} xiao_nrf54l15_pin_state_t;
+
+typedef struct {
+    xiao_nrf54l15_pin_state_t rfSwitchPower;
+    xiao_nrf54l15_pin_state_t rfSwitchControl;
+    xiao_nrf54l15_pin_state_t batteryEnable;
+    xiao_nrf54l15_pin_state_t imuMicEnable;
+    xiao_nrf54l15_pin_state_t samd11Tx;
+    xiao_nrf54l15_pin_state_t samd11Rx;
+} xiao_nrf54l15_board_state_t;
+
 void xiaoNrf54l15SetAntenna(xiao_nrf54l15_antenna_t antenna);
 xiao_nrf54l15_antenna_t xiaoNrf54l15GetAntenna(void);
 
@@ -25,6 +40,8 @@ uint8_t arduinoXiaoNrf54l15SetBatteryEnable(uint8_t enabled);
 uint8_t arduinoXiaoNrf54l15GetBatteryEnable(void);
 uint8_t arduinoXiaoNrf54l15SetImuMicEnable(uint8_t enabled);
 uint8_t arduinoXiaoNrf54l15GetImuMicEnable(void);
+uint8_t xiaoNrf54l15SaveBoardState(xiao_nrf54l15_board_state_t* state);
+uint8_t xiaoNrf54l15RestoreBoardState(const xiao_nrf54l15_board_state_t* state);
 void xiaoNrf54l15EnterLowestPowerBoardState(void);
 
 #ifdef __cplusplus

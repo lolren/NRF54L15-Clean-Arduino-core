@@ -79,6 +79,46 @@ static inline void gpioSetInputHighZ(uint8_t port, uint8_t pin) {
     gpio->PIN_CNF[pin] = cnf;
 }
 
+static inline xiao_nrf54l15_pin_state_t capturePinState(uint8_t port, uint8_t pin) {
+    xiao_nrf54l15_pin_state_t state = {0U, 0U, 0U};
+    NRF_GPIO_Type* gpio = gpioForPort(port);
+    if (gpio == nullptr || pin > 31U) {
+        return state;
+    }
+
+    const uint32_t bit = (1UL << pin);
+    state.pinCnf = gpio->PIN_CNF[pin];
+    state.isOutput = (gpio->DIR & bit) != 0U ? 1U : 0U;
+    state.outputHigh = (gpio->OUT & bit) != 0U ? 1U : 0U;
+    return state;
+}
+
+// Preserve the raw GPIO configuration so low-power helper APIs can collapse
+// the XIAO board rails temporarily and restore the exact prior state on wake.
+static inline void restorePinState(uint8_t port,
+                                   uint8_t pin,
+                                   const xiao_nrf54l15_pin_state_t& state) {
+    NRF_GPIO_Type* gpio = gpioForPort(port);
+    if (gpio == nullptr || pin > 31U) {
+        return;
+    }
+
+    const uint32_t bit = (1UL << pin);
+    if (state.outputHigh != 0U) {
+        gpio->OUTSET = bit;
+    } else {
+        gpio->OUTCLR = bit;
+    }
+
+    if (state.isOutput != 0U) {
+        gpio->DIRSET = bit;
+    } else {
+        gpio->DIRCLR = bit;
+    }
+
+    gpio->PIN_CNF[pin] = state.pinCnf;
+}
+
 static inline void applyRfSwitchPower(bool enable) {
     gpioSetOutput(kRfSwitchPowerPort, kRfSwitchPowerPin, enable);
 }
@@ -168,6 +208,35 @@ extern "C" xiao_nrf54l15_antenna_t xiaoNrf54l15GetAntenna(void) {
     return gpioReadOutput(kRfSwitchCtlPort, kRfSwitchCtlPin)
                ? XIAO_NRF54L15_ANTENNA_EXTERNAL
                : XIAO_NRF54L15_ANTENNA_CERAMIC;
+}
+
+extern "C" uint8_t xiaoNrf54l15SaveBoardState(xiao_nrf54l15_board_state_t* state) {
+    if (state == nullptr) {
+        return 0U;
+    }
+
+    state->rfSwitchPower = capturePinState(kRfSwitchPowerPort, kRfSwitchPowerPin);
+    state->rfSwitchControl = capturePinState(kRfSwitchCtlPort, kRfSwitchCtlPin);
+    state->batteryEnable = capturePinState(kBatteryEnablePort, kBatteryEnablePin);
+    state->imuMicEnable = capturePinState(kImuMicEnablePort, kImuMicEnablePin);
+    state->samd11Tx = capturePinState(kSamd11TxPort, kSamd11TxPin);
+    state->samd11Rx = capturePinState(kSamd11RxPort, kSamd11RxPin);
+    return 1U;
+}
+
+extern "C" uint8_t xiaoNrf54l15RestoreBoardState(
+    const xiao_nrf54l15_board_state_t* state) {
+    if (state == nullptr) {
+        return 0U;
+    }
+
+    restorePinState(kRfSwitchPowerPort, kRfSwitchPowerPin, state->rfSwitchPower);
+    restorePinState(kRfSwitchCtlPort, kRfSwitchCtlPin, state->rfSwitchControl);
+    restorePinState(kBatteryEnablePort, kBatteryEnablePin, state->batteryEnable);
+    restorePinState(kImuMicEnablePort, kImuMicEnablePin, state->imuMicEnable);
+    restorePinState(kSamd11TxPort, kSamd11TxPin, state->samd11Tx);
+    restorePinState(kSamd11RxPort, kSamd11RxPin, state->samd11Rx);
+    return 1U;
 }
 
 extern "C" void initVariant(void) {

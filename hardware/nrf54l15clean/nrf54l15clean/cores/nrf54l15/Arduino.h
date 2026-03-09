@@ -199,6 +199,7 @@ void analogWrite(uint8_t pin, int value);
 unsigned long millis(void);
 unsigned long micros(void);
 void delay(unsigned long ms);
+void delayLowPowerIdle(unsigned long ms);
 void delayMicroseconds(unsigned int us);
 void delaySystemOff(unsigned long ms);
 void delaySystemOffNoRetention(unsigned long ms);

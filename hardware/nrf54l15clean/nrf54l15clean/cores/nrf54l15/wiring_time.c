@@ -188,11 +188,12 @@ static uint64_t readGrtcCounterUs(NRF_GRTC_Type* grtc)
 static NRF_GRTC_Type* const g_low_power_grtc =
     (NRF_GRTC_Type*)NRF54L15_CLEAN_GRTC_BASE;
 // On XIAO nRF54L15 secure CPUAPP, the Zephyr-derived allowed mask is 0x67
-// (channels 0,1,2,5,6). Channel 5 is reserved here as the core's low-power
-// delay wake source so delay() can sleep until its deadline instead of waking
-// every millisecond.
+// (channels 0,1,2,5,6). Channel 5 is reserved here as the core's tickless
+// wake source so delay() and delayLowPowerIdle() can sleep until deadline
+// instead of waking every millisecond.
 static const uint8_t kLowPowerDelayChannel = 5U;
 static volatile uint8_t g_low_power_delay_fired = 0U;
+static volatile uint8_t g_low_power_timebase_initialized = 0U;
 
 static uint64_t readLowPowerCounterUs(void)
 {
@@ -252,6 +253,10 @@ static void lowPowerArmDelayWake(uint64_t targetUs)
 
 static void initLowPowerTimebase(void)
 {
+    if (g_low_power_timebase_initialized != 0U) {
+        return;
+    }
+
     uint32_t clkcfg = g_low_power_grtc->CLKCFG;
     clkcfg &= ~GRTC_CLKCFG_CLKSEL_Msk;
     clkcfg |= (GRTC_CLKCFG_CLKSEL_SystemLFCLK << GRTC_CLKCFG_CLKSEL_Pos);
@@ -277,6 +282,30 @@ static void initLowPowerTimebase(void)
         (1UL << (((uint32_t)kLowPowerTickIrq) & 0x1FUL));
     NVIC_SetPriority(kLowPowerTickIrq, 3U);
     NVIC_EnableIRQ(kLowPowerTickIrq);
+    g_low_power_timebase_initialized = 1U;
+}
+
+static void delayUntilLowPowerCounterUs(uint64_t targetUs)
+{
+    if ((__get_PRIMASK() & 1U) != 0U) {
+        while ((int64_t)(targetUs - readLowPowerCounterUs()) > 0) {
+            nrf54l15_clean_idle_service();
+            __NOP();
+        }
+        return;
+    }
+
+    while ((int64_t)(targetUs - readLowPowerCounterUs()) > 0) {
+        nrf54l15_clean_idle_service();
+        lowPowerArmDelayWake(targetUs);
+        const uint32_t restoreRaw = beginIdleSleep();
+        while ((g_low_power_delay_fired == 0U) &&
+               ((int64_t)(targetUs - readLowPowerCounterUs()) > 0)) {
+            __asm volatile("wfi");
+        }
+        endIdleSleep(restoreRaw);
+        lowPowerDisarmDelayWake();
+    }
 }
 
 #if NRF54L15_GRTC_IRQ_GROUP == 2U
@@ -466,26 +495,7 @@ void delay(unsigned long ms)
     }
 
     const uint64_t targetUs = readLowPowerCounterUs() + ((uint64_t)ms * 1000ULL);
-
-    if ((__get_PRIMASK() & 1U) != 0U) {
-        while ((int64_t)(targetUs - readLowPowerCounterUs()) > 0) {
-            nrf54l15_clean_idle_service();
-            __NOP();
-        }
-        return;
-    }
-
-    while ((int64_t)(targetUs - readLowPowerCounterUs()) > 0) {
-        nrf54l15_clean_idle_service();
-        lowPowerArmDelayWake(targetUs);
-        const uint32_t restoreRaw = beginIdleSleep();
-        while ((g_low_power_delay_fired == 0U) &&
-               ((int64_t)(targetUs - readLowPowerCounterUs()) > 0)) {
-            __asm volatile("wfi");
-        }
-        endIdleSleep(restoreRaw);
-        lowPowerDisarmDelayWake();
-    }
+    delayUntilLowPowerCounterUs(targetUs);
 #else
     const unsigned long start = millis();
     while ((millis() - start) < ms) {
@@ -493,6 +503,43 @@ void delay(unsigned long ms)
         __NOP();
     }
 #endif
+}
+
+void delayLowPowerIdle(unsigned long ms)
+{
+    if (ms == 0UL) {
+        nrf54l15_clean_idle_service();
+        return;
+    }
+
+    xiao_nrf54l15_board_state_t boardState;
+    if (xiaoNrf54l15SaveBoardState(&boardState) == 0U) {
+        delay(ms);
+        return;
+    }
+
+    xiaoNrf54l15EnterLowestPowerBoardState();
+
+#if defined(NRF54L15_CLEAN_POWER_LOW)
+    initLowPowerTimebase();
+    const uint64_t targetUs = readLowPowerCounterUs() + ((uint64_t)ms * 1000ULL);
+    delayUntilLowPowerCounterUs(targetUs);
+#else
+    const unsigned long start = millis();
+    while ((millis() - start) < ms) {
+        nrf54l15_clean_idle_service();
+        if ((__get_PRIMASK() & 1U) != 0U) {
+            __NOP();
+            continue;
+        }
+
+        const uint32_t restoreRaw = beginIdleSleep();
+        __asm volatile("wfi");
+        endIdleSleep(restoreRaw);
+    }
+#endif
+
+    (void)xiaoNrf54l15RestoreBoardState(&boardState);
 }
 
 void delaySystemOff(unsigned long ms)
@@ -531,14 +578,16 @@ void delayMicroseconds(unsigned int us)
 void nrf54l15_core_prepare_system_off(void)
 {
 #if defined(NRF54L15_CLEAN_POWER_LOW)
-    NRF54L15_GRTC_INTENCLR_REG(g_low_power_grtc) =
-        (1UL << kLowPowerDelayChannel);
-    g_low_power_grtc->CC[kLowPowerDelayChannel].CCEN =
-        (GRTC_CC_CCEN_ACTIVE_Disable << GRTC_CC_CCEN_ACTIVE_Pos);
-    g_low_power_grtc->EVENTS_COMPARE[kLowPowerDelayChannel] = 0U;
-    NVIC_DisableIRQ(kLowPowerTickIrq);
-    NVIC->ICPR[((uint32_t)kLowPowerTickIrq) >> 5U] =
-        (1UL << (((uint32_t)kLowPowerTickIrq) & 0x1FUL));
+    if (g_low_power_timebase_initialized != 0U) {
+        NRF54L15_GRTC_INTENCLR_REG(g_low_power_grtc) =
+            (1UL << kLowPowerDelayChannel);
+        g_low_power_grtc->CC[kLowPowerDelayChannel].CCEN =
+            (GRTC_CC_CCEN_ACTIVE_Disable << GRTC_CC_CCEN_ACTIVE_Pos);
+        g_low_power_grtc->EVENTS_COMPARE[kLowPowerDelayChannel] = 0U;
+        NVIC_DisableIRQ(kLowPowerTickIrq);
+        NVIC->ICPR[((uint32_t)kLowPowerTickIrq) >> 5U] =
+            (1UL << (((uint32_t)kLowPowerTickIrq) & 0x1FUL));
+    }
 #endif
 
     xiaoNrf54l15EnterLowestPowerBoardState();

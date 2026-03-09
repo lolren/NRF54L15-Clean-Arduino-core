@@ -3,6 +3,10 @@
 // This example uses only standard Arduino timing APIs on purpose. It is the
 // simplest way to compare balanced-vs-low-power idle behavior without the extra
 // board-control and SYSTEM OFF machinery used by the other low-power sketches.
+//
+// If you want the closest System ON match to the Zephyr board-collapse setup,
+// use delayLowPowerIdle(ms) instead of delay(ms). Avoid active bridge Serial
+// traffic during that low-power window.
 
 unsigned long lastToggleMs = 0;
 bool ledState = false;

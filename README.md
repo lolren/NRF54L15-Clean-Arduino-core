@@ -67,7 +67,7 @@ In Arduino IDE they should appear under:
 Suggested starting points:
 
 - Basics: [`Blink`](hardware/nrf54l15clean/nrf54l15clean/examples/Basics/Blink), [`AnalogReadSerial`](hardware/nrf54l15clean/nrf54l15clean/examples/Basics/AnalogReadSerial)
-- Power: [`LowPowerIdleTicker`](hardware/nrf54l15clean/nrf54l15clean/examples/Power/LowPowerIdleTicker), [`DelaySystemOffBlink`](hardware/nrf54l15clean/nrf54l15clean/examples/Power/DelaySystemOffBlink), [`IdleCpuScalingBlink`](hardware/nrf54l15clean/nrf54l15clean/examples/Power/IdleCpuScalingBlink)
+- Power: [`DelayLowPowerIdleBlink`](hardware/nrf54l15clean/nrf54l15clean/examples/Power/DelayLowPowerIdleBlink), [`LowPowerIdleTicker`](hardware/nrf54l15clean/nrf54l15clean/examples/Power/LowPowerIdleTicker), [`DelaySystemOffBlink`](hardware/nrf54l15clean/nrf54l15clean/examples/Power/DelaySystemOffBlink), [`IdleCpuScalingBlink`](hardware/nrf54l15clean/nrf54l15clean/examples/Power/IdleCpuScalingBlink)
 - Peripherals: [`PeripheralProbe`](hardware/nrf54l15clean/nrf54l15clean/examples/Peripherals/PeripheralProbe), [`RawI2sTxLoop`](hardware/nrf54l15clean/nrf54l15clean/examples/Peripherals/RawI2sTxLoop), [`RawI2sTxInterrupt`](hardware/nrf54l15clean/nrf54l15clean/examples/Peripherals/RawI2sTxInterrupt), [`I2sTxWrapperInterrupt`](hardware/nrf54l15clean/nrf54l15clean/examples/Peripherals/I2sTxWrapperInterrupt), [`I2sRxWrapperInterrupt`](hardware/nrf54l15clean/nrf54l15clean/examples/Peripherals/I2sRxWrapperInterrupt), [`I2sDuplexWrapperInterrupt`](hardware/nrf54l15clean/nrf54l15clean/examples/Peripherals/I2sDuplexWrapperInterrupt), [`RawRadioPacketTx`](hardware/nrf54l15clean/nrf54l15clean/examples/Peripherals/RawRadioPacketTx), [`RawRadioPacketRx`](hardware/nrf54l15clean/nrf54l15clean/examples/Peripherals/RawRadioPacketRx), [`RawRadioAckRequester`](hardware/nrf54l15clean/nrf54l15clean/examples/Peripherals/RawRadioAckRequester), [`RawRadioAckResponder`](hardware/nrf54l15clean/nrf54l15clean/examples/Peripherals/RawRadioAckResponder), [`nrf_to_nrfGettingStarted`](hardware/nrf54l15clean/nrf54l15clean/examples/Peripherals/nrf_to_nrfGettingStarted), [`nrf_to_nrfAcknowledgementPayloads`](hardware/nrf54l15clean/nrf54l15clean/examples/Peripherals/nrf_to_nrfAcknowledgementPayloads), [`WireImuRemapScanner`](hardware/nrf54l15clean/nrf54l15clean/examples/Peripherals/WireImuRemapScanner), [`XiaoBoardControlPins`](hardware/nrf54l15clean/nrf54l15clean/examples/Peripherals/XiaoBoardControlPins)
 - BLE: [`BleBeaconMinimal`](hardware/nrf54l15clean/nrf54l15clean/examples/BLE/BleBeaconMinimal), [`BleChannelSoundingReflector`](hardware/nrf54l15clean/nrf54l15clean/examples/BLE/BleChannelSoundingReflector), [`BleChannelSoundingInitiator`](hardware/nrf54l15clean/nrf54l15clean/examples/BLE/BleChannelSoundingInitiator), [`RawRadioRegisterProbe`](hardware/nrf54l15clean/nrf54l15clean/examples/BLE/RawRadioRegisterProbe)
 - Memory: [`PreferencesBootCounter`](hardware/nrf54l15clean/nrf54l15clean/examples/Memory/PreferencesBootCounter), [`EEPROMBootCounter`](hardware/nrf54l15clean/nrf54l15clean/examples/Memory/EEPROMBootCounter)
@@ -127,6 +127,7 @@ Practical result on the XIAO board from local validation:
 - continuous low-power BLE with RF-switch duty-cycling: about **0.1 mA**
 - long-sleep phone-tuned beaconing is now available as `BleAdvertiserPhoneBeacon15s`, which keeps the payload in the primary ADV packet, avoids scan-response dependence, and spends most of its cycle in true `SYSTEM OFF`
 - `delay()` / `yield()` low-power idle path: around **0.1 mA** on this board after the core WFI and tickless-delay fixes
+- `delayLowPowerIdle(ms)` now provides an explicit Zephyr-like `System ON` measurement helper without changing normal `delay()` semantics or adding another Tools profile
 
 That puts the `SYSTEM OFF` path in the same broad regime as the Zephyr result on this board.
 
@@ -134,6 +135,9 @@ New core-level low-power helpers:
 
 - `delaySystemOff(ms)`: timed `SYSTEM OFF` sleep with cold-boot wake, preserving `.noinit` RAM by default
 - `delaySystemOffNoRetention(ms)`: same path, but clears RAM retention for the lowest current
+- `delayLowPowerIdle(ms)`: timed `System ON` idle that temporarily collapses the XIAO board-control rails and restores the previous GPIO state after wake
+- avoid active bridge `Serial` traffic during the low-power window; the helper temporarily releases the SAMD11 bridge pins at the GPIO level, but it does not suspend an already-running UARTE session for you
+- use `Low Power (WFI Idle)` for the lowest current; in balanced mode the helper still resumes normally, but wake timing remains SysTick-driven
 - `ClockControl::enableIdleCpuScaling(CpuFrequency::k64MHz)`: keep active code at the current CPU speed, but drop to 64 MHz around `delay()` / `yield()` idle windows and restore on wake
 
 Important distinction:
