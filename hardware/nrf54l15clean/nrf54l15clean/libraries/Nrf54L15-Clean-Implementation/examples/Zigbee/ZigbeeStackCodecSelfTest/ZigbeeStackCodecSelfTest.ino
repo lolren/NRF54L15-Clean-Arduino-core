@@ -1263,7 +1263,13 @@ static bool testZdoBindingCodecAndFlow() {
 
   uint64_t boundIeee = 0U;
   uint8_t boundEndpoint = 0U;
+  ZigbeeResolvedBindingDestination resolved{};
   ok = ok &&
+       device.resolveBindingDestination(0x01U, kZigbeeClusterOnOff,
+                                        &resolved) &&
+       resolved.addressMode == ZigbeeBindingAddressMode::kExtended &&
+       resolved.ieeeAddress == 0x00124B000054A11FULL &&
+       resolved.endpoint == 0x02U &&
        device.resolveBindingDestination(0x01U, kZigbeeClusterOnOff, &boundIeee,
                                         &boundEndpoint) &&
        boundIeee == 0x00124B000054A11FULL && boundEndpoint == 0x02U;
@@ -1276,7 +1282,38 @@ static bool testZdoBindingCodecAndFlow() {
                                            &transactionSequence, &status) &&
        status == 0x00U && device.bindingCount() == 0U;
 
-  reportResult("ZDO Binding", ok, "bind+unbind");
+  payloadLength = 0U;
+  ok = ok &&
+       ZigbeeCodec::buildZdoBindRequest(0x46U, 0x00124B0001ABCDEFULL, 0x01U,
+                                        kZigbeeClusterOnOff,
+                                        ZigbeeBindingAddressMode::kGroup,
+                                        0x1001U, 0U, 0U, payload,
+                                        &payloadLength) &&
+       device.handleZdoRequest(kZigbeeZdoBindRequest, payload, payloadLength,
+                               &responseClusterId, response,
+                               &responseLength) &&
+       responseClusterId == kZigbeeZdoBindResponse &&
+       ZigbeeCodec::parseZdoStatusResponse(response, responseLength,
+                                           &transactionSequence, &status) &&
+       transactionSequence == 0x46U && status == 0x00U &&
+       device.bindingCount() == 1U &&
+       device.resolveBindingDestination(0x01U, kZigbeeClusterOnOff,
+                                        &resolved) &&
+       resolved.addressMode == ZigbeeBindingAddressMode::kGroup &&
+       resolved.groupId == 0x1001U &&
+       !device.resolveBindingDestination(0x01U, kZigbeeClusterOnOff,
+                                         &boundIeee, &boundEndpoint);
+
+  ok = ok && device.handleZdoRequest(kZigbeeZdoUnbindRequest, payload,
+                                     payloadLength, &responseClusterId,
+                                     response, &responseLength) &&
+       responseClusterId == kZigbeeZdoUnbindResponse &&
+       ZigbeeCodec::parseZdoStatusResponse(response, responseLength,
+                                           &transactionSequence, &status) &&
+       transactionSequence == 0x46U && status == 0x00U &&
+       device.bindingCount() == 0U;
+
+  reportResult("ZDO Binding", ok, "bind+group+unbind");
   return ok;
 }
 

@@ -149,13 +149,18 @@ static void applyLedState() {
   (void)Gpio::write(kPinUserLed, dutyPermille == 0U);
 }
 
-static bool sendApsFrame(uint16_t destinationShort, uint8_t destinationEndpoint,
-                         uint16_t clusterId, uint16_t profileId,
-                         uint8_t sourceEndpoint, const uint8_t* payload,
-                         uint8_t payloadLength) {
+static bool sendApsFrameExtended(uint16_t destinationShort, uint8_t deliveryMode,
+                                 uint16_t destinationGroup,
+                                 uint8_t destinationEndpoint,
+                                 uint16_t clusterId, uint16_t profileId,
+                                 uint8_t sourceEndpoint,
+                                 const uint8_t* payload,
+                                 uint8_t payloadLength) {
   ZigbeeApsDataFrame aps{};
   aps.frameType = ZigbeeApsFrameType::kData;
+  aps.deliveryMode = deliveryMode;
   aps.destinationEndpoint = destinationEndpoint;
+  aps.destinationGroup = destinationGroup;
   aps.clusterId = clusterId;
   aps.profileId = profileId;
   aps.sourceEndpoint = sourceEndpoint;
@@ -193,6 +198,24 @@ static bool sendApsFrame(uint16_t destinationShort, uint8_t destinationEndpoint,
   return g_radio.transmit(psdu, psduLength, false, 1200000UL);
 }
 
+static bool sendApsFrame(uint16_t destinationShort, uint8_t destinationEndpoint,
+                         uint16_t clusterId, uint16_t profileId,
+                         uint8_t sourceEndpoint, const uint8_t* payload,
+                         uint8_t payloadLength) {
+  return sendApsFrameExtended(destinationShort, kZigbeeApsDeliveryUnicast, 0U,
+                              destinationEndpoint, clusterId, profileId,
+                              sourceEndpoint, payload, payloadLength);
+}
+
+static bool sendGroupApsFrame(uint16_t destinationShort, uint16_t destinationGroup,
+                              uint16_t clusterId, uint16_t profileId,
+                              uint8_t sourceEndpoint, const uint8_t* payload,
+                              uint8_t payloadLength) {
+  return sendApsFrameExtended(destinationShort, kZigbeeApsDeliveryGroup,
+                              destinationGroup, 0U, clusterId, profileId,
+                              sourceEndpoint, payload, payloadLength);
+}
+
 static bool sendAttributeReport(uint16_t clusterId) {
   uint8_t zclFrame[127] = {0};
   uint8_t zclLength = 0U;
@@ -201,15 +224,21 @@ static bool sendAttributeReport(uint16_t clusterId) {
       zclLength == 0U) {
     return false;
   }
-  uint64_t destinationIeee = 0U;
-  uint8_t destinationEndpoint = kCoordinatorEndpoint;
+  ZigbeeResolvedBindingDestination destination{};
   if (g_device.resolveBindingDestination(kLocalEndpoint, clusterId,
-                                         &destinationIeee,
-                                         &destinationEndpoint) &&
-      destinationEndpoint != 0U) {
-    return sendApsFrame(kCoordinatorShort, destinationEndpoint, clusterId,
-                        kZigbeeProfileHomeAutomation, kLocalEndpoint, zclFrame,
-                        zclLength);
+                                         &destination)) {
+    if (destination.addressMode == ZigbeeBindingAddressMode::kGroup &&
+        destination.groupId != 0U) {
+      return sendGroupApsFrame(
+          kCoordinatorShort, destination.groupId, clusterId,
+          kZigbeeProfileHomeAutomation, kLocalEndpoint, zclFrame, zclLength);
+    }
+    if (destination.addressMode == ZigbeeBindingAddressMode::kExtended &&
+        destination.endpoint != 0U) {
+      return sendApsFrame(kCoordinatorShort, destination.endpoint, clusterId,
+                          kZigbeeProfileHomeAutomation, kLocalEndpoint,
+                          zclFrame, zclLength);
+    }
   }
   return sendApsFrame(kCoordinatorShort, kCoordinatorEndpoint, clusterId,
                       kZigbeeProfileHomeAutomation, kLocalEndpoint, zclFrame,
@@ -230,17 +259,24 @@ static bool sendDueAttributeReport(uint32_t nowMs, uint16_t* outClusterId) {
     return false;
   }
 
-  uint64_t destinationIeee = 0U;
-  uint8_t destinationEndpoint = kCoordinatorEndpoint;
+  ZigbeeResolvedBindingDestination destination{};
   bool ok = false;
   if (g_device.resolveBindingDestination(kLocalEndpoint, clusterId,
-                                         &destinationIeee,
-                                         &destinationEndpoint) &&
-      destinationEndpoint != 0U) {
-    ok = sendApsFrame(kCoordinatorShort, destinationEndpoint, clusterId,
-                      kZigbeeProfileHomeAutomation, kLocalEndpoint, zclFrame,
-                      zclLength);
-  } else {
+                                         &destination)) {
+    if (destination.addressMode == ZigbeeBindingAddressMode::kGroup &&
+        destination.groupId != 0U) {
+      ok = sendGroupApsFrame(
+          kCoordinatorShort, destination.groupId, clusterId,
+          kZigbeeProfileHomeAutomation, kLocalEndpoint, zclFrame, zclLength);
+    } else if (destination.addressMode ==
+                   ZigbeeBindingAddressMode::kExtended &&
+               destination.endpoint != 0U) {
+      ok = sendApsFrame(kCoordinatorShort, destination.endpoint, clusterId,
+                        kZigbeeProfileHomeAutomation, kLocalEndpoint, zclFrame,
+                        zclLength);
+    }
+  }
+  if (!ok) {
     ok = sendApsFrame(kCoordinatorShort, kCoordinatorEndpoint, clusterId,
                       kZigbeeProfileHomeAutomation, kLocalEndpoint, zclFrame,
                       zclLength);

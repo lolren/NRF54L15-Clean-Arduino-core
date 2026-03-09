@@ -3813,6 +3813,45 @@ const ZigbeeBindingEntry* ZigbeeHomeAutomationDevice::bindings() const {
 }
 
 bool ZigbeeHomeAutomationDevice::resolveBindingDestination(
+    uint8_t sourceEndpoint, uint16_t clusterId,
+    ZigbeeResolvedBindingDestination* outDestination) const {
+  if (outDestination == nullptr) {
+    return false;
+  }
+  *outDestination = ZigbeeResolvedBindingDestination{};
+
+  for (uint8_t i = 0U;
+       i < static_cast<uint8_t>(sizeof(config_.bindings) /
+                                sizeof(config_.bindings[0]));
+       ++i) {
+    const ZigbeeBindingEntry& entry = config_.bindings[i];
+    if (!entry.used || entry.sourceEndpoint != sourceEndpoint ||
+        entry.clusterId != clusterId) {
+      continue;
+    }
+    if (entry.destinationAddressMode == ZigbeeBindingAddressMode::kGroup) {
+      if (entry.destinationGroup == 0U) {
+        continue;
+      }
+    } else if (entry.destinationAddressMode ==
+               ZigbeeBindingAddressMode::kExtended) {
+      if (entry.destinationEndpoint == 0U) {
+        continue;
+      }
+    } else {
+      continue;
+    }
+
+    outDestination->addressMode = entry.destinationAddressMode;
+    outDestination->groupId = entry.destinationGroup;
+    outDestination->ieeeAddress = entry.destinationIeee;
+    outDestination->endpoint = entry.destinationEndpoint;
+    return true;
+  }
+  return false;
+}
+
+bool ZigbeeHomeAutomationDevice::resolveBindingDestination(
     uint8_t sourceEndpoint, uint16_t clusterId, uint64_t* outDestinationIeee,
     uint8_t* outDestinationEndpoint) const {
   if (outDestinationIeee != nullptr) {
@@ -3825,22 +3864,16 @@ bool ZigbeeHomeAutomationDevice::resolveBindingDestination(
     return false;
   }
 
-  for (uint8_t i = 0U;
-       i < static_cast<uint8_t>(sizeof(config_.bindings) /
-                                sizeof(config_.bindings[0]));
-       ++i) {
-    const ZigbeeBindingEntry& entry = config_.bindings[i];
-    if (!entry.used || entry.sourceEndpoint != sourceEndpoint ||
-        entry.clusterId != clusterId ||
-        entry.destinationAddressMode != ZigbeeBindingAddressMode::kExtended ||
-        entry.destinationEndpoint == 0U) {
-      continue;
-    }
-    *outDestinationIeee = entry.destinationIeee;
-    *outDestinationEndpoint = entry.destinationEndpoint;
-    return true;
+  ZigbeeResolvedBindingDestination destination{};
+  if (!resolveBindingDestination(sourceEndpoint, clusterId, &destination) ||
+      destination.addressMode != ZigbeeBindingAddressMode::kExtended ||
+      destination.endpoint == 0U) {
+    return false;
   }
-  return false;
+
+  *outDestinationIeee = destination.ieeeAddress;
+  *outDestinationEndpoint = destination.endpoint;
+  return true;
 }
 
 bool ZigbeeHomeAutomationDevice::isInGroup(uint16_t groupId) const {

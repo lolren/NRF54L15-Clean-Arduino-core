@@ -512,11 +512,12 @@ bool sendNwkCommand(uint16_t destinationShort, const uint8_t* payload,
   return g_radio.transmit(psdu, psduLength, false, 1200000UL);
 }
 
-bool sendApsFrameWithCounter(uint16_t destinationShort,
-                             uint8_t destinationEndpoint, uint16_t clusterId,
-                             uint16_t profileId, uint8_t sourceEndpoint,
-                             const uint8_t* payload, uint8_t payloadLength,
-                             uint8_t apsCounterValue, bool trackAck) {
+bool sendApsFrameExtendedWithCounter(
+    uint16_t destinationShort, uint8_t deliveryMode,
+    uint16_t destinationGroup, uint8_t destinationEndpoint,
+    uint16_t clusterId, uint16_t profileId, uint8_t sourceEndpoint,
+    const uint8_t* payload, uint8_t payloadLength, uint8_t apsCounterValue,
+    bool trackAck) {
   if (!g_joined) {
     return false;
   }
@@ -524,9 +525,10 @@ bool sendApsFrameWithCounter(uint16_t destinationShort,
 
   ZigbeeApsDataFrame aps{};
   aps.frameType = ZigbeeApsFrameType::kData;
-  aps.deliveryMode = kZigbeeApsDeliveryUnicast;
-  aps.ackRequested = true;
+  aps.deliveryMode = deliveryMode;
+  aps.ackRequested = (deliveryMode == kZigbeeApsDeliveryUnicast);
   aps.destinationEndpoint = destinationEndpoint;
+  aps.destinationGroup = destinationGroup;
   aps.clusterId = clusterId;
   aps.profileId = profileId;
   aps.sourceEndpoint = sourceEndpoint;
@@ -575,10 +577,21 @@ bool sendApsFrameWithCounter(uint16_t destinationShort,
   }
 
   const bool sent = g_radio.transmit(psdu, psduLength, false, 1200000UL);
-  if (sent && trackAck) {
+  if (sent && trackAck && aps.deliveryMode == kZigbeeApsDeliveryUnicast) {
     rememberPendingApsAck(destinationShort, aps, payload, payloadLength);
   }
   return sent;
+}
+
+bool sendApsFrameWithCounter(uint16_t destinationShort,
+                             uint8_t destinationEndpoint, uint16_t clusterId,
+                             uint16_t profileId, uint8_t sourceEndpoint,
+                             const uint8_t* payload, uint8_t payloadLength,
+                             uint8_t apsCounterValue, bool trackAck) {
+  return sendApsFrameExtendedWithCounter(
+      destinationShort, kZigbeeApsDeliveryUnicast, 0U, destinationEndpoint,
+      clusterId, profileId, sourceEndpoint, payload, payloadLength,
+      apsCounterValue, trackAck);
 }
 
 bool resendPendingApsFrame() {
@@ -688,6 +701,16 @@ bool sendApsFrame(uint16_t destinationShort, uint8_t destinationEndpoint,
                                  payloadLength, g_apsCounter++, true);
 }
 
+bool sendGroupApsFrame(uint16_t destinationShort, uint16_t destinationGroup,
+                       uint16_t clusterId, uint16_t profileId,
+                       uint8_t sourceEndpoint, const uint8_t* payload,
+                       uint8_t payloadLength) {
+  return sendApsFrameExtendedWithCounter(
+      destinationShort, kZigbeeApsDeliveryGroup, destinationGroup, 0U,
+      clusterId, profileId, sourceEndpoint, payload, payloadLength,
+      g_apsCounter++, false);
+}
+
 bool sendEndDeviceTimeoutRequest() {
   refreshCommissioningState();
   if (!ZigbeeCommissioning::shouldRequestEndDeviceTimeout(g_network)) {
@@ -731,15 +754,21 @@ bool sendAttributeReport(uint16_t clusterId) {
     return false;
   }
 
-  uint64_t destinationIeee = 0U;
-  uint8_t destinationEndpoint = kCoordinatorEndpoint;
+  ZigbeeResolvedBindingDestination destination{};
   if (g_device.resolveBindingDestination(kLocalEndpoint, clusterId,
-                                         &destinationIeee,
-                                         &destinationEndpoint) &&
-      destinationEndpoint != 0U) {
-    return sendApsFrame(g_parentShort, destinationEndpoint, clusterId,
-                        kZigbeeProfileHomeAutomation, kLocalEndpoint, zclFrame,
-                        zclLength);
+                                         &destination)) {
+    if (destination.addressMode == ZigbeeBindingAddressMode::kGroup &&
+        destination.groupId != 0U) {
+      return sendGroupApsFrame(
+          g_parentShort, destination.groupId, clusterId,
+          kZigbeeProfileHomeAutomation, kLocalEndpoint, zclFrame, zclLength);
+    }
+    if (destination.addressMode == ZigbeeBindingAddressMode::kExtended &&
+        destination.endpoint != 0U) {
+      return sendApsFrame(g_parentShort, destination.endpoint, clusterId,
+                          kZigbeeProfileHomeAutomation, kLocalEndpoint,
+                          zclFrame, zclLength);
+    }
   }
   return sendApsFrame(g_parentShort, kCoordinatorEndpoint, clusterId,
                       kZigbeeProfileHomeAutomation, kLocalEndpoint, zclFrame,
@@ -760,17 +789,24 @@ bool sendDueAttributeReport(uint32_t nowMs, uint16_t* outClusterId) {
     return false;
   }
 
-  uint64_t destinationIeee = 0U;
-  uint8_t destinationEndpoint = kCoordinatorEndpoint;
+  ZigbeeResolvedBindingDestination destination{};
   bool ok = false;
   if (g_device.resolveBindingDestination(kLocalEndpoint, clusterId,
-                                         &destinationIeee,
-                                         &destinationEndpoint) &&
-      destinationEndpoint != 0U) {
-    ok = sendApsFrame(g_parentShort, destinationEndpoint, clusterId,
-                      kZigbeeProfileHomeAutomation, kLocalEndpoint, zclFrame,
-                      zclLength);
-  } else {
+                                         &destination)) {
+    if (destination.addressMode == ZigbeeBindingAddressMode::kGroup &&
+        destination.groupId != 0U) {
+      ok = sendGroupApsFrame(
+          g_parentShort, destination.groupId, clusterId,
+          kZigbeeProfileHomeAutomation, kLocalEndpoint, zclFrame, zclLength);
+    } else if (destination.addressMode ==
+                   ZigbeeBindingAddressMode::kExtended &&
+               destination.endpoint != 0U) {
+      ok = sendApsFrame(g_parentShort, destination.endpoint, clusterId,
+                        kZigbeeProfileHomeAutomation, kLocalEndpoint, zclFrame,
+                        zclLength);
+    }
+  }
+  if (!ok) {
     ok = sendApsFrame(g_parentShort, kCoordinatorEndpoint, clusterId,
                       kZigbeeProfileHomeAutomation, kLocalEndpoint, zclFrame,
                       zclLength);

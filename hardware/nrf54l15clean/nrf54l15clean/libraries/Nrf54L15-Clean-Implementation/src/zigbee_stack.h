@@ -511,6 +511,13 @@ struct ZigbeeBindingEntry {
   uint8_t destinationEndpoint = 0U;
 };
 
+struct ZigbeeResolvedBindingDestination {
+  ZigbeeBindingAddressMode addressMode = ZigbeeBindingAddressMode::kExtended;
+  uint16_t groupId = 0U;
+  uint64_t ieeeAddress = 0U;
+  uint8_t endpoint = 0U;
+};
+
 struct ZigbeeHomeAutomationConfig {
   ZigbeeLogicalType logicalType = ZigbeeLogicalType::kEndDevice;
   uint16_t manufacturerCode = 0U;
@@ -837,6 +844,9 @@ class ZigbeeHomeAutomationDevice {
                      uint8_t destinationEndpoint);
   uint8_t bindingCount() const;
   const ZigbeeBindingEntry* bindings() const;
+  bool resolveBindingDestination(
+      uint8_t sourceEndpoint, uint16_t clusterId,
+      ZigbeeResolvedBindingDestination* outDestination) const;
   bool resolveBindingDestination(uint8_t sourceEndpoint, uint16_t clusterId,
                                  uint64_t* outDestinationIeee,
                                  uint8_t* outDestinationEndpoint) const;
