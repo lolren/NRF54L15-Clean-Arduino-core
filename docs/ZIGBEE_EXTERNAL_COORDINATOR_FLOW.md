@@ -57,6 +57,8 @@ Expected sequence:
 4. Coordinator later sends APS-secured `Switch Key`, typically carried inside NWK-secured traffic using the still-active network key.
 5. End device promotes the alternate key to active, clears the staged alternate slot, resets NWK replay state, and resumes secured traffic on the new sequence.
 
+The in-tree clean coordinator demo now tracks a small per-node trust-center lifecycle so these commands are only queued on the intended secured path: initial `Transport Key` while waiting for install, `Update Device` only during retained-key secure-rejoin follow-up, and `Switch Key` only after an alternate key was successfully staged.
+
 This is a demo rollout path for the in-tree coordinator. It is not yet validated against a third-party Trust Center.
 
 ## Joined Keepalive Flow

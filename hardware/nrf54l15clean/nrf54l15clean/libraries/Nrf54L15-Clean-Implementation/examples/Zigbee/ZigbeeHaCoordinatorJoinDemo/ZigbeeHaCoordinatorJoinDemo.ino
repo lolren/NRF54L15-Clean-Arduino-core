@@ -91,6 +91,14 @@ enum class NodeStage : uint8_t {
   kReady = 5U,
 };
 
+enum class TrustCenterNodeState : uint8_t {
+  kIdle = 0U,
+  kWaitingTransportKey = 1U,
+  kJoined = 2U,
+  kWaitingUpdateDevice = 3U,
+  kAlternateKeyStaged = 4U,
+};
+
 struct PendingApsFrame {
   bool used = false;
   uint8_t deliveryMode = kZigbeeApsDeliveryUnicast;
@@ -172,6 +180,7 @@ struct NodeEntry {
   bool endDeviceTimeoutNegotiated = false;
   ZigbeePreconfiguredKeyMode preconfiguredKeyMode =
       ZigbeePreconfiguredKeyMode::kNone;
+  TrustCenterNodeState trustCenterState = TrustCenterNodeState::kIdle;
   NodeStage stage = NodeStage::kIdle;
 };
 
@@ -281,6 +290,22 @@ bool secureRejoinAllowed(const NodeEntry* node) {
 #else
   return node->preconfiguredKeyMode != ZigbeePreconfiguredKeyMode::kNone;
 #endif
+}
+
+const char* trustCenterStateName(TrustCenterNodeState state) {
+  switch (state) {
+    case TrustCenterNodeState::kWaitingTransportKey:
+      return "waiting_transport_key";
+    case TrustCenterNodeState::kJoined:
+      return "joined";
+    case TrustCenterNodeState::kWaitingUpdateDevice:
+      return "waiting_update_device";
+    case TrustCenterNodeState::kAlternateKeyStaged:
+      return "alternate_key_staged";
+    case TrustCenterNodeState::kIdle:
+    default:
+      return "idle";
+  }
 }
 
 const uint8_t* keyForSequence(uint8_t keySequence) {
@@ -470,6 +495,7 @@ void prepareNodeForRetainedRejoin(NodeEntry* node) {
   node->pendingAssociationStatus = 0U;
   node->secureNwkSeen = false;
   node->lastInboundSecurityFrameCounter = 0U;
+  node->trustCenterState = TrustCenterNodeState::kIdle;
   clearPendingApsAck(node);
   clearRecentInboundAps(node);
 }
@@ -826,6 +852,14 @@ bool sendTransportKey(NodeEntry* node) {
   transportKey.keyType = kZigbeeApsTransportKeyStandardNetworkKey;
   const bool sendAlternateKey =
       node->pendingNetworkKeyUpdate && g_haveAlternateNetworkKey;
+  if ((!sendAlternateKey &&
+       node->trustCenterState != TrustCenterNodeState::kWaitingTransportKey) ||
+      (sendAlternateKey &&
+       (node->trustCenterState != TrustCenterNodeState::kJoined ||
+        node->currentNetworkKeySequence == 0U ||
+        node->currentNetworkKeySequence == g_alternateNetworkKeySequence))) {
+    return false;
+  }
   const uint8_t keySequence =
       sendAlternateKey ? g_alternateNetworkKeySequence : g_activeNetworkKeySequence;
   const uint8_t* keyMaterial =
@@ -901,10 +935,22 @@ bool sendApsFrame(uint16_t destinationShort, uint8_t destinationEndpoint,
                               sourceEndpoint, payload, payloadLength);
 }
 
-bool queuePendingTransportKey(NodeEntry* node) {
+bool queuePendingTransportKey(NodeEntry* node, bool networkKeyUpdate = false) {
   if (node == nullptr || node->pendingAssociationResponse ||
       node->pendingTransportKey || node->pendingSwitchKey || node->pending.used) {
     return false;
+  }
+  if (networkKeyUpdate) {
+    if (!g_haveAlternateNetworkKey ||
+        node->trustCenterState != TrustCenterNodeState::kJoined ||
+        node->currentNetworkKeySequence == 0U ||
+        node->currentNetworkKeySequence == g_alternateNetworkKeySequence) {
+      return false;
+    }
+    node->pendingNetworkKeyUpdate = true;
+  } else {
+    node->pendingNetworkKeyUpdate = false;
+    node->trustCenterState = TrustCenterNodeState::kWaitingTransportKey;
   }
   node->pendingTransportKey = true;
   return true;
@@ -922,19 +968,19 @@ bool queueNetworkKeyUpdateRollout() {
         node.pendingTransportKey || node.pendingSwitchKey ||
         node.pendingSecureRejoin || node.pending.used ||
         node.currentNetworkKeySequence == 0U ||
+        node.trustCenterState != TrustCenterNodeState::kJoined ||
         node.currentNetworkKeySequence == g_alternateNetworkKeySequence) {
       continue;
     }
-    node.pendingTransportKey = true;
-    node.pendingNetworkKeyUpdate = true;
-    queuedAny = true;
+    queuedAny = queuePendingTransportKey(&node, true) || queuedAny;
   }
   return queuedAny;
 }
 
 bool sendSwitchKey(NodeEntry* node) {
   if (node == nullptr || node->shortAddress == 0U || !g_haveAlternateNetworkKey ||
-      node->currentNetworkKeySequence == 0U) {
+      node->currentNetworkKeySequence == 0U ||
+      node->trustCenterState != TrustCenterNodeState::kAlternateKeyStaged) {
     return false;
   }
 
@@ -1003,7 +1049,8 @@ bool sendUpdateDevice(NodeEntry* node) {
   if (node == nullptr || node->shortAddress == 0U || node->ieeeAddress == 0U) {
     return false;
   }
-  if (!secureRejoinAllowed(node)) {
+  if (!secureRejoinAllowed(node) ||
+      node->trustCenterState != TrustCenterNodeState::kWaitingUpdateDevice) {
     return false;
   }
 
@@ -1093,8 +1140,11 @@ bool sendPendingAssociationResponse(NodeEntry* node) {
     node->lastSeenMs = millis();
     if (node->pendingAssociationStatus == 0x00U) {
       if (node->pendingSecureRejoin && secureRejoinAllowed(node)) {
+        node->trustCenterState = TrustCenterNodeState::kWaitingUpdateDevice;
         Serial.print("assoc_rejoin short=0x");
         Serial.print(node->shortAddress, HEX);
+        Serial.print(" tc=");
+        Serial.print(trustCenterStateName(node->trustCenterState));
         Serial.print("\r\n");
       } else {
         node->pendingSecureRejoin = false;
@@ -1116,9 +1166,11 @@ bool sendPendingApsFrame(NodeEntry* node) {
       if (node->pendingNetworkKeyUpdate) {
         node->pendingNetworkKeyUpdate = false;
         node->pendingSwitchKey = true;
+        node->trustCenterState = TrustCenterNodeState::kAlternateKeyStaged;
       } else {
         node->currentNetworkKeySequence = g_activeNetworkKeySequence;
         node->lastInboundSecurityFrameCounter = 0U;
+        node->trustCenterState = TrustCenterNodeState::kJoined;
       }
     }
     return sent;
@@ -1129,6 +1181,7 @@ bool sendPendingApsFrame(NodeEntry* node) {
       node->pendingSwitchKey = false;
       node->currentNetworkKeySequence = g_alternateNetworkKeySequence;
       node->lastInboundSecurityFrameCounter = 0U;
+      node->trustCenterState = TrustCenterNodeState::kJoined;
       maybePromoteAlternateNetworkKey();
     }
     return sent;
@@ -1137,6 +1190,7 @@ bool sendPendingApsFrame(NodeEntry* node) {
     const bool sent = sendUpdateDevice(node);
     if (sent) {
       node->pendingSecureRejoin = false;
+      node->trustCenterState = TrustCenterNodeState::kJoined;
     }
     return sent;
   }
@@ -1794,6 +1848,8 @@ void listNodes() {
     Serial.print(" lk=");
     Serial.print(
         ZigbeeCommissioning::keyModeName(g_nodes[i].preconfiguredKeyMode));
+    Serial.print(" tc=");
+    Serial.print(trustCenterStateName(g_nodes[i].trustCenterState));
     Serial.print(" nwk_seq=");
     Serial.print(g_nodes[i].currentNetworkKeySequence);
     Serial.print(" nwk_sec=");
@@ -1859,6 +1915,7 @@ void handleAssociationRequest(const ZigbeeMacAssociationRequestView& request,
   node->pendingSwitchKey = false;
   clearPendingApsAck(node);
   clearRecentInboundAps(node);
+  node->trustCenterState = TrustCenterNodeState::kIdle;
   if (node->shortAddress == 0U) {
     node->pendingAssignedShort = allocateShortAddress();
     node->secureNwkSeen = false;
@@ -1937,11 +1994,14 @@ void handleOrphanNotification(const ZigbeeMacOrphanNotificationView& orphan,
   }
 
   node->pendingSecureRejoin = true;
+  node->trustCenterState = TrustCenterNodeState::kWaitingUpdateDevice;
   node->lastSeenMs = millis();
   Serial.print("orphan_realign short=0x");
   Serial.print(node->shortAddress, HEX);
   Serial.print(" lk=");
   Serial.print(ZigbeeCommissioning::keyModeName(node->preconfiguredKeyMode));
+  Serial.print(" tc=");
+  Serial.print(trustCenterStateName(node->trustCenterState));
   Serial.print(" rssi=");
   Serial.print(rssiDbm);
   Serial.print("dBm\r\n");
@@ -1954,12 +2014,17 @@ void handleNwkRejoinRequest(NodeEntry* node,
   }
 
   node->pendingSecureRejoin = secureRejoinAllowed(node);
+  if (node->pendingSecureRejoin) {
+    node->trustCenterState = TrustCenterNodeState::kWaitingUpdateDevice;
+  }
   node->lastSeenMs = millis();
   const bool sent = sendNwkRejoinResponse(node, 0x00U);
   Serial.print("nwk_rejoin short=0x");
   Serial.print(node->shortAddress, HEX);
   Serial.print(" cap=0x");
   Serial.print(request.capabilityInformation, HEX);
+  Serial.print(" tc=");
+  Serial.print(trustCenterStateName(node->trustCenterState));
   Serial.print(" rsp=");
   Serial.print(sent ? "OK" : "FAIL");
   Serial.print("\r\n");
@@ -2656,6 +2721,7 @@ void loop() {
       ++joined;
       if (g_nodes[i].pending.used || g_nodes[i].pendingAssociationResponse ||
           g_nodes[i].pendingTransportKey || g_nodes[i].pendingSecureRejoin ||
+          g_nodes[i].pendingSwitchKey ||
           g_nodes[i].pendingApsAck) {
         ++pending;
       }
