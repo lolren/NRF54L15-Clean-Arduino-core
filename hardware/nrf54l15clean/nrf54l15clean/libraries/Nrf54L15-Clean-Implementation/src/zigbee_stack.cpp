@@ -14,6 +14,8 @@ constexpr uint8_t kZclCommandReadAttributes = 0x00U;
 constexpr uint8_t kZclCommandReadAttributesResponse = 0x01U;
 constexpr uint8_t kZclCommandConfigureReporting = 0x06U;
 constexpr uint8_t kZclCommandConfigureReportingResponse = 0x07U;
+constexpr uint8_t kZclCommandReadReportingConfiguration = 0x08U;
+constexpr uint8_t kZclCommandReadReportingConfigurationResponse = 0x09U;
 constexpr uint8_t kZclCommandReportAttributes = 0x0AU;
 constexpr uint8_t kZclCommandDefaultResponse = 0x0BU;
 constexpr uint8_t kZclCommandDiscoverAttributes = 0x0CU;
@@ -1022,6 +1024,69 @@ bool buildConfigureReportingResponseForRecords(
   response.disableDefaultResponse = true;
   response.transactionSequence = transactionSequence;
   response.commandId = kZclCommandConfigureReportingResponse;
+  return ZigbeeCodec::buildZclFrame(response, payload, payloadLength, outFrame,
+                                    outLength);
+}
+
+bool buildReadReportingConfigurationResponseForRecords(
+    const ZigbeeReadReportingConfigurationResponseRecord* records,
+    uint8_t recordCount, uint8_t transactionSequence, uint8_t* outFrame,
+    uint8_t* outLength) {
+  if (outFrame == nullptr || outLength == nullptr) {
+    return false;
+  }
+  if (recordCount > 0U && records == nullptr) {
+    return false;
+  }
+
+  uint8_t payload[127] = {0};
+  uint8_t payloadLength = 0U;
+  for (uint8_t i = 0U; i < recordCount; ++i) {
+    if (!appendBytes(payload, sizeof(payload), &payloadLength,
+                     &records[i].status, 1U) ||
+        !appendBytes(payload, sizeof(payload), &payloadLength,
+                     &records[i].direction, 1U) ||
+        !appendLe16(payload, sizeof(payload), &payloadLength,
+                    records[i].attributeId)) {
+      return false;
+    }
+    if (records[i].status != kZclStatusSuccess) {
+      continue;
+    }
+
+    if (records[i].direction == 0U) {
+      if (!appendBytes(payload, sizeof(payload), &payloadLength,
+                       reinterpret_cast<const uint8_t*>(&records[i].dataType),
+                       1U) ||
+          !appendLe16(payload, sizeof(payload), &payloadLength,
+                      records[i].minimumIntervalSeconds) ||
+          !appendLe16(payload, sizeof(payload), &payloadLength,
+                      records[i].maximumIntervalSeconds) ||
+          !appendReportableChange(payload, sizeof(payload), &payloadLength,
+                                  records[i].dataType,
+                                  records[i].reportableChange)) {
+        return false;
+      }
+      continue;
+    }
+
+    if (records[i].direction == 1U) {
+      if (!appendLe16(payload, sizeof(payload), &payloadLength,
+                      records[i].timeoutPeriodSeconds)) {
+        return false;
+      }
+      continue;
+    }
+
+    return false;
+  }
+
+  ZigbeeZclFrame response{};
+  response.frameType = ZigbeeZclFrameType::kGlobal;
+  response.directionToClient = true;
+  response.disableDefaultResponse = true;
+  response.transactionSequence = transactionSequence;
+  response.commandId = kZclCommandReadReportingConfigurationResponse;
   return ZigbeeCodec::buildZclFrame(response, payload, payloadLength, outFrame,
                                     outLength);
 }
@@ -2644,6 +2709,151 @@ bool ZigbeeCodec::buildConfigureReportingRequest(
                                     outLength);
 }
 
+bool ZigbeeCodec::parseReadReportingConfigurationRequest(
+    const uint8_t* payload, uint8_t length,
+    ZigbeeReadReportingConfigurationRecord* outRecords, uint8_t maxRecords,
+    uint8_t* outCount) {
+  if (outCount != nullptr) {
+    *outCount = 0U;
+  }
+  if (payload == nullptr || outRecords == nullptr || outCount == nullptr) {
+    return false;
+  }
+
+  uint8_t offset = 0U;
+  uint8_t count = 0U;
+  while (offset < length) {
+    if (count >= maxRecords || (length - offset) < 3U) {
+      return false;
+    }
+
+    const uint8_t direction = payload[offset++];
+    if (direction > 0x01U) {
+      return false;
+    }
+
+    outRecords[count].direction = direction;
+    outRecords[count].attributeId = readLe16(&payload[offset]);
+    offset = static_cast<uint8_t>(offset + 2U);
+    ++count;
+  }
+
+  if (count == 0U) {
+    return false;
+  }
+  *outCount = count;
+  return true;
+}
+
+bool ZigbeeCodec::buildReadReportingConfigurationRequest(
+    const ZigbeeReadReportingConfigurationRecord* records, uint8_t recordCount,
+    uint8_t transactionSequence, uint8_t* outFrame, uint8_t* outLength) {
+  if (outFrame == nullptr || outLength == nullptr) {
+    return false;
+  }
+  if (recordCount == 0U || (recordCount > 0U && records == nullptr)) {
+    return false;
+  }
+
+  uint8_t payload[127] = {0U};
+  uint8_t payloadLength = 0U;
+  for (uint8_t i = 0U; i < recordCount; ++i) {
+    if (records[i].direction > 0x01U ||
+        !appendBytes(payload, sizeof(payload), &payloadLength,
+                     &records[i].direction, 1U) ||
+        !appendLe16(payload, sizeof(payload), &payloadLength,
+                    records[i].attributeId)) {
+      return false;
+    }
+  }
+
+  ZigbeeZclFrame request{};
+  request.frameType = ZigbeeZclFrameType::kGlobal;
+  request.disableDefaultResponse = true;
+  request.transactionSequence = transactionSequence;
+  request.commandId = kZclCommandReadReportingConfiguration;
+  return ZigbeeCodec::buildZclFrame(request, payload, payloadLength, outFrame,
+                                    outLength);
+}
+
+bool ZigbeeCodec::parseReadReportingConfigurationResponse(
+    const uint8_t* payload, uint8_t length,
+    ZigbeeReadReportingConfigurationResponseRecord* outRecords,
+    uint8_t maxRecords, uint8_t* outCount) {
+  if (outCount != nullptr) {
+    *outCount = 0U;
+  }
+  if (payload == nullptr || outRecords == nullptr || outCount == nullptr) {
+    return false;
+  }
+
+  uint8_t offset = 0U;
+  uint8_t count = 0U;
+  while (offset < length) {
+    if (count >= maxRecords || (length - offset) < 4U) {
+      return false;
+    }
+
+    ZigbeeReadReportingConfigurationResponseRecord record{};
+    record.status = payload[offset++];
+    record.direction = payload[offset++];
+    if (record.direction > 0x01U) {
+      return false;
+    }
+    record.attributeId = readLe16(&payload[offset]);
+    offset = static_cast<uint8_t>(offset + 2U);
+
+    if (record.status == kZclStatusSuccess) {
+      if (record.direction == 0U) {
+        if (length < static_cast<uint8_t>(offset + 5U)) {
+          return false;
+        }
+        record.dataType = static_cast<ZigbeeZclDataType>(payload[offset++]);
+        record.minimumIntervalSeconds = readLe16(&payload[offset]);
+        offset = static_cast<uint8_t>(offset + 2U);
+        record.maximumIntervalSeconds = readLe16(&payload[offset]);
+        offset = static_cast<uint8_t>(offset + 2U);
+
+        if (zclDataTypeHasReportableChange(record.dataType)) {
+          const uint8_t changeLength = zclDataTypeStorageLength(record.dataType);
+          if (changeLength == 0U ||
+              length < static_cast<uint8_t>(offset + changeLength)) {
+            return false;
+          }
+          if (changeLength == 1U) {
+            record.reportableChange = payload[offset];
+          } else if (changeLength == 2U) {
+            record.reportableChange = readLe16(&payload[offset]);
+          } else if (changeLength == 4U) {
+            record.reportableChange =
+                static_cast<uint32_t>(payload[offset]) |
+                (static_cast<uint32_t>(payload[offset + 1U]) << 8U) |
+                (static_cast<uint32_t>(payload[offset + 2U]) << 16U) |
+                (static_cast<uint32_t>(payload[offset + 3U]) << 24U);
+          } else {
+            return false;
+          }
+          offset = static_cast<uint8_t>(offset + changeLength);
+        }
+      } else {
+        if (length < static_cast<uint8_t>(offset + 2U)) {
+          return false;
+        }
+        record.timeoutPeriodSeconds = readLe16(&payload[offset]);
+        offset = static_cast<uint8_t>(offset + 2U);
+      }
+    }
+
+    outRecords[count++] = record;
+  }
+
+  if (count == 0U) {
+    return false;
+  }
+  *outCount = count;
+  return true;
+}
+
 bool ZigbeeCodec::parseAttributeReport(const uint8_t* payload, uint8_t length,
                                        ZigbeeAttributeReportRecord* outRecords,
                                        uint8_t maxRecords, uint8_t* outCount) {
@@ -2698,6 +2908,14 @@ bool ZigbeeCodec::buildConfigureReportingResponse(
   return buildConfigureReportingResponseForRecords(records, recordCount,
                                                    transactionSequence,
                                                    outFrame, outLength);
+}
+
+bool ZigbeeCodec::buildReadReportingConfigurationResponse(
+    const ZigbeeReadReportingConfigurationResponseRecord* records,
+    uint8_t recordCount, uint8_t transactionSequence, uint8_t* outFrame,
+    uint8_t* outLength) {
+  return buildReadReportingConfigurationResponseForRecords(
+      records, recordCount, transactionSequence, outFrame, outLength);
 }
 
 bool ZigbeeCodec::buildAttributeReport(
@@ -3838,6 +4056,48 @@ bool ZigbeeHomeAutomationDevice::appendReadRecordForCluster(
   return true;
 }
 
+bool ZigbeeHomeAutomationDevice::appendReadReportingRecordForCluster(
+    uint16_t clusterId, uint8_t direction, uint16_t attributeId,
+    ZigbeeReadReportingConfigurationResponseRecord* outRecord) const {
+  if (outRecord == nullptr) {
+    return false;
+  }
+
+  memset(outRecord, 0, sizeof(*outRecord));
+  outRecord->status = kZclStatusSuccess;
+  outRecord->direction = direction;
+  outRecord->attributeId = attributeId;
+
+  if (direction != 0U) {
+    outRecord->status = kZclStatusUnsupportedReporting;
+    return true;
+  }
+
+  ZigbeeAttributeValue value{};
+  if (!makeAttributeValueForCluster(clusterId, attributeId, &value)) {
+    outRecord->status = kZclStatusUnsupportedAttribute;
+    return true;
+  }
+
+  for (uint8_t i = 0U;
+       i < static_cast<uint8_t>(sizeof(reporting_) / sizeof(reporting_[0]));
+       ++i) {
+    if (!reporting_[i].used || reporting_[i].clusterId != clusterId ||
+        reporting_[i].attributeId != attributeId) {
+      continue;
+    }
+
+    outRecord->dataType = reporting_[i].dataType;
+    outRecord->minimumIntervalSeconds = reporting_[i].minimumIntervalSeconds;
+    outRecord->maximumIntervalSeconds = reporting_[i].maximumIntervalSeconds;
+    outRecord->reportableChange = reporting_[i].reportableChange;
+    return true;
+  }
+
+  outRecord->status = kZclStatusNotFound;
+  return true;
+}
+
 void ZigbeeHomeAutomationDevice::resetReportingState(uint8_t index) {
   if (index >= static_cast<uint8_t>(sizeof(reportingState_) /
                                     sizeof(reportingState_[0]))) {
@@ -4573,6 +4833,31 @@ bool ZigbeeHomeAutomationDevice::handleZclRequest(
       }
       return ZigbeeCodec::buildReadAttributesResponse(
           records, attributeCount, frame.transactionSequence, outFrame,
+          outLength);
+    }
+
+    if (frame.commandId == kZclCommandReadReportingConfiguration) {
+      ZigbeeReadReportingConfigurationRecord requested[8];
+      uint8_t requestedCount = 0U;
+      if (!ZigbeeCodec::parseReadReportingConfigurationRequest(
+              frame.payload, frame.payloadLength, requested,
+              static_cast<uint8_t>(sizeof(requested) / sizeof(requested[0])),
+              &requestedCount)) {
+        return ZigbeeCodec::buildDefaultResponse(
+            frame.transactionSequence, true, frame.commandId,
+            kZclStatusInvalidField, outFrame, outLength);
+      }
+
+      ZigbeeReadReportingConfigurationResponseRecord records[8];
+      for (uint8_t i = 0U; i < requestedCount; ++i) {
+        if (!appendReadReportingRecordForCluster(
+                clusterId, requested[i].direction, requested[i].attributeId,
+                &records[i])) {
+          return false;
+        }
+      }
+      return ZigbeeCodec::buildReadReportingConfigurationResponse(
+          records, requestedCount, frame.transactionSequence, outFrame,
           outLength);
     }
 

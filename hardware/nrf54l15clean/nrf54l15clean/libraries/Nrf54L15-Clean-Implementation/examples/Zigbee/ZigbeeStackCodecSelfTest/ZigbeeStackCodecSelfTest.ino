@@ -1983,15 +1983,73 @@ static bool testZclClientCodec() {
        request.valid && request.commandId == 0x06U &&
        request.transactionSequence == 0x73U;
 
+  ZigbeeReadReportingConfigurationRecord readReportingRequest[2];
+  readReportingRequest[0].direction = 0U;
+  readReportingRequest[0].attributeId = 0x0000U;
+  readReportingRequest[1].direction = 1U;
+  readReportingRequest[1].attributeId = 0x0001U;
+  ok = ok && ZigbeeCodec::buildReadReportingConfigurationRequest(
+                   readReportingRequest, 2U, 0x74U, encoded, &encodedLength) &&
+       ZigbeeCodec::parseZclFrame(encoded, encodedLength, &request) &&
+       request.valid && request.commandId == 0x08U &&
+       request.transactionSequence == 0x74U &&
+       request.payloadLength == 6U;
+
+  ZigbeeReadReportingConfigurationRecord parsedReadReportingRequest[2];
+  uint8_t parsedReadReportingRequestCount = 0U;
+  ok = ok && ZigbeeCodec::parseReadReportingConfigurationRequest(
+                   request.payload, request.payloadLength,
+                   parsedReadReportingRequest, 2U,
+                   &parsedReadReportingRequestCount) &&
+       parsedReadReportingRequestCount == 2U &&
+       parsedReadReportingRequest[0].direction == 0U &&
+       parsedReadReportingRequest[0].attributeId == 0x0000U &&
+       parsedReadReportingRequest[1].direction == 1U &&
+       parsedReadReportingRequest[1].attributeId == 0x0001U;
+
+  ZigbeeReadReportingConfigurationResponseRecord readReportingResponse[2];
+  readReportingResponse[0].status = 0x00U;
+  readReportingResponse[0].direction = 0U;
+  readReportingResponse[0].attributeId = 0x0000U;
+  readReportingResponse[0].dataType = ZigbeeZclDataType::kBoolean;
+  readReportingResponse[0].minimumIntervalSeconds = 0U;
+  readReportingResponse[0].maximumIntervalSeconds = 30U;
+  readReportingResponse[1].status = 0x8CU;
+  readReportingResponse[1].direction = 1U;
+  readReportingResponse[1].attributeId = 0x0001U;
+  ok = ok && ZigbeeCodec::buildReadReportingConfigurationResponse(
+                   readReportingResponse, 2U, 0x75U, encoded, &encodedLength) &&
+       ZigbeeCodec::parseZclFrame(encoded, encodedLength, &response) &&
+       response.valid && response.commandId == 0x09U &&
+       response.transactionSequence == 0x75U;
+
+  ZigbeeReadReportingConfigurationResponseRecord parsedReadReportingResponse[2];
+  uint8_t parsedReadReportingResponseCount = 0U;
+  ok = ok && ZigbeeCodec::parseReadReportingConfigurationResponse(
+                   response.payload, response.payloadLength,
+                   parsedReadReportingResponse, 2U,
+                   &parsedReadReportingResponseCount) &&
+       parsedReadReportingResponseCount == 2U &&
+       parsedReadReportingResponse[0].status == 0x00U &&
+       parsedReadReportingResponse[0].direction == 0U &&
+       parsedReadReportingResponse[0].attributeId == 0x0000U &&
+       parsedReadReportingResponse[0].dataType ==
+           ZigbeeZclDataType::kBoolean &&
+       parsedReadReportingResponse[0].minimumIntervalSeconds == 0U &&
+       parsedReadReportingResponse[0].maximumIntervalSeconds == 30U &&
+       parsedReadReportingResponse[1].status == 0x8CU &&
+       parsedReadReportingResponse[1].direction == 1U &&
+       parsedReadReportingResponse[1].attributeId == 0x0001U;
+
   ZigbeeAttributeReportRecord reportRecord{};
   reportRecord.attributeId = 0x0000U;
   reportRecord.value.type = ZigbeeZclDataType::kBoolean;
   reportRecord.value.data.boolValue = true;
-  ok = ok && ZigbeeCodec::buildAttributeReport(&reportRecord, 1U, 0x74U,
+  ok = ok && ZigbeeCodec::buildAttributeReport(&reportRecord, 1U, 0x76U,
                                                encoded, &encodedLength) &&
        ZigbeeCodec::parseZclFrame(encoded, encodedLength, &response) &&
        response.valid && response.commandId == 0x0AU &&
-       response.transactionSequence == 0x74U;
+       response.transactionSequence == 0x76U;
 
   ZigbeeAttributeReportRecord parsedReports[2];
   uint8_t parsedReportCount = 0U;
@@ -2002,7 +2060,7 @@ static bool testZclClientCodec() {
        parsedReports[0].value.type == ZigbeeZclDataType::kBoolean &&
        parsedReports[0].value.data.boolValue;
 
-  reportResult("ZCL Client Codec", ok, "read+discover+cfg+report");
+  reportResult("ZCL Client Codec", ok, "read+discover+cfg+read_cfg+report");
   return ok;
 }
 
@@ -2030,9 +2088,43 @@ static bool testReportingFlow() {
        parsed.payloadLength == 1U && parsed.payload[0] == 0x00U &&
        device.reportingConfigurationCount() == 1U;
 
+  ZigbeeReadReportingConfigurationRecord readReportingRequest[2];
+  readReportingRequest[0].direction = 0U;
+  readReportingRequest[0].attributeId = 0x0000U;
+  readReportingRequest[1].direction = 0U;
+  readReportingRequest[1].attributeId = 0xFFFCU;
+  uint8_t readReportingFrame[127] = {0};
+  uint8_t readReportingFrameLength = 0U;
+  ZigbeeReadReportingConfigurationResponseRecord readReportingResponse[2];
+  uint8_t readReportingResponseCount = 0U;
+  responseLength = 0U;
+  ok = ok &&
+       ZigbeeCodec::buildReadReportingConfigurationRequest(
+           readReportingRequest, 2U, 0x62U, readReportingFrame,
+           &readReportingFrameLength) &&
+       device.handleZclRequest(kZigbeeClusterOnOff, readReportingFrame,
+                               readReportingFrameLength, response,
+                               &responseLength) &&
+       ZigbeeCodec::parseZclFrame(response, responseLength, &parsed) &&
+       parsed.valid && parsed.commandId == 0x09U &&
+       parsed.transactionSequence == 0x62U &&
+       ZigbeeCodec::parseReadReportingConfigurationResponse(
+           parsed.payload, parsed.payloadLength, readReportingResponse, 2U,
+           &readReportingResponseCount) &&
+       readReportingResponseCount == 2U &&
+       readReportingResponse[0].status == 0x00U &&
+       readReportingResponse[0].direction == 0U &&
+       readReportingResponse[0].attributeId == 0x0000U &&
+       readReportingResponse[0].dataType == ZigbeeZclDataType::kBoolean &&
+       readReportingResponse[0].minimumIntervalSeconds == 0U &&
+       readReportingResponse[0].maximumIntervalSeconds == 30U &&
+       readReportingResponse[1].status == 0x8BU &&
+       readReportingResponse[1].direction == 0U &&
+       readReportingResponse[1].attributeId == 0xFFFCU;
+
   device.setOnOff(true);
   responseLength = 0U;
-  ok = ok && device.buildAttributeReport(kZigbeeClusterOnOff, 0x62U, response,
+  ok = ok && device.buildAttributeReport(kZigbeeClusterOnOff, 0x63U, response,
                                          &responseLength) &&
        ZigbeeCodec::parseZclFrame(response, responseLength, &parsed) &&
        parsed.valid && parsed.commandId == 0x0AU;
@@ -2040,7 +2132,7 @@ static bool testReportingFlow() {
   ok = ok && containsByteSequence(parsed.payload, parsed.payloadLength,
                                   kOnReport, sizeof(kOnReport));
 
-  reportResult("Reporting", ok, "configure+report");
+  reportResult("Reporting", ok, "configure+read+report");
   return ok;
 }
 

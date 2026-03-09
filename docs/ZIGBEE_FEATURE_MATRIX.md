@@ -44,6 +44,7 @@ This matrix separates the existing raw 802.15.4 capability from the Zigbee stack
 | ZCL discover-attributes request/response | Foundation | Client request build plus shared server response build/parse now exist for the HA attribute sets currently modeled in-tree, including the standard `FeatureMap` and `ClusterRevision` global attributes on those clusters. |
 | ZCL default responses | Foundation | Implemented for supported and unsupported commands. |
 | ZCL configure-reporting request/response | Foundation | Client request build plus server response parsing/building now exist. |
+| ZCL read-reporting-configuration request/response | Foundation | Client request build plus shared server response build/parse now exist for the reporting entries stored by the HA device model. |
 | ZCL attribute-report parsing | Foundation | Clean parser now decodes report payloads for controller-side handling. |
 | HA Basic cluster attributes | Foundation | Implemented for manufacturer/model/build/version/power-source reads plus the standard `FeatureMap` and `ClusterRevision` global attributes. |
 | HA On/Off cluster server | Foundation | Implemented read support plus `Off`, `On`, and `Toggle` commands. |
