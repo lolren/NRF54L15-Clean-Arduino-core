@@ -84,6 +84,7 @@ static bool& g_haveAlternateNetworkKey = g_network.haveAlternateNetworkKey;
 static uint64_t& g_trustCenterIeee = g_network.trustCenterIeee;
 static ZigbeePreconfiguredKeyMode& g_preconfiguredKeyMode =
     g_network.preconfiguredKeyMode;
+static uint32_t& g_parentPollIntervalMs = g_network.parentPollIntervalMs;
 
 static ZigbeePersistentState g_restoredState{};
 static bool g_haveRestoredState = false;
@@ -119,16 +120,38 @@ struct ScanResult {
 
 struct PendingApsAck {
   bool active = false;
+  uint16_t destinationShort = 0U;
   uint8_t counter = 0U;
   uint16_t clusterId = 0U;
   uint16_t profileId = 0U;
   uint8_t destinationEndpoint = 0U;
   uint8_t sourceEndpoint = 0U;
+  uint8_t retriesRemaining = 0U;
+  uint8_t payloadLength = 0U;
+  uint8_t payload[96] = {0U};
   uint32_t deadlineMs = 0U;
 };
 
+struct RecentInboundAps {
+  bool valid = false;
+  uint16_t sourceShort = 0U;
+  uint8_t counter = 0U;
+  uint16_t clusterId = 0U;
+  uint16_t profileId = 0U;
+  uint8_t destinationEndpoint = 0U;
+  uint8_t sourceEndpoint = 0U;
+  uint8_t deliveryMode = 0U;
+  uint32_t expiresMs = 0U;
+};
+
 static PendingApsAck g_pendingApsAck{};
+static RecentInboundAps g_recentInboundAps{};
 static constexpr uint32_t kApsAckTimeoutMs = 900U;
+static constexpr uint32_t kRecentInboundApsWindowMs = 4000U;
+static constexpr uint8_t kApsAckRetryLimit = 2U;
+
+void clearPendingApsAck();
+void clearRecentInboundAps();
 
 ZigbeeCommissioningPolicy commissioningPolicy() {
   ZigbeeCommissioningPolicy policy{};
@@ -317,6 +340,8 @@ void restoreState() {
 void clearJoinState(bool clearStore) {
   refreshCommissioningState();
   ZigbeeCommissioning::clearEndDeviceState(&g_network, clearStore);
+  clearPendingApsAck();
+  clearRecentInboundAps();
   if (clearStore) {
     memset(&g_restoredState, 0, sizeof(g_restoredState));
     g_haveRestoredState = false;
@@ -339,22 +364,38 @@ void clearPendingApsAck() {
   memset(&g_pendingApsAck, 0, sizeof(g_pendingApsAck));
 }
 
-void rememberPendingApsAck(const ZigbeeApsDataFrame& aps) {
-  if (aps.deliveryMode != kZigbeeApsDeliveryUnicast || !aps.ackRequested) {
+void clearRecentInboundAps() {
+  memset(&g_recentInboundAps, 0, sizeof(g_recentInboundAps));
+}
+
+void rememberPendingApsAck(uint16_t destinationShort,
+                           const ZigbeeApsDataFrame& aps,
+                           const uint8_t* payload, uint8_t payloadLength) {
+  if (aps.deliveryMode != kZigbeeApsDeliveryUnicast || !aps.ackRequested ||
+      payloadLength > sizeof(g_pendingApsAck.payload) ||
+      (payloadLength > 0U && payload == nullptr)) {
     clearPendingApsAck();
     return;
   }
   g_pendingApsAck.active = true;
+  g_pendingApsAck.destinationShort = destinationShort;
   g_pendingApsAck.counter = aps.counter;
   g_pendingApsAck.clusterId = aps.clusterId;
   g_pendingApsAck.profileId = aps.profileId;
   g_pendingApsAck.destinationEndpoint = aps.destinationEndpoint;
   g_pendingApsAck.sourceEndpoint = aps.sourceEndpoint;
+  g_pendingApsAck.retriesRemaining = kApsAckRetryLimit;
+  g_pendingApsAck.payloadLength = payloadLength;
+  if (payloadLength > 0U) {
+    memcpy(g_pendingApsAck.payload, payload, payloadLength);
+  }
   g_pendingApsAck.deadlineMs = millis() + kApsAckTimeoutMs;
 }
 
-bool matchesPendingApsAck(const ZigbeeApsAcknowledgementFrame& ack) {
+bool matchesPendingApsAck(const ZigbeeApsAcknowledgementFrame& ack,
+                          uint16_t sourceShort) {
   return g_pendingApsAck.active && ack.valid && !ack.ackFormatCommand &&
+         sourceShort == g_pendingApsAck.destinationShort &&
          ack.counter == g_pendingApsAck.counter &&
          ack.clusterId == g_pendingApsAck.clusterId &&
          ack.profileId == g_pendingApsAck.profileId &&
@@ -362,11 +403,187 @@ bool matchesPendingApsAck(const ZigbeeApsAcknowledgementFrame& ack) {
          ack.sourceEndpoint == g_pendingApsAck.destinationEndpoint;
 }
 
+void rememberRecentInboundAps(uint16_t sourceShort,
+                              const ZigbeeApsDataFrame& aps) {
+  g_recentInboundAps.valid = true;
+  g_recentInboundAps.sourceShort = sourceShort;
+  g_recentInboundAps.counter = aps.counter;
+  g_recentInboundAps.clusterId = aps.clusterId;
+  g_recentInboundAps.profileId = aps.profileId;
+  g_recentInboundAps.destinationEndpoint = aps.destinationEndpoint;
+  g_recentInboundAps.sourceEndpoint = aps.sourceEndpoint;
+  g_recentInboundAps.deliveryMode = aps.deliveryMode;
+  g_recentInboundAps.expiresMs = millis() + kRecentInboundApsWindowMs;
+}
+
+bool isRecentInboundApsDuplicate(uint16_t sourceShort,
+                                 const ZigbeeApsDataFrame& aps,
+                                 uint32_t nowMs) {
+  if (!g_recentInboundAps.valid ||
+      static_cast<int32_t>(nowMs - g_recentInboundAps.expiresMs) >= 0) {
+    clearRecentInboundAps();
+    return false;
+  }
+  return g_recentInboundAps.sourceShort == sourceShort &&
+         g_recentInboundAps.counter == aps.counter &&
+         g_recentInboundAps.clusterId == aps.clusterId &&
+         g_recentInboundAps.profileId == aps.profileId &&
+         g_recentInboundAps.destinationEndpoint == aps.destinationEndpoint &&
+         g_recentInboundAps.sourceEndpoint == aps.sourceEndpoint &&
+         g_recentInboundAps.deliveryMode == aps.deliveryMode;
+}
+
+bool sendNwkCommand(uint16_t destinationShort, const uint8_t* payload,
+                    uint8_t payloadLength) {
+  if (!g_joined || payload == nullptr || payloadLength == 0U) {
+    return false;
+  }
+  const bool useSecurity = g_securityEnabled && g_haveActiveNetworkKey;
+
+  ZigbeeNetworkFrame nwk{};
+  nwk.frameType = ZigbeeNwkFrameType::kCommand;
+  nwk.securityEnabled = useSecurity;
+  nwk.destinationShort = destinationShort;
+  nwk.sourceShort = g_localShort;
+  nwk.radius = 30U;
+  nwk.sequence = g_nwkSequence++;
+
+  uint8_t nwkFrame[127] = {0U};
+  uint8_t nwkLength = 0U;
+  if (useSecurity) {
+    ZigbeeNwkSecurityHeader security{};
+    security.valid = true;
+    security.securityControl = kZigbeeSecurityControlNwkEncMic32;
+    security.frameCounter = g_nwkSecurityFrameCounter++;
+    security.sourceIeee = kIeeeAddress;
+    security.keySequence = g_activeNetworkKeySequence;
+    if (!ZigbeeSecurity::buildSecuredNwkFrame(nwk, security, g_activeNetworkKey,
+                                              payload, payloadLength, nwkFrame,
+                                              &nwkLength)) {
+      return false;
+    }
+  } else if (!ZigbeeCodec::buildNwkFrame(nwk, payload, payloadLength, nwkFrame,
+                                         &nwkLength)) {
+    return false;
+  }
+
+  uint8_t psdu[127] = {0U};
+  uint8_t psduLength = 0U;
+  if (!ZigbeeRadio::buildDataFrameShort(g_macSequence++, g_panId,
+                                        destinationShort, g_localShort, nwkFrame,
+                                        nwkLength, psdu, &psduLength, false)) {
+    return false;
+  }
+
+  return g_radio.transmit(psdu, psduLength, false, 1200000UL);
+}
+
+bool sendApsFrameWithCounter(uint16_t destinationShort,
+                             uint8_t destinationEndpoint, uint16_t clusterId,
+                             uint16_t profileId, uint8_t sourceEndpoint,
+                             const uint8_t* payload, uint8_t payloadLength,
+                             uint8_t apsCounterValue, bool trackAck) {
+  if (!g_joined) {
+    return false;
+  }
+  const bool useSecurity = g_securityEnabled && g_haveActiveNetworkKey;
+
+  ZigbeeApsDataFrame aps{};
+  aps.frameType = ZigbeeApsFrameType::kData;
+  aps.deliveryMode = kZigbeeApsDeliveryUnicast;
+  aps.ackRequested = true;
+  aps.destinationEndpoint = destinationEndpoint;
+  aps.clusterId = clusterId;
+  aps.profileId = profileId;
+  aps.sourceEndpoint = sourceEndpoint;
+  aps.counter = apsCounterValue;
+
+  uint8_t apsFrame[127] = {0U};
+  uint8_t apsLength = 0U;
+  if (!ZigbeeCodec::buildApsDataFrame(aps, payload, payloadLength, apsFrame,
+                                      &apsLength)) {
+    return false;
+  }
+
+  ZigbeeNetworkFrame nwk{};
+  nwk.frameType = ZigbeeNwkFrameType::kData;
+  nwk.securityEnabled = useSecurity;
+  nwk.destinationShort = destinationShort;
+  nwk.sourceShort = g_localShort;
+  nwk.radius = 30U;
+  nwk.sequence = g_nwkSequence++;
+
+  uint8_t nwkFrame[127] = {0U};
+  uint8_t nwkLength = 0U;
+  if (useSecurity) {
+    ZigbeeNwkSecurityHeader security{};
+    security.valid = true;
+    security.securityControl = kZigbeeSecurityControlNwkEncMic32;
+    security.frameCounter = g_nwkSecurityFrameCounter++;
+    security.sourceIeee = kIeeeAddress;
+    security.keySequence = g_activeNetworkKeySequence;
+    if (!ZigbeeSecurity::buildSecuredNwkFrame(nwk, security, g_activeNetworkKey,
+                                              apsFrame, apsLength, nwkFrame,
+                                              &nwkLength)) {
+      return false;
+    }
+  } else if (!ZigbeeCodec::buildNwkFrame(nwk, apsFrame, apsLength, nwkFrame,
+                                         &nwkLength)) {
+    return false;
+  }
+
+  uint8_t psdu[127] = {0U};
+  uint8_t psduLength = 0U;
+  if (!ZigbeeRadio::buildDataFrameShort(g_macSequence++, g_panId,
+                                        destinationShort, g_localShort, nwkFrame,
+                                        nwkLength, psdu, &psduLength, false)) {
+    return false;
+  }
+
+  const bool sent = g_radio.transmit(psdu, psduLength, false, 1200000UL);
+  if (sent && trackAck) {
+    rememberPendingApsAck(destinationShort, aps, payload, payloadLength);
+  }
+  return sent;
+}
+
+bool resendPendingApsFrame() {
+  if (!g_pendingApsAck.active) {
+    return false;
+  }
+  const bool sent = sendApsFrameWithCounter(
+      g_pendingApsAck.destinationShort, g_pendingApsAck.destinationEndpoint,
+      g_pendingApsAck.clusterId, g_pendingApsAck.profileId,
+      g_pendingApsAck.sourceEndpoint, g_pendingApsAck.payload,
+      g_pendingApsAck.payloadLength, g_pendingApsAck.counter, false);
+  if (sent) {
+    g_pendingApsAck.deadlineMs = millis() + kApsAckTimeoutMs;
+  }
+  return sent;
+}
+
 void maybeExpirePendingApsAck(uint32_t nowMs) {
   if (!g_pendingApsAck.active ||
       static_cast<int32_t>(nowMs - g_pendingApsAck.deadlineMs) < 0) {
     return;
   }
+  if (g_pendingApsAck.retriesRemaining > 0U) {
+    --g_pendingApsAck.retriesRemaining;
+    const bool resent = resendPendingApsFrame();
+    Serial.print("aps_ack retry ctr=0x");
+    Serial.print(g_pendingApsAck.counter, HEX);
+    Serial.print(" cluster=0x");
+    Serial.print(g_pendingApsAck.clusterId, HEX);
+    Serial.print(" remaining=");
+    Serial.print(g_pendingApsAck.retriesRemaining);
+    Serial.print(" sent=");
+    Serial.print(resent ? "yes" : "no");
+    Serial.print("\r\n");
+    if (resent) {
+      return;
+    }
+  }
+
   Serial.print("aps_ack miss ctr=0x");
   Serial.print(g_pendingApsAck.counter, HEX);
   Serial.print(" cluster=0x");
@@ -429,71 +646,29 @@ bool sendApsAcknowledgement(uint16_t destinationShort,
 }
 
 bool sendApsFrame(uint16_t destinationShort, uint8_t destinationEndpoint,
-                  uint16_t clusterId, uint16_t profileId, uint8_t sourceEndpoint,
-                  const uint8_t* payload, uint8_t payloadLength) {
-  if (!g_joined) {
-    return false;
-  }
-  const bool useSecurity = g_securityEnabled && g_haveActiveNetworkKey;
+                  uint16_t clusterId, uint16_t profileId,
+                  uint8_t sourceEndpoint, const uint8_t* payload,
+                  uint8_t payloadLength) {
+  return sendApsFrameWithCounter(destinationShort, destinationEndpoint,
+                                 clusterId, profileId, sourceEndpoint, payload,
+                                 payloadLength, g_apsCounter++, true);
+}
 
-  ZigbeeApsDataFrame aps{};
-  aps.frameType = ZigbeeApsFrameType::kData;
-  aps.deliveryMode = kZigbeeApsDeliveryUnicast;
-  aps.ackRequested = true;
-  aps.destinationEndpoint = destinationEndpoint;
-  aps.clusterId = clusterId;
-  aps.profileId = profileId;
-  aps.sourceEndpoint = sourceEndpoint;
-  aps.counter = g_apsCounter++;
-
-  uint8_t apsFrame[127] = {0U};
-  uint8_t apsLength = 0U;
-  if (!ZigbeeCodec::buildApsDataFrame(aps, payload, payloadLength, apsFrame,
-                                      &apsLength)) {
+bool sendEndDeviceTimeoutRequest() {
+  refreshCommissioningState();
+  if (!ZigbeeCommissioning::shouldRequestEndDeviceTimeout(g_network)) {
     return false;
   }
 
-  ZigbeeNetworkFrame nwk{};
-  nwk.frameType = ZigbeeNwkFrameType::kData;
-  nwk.securityEnabled = useSecurity;
-  nwk.destinationShort = destinationShort;
-  nwk.sourceShort = g_localShort;
-  nwk.radius = 30U;
-  nwk.sequence = g_nwkSequence++;
-
-  uint8_t nwkFrame[127] = {0U};
-  uint8_t nwkLength = 0U;
-  if (useSecurity) {
-    ZigbeeNwkSecurityHeader security{};
-    security.valid = true;
-    security.securityControl = kZigbeeSecurityControlNwkEncMic32;
-    security.frameCounter = g_nwkSecurityFrameCounter++;
-    security.sourceIeee = kIeeeAddress;
-    security.keySequence = g_activeNetworkKeySequence;
-    if (!ZigbeeSecurity::buildSecuredNwkFrame(nwk, security, g_activeNetworkKey,
-                                              apsFrame, apsLength, nwkFrame,
-                                              &nwkLength)) {
-      return false;
-    }
-  } else if (!ZigbeeCodec::buildNwkFrame(nwk, apsFrame, apsLength, nwkFrame,
-                                         &nwkLength)) {
+  uint8_t command[8] = {0U};
+  uint8_t commandLength = 0U;
+  if (!ZigbeeCodec::buildNwkEndDeviceTimeoutRequestCommand(
+          g_network.endDeviceTimeoutIndex, g_network.endDeviceConfiguration,
+          command, &commandLength)) {
     return false;
   }
 
-  uint8_t psdu[127] = {0U};
-  uint8_t psduLength = 0U;
-  if (!ZigbeeRadio::buildDataFrameShort(g_macSequence++, g_panId,
-                                        destinationShort, g_localShort, nwkFrame,
-                                        nwkLength, psdu, &psduLength, false)) {
-    return false;
-  }
-
-  const bool sent =
-      g_radio.transmit(psdu, psduLength, false, 1200000UL);
-  if (sent) {
-    rememberPendingApsAck(aps);
-  }
-  return sent;
+  return sendNwkCommand(g_parentShort, command, commandLength);
 }
 
 bool sendDeviceAnnounce() {
@@ -563,6 +738,7 @@ bool handleApsCommand(const uint8_t* frame, uint8_t length, uint16_t sourceShort
     Serial.print("\r\n");
     if (transportInstall.activatesNetworkKey) {
       (void)sendDeviceAnnounce();
+      (void)sendEndDeviceTimeoutRequest();
     }
     return true;
   }
@@ -582,6 +758,7 @@ bool handleApsCommand(const uint8_t* frame, uint8_t length, uint16_t sourceShort
       configureDeviceForCurrentNetwork();
       applyJoinLed();
       persistState();
+      (void)sendEndDeviceTimeoutRequest();
     }
     Serial.print("update_device short=0x");
     Serial.print(updateDevice.updateDevice.deviceShort, HEX);
@@ -745,12 +922,30 @@ void processIncomingFrame(const ZigbeeFrame& frame) {
     g_lastInboundSecurityFrameCounter = security.frameCounter;
   }
 
+  if (nwk.frameType == ZigbeeNwkFrameType::kCommand) {
+    ZigbeeNwkEndDeviceTimeoutResponse timeoutResponse{};
+    if (ZigbeeCommissioning::acceptEndDeviceTimeoutResponse(
+            g_network, nwk.payload, nwk.payloadLength, &timeoutResponse)) {
+      ZigbeeCommissioning::applyEndDeviceTimeoutResponse(&g_network,
+                                                         timeoutResponse);
+      persistState();
+      Serial.print("end_device_timeout status=0x");
+      Serial.print(timeoutResponse.status, HEX);
+      Serial.print(" parent_info=0x");
+      Serial.print(timeoutResponse.parentInformation, HEX);
+      Serial.print(" poll_ms=");
+      Serial.print(g_parentPollIntervalMs);
+      Serial.print("\r\n");
+    }
+    return;
+  }
+
   ZigbeeApsDataFrame aps{};
   ZigbeeApsAcknowledgementFrame ack{};
   if (ZigbeeCodec::parseApsAcknowledgementFrame(nwk.payload, nwk.payloadLength,
                                                 &ack) &&
       ack.valid) {
-    if (matchesPendingApsAck(ack)) {
+    if (matchesPendingApsAck(ack, nwk.sourceShort)) {
       Serial.print("aps_ack rx ctr=0x");
       Serial.print(ack.counter, HEX);
       Serial.print(" cluster=0x");
@@ -768,10 +963,23 @@ void processIncomingFrame(const ZigbeeFrame& frame) {
     return;
   }
 
+  const uint32_t nowMs = millis();
+  const bool duplicateAps =
+      isRecentInboundApsDuplicate(nwk.sourceShort, aps, nowMs);
+
   if (aps.profileId == kZigbeeProfileZdo) {
     if (aps.deliveryMode == kZigbeeApsDeliveryUnicast && aps.ackRequested) {
       (void)sendApsAcknowledgement(nwk.sourceShort, aps);
     }
+    if (duplicateAps) {
+      Serial.print("aps_dup cluster=0x");
+      Serial.print(aps.clusterId, HEX);
+      Serial.print(" src=0x");
+      Serial.print(nwk.sourceShort, HEX);
+      Serial.print("\r\n");
+      return;
+    }
+    rememberRecentInboundAps(nwk.sourceShort, aps);
     uint16_t responseClusterId = 0U;
     uint8_t responsePayload[127] = {0U};
     uint8_t responseLength = 0U;
@@ -796,6 +1004,15 @@ void processIncomingFrame(const ZigbeeFrame& frame) {
   if (aps.deliveryMode == kZigbeeApsDeliveryUnicast && aps.ackRequested) {
     (void)sendApsAcknowledgement(nwk.sourceShort, aps);
   }
+  if (duplicateAps) {
+    Serial.print("aps_dup cluster=0x");
+    Serial.print(aps.clusterId, HEX);
+    Serial.print(" src=0x");
+    Serial.print(nwk.sourceShort, HEX);
+    Serial.print("\r\n");
+    return;
+  }
+  rememberRecentInboundAps(nwk.sourceShort, aps);
 
   uint8_t responseFrame[127] = {0U};
   uint8_t responseLength = 0U;
@@ -906,6 +1123,8 @@ void handleSerialCommands() {
       Serial.print(" alt_seq=");
       Serial.print(g_haveAlternateNetworkKey ? g_alternateNetworkKeySequence
                                              : 0U);
+      Serial.print(" poll_ms=");
+      Serial.print(g_parentPollIntervalMs);
       Serial.print(" reports=");
       Serial.print(g_device.reportingConfigurationCount());
       Serial.print("\r\n");
@@ -938,6 +1157,7 @@ void setup() {
     g_radio.setChannel(g_channel);
     if (g_securityEnabled && g_haveActiveNetworkKey) {
       (void)sendDeviceAnnounce();
+      (void)sendEndDeviceTimeoutRequest();
     }
   }
 }
@@ -948,6 +1168,7 @@ void loop() {
   const uint32_t now = millis();
   if (!g_joined) {
     clearPendingApsAck();
+    clearRecentInboundAps();
     const ZigbeeCommissioningAction action =
         ZigbeeCommissioning::nextAction(&g_network, now);
     if (action == ZigbeeCommissioningAction::kPollParent &&
@@ -992,7 +1213,7 @@ void loop() {
     return;
   }
 
-  if ((now - g_lastPollMs) >= 250U) {
+  if ((now - g_lastPollMs) >= g_parentPollIntervalMs) {
     g_lastPollMs = now;
     pollCoordinator();
   }
@@ -1013,6 +1234,8 @@ void loop() {
     Serial.print(g_localShort, HEX);
     Serial.print(" nwk_seq=");
     Serial.print(g_haveActiveNetworkKey ? g_activeNetworkKeySequence : 0U);
+    Serial.print(" poll_ms=");
+    Serial.print(g_parentPollIntervalMs);
     Serial.print(" reports=");
     Serial.print(g_device.reportingConfigurationCount());
     Serial.print("\r\n");

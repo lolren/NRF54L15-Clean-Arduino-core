@@ -37,10 +37,11 @@ Expected sequence:
 
 1. End device restores retained PAN, parent, trust-center IEEE, link-key provenance, and active network key.
 2. End device first emits MAC orphan notification on the retained channel and waits for coordinator realignment.
-3. If that misses, the device performs the retained-network scan across the configured primary and secondary masks, retries orphan recovery on the best retained-network candidate it finds, and only then falls back to reassociation.
-4. Coordinator recognizes the node as known and either answers with coordinator realignment or accepts the reassociation.
-5. Coordinator delivers APS-secured `Update Device` from the expected trust-center source.
-6. End device accepts `Update Device` only while it is in the secure-rejoin wait state, restores joined state, and resumes secured polling and reporting.
+3. If that misses, the device sends a NWK-secured `Rejoin Request` to the retained parent before giving up on the retained channel.
+4. If that still misses, the device performs the retained-network scan across the configured primary and secondary masks, retries orphan recovery and NWK rejoin on the best retained-network candidate it finds, and only then falls back to reassociation.
+5. Coordinator recognizes the node as known and either answers with coordinator realignment, returns a NWK-secured `Rejoin Response`, or accepts the reassociation.
+6. Coordinator delivers APS-secured `Update Device` from the expected trust-center source.
+7. End device accepts `Update Device` only while it is in the secure-rejoin wait state, restores joined state, and resumes secured polling and reporting.
 
 Current clean examples require retained key material before they will attempt secure rejoin. This is still not BDB rejoin.
 
@@ -57,6 +58,14 @@ Expected sequence:
 5. End device promotes the alternate key to active, clears the staged alternate slot, resets NWK replay state, and resumes secured traffic on the new sequence.
 
 This is a demo rollout path for the in-tree coordinator. It is not yet validated against a third-party Trust Center.
+
+## Joined Keepalive Flow
+
+Expected sequence:
+
+1. Once a join or secure rejoin becomes active, the end device sends NWK `End Device Timeout Request`.
+2. Coordinator responds with NWK `End Device Timeout Response`.
+3. End device adjusts its parent-poll cadence from the negotiated timeout window and persists the joined state.
 
 ## Current Device-Side Policy
 
@@ -85,8 +94,10 @@ Minimum behavioral match for future ZHA/Zigbee2MQTT interop work:
 - Beacon and association timing that the current MAC polling path can interoperate with.
 - APS-encrypted `Transport Key` delivery with the expected preconfigured link key.
 - MAC orphan-recovery behavior that can interoperate with an end device expecting orphan notification plus coordinator realignment before reassociation fallback.
+- NWK-secured `Rejoin Request` / `Rejoin Response` handling on retained-key rejoin paths.
 - APS-secured `Update Device` for retained-key rejoin handling, sourced from the coordinator short address and expected trust-center IEEE.
 - APS-secured `Switch Key` if network-key update is attempted, again sourced from the expected trust center.
+- NWK `End Device Timeout Request` / `Response` handling after a join or secure rejoin completes.
 - Home Automation descriptor discovery, reporting configuration, and standard ZDO responses.
 
 ## What Still Blocks Real Interop
@@ -94,5 +105,5 @@ Minimum behavioral match for future ZHA/Zigbee2MQTT interop work:
 - Interoperable MAC ACK timing.
 - Real BDB steering, startup, and rejoin behavior.
 - Trust-center key-update lifecycle validation against a third-party coordinator.
-- Full APS retransmission policy beyond the current single ACK exchange.
+- Validation of the new bounded APS retransmission and duplicate-suppression policy against real third-party coordinators.
 - Packet-capture validation against ZHA or Zigbee2MQTT on real hardware.

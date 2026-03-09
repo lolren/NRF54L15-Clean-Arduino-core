@@ -72,6 +72,66 @@ void clearAlternateNetworkKey(ZigbeeEndDeviceCommonState* state) {
   state->haveAlternateNetworkKey = false;
 }
 
+uint32_t timeoutIndexToMsInternal(uint8_t timeoutIndex) {
+  switch (timeoutIndex) {
+    case 0x00U:
+      return 10000UL;
+    case 0x01U:
+      return 120000UL;
+    case 0x02U:
+      return 240000UL;
+    case 0x03U:
+      return 480000UL;
+    case 0x04U:
+      return 960000UL;
+    case 0x05U:
+      return 1920000UL;
+    case 0x06U:
+      return 3840000UL;
+    case 0x07U:
+      return 7680000UL;
+    case 0x08U:
+      return 15360000UL;
+    case 0x09U:
+      return 30720000UL;
+    case 0x0AU:
+      return 61440000UL;
+    case 0x0BU:
+      return 122880000UL;
+    case 0x0CU:
+      return 245760000UL;
+    case 0x0DU:
+      return 491520000UL;
+    case 0x0EU:
+      return 983040000UL;
+    default:
+      return 0UL;
+  }
+}
+
+uint32_t defaultPollIntervalMs(const ZigbeeEndDeviceCommonState& state) {
+  return (state.policy.initialPollIntervalMs != 0UL)
+             ? state.policy.initialPollIntervalMs
+             : 250UL;
+}
+
+uint32_t negotiatedPollIntervalMs(const ZigbeeEndDeviceCommonState& state,
+                                  uint8_t timeoutIndex) {
+  const uint32_t timeoutMs = timeoutIndexToMsInternal(timeoutIndex);
+  if (timeoutMs == 0UL) {
+    return defaultPollIntervalMs(state);
+  }
+
+  uint32_t pollMs = timeoutMs / 8UL;
+  if (pollMs < defaultPollIntervalMs(state)) {
+    pollMs = defaultPollIntervalMs(state);
+  }
+  if (pollMs > 30000UL) {
+    pollMs = 30000UL;
+  }
+  return pollMs;
+}
+
 bool waitForAssociationResponse(ZigbeeRadio& radio, uint8_t* ioMacSequence,
                                 uint16_t panId, uint16_t parentShort,
                                 uint64_t localIeee,
@@ -222,6 +282,144 @@ bool attemptOrphanRecovery(ZigbeeRadio& radio, uint8_t* ioMacSequence,
   state->panId = realignment.panId;
   state->parentShort = realignment.coordinatorShort;
   state->localShort = realignment.assignedShort;
+  state->joined = false;
+  state->rejoinPending = true;
+  state->securityEnabled = true;
+  state->state = ZigbeeCommissioningState::kWaitingUpdateDevice;
+  state->lastFailure = ZigbeeCommissioningFailure::kNone;
+  return true;
+}
+
+bool waitForNwkRejoinResponse(ZigbeeRadio& radio, uint16_t panId,
+                              uint16_t localShort, uint16_t parentShort,
+                              uint64_t expectedParentIeee,
+                              const uint8_t networkKey[16],
+                              uint8_t keySequence,
+                              uint32_t lastInboundFrameCounter,
+                              ZigbeeNwkRejoinResponse* outResponse,
+                              uint32_t* outInboundFrameCounter) {
+  if (outResponse != nullptr) {
+    memset(outResponse, 0, sizeof(*outResponse));
+  }
+  if (outInboundFrameCounter != nullptr) {
+    *outInboundFrameCounter = 0U;
+  }
+  if (networkKey == nullptr || outResponse == nullptr ||
+      outInboundFrameCounter == nullptr) {
+    return false;
+  }
+
+  const uint32_t deadline = millis() + 900U;
+  while (static_cast<int32_t>(millis() - deadline) < 0) {
+    ZigbeeFrame frame{};
+    if (!radio.receive(&frame, 5000U, 300000UL)) {
+      continue;
+    }
+
+    ZigbeeDataFrameView macData{};
+    if (!ZigbeeRadio::parseDataFrameShort(frame.psdu, frame.length, &macData) ||
+        !macData.valid || macData.panId != panId ||
+        macData.destinationShort != localShort ||
+        macData.sourceShort != parentShort) {
+      continue;
+    }
+
+    ZigbeeNetworkFrame nwk{};
+    ZigbeeNwkSecurityHeader security{};
+    uint8_t decryptedPayload[127] = {0U};
+    uint8_t decryptedPayloadLength = 0U;
+    if (!ZigbeeSecurity::parseSecuredNwkFrame(
+            macData.payload, macData.payloadLength, networkKey, &nwk, &security,
+            decryptedPayload, &decryptedPayloadLength) ||
+        !nwk.valid || !security.valid ||
+        nwk.frameType != ZigbeeNwkFrameType::kCommand ||
+        nwk.destinationShort != localShort ||
+        nwk.sourceShort != parentShort || security.keySequence != keySequence ||
+        security.frameCounter <= lastInboundFrameCounter ||
+        (expectedParentIeee != 0U && security.sourceIeee != expectedParentIeee)) {
+      continue;
+    }
+
+    ZigbeeNwkRejoinResponse response{};
+    if (!ZigbeeCodec::parseNwkRejoinResponseCommand(
+            nwk.payload, nwk.payloadLength, &response) ||
+        !response.valid) {
+      continue;
+    }
+
+    *outResponse = response;
+    *outInboundFrameCounter = security.frameCounter;
+    return true;
+  }
+
+  return false;
+}
+
+bool attemptNwkRejoin(ZigbeeRadio& radio, uint8_t* ioMacSequence,
+                      uint64_t localIeee, uint8_t capabilityInformation,
+                      ZigbeeEndDeviceCommonState* state) {
+  if (ioMacSequence == nullptr || state == nullptr || !state->haveActiveNetworkKey ||
+      !radio.setChannel(state->channel)) {
+    return false;
+  }
+
+  uint8_t commandPayload[8] = {0U};
+  uint8_t commandLength = 0U;
+  if (!ZigbeeCodec::buildNwkRejoinRequestCommand(capabilityInformation,
+                                                 commandPayload,
+                                                 &commandLength)) {
+    return false;
+  }
+
+  ZigbeeNetworkFrame nwk{};
+  nwk.frameType = ZigbeeNwkFrameType::kCommand;
+  nwk.securityEnabled = true;
+  nwk.destinationShort = state->parentShort;
+  nwk.sourceShort = state->localShort;
+  nwk.radius = 30U;
+  nwk.sequence = state->nwkSequence++;
+
+  ZigbeeNwkSecurityHeader security{};
+  security.valid = true;
+  security.securityControl = kZigbeeSecurityControlNwkEncMic32;
+  security.frameCounter = state->nwkSecurityFrameCounter++;
+  security.sourceIeee = localIeee;
+  security.keySequence = state->activeNetworkKeySequence;
+
+  uint8_t nwkFrame[127] = {0U};
+  uint8_t nwkLength = 0U;
+  if (!ZigbeeSecurity::buildSecuredNwkFrame(
+          nwk, security, state->activeNetworkKey, commandPayload, commandLength,
+          nwkFrame, &nwkLength)) {
+    return false;
+  }
+
+  uint8_t psdu[127] = {0U};
+  uint8_t psduLength = 0U;
+  if (!ZigbeeRadio::buildDataFrameShort((*ioMacSequence)++, state->panId,
+                                        state->parentShort, state->localShort,
+                                        nwkFrame, nwkLength, psdu,
+                                        &psduLength, false) ||
+      !radio.transmit(psdu, psduLength, false, 1200000UL)) {
+    return false;
+  }
+
+  ZigbeeNwkRejoinResponse response{};
+  uint32_t inboundFrameCounter = 0U;
+  const uint64_t expectedParentIeee =
+      ZigbeeCommissioning::expectedTrustCenterIeee(*state);
+  if (!waitForNwkRejoinResponse(radio, state->panId, state->localShort,
+                                state->parentShort, expectedParentIeee,
+                                state->activeNetworkKey,
+                                state->activeNetworkKeySequence,
+                                state->incomingNwkFrameCounter, &response,
+                                &inboundFrameCounter) ||
+      !response.valid || response.status != 0x00U) {
+    return false;
+  }
+
+  state->incomingNwkFrameCounter = inboundFrameCounter;
+  state->localShort = response.networkAddress;
   state->joined = false;
   state->rejoinPending = true;
   state->securityEnabled = true;
@@ -518,6 +716,9 @@ void ZigbeeCommissioning::initializeEndDeviceState(
   state->nwkSequence = 1U;
   state->nwkSecurityFrameCounter = 1U;
   state->apsCounter = 1U;
+  state->endDeviceTimeoutIndex = policy.requestedEndDeviceTimeout;
+  state->endDeviceConfiguration = policy.endDeviceConfiguration;
+  state->parentPollIntervalMs = defaultPollIntervalMs(*state);
   state->state = ZigbeeCommissioningState::kIdle;
   state->lastFailure = ZigbeeCommissioningFailure::kNone;
 }
@@ -581,6 +782,7 @@ void ZigbeeCommissioning::restoreEndDeviceState(
       persistent.nwkAddress != 0xFFFFU) {
     state->localShort = persistent.nwkAddress;
     state->joined = true;
+    state->endDeviceTimeoutPending = true;
     state->state = ZigbeeCommissioningState::kJoined;
   } else {
     state->localShort = defaultShort;
@@ -669,6 +871,10 @@ uint64_t ZigbeeCommissioning::expectedTrustCenterIeee(
                                        : state.policy.pinnedTrustCenterIeee;
 }
 
+uint32_t ZigbeeCommissioning::timeoutIndexToMs(uint8_t timeoutIndex) {
+  return timeoutIndexToMsInternal(timeoutIndex);
+}
+
 bool ZigbeeCommissioning::shouldAttemptSecureRejoin(
     const ZigbeeEndDeviceCommonState& state) {
   return state.haveActiveNetworkKey && expectedTrustCenterIeee(state) != 0U &&
@@ -702,6 +908,61 @@ bool ZigbeeCommissioning::shouldPollParent(
   return state.joined ||
          state.state == ZigbeeCommissioningState::kWaitingTransportKey ||
          state.state == ZigbeeCommissioningState::kWaitingUpdateDevice;
+}
+
+bool ZigbeeCommissioning::shouldRequestEndDeviceTimeout(
+    const ZigbeeEndDeviceCommonState& state) {
+  return state.joined && state.securityEnabled && state.haveActiveNetworkKey &&
+         state.endDeviceTimeoutPending;
+}
+
+void ZigbeeCommissioning::markEndDeviceTimeoutPending(
+    ZigbeeEndDeviceCommonState* state) {
+  if (state == nullptr) {
+    return;
+  }
+  state->endDeviceTimeoutPending = state->joined;
+  state->endDeviceTimeoutNegotiated = false;
+  state->parentInformation = 0U;
+  state->endDeviceTimeoutIndex = state->policy.requestedEndDeviceTimeout;
+  state->endDeviceConfiguration = state->policy.endDeviceConfiguration;
+  state->parentPollIntervalMs = defaultPollIntervalMs(*state);
+}
+
+bool ZigbeeCommissioning::acceptEndDeviceTimeoutResponse(
+    const ZigbeeEndDeviceCommonState& state, const uint8_t* frame,
+    uint8_t length, ZigbeeNwkEndDeviceTimeoutResponse* outResponse) {
+  if (outResponse != nullptr) {
+    memset(outResponse, 0, sizeof(*outResponse));
+  }
+  if (frame == nullptr || outResponse == nullptr ||
+      !shouldRequestEndDeviceTimeout(state)) {
+    return false;
+  }
+  return ZigbeeCodec::parseNwkEndDeviceTimeoutResponseCommand(frame, length,
+                                                              outResponse) &&
+         outResponse->valid;
+}
+
+void ZigbeeCommissioning::applyEndDeviceTimeoutResponse(
+    ZigbeeEndDeviceCommonState* state,
+    const ZigbeeNwkEndDeviceTimeoutResponse& response) {
+  if (state == nullptr || !response.valid) {
+    return;
+  }
+
+  if (response.status == kZigbeeNwkEndDeviceTimeoutSuccess) {
+    state->endDeviceTimeoutPending = false;
+    state->endDeviceTimeoutNegotiated = true;
+    state->parentInformation = response.parentInformation;
+    state->parentPollIntervalMs =
+        negotiatedPollIntervalMs(*state, state->endDeviceTimeoutIndex);
+  } else {
+    state->endDeviceTimeoutPending = false;
+    state->endDeviceTimeoutNegotiated = false;
+    state->parentInformation = response.parentInformation;
+    state->parentPollIntervalMs = defaultPollIntervalMs(*state);
+  }
 }
 
 ZigbeeCommissioningAction ZigbeeCommissioning::nextAction(
@@ -928,6 +1189,11 @@ bool ZigbeeCommissioning::performSecureRejoin(
     return true;
   }
 
+  if (attemptNwkRejoin(radio, ioMacSequence, localIeee, capabilityInformation,
+                       state)) {
+    return true;
+  }
+
   uint16_t assignedShort = 0U;
   bool associated = attemptAssociationRequest(
       radio, ioMacSequence, state->panId, state->parentShort, localIeee,
@@ -945,6 +1211,10 @@ bool ZigbeeCommissioning::performSecureRejoin(
     state->extendedPanId = candidate.beacon.network.extendedPanId;
     if (attemptOrphanRecovery(radio, ioMacSequence, localIeee, state,
                               candidate.channel)) {
+      return true;
+    }
+    if (attemptNwkRejoin(radio, ioMacSequence, localIeee,
+                         capabilityInformation, state)) {
       return true;
     }
     state->state = ZigbeeCommissioningState::kAssociating;
@@ -1070,6 +1340,7 @@ void ZigbeeCommissioning::applyTransportKeyInstall(
     state->incomingNwkFrameCounter = 0U;
     state->joined = true;
     state->rejoinPending = false;
+    markEndDeviceTimeoutPending(state);
     state->state = ZigbeeCommissioningState::kJoined;
   }
   state->lastFailure = ZigbeeCommissioningFailure::kNone;
@@ -1141,6 +1412,7 @@ void ZigbeeCommissioning::applyUpdateDevice(
     state->joined = true;
     state->rejoinPending = false;
     state->securityEnabled = state->haveActiveNetworkKey;
+    markEndDeviceTimeoutPending(state);
     state->state = ZigbeeCommissioningState::kJoined;
     state->lastFailure = ZigbeeCommissioningFailure::kNone;
   }

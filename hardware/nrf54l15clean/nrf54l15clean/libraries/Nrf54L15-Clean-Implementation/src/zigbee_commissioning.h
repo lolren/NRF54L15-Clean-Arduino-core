@@ -22,11 +22,14 @@ struct ZigbeeCommissioningPolicy {
   uint32_t secureRejoinRetryDelayMs = 2000UL;
   uint32_t transportKeyTimeoutMs = 4000UL;
   uint32_t updateDeviceTimeoutMs = 4000UL;
+  uint32_t initialPollIntervalMs = 250UL;
   uint16_t preferredPanId = 0U;
   uint64_t preferredExtendedPanId = 0U;
   uint64_t pinnedTrustCenterIeee = 0U;
   uint8_t maxJoinAttempts = 0U;
   uint8_t maxRejoinAttempts = 0U;
+  uint8_t requestedEndDeviceTimeout = 0x03U;
+  uint8_t endDeviceConfiguration = 0x00U;
   bool requirePermitJoin = true;
   bool requirePanCoordinator = true;
   bool requireStackProfile2 = true;
@@ -104,11 +107,17 @@ struct ZigbeeEndDeviceCommonState {
   uint32_t incomingNwkFrameCounter = 0U;
   uint32_t incomingApsFrameCounter = 0U;
   uint8_t apsCounter = 1U;
+  uint8_t endDeviceTimeoutIndex = 0U;
+  uint8_t endDeviceConfiguration = 0U;
+  uint8_t parentInformation = 0U;
+  uint32_t parentPollIntervalMs = 250UL;
   bool joined = false;
   bool rejoinPending = false;
   bool securityEnabled = false;
   bool haveActiveNetworkKey = false;
   bool haveAlternateNetworkKey = false;
+  bool endDeviceTimeoutPending = false;
+  bool endDeviceTimeoutNegotiated = false;
   ZigbeePreconfiguredKeyMode preconfiguredKeyMode =
       ZigbeePreconfiguredKeyMode::kNone;
   ZigbeeCommissioningState state = ZigbeeCommissioningState::kIdle;
@@ -171,10 +180,20 @@ class ZigbeeCommissioning {
                                       ZigbeePersistentState* outState);
   static uint64_t expectedTrustCenterIeee(
       const ZigbeeEndDeviceCommonState& state);
+  static uint32_t timeoutIndexToMs(uint8_t timeoutIndex);
   static bool shouldAttemptSecureRejoin(
       const ZigbeeEndDeviceCommonState& state);
   static void requestSecureRejoin(ZigbeeEndDeviceCommonState* state);
   static bool shouldPollParent(const ZigbeeEndDeviceCommonState& state);
+  static bool shouldRequestEndDeviceTimeout(
+      const ZigbeeEndDeviceCommonState& state);
+  static void markEndDeviceTimeoutPending(ZigbeeEndDeviceCommonState* state);
+  static bool acceptEndDeviceTimeoutResponse(
+      const ZigbeeEndDeviceCommonState& state, const uint8_t* frame,
+      uint8_t length, ZigbeeNwkEndDeviceTimeoutResponse* outResponse);
+  static void applyEndDeviceTimeoutResponse(
+      ZigbeeEndDeviceCommonState* state,
+      const ZigbeeNwkEndDeviceTimeoutResponse& response);
   static ZigbeeCommissioningAction nextAction(
       ZigbeeEndDeviceCommonState* state, uint32_t nowMs);
   static bool activeScan(ZigbeeRadio& radio, uint8_t* ioMacSequence,

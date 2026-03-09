@@ -1493,6 +1493,128 @@ bool ZigbeeCodec::parseNwkFrame(const uint8_t* frame, uint8_t length,
   return true;
 }
 
+bool ZigbeeCodec::buildNwkRejoinRequestCommand(uint8_t capabilityInformation,
+                                               uint8_t* outFrame,
+                                               uint8_t* outLength) {
+  if (outFrame == nullptr || outLength == nullptr) {
+    return false;
+  }
+
+  outFrame[0] = kZigbeeNwkCommandRejoinRequest;
+  outFrame[1] = capabilityInformation;
+  *outLength = 2U;
+  return true;
+}
+
+bool ZigbeeCodec::parseNwkRejoinRequestCommand(
+    const uint8_t* frame, uint8_t length, ZigbeeNwkRejoinRequest* outRequest) {
+  if (outRequest != nullptr) {
+    memset(outRequest, 0, sizeof(*outRequest));
+  }
+  if (frame == nullptr || outRequest == nullptr || length != 2U ||
+      frame[0] != kZigbeeNwkCommandRejoinRequest) {
+    return false;
+  }
+
+  outRequest->valid = true;
+  outRequest->capabilityInformation = frame[1];
+  return true;
+}
+
+bool ZigbeeCodec::buildNwkRejoinResponseCommand(uint16_t networkAddress,
+                                                uint8_t status,
+                                                uint8_t* outFrame,
+                                                uint8_t* outLength) {
+  if (outFrame == nullptr || outLength == nullptr) {
+    return false;
+  }
+
+  outFrame[0] = kZigbeeNwkCommandRejoinResponse;
+  writeLe16(&outFrame[1], networkAddress);
+  outFrame[3] = status;
+  *outLength = 4U;
+  return true;
+}
+
+bool ZigbeeCodec::parseNwkRejoinResponseCommand(
+    const uint8_t* frame, uint8_t length,
+    ZigbeeNwkRejoinResponse* outResponse) {
+  if (outResponse != nullptr) {
+    memset(outResponse, 0, sizeof(*outResponse));
+  }
+  if (frame == nullptr || outResponse == nullptr || length != 4U ||
+      frame[0] != kZigbeeNwkCommandRejoinResponse) {
+    return false;
+  }
+
+  outResponse->valid = true;
+  outResponse->networkAddress = readLe16(&frame[1]);
+  outResponse->status = frame[3];
+  return true;
+}
+
+bool ZigbeeCodec::buildNwkEndDeviceTimeoutRequestCommand(
+    uint8_t requestedTimeout, uint8_t endDeviceConfiguration,
+    uint8_t* outFrame, uint8_t* outLength) {
+  if (outFrame == nullptr || outLength == nullptr) {
+    return false;
+  }
+
+  outFrame[0] = kZigbeeNwkCommandEndDeviceTimeoutRequest;
+  outFrame[1] = requestedTimeout;
+  outFrame[2] = endDeviceConfiguration;
+  *outLength = 3U;
+  return true;
+}
+
+bool ZigbeeCodec::parseNwkEndDeviceTimeoutRequestCommand(
+    const uint8_t* frame, uint8_t length,
+    ZigbeeNwkEndDeviceTimeoutRequest* outRequest) {
+  if (outRequest != nullptr) {
+    memset(outRequest, 0, sizeof(*outRequest));
+  }
+  if (frame == nullptr || outRequest == nullptr || length != 3U ||
+      frame[0] != kZigbeeNwkCommandEndDeviceTimeoutRequest) {
+    return false;
+  }
+
+  outRequest->valid = true;
+  outRequest->requestedTimeout = frame[1];
+  outRequest->endDeviceConfiguration = frame[2];
+  return true;
+}
+
+bool ZigbeeCodec::buildNwkEndDeviceTimeoutResponseCommand(
+    uint8_t status, uint8_t parentInformation, uint8_t* outFrame,
+    uint8_t* outLength) {
+  if (outFrame == nullptr || outLength == nullptr) {
+    return false;
+  }
+
+  outFrame[0] = kZigbeeNwkCommandEndDeviceTimeoutResponse;
+  outFrame[1] = status;
+  outFrame[2] = parentInformation;
+  *outLength = 3U;
+  return true;
+}
+
+bool ZigbeeCodec::parseNwkEndDeviceTimeoutResponseCommand(
+    const uint8_t* frame, uint8_t length,
+    ZigbeeNwkEndDeviceTimeoutResponse* outResponse) {
+  if (outResponse != nullptr) {
+    memset(outResponse, 0, sizeof(*outResponse));
+  }
+  if (frame == nullptr || outResponse == nullptr || length != 3U ||
+      frame[0] != kZigbeeNwkCommandEndDeviceTimeoutResponse) {
+    return false;
+  }
+
+  outResponse->valid = true;
+  outResponse->status = frame[1];
+  outResponse->parentInformation = frame[2];
+  return true;
+}
+
 bool ZigbeeCodec::buildApsDataFrame(const ZigbeeApsDataFrame& frame,
                                     const uint8_t* payload,
                                     uint8_t payloadLength, uint8_t* outFrame,

@@ -57,6 +57,14 @@ constexpr uint8_t kZigbeeApsCommandSwitchKey = 0x09U;
 constexpr uint8_t kZigbeeApsTransportKeyStandardNetworkKey = 0x01U;
 constexpr uint8_t kZigbeeApsUpdateDeviceStatusStandardSecureRejoin = 0x00U;
 
+constexpr uint8_t kZigbeeNwkCommandRejoinRequest = 0x06U;
+constexpr uint8_t kZigbeeNwkCommandRejoinResponse = 0x07U;
+constexpr uint8_t kZigbeeNwkCommandEndDeviceTimeoutRequest = 0x0BU;
+constexpr uint8_t kZigbeeNwkCommandEndDeviceTimeoutResponse = 0x0CU;
+constexpr uint8_t kZigbeeNwkEndDeviceTimeoutSuccess = 0x00U;
+constexpr uint8_t kZigbeeNwkParentInfoMacDataPollKeepalive = 0x01U;
+constexpr uint8_t kZigbeeNwkParentInfoEndDeviceTimeoutSupported = 0x02U;
+
 constexpr uint8_t kZigbeeMacCommandAssociationRequest = 0x01U;
 constexpr uint8_t kZigbeeMacCommandAssociationResponse = 0x02U;
 constexpr uint8_t kZigbeeMacCommandDataRequest = 0x04U;
@@ -219,6 +227,29 @@ struct ZigbeeNetworkFrame {
   uint64_t sourceExtended = 0U;
   const uint8_t* payload = nullptr;
   uint8_t payloadLength = 0U;
+};
+
+struct ZigbeeNwkRejoinRequest {
+  bool valid = false;
+  uint8_t capabilityInformation = 0U;
+};
+
+struct ZigbeeNwkRejoinResponse {
+  bool valid = false;
+  uint16_t networkAddress = 0U;
+  uint8_t status = 0U;
+};
+
+struct ZigbeeNwkEndDeviceTimeoutRequest {
+  bool valid = false;
+  uint8_t requestedTimeout = 0U;
+  uint8_t endDeviceConfiguration = 0U;
+};
+
+struct ZigbeeNwkEndDeviceTimeoutResponse {
+  bool valid = false;
+  uint8_t status = 0U;
+  uint8_t parentInformation = 0U;
 };
 
 struct ZigbeeApsDataFrame {
@@ -546,6 +577,31 @@ class ZigbeeCodec {
                             uint8_t* outFrame, uint8_t* outLength);
   static bool parseNwkFrame(const uint8_t* frame, uint8_t length,
                             ZigbeeNetworkFrame* outFrame);
+  static bool buildNwkRejoinRequestCommand(uint8_t capabilityInformation,
+                                           uint8_t* outFrame,
+                                           uint8_t* outLength);
+  static bool parseNwkRejoinRequestCommand(
+      const uint8_t* frame, uint8_t length,
+      ZigbeeNwkRejoinRequest* outRequest);
+  static bool buildNwkRejoinResponseCommand(uint16_t networkAddress,
+                                            uint8_t status,
+                                            uint8_t* outFrame,
+                                            uint8_t* outLength);
+  static bool parseNwkRejoinResponseCommand(
+      const uint8_t* frame, uint8_t length,
+      ZigbeeNwkRejoinResponse* outResponse);
+  static bool buildNwkEndDeviceTimeoutRequestCommand(
+      uint8_t requestedTimeout, uint8_t endDeviceConfiguration,
+      uint8_t* outFrame, uint8_t* outLength);
+  static bool parseNwkEndDeviceTimeoutRequestCommand(
+      const uint8_t* frame, uint8_t length,
+      ZigbeeNwkEndDeviceTimeoutRequest* outRequest);
+  static bool buildNwkEndDeviceTimeoutResponseCommand(
+      uint8_t status, uint8_t parentInformation, uint8_t* outFrame,
+      uint8_t* outLength);
+  static bool parseNwkEndDeviceTimeoutResponseCommand(
+      const uint8_t* frame, uint8_t length,
+      ZigbeeNwkEndDeviceTimeoutResponse* outResponse);
 
   static bool buildApsDataFrame(const ZigbeeApsDataFrame& frame,
                                 const uint8_t* payload, uint8_t payloadLength,

@@ -103,6 +103,17 @@ struct PendingApsFrame {
   uint8_t payload[kPendingPayloadMax] = {0U};
 };
 
+struct RecentInboundAps {
+  bool valid = false;
+  uint8_t counter = 0U;
+  uint16_t clusterId = 0U;
+  uint16_t profileId = 0U;
+  uint8_t destinationEndpoint = 0U;
+  uint8_t sourceEndpoint = 0U;
+  uint8_t deliveryMode = 0U;
+  uint32_t expiresMs = 0U;
+};
+
 struct NodeEntry {
   bool used = false;
   uint64_t ieeeAddress = 0U;
@@ -124,8 +135,11 @@ struct NodeEntry {
   uint16_t pendingApsAckProfileId = 0U;
   uint8_t pendingApsAckDestinationEndpoint = 0U;
   uint8_t pendingApsAckSourceEndpoint = 0U;
+  uint8_t pendingApsAckRetriesRemaining = 0U;
   uint32_t pendingApsAckDeadlineMs = 0U;
   PendingApsFrame pending{};
+  PendingApsFrame inFlight{};
+  RecentInboundAps recentInboundAps{};
   bool announced = false;
   uint8_t endpoint = 0U;
   uint16_t profileId = 0U;
@@ -151,12 +165,28 @@ struct NodeEntry {
   bool haveLevelState = false;
   uint8_t levelState = 0U;
   bool demoGroupConfigured = false;
+  uint8_t endDeviceTimeoutIndex = 0U;
+  uint8_t endDeviceConfiguration = 0U;
+  uint8_t parentInformation = 0U;
+  bool endDeviceTimeoutNegotiated = false;
   ZigbeePreconfiguredKeyMode preconfiguredKeyMode =
       ZigbeePreconfiguredKeyMode::kNone;
   NodeStage stage = NodeStage::kIdle;
 };
 
 static constexpr uint32_t kApsAckTimeoutMs = 900U;
+static constexpr uint32_t kRecentInboundApsWindowMs = 4000U;
+static constexpr uint8_t kApsAckRetryLimit = 2U;
+
+bool sendApsFrameExtendedWithCounter(uint16_t destinationShort,
+                                     uint8_t deliveryMode,
+                                     uint16_t destinationGroup,
+                                     uint8_t destinationEndpoint,
+                                     uint16_t clusterId, uint16_t profileId,
+                                     uint8_t sourceEndpoint,
+                                     const uint8_t* payload,
+                                     uint8_t payloadLength, uint8_t apsCounter,
+                                     bool trackAck);
 
 static NodeEntry g_nodes[kMaxNodes] = {};
 static uint16_t g_nextShortAddress = 0x1000U;
@@ -410,12 +440,24 @@ void clearPendingApsAck(NodeEntry* node) {
   node->pendingApsAckProfileId = 0U;
   node->pendingApsAckDestinationEndpoint = 0U;
   node->pendingApsAckSourceEndpoint = 0U;
+  node->pendingApsAckRetriesRemaining = 0U;
   node->pendingApsAckDeadlineMs = 0U;
+  node->inFlight.used = false;
+  node->inFlight.payloadLength = 0U;
 }
 
-void rememberPendingApsAck(NodeEntry* node, const ZigbeeApsDataFrame& aps) {
+void clearRecentInboundAps(NodeEntry* node) {
+  if (node == nullptr) {
+    return;
+  }
+  memset(&node->recentInboundAps, 0, sizeof(node->recentInboundAps));
+}
+
+void rememberPendingApsAck(NodeEntry* node, const ZigbeeApsDataFrame& aps,
+                           const uint8_t* payload, uint8_t payloadLength) {
   if (node == nullptr || aps.deliveryMode != kZigbeeApsDeliveryUnicast ||
-      !aps.ackRequested) {
+      !aps.ackRequested || payloadLength > sizeof(node->inFlight.payload) ||
+      (payloadLength > 0U && payload == nullptr)) {
     clearPendingApsAck(node);
     return;
   }
@@ -425,7 +467,19 @@ void rememberPendingApsAck(NodeEntry* node, const ZigbeeApsDataFrame& aps) {
   node->pendingApsAckProfileId = aps.profileId;
   node->pendingApsAckDestinationEndpoint = aps.destinationEndpoint;
   node->pendingApsAckSourceEndpoint = aps.sourceEndpoint;
+  node->pendingApsAckRetriesRemaining = kApsAckRetryLimit;
   node->pendingApsAckDeadlineMs = millis() + kApsAckTimeoutMs;
+  node->inFlight.used = true;
+  node->inFlight.deliveryMode = aps.deliveryMode;
+  node->inFlight.destinationGroup = aps.destinationGroup;
+  node->inFlight.clusterId = aps.clusterId;
+  node->inFlight.profileId = aps.profileId;
+  node->inFlight.destinationEndpoint = aps.destinationEndpoint;
+  node->inFlight.sourceEndpoint = aps.sourceEndpoint;
+  node->inFlight.payloadLength = payloadLength;
+  if (payloadLength > 0U) {
+    memcpy(node->inFlight.payload, payload, payloadLength);
+  }
 }
 
 bool matchesPendingApsAck(const NodeEntry& node,
@@ -438,10 +492,113 @@ bool matchesPendingApsAck(const NodeEntry& node,
          ack.sourceEndpoint == node.pendingApsAckDestinationEndpoint;
 }
 
+void rememberRecentInboundAps(NodeEntry* node, const ZigbeeApsDataFrame& aps) {
+  if (node == nullptr) {
+    return;
+  }
+  node->recentInboundAps.valid = true;
+  node->recentInboundAps.counter = aps.counter;
+  node->recentInboundAps.clusterId = aps.clusterId;
+  node->recentInboundAps.profileId = aps.profileId;
+  node->recentInboundAps.destinationEndpoint = aps.destinationEndpoint;
+  node->recentInboundAps.sourceEndpoint = aps.sourceEndpoint;
+  node->recentInboundAps.deliveryMode = aps.deliveryMode;
+  node->recentInboundAps.expiresMs = millis() + kRecentInboundApsWindowMs;
+}
+
+bool isRecentInboundApsDuplicate(NodeEntry* node, const ZigbeeApsDataFrame& aps,
+                                 uint32_t nowMs) {
+  if (node == nullptr || !node->recentInboundAps.valid ||
+      static_cast<int32_t>(nowMs - node->recentInboundAps.expiresMs) >= 0) {
+    clearRecentInboundAps(node);
+    return false;
+  }
+  return node->recentInboundAps.counter == aps.counter &&
+         node->recentInboundAps.clusterId == aps.clusterId &&
+         node->recentInboundAps.profileId == aps.profileId &&
+         node->recentInboundAps.destinationEndpoint == aps.destinationEndpoint &&
+         node->recentInboundAps.sourceEndpoint == aps.sourceEndpoint &&
+         node->recentInboundAps.deliveryMode == aps.deliveryMode;
+}
+
+bool sendNwkCommand(NodeEntry* node, const uint8_t* payload,
+                    uint8_t payloadLength) {
+  if (node == nullptr || node->shortAddress == 0U || payload == nullptr ||
+      payloadLength == 0U) {
+    return false;
+  }
+
+  const uint8_t keySequence =
+      (node->currentNetworkKeySequence != 0U)
+          ? node->currentNetworkKeySequence
+          : g_activeNetworkKeySequence;
+  const uint8_t* networkKey = keyForSequence(keySequence);
+  const bool useSecurity =
+      (node->secureNwkSeen || node->currentNetworkKeySequence != 0U) &&
+      networkKey != nullptr;
+
+  ZigbeeNetworkFrame nwk{};
+  nwk.frameType = ZigbeeNwkFrameType::kCommand;
+  nwk.securityEnabled = useSecurity;
+  nwk.destinationShort = node->shortAddress;
+  nwk.sourceShort = kCoordinatorShort;
+  nwk.radius = 30U;
+  nwk.sequence = g_nwkSequence++;
+
+  uint8_t nwkFrame[127] = {0U};
+  uint8_t nwkLength = 0U;
+  if (useSecurity) {
+    ZigbeeNwkSecurityHeader security{};
+    security.valid = true;
+    security.securityControl = kZigbeeSecurityControlNwkEncMic32;
+    security.frameCounter = g_nwkSecurityFrameCounter++;
+    security.sourceIeee = kCoordinatorIeee;
+    security.keySequence = keySequence;
+    if (!ZigbeeSecurity::buildSecuredNwkFrame(nwk, security, networkKey,
+                                              payload, payloadLength, nwkFrame,
+                                              &nwkLength)) {
+      return false;
+    }
+  } else if (!ZigbeeCodec::buildNwkFrame(nwk, payload, payloadLength, nwkFrame,
+                                         &nwkLength)) {
+    return false;
+  }
+
+  uint8_t psdu[127] = {0U};
+  uint8_t psduLength = 0U;
+  if (!ZigbeeRadio::buildDataFrameShort(g_macSequence++, kPanId,
+                                        node->shortAddress, kCoordinatorShort,
+                                        nwkFrame, nwkLength, psdu,
+                                        &psduLength, false)) {
+    return false;
+  }
+  return sendPsdu(psdu, psduLength);
+}
+
 void maybeExpirePendingApsAck(NodeEntry* node, uint32_t nowMs) {
   if (node == nullptr || !node->pendingApsAck ||
       static_cast<int32_t>(nowMs - node->pendingApsAckDeadlineMs) < 0) {
     return;
+  }
+  if (node->pendingApsAckRetriesRemaining > 0U && node->inFlight.used) {
+    --node->pendingApsAckRetriesRemaining;
+    const bool resent = sendApsFrameExtendedWithCounter(
+        node->shortAddress, node->inFlight.deliveryMode,
+        node->inFlight.destinationGroup, node->inFlight.destinationEndpoint,
+        node->inFlight.clusterId, node->inFlight.profileId,
+        node->inFlight.sourceEndpoint, node->inFlight.payload,
+        node->inFlight.payloadLength, node->pendingApsAckCounter, false);
+    if (resent) {
+      node->pendingApsAckDeadlineMs = millis() + kApsAckTimeoutMs;
+      Serial.print("aps_ack retry short=0x");
+      Serial.print(node->shortAddress, HEX);
+      Serial.print(" ctr=0x");
+      Serial.print(node->pendingApsAckCounter, HEX);
+      Serial.print(" remaining=");
+      Serial.print(node->pendingApsAckRetriesRemaining);
+      Serial.print("\r\n");
+      return;
+    }
   }
   Serial.print("aps_ack miss short=0x");
   Serial.print(node->shortAddress, HEX);
@@ -453,11 +610,15 @@ void maybeExpirePendingApsAck(NodeEntry* node, uint32_t nowMs) {
   clearPendingApsAck(node);
 }
 
-bool sendApsFrameExtended(uint16_t destinationShort, uint8_t deliveryMode,
-                          uint16_t destinationGroup,
-                          uint8_t destinationEndpoint, uint16_t clusterId,
-                          uint16_t profileId, uint8_t sourceEndpoint,
-                          const uint8_t* payload, uint8_t payloadLength) {
+bool sendApsFrameExtendedWithCounter(uint16_t destinationShort,
+                                     uint8_t deliveryMode,
+                                     uint16_t destinationGroup,
+                                     uint8_t destinationEndpoint,
+                                     uint16_t clusterId, uint16_t profileId,
+                                     uint8_t sourceEndpoint,
+                                     const uint8_t* payload,
+                                     uint8_t payloadLength, uint8_t apsCounter,
+                                     bool trackAck) {
   NodeEntry* node = findNodeByShort(destinationShort);
   const uint8_t keySequence =
       (node != nullptr && node->currentNetworkKeySequence != 0U)
@@ -476,7 +637,7 @@ bool sendApsFrameExtended(uint16_t destinationShort, uint8_t deliveryMode,
   aps.clusterId = clusterId;
   aps.profileId = profileId;
   aps.sourceEndpoint = sourceEndpoint;
-  aps.counter = g_apsCounter++;
+  aps.counter = apsCounter;
 
   uint8_t apsFrame[127] = {0U};
   uint8_t apsLength = 0U;
@@ -521,10 +682,22 @@ bool sendApsFrameExtended(uint16_t destinationShort, uint8_t deliveryMode,
     return false;
   }
   const bool sent = sendPsdu(psdu, psduLength);
-  if (sent) {
-    rememberPendingApsAck(node, aps);
+  if (sent && trackAck) {
+    rememberPendingApsAck(node, aps, payload, payloadLength);
   }
   return sent;
+}
+
+bool sendApsFrameExtended(uint16_t destinationShort, uint8_t deliveryMode,
+                          uint16_t destinationGroup,
+                          uint8_t destinationEndpoint, uint16_t clusterId,
+                          uint16_t profileId, uint8_t sourceEndpoint,
+                          const uint8_t* payload, uint8_t payloadLength) {
+  return sendApsFrameExtendedWithCounter(destinationShort, deliveryMode,
+                                         destinationGroup, destinationEndpoint,
+                                         clusterId, profileId, sourceEndpoint,
+                                         payload, payloadLength, g_apsCounter++,
+                                         true);
 }
 
 bool sendApsAcknowledgement(NodeEntry* node, const ZigbeeApsDataFrame& request) {
@@ -584,6 +757,35 @@ bool sendApsAcknowledgement(NodeEntry* node, const ZigbeeApsDataFrame& request) 
     return false;
   }
   return sendPsdu(psdu, psduLength);
+}
+
+bool sendNwkRejoinResponse(NodeEntry* node, uint8_t status) {
+  if (node == nullptr) {
+    return false;
+  }
+
+  uint8_t payload[8] = {0U};
+  uint8_t payloadLength = 0U;
+  if (!ZigbeeCodec::buildNwkRejoinResponseCommand(node->shortAddress, status,
+                                                  payload, &payloadLength)) {
+    return false;
+  }
+  return sendNwkCommand(node, payload, payloadLength);
+}
+
+bool sendEndDeviceTimeoutResponse(NodeEntry* node, uint8_t status,
+                                  uint8_t parentInformation) {
+  if (node == nullptr) {
+    return false;
+  }
+
+  uint8_t payload[8] = {0U};
+  uint8_t payloadLength = 0U;
+  if (!ZigbeeCodec::buildNwkEndDeviceTimeoutResponseCommand(
+          status, parentInformation, payload, &payloadLength)) {
+    return false;
+  }
+  return sendNwkCommand(node, payload, payloadLength);
 }
 
 bool sendTransportKey(NodeEntry* node) {
@@ -1568,6 +1770,13 @@ void listNodes() {
     Serial.print(g_nodes[i].currentNetworkKeySequence);
     Serial.print(" nwk_sec=");
     Serial.print(g_nodes[i].secureNwkSeen ? "yes" : "no");
+    Serial.print(" timeout=");
+    if (g_nodes[i].endDeviceTimeoutNegotiated) {
+      Serial.print("0x");
+      Serial.print(g_nodes[i].endDeviceTimeoutIndex, HEX);
+    } else {
+      Serial.print("no");
+    }
     Serial.print(" pending=");
     Serial.print((g_nodes[i].pending.used ||
                   g_nodes[i].pendingAssociationResponse ||
@@ -1621,6 +1830,7 @@ void handleAssociationRequest(const ZigbeeMacAssociationRequestView& request,
   node->pendingNetworkKeyUpdate = false;
   node->pendingSwitchKey = false;
   clearPendingApsAck(node);
+  clearRecentInboundAps(node);
   if (node->shortAddress == 0U) {
     node->pendingAssignedShort = allocateShortAddress();
     node->secureNwkSeen = false;
@@ -1677,7 +1887,7 @@ void handleDataRequest(const ZigbeeMacFrame& frame) {
   }
 
   if (node->pending.used || node->pendingTransportKey ||
-      node->pendingSecureRejoin) {
+      node->pendingSecureRejoin || node->pendingSwitchKey) {
     const bool sent = sendPendingApsFrame(node);
     Serial.print("poll_deliver ");
     Serial.print(sent ? "OK" : "FAIL");
@@ -1707,6 +1917,47 @@ void handleOrphanNotification(const ZigbeeMacOrphanNotificationView& orphan,
   Serial.print(" rssi=");
   Serial.print(rssiDbm);
   Serial.print("dBm\r\n");
+}
+
+void handleNwkRejoinRequest(NodeEntry* node,
+                            const ZigbeeNwkRejoinRequest& request) {
+  if (node == nullptr || !request.valid) {
+    return;
+  }
+
+  node->pendingSecureRejoin = secureRejoinAllowed(node);
+  node->lastSeenMs = millis();
+  const bool sent = sendNwkRejoinResponse(node, 0x00U);
+  Serial.print("nwk_rejoin short=0x");
+  Serial.print(node->shortAddress, HEX);
+  Serial.print(" cap=0x");
+  Serial.print(request.capabilityInformation, HEX);
+  Serial.print(" rsp=");
+  Serial.print(sent ? "OK" : "FAIL");
+  Serial.print("\r\n");
+}
+
+void handleEndDeviceTimeoutRequest(
+    NodeEntry* node, const ZigbeeNwkEndDeviceTimeoutRequest& request) {
+  if (node == nullptr || !request.valid) {
+    return;
+  }
+
+  node->endDeviceTimeoutIndex = request.requestedTimeout;
+  node->endDeviceConfiguration = request.endDeviceConfiguration;
+  node->parentInformation =
+      kZigbeeNwkParentInfoMacDataPollKeepalive |
+      kZigbeeNwkParentInfoEndDeviceTimeoutSupported;
+  node->endDeviceTimeoutNegotiated = true;
+  const bool sent = sendEndDeviceTimeoutResponse(
+      node, kZigbeeNwkEndDeviceTimeoutSuccess, node->parentInformation);
+  Serial.print("end_device_timeout short=0x");
+  Serial.print(node->shortAddress, HEX);
+  Serial.print(" req=0x");
+  Serial.print(request.requestedTimeout, HEX);
+  Serial.print(" rsp=");
+  Serial.print(sent ? "OK" : "FAIL");
+  Serial.print("\r\n");
 }
 
 void handleZdoFrame(NodeEntry* node, const ZigbeeApsDataFrame& aps) {
@@ -2115,6 +2366,27 @@ void processIncomingFrame(const ZigbeeFrame& frame) {
     node->lastInboundSecurityFrameCounter = security.frameCounter;
   }
 
+  if (nwk.frameType == ZigbeeNwkFrameType::kCommand) {
+    ZigbeeNwkRejoinRequest rejoinRequest{};
+    if (security.valid &&
+        ZigbeeCodec::parseNwkRejoinRequestCommand(nwk.payload, nwk.payloadLength,
+                                                  &rejoinRequest) &&
+        rejoinRequest.valid) {
+      handleNwkRejoinRequest(node, rejoinRequest);
+      return;
+    }
+
+    ZigbeeNwkEndDeviceTimeoutRequest timeoutRequest{};
+    if (security.valid &&
+        ZigbeeCodec::parseNwkEndDeviceTimeoutRequestCommand(
+            nwk.payload, nwk.payloadLength, &timeoutRequest) &&
+        timeoutRequest.valid) {
+      handleEndDeviceTimeoutRequest(node, timeoutRequest);
+      return;
+    }
+    return;
+  }
+
   ZigbeeApsDataFrame aps{};
   ZigbeeApsAcknowledgementFrame ack{};
   if (ZigbeeCodec::parseApsAcknowledgementFrame(nwk.payload, nwk.payloadLength,
@@ -2137,15 +2409,36 @@ void processIncomingFrame(const ZigbeeFrame& frame) {
     return;
   }
 
+  const uint32_t nowMs = millis();
+  const bool duplicateAps = isRecentInboundApsDuplicate(node, aps, nowMs);
+
   if (aps.deliveryMode == kZigbeeApsDeliveryUnicast && aps.ackRequested) {
     (void)sendApsAcknowledgement(node, aps);
   }
 
   if (aps.profileId == kZigbeeProfileZdo) {
+    if (duplicateAps) {
+      Serial.print("aps_dup short=0x");
+      Serial.print(node->shortAddress, HEX);
+      Serial.print(" cluster=0x");
+      Serial.print(aps.clusterId, HEX);
+      Serial.print("\r\n");
+      return;
+    }
+    rememberRecentInboundAps(node, aps);
     handleZdoFrame(node, aps);
     return;
   }
   if (aps.profileId == kZigbeeProfileHomeAutomation) {
+    if (duplicateAps) {
+      Serial.print("aps_dup short=0x");
+      Serial.print(node->shortAddress, HEX);
+      Serial.print(" cluster=0x");
+      Serial.print(aps.clusterId, HEX);
+      Serial.print("\r\n");
+      return;
+    }
+    rememberRecentInboundAps(node, aps);
     handleHaFrame(node, aps);
   }
 }

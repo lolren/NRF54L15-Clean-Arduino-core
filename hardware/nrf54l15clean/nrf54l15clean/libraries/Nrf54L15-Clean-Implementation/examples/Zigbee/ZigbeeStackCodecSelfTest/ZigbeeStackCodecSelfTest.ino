@@ -76,6 +76,75 @@ static bool testNwkCodec() {
   return parsedOk;
 }
 
+static bool testNwkCommandAndTimeoutFlow() {
+  uint8_t encoded[16] = {0U};
+  uint8_t encodedLength = 0U;
+  bool ok = ZigbeeCodec::buildNwkRejoinRequestCommand(0x8EU, encoded,
+                                                      &encodedLength) &&
+            encodedLength == 2U;
+
+  ZigbeeNwkRejoinRequest rejoinRequest{};
+  ok = ok &&
+       ZigbeeCodec::parseNwkRejoinRequestCommand(encoded, encodedLength,
+                                                 &rejoinRequest) &&
+       rejoinRequest.valid &&
+       rejoinRequest.capabilityInformation == 0x8EU;
+
+  ok = ok &&
+       ZigbeeCodec::buildNwkRejoinResponseCommand(0x3344U, 0x00U, encoded,
+                                                  &encodedLength) &&
+       encodedLength == 4U;
+  ZigbeeNwkRejoinResponse rejoinResponse{};
+  ok = ok &&
+       ZigbeeCodec::parseNwkRejoinResponseCommand(encoded, encodedLength,
+                                                  &rejoinResponse) &&
+       rejoinResponse.valid && rejoinResponse.networkAddress == 0x3344U &&
+       rejoinResponse.status == 0x00U;
+
+  ok = ok && ZigbeeCodec::buildNwkEndDeviceTimeoutRequestCommand(
+                   0x05U, 0x02U, encoded, &encodedLength) &&
+       encodedLength == 3U;
+  ZigbeeNwkEndDeviceTimeoutRequest timeoutRequest{};
+  ok = ok && ZigbeeCodec::parseNwkEndDeviceTimeoutRequestCommand(
+                   encoded, encodedLength, &timeoutRequest) &&
+       timeoutRequest.valid && timeoutRequest.requestedTimeout == 0x05U &&
+       timeoutRequest.endDeviceConfiguration == 0x02U;
+
+  ok = ok && ZigbeeCodec::buildNwkEndDeviceTimeoutResponseCommand(
+                   kZigbeeNwkEndDeviceTimeoutSuccess,
+                   kZigbeeNwkParentInfoMacDataPollKeepalive |
+                       kZigbeeNwkParentInfoEndDeviceTimeoutSupported,
+                   encoded, &encodedLength) &&
+       encodedLength == 3U;
+  ZigbeeCommissioningPolicy policy{};
+  ZigbeeEndDeviceCommonState state{};
+  ZigbeeCommissioning::initializeEndDeviceState(&state, policy, 15U, 0x1234U,
+                                                0x3344U, 0x0000U);
+  state.joined = true;
+  state.securityEnabled = true;
+  state.haveActiveNetworkKey = true;
+  ZigbeeCommissioning::markEndDeviceTimeoutPending(&state);
+
+  ZigbeeNwkEndDeviceTimeoutResponse timeoutResponse{};
+  ok = ok && ZigbeeCommissioning::acceptEndDeviceTimeoutResponse(
+                   state, encoded, encodedLength, &timeoutResponse) &&
+       timeoutResponse.valid &&
+       timeoutResponse.status == kZigbeeNwkEndDeviceTimeoutSuccess;
+
+  ZigbeeCommissioning::applyEndDeviceTimeoutResponse(&state, timeoutResponse);
+  ok = ok && !state.endDeviceTimeoutPending &&
+       state.endDeviceTimeoutNegotiated &&
+       state.parentInformation ==
+           (kZigbeeNwkParentInfoMacDataPollKeepalive |
+            kZigbeeNwkParentInfoEndDeviceTimeoutSupported) &&
+       state.parentPollIntervalMs >= state.policy.initialPollIntervalMs &&
+       ZigbeeCommissioning::timeoutIndexToMs(0x05U) == 1920000UL;
+
+  reportResult("NWK Command+Timeout", ok,
+               "rejoin+end_device_timeout+commissioning");
+  return ok;
+}
+
 static bool testMacCommandCodec() {
   uint8_t encoded[127] = {0U};
   uint8_t encodedLength = 0U;
@@ -1608,6 +1677,7 @@ void setup() {
   Serial.print("\r\nZigbeeStackCodecSelfTest\r\n");
 
   testNwkCodec();
+  testNwkCommandAndTimeoutFlow();
   testMacCommandCodec();
   testApsCodec();
   testApsCommandCodec();
