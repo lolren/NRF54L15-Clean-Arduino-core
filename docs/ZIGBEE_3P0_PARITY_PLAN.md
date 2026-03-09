@@ -80,7 +80,7 @@ Verification:
 
 Objective: remove in-tree coordinator assumptions from the device examples and define the adapter boundary for real external-coordinator work.
 
-Status: partially landed. The joinable HA examples already learn or pin trust-center identity by policy macro instead of hard-coding the in-tree coordinator, serial logs now surface key-state transitions plus commissioning failure state, configurable scan masks now exist for external-coordinator bring-up, and the expected coordinator-facing packet flow is documented in `docs/ZIGBEE_EXTERNAL_COORDINATOR_FLOW.md`. Real external-coordinator validation is still missing.
+Status: partially landed. The joinable HA examples already learn or pin trust-center identity by policy macro instead of hard-coding the in-tree coordinator, serial logs now surface key-state transitions plus commissioning failure state, configurable scan masks now exist for external-coordinator bring-up, the expected coordinator-facing packet flow is documented in `docs/ZIGBEE_EXTERNAL_COORDINATOR_FLOW.md`, and `scripts/zigbee_joinable_compile_matrix.sh` now verifies the three joinable HA examples under both default and stricter external-coordinator policy macros. Real external-coordinator validation is still missing.
 
 Deliverables:
 
@@ -93,6 +93,7 @@ Deliverables:
 Verification:
 
 - Confirm the joinable HA examples compile with stricter policy settings such as install-code-only mode.
+  Use `scripts/zigbee_joinable_compile_matrix.sh`.
 - Confirm docs and feature matrix name the exact missing behavior for ZHA and Zigbee2MQTT interop.
 - Capture at least one packet-level expected-flow document for future external-coordinator bring-up.
 

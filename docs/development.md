@@ -57,6 +57,7 @@ Current gap:
 - [`docs/BUG_TRACKER.md`](BUG_TRACKER.md)
 - `scripts/ble_cli_matrix.sh`
 - `scripts/ble_pair_bond_regression.sh`
+- `scripts/zigbee_joinable_compile_matrix.sh`
 
 ## Local Development Workflow
 
@@ -86,4 +87,10 @@ Example pair/bond regression run:
 
 ```bash
 bash scripts/ble_pair_bond_regression.sh --port /dev/ttyACM0 --sudo --attempts 10 --mode pair-bond
+```
+
+Example Zigbee joinable compile matrix run:
+
+```bash
+bash scripts/zigbee_joinable_compile_matrix.sh
 ```
