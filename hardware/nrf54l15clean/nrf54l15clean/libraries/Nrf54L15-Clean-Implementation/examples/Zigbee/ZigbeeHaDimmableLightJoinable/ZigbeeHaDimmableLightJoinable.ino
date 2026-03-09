@@ -877,6 +877,7 @@ bool handleApsCommand(const uint8_t* frame, uint8_t length, uint16_t sourceShort
       persistState();
       (void)sendDeviceAnnounce();
       (void)sendEndDeviceTimeoutRequest();
+      ZigbeeCommissioning::completeRejoinVerification(&g_network);
     }
     Serial.print("update_device short=0x");
     Serial.print(updateDevice.updateDevice.deviceShort, HEX);

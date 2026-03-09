@@ -777,6 +777,10 @@ static bool testCommissioningStateMachine() {
                      ZigbeeCommissioningAction::kNone;
   ok = ok && ZigbeeCommissioning::nextAction(&schedulerState, 180U) ==
                      ZigbeeCommissioningAction::kJoin;
+  ZigbeeCommissioning::clearEndDeviceState(&schedulerState, true);
+  ok = ok && schedulerState.state == ZigbeeCommissioningState::kLeaveReset &&
+       ZigbeeCommissioning::nextAction(&schedulerState, 1000U) ==
+           ZigbeeCommissioningAction::kNone;
   schedulerState.state = ZigbeeCommissioningState::kWaitingTransportKey;
   schedulerState.joinAttempts = 1U;
   schedulerState.lastJoinAttemptMs = 1000U;
@@ -1034,9 +1038,11 @@ static bool testCommissioningStateMachine() {
   ZigbeeCommissioning::applyUpdateDevice(&state, acceptedUpdate);
   ok = ok && state.joined && !state.rejoinPending &&
        state.localShort == 0x3344U &&
-       state.state == ZigbeeCommissioningState::kJoined &&
+       state.state == ZigbeeCommissioningState::kRejoinVerify &&
        ZigbeeCommissioning::shouldPollParent(state) &&
        state.incomingApsFrameCounter == apsSecurity.frameCounter;
+  ZigbeeCommissioning::completeRejoinVerification(&state);
+  ok = ok && state.state == ZigbeeCommissioningState::kJoined;
 
   ZigbeePersistentState persisted{};
   ZigbeeCommissioning::populatePersistentState(
@@ -1052,7 +1058,7 @@ static bool testCommissioningStateMachine() {
        !restored.haveAlternateNetworkKey;
 
   reportResult("CommissioningState", ok,
-               "transport_key_source+state+tc_rejects+key_update+switch_key+rejoin+update_device");
+               "transport_key_source+state+tc_rejects+key_update+switch_key+leave_reset+rejoin_verify+update_device");
   return ok;
 }
 

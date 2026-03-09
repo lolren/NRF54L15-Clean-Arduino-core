@@ -52,8 +52,10 @@ enum class ZigbeeCommissioningState : uint8_t {
   kWaitingTransportKey = 4U,
   kRejoinPending = 5U,
   kWaitingUpdateDevice = 6U,
-  kJoined = 7U,
-  kFailed = 8U,
+  kRejoinVerify = 7U,
+  kJoined = 8U,
+  kLeaveReset = 9U,
+  kFailed = 10U,
 };
 
 enum class ZigbeeCommissioningFailure : uint8_t {
@@ -228,6 +230,8 @@ class ZigbeeCommissioning {
       ZigbeeUpdateDeviceAcceptance* outResult);
   static void applyUpdateDevice(ZigbeeEndDeviceCommonState* state,
                                 const ZigbeeUpdateDeviceAcceptance& result);
+  static void completeRejoinVerification(
+      ZigbeeEndDeviceCommonState* state);
   static bool acceptSwitchKeyCommand(
       const ZigbeeEndDeviceCommonState& state, uint16_t sourceShort,
       uint64_t securedSourceIeee, bool nwkSecured, bool allowPlaintext,

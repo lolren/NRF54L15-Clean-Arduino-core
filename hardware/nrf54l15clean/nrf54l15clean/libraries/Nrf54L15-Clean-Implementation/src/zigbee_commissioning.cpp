@@ -236,13 +236,15 @@ bool validTransportKeyLifecycle(const ZigbeeEndDeviceCommonState& state) {
   }
 
   return state.securityEnabled && state.joined && !state.rejoinPending &&
-         state.state == ZigbeeCommissioningState::kJoined;
+         (state.state == ZigbeeCommissioningState::kJoined ||
+          state.state == ZigbeeCommissioningState::kRejoinVerify);
 }
 
 bool expectsTransportKeyCommand(const ZigbeeEndDeviceCommonState& state) {
   return state.state == ZigbeeCommissioningState::kWaitingTransportKey ||
          (state.securityEnabled && state.joined && !state.rejoinPending &&
-          state.state == ZigbeeCommissioningState::kJoined);
+          (state.state == ZigbeeCommissioningState::kJoined ||
+           state.state == ZigbeeCommissioningState::kRejoinVerify));
 }
 
 bool expectsUpdateDeviceCommand(const ZigbeeEndDeviceCommonState& state) {
@@ -252,7 +254,8 @@ bool expectsUpdateDeviceCommand(const ZigbeeEndDeviceCommonState& state) {
 
 bool validSwitchKeyLifecycle(const ZigbeeEndDeviceCommonState& state) {
   return state.securityEnabled && state.joined && !state.rejoinPending &&
-         state.state == ZigbeeCommissioningState::kJoined;
+         (state.state == ZigbeeCommissioningState::kJoined ||
+          state.state == ZigbeeCommissioningState::kRejoinVerify);
 }
 
 bool expectsSwitchKeyCommand(const ZigbeeEndDeviceCommonState& state) {
@@ -894,6 +897,7 @@ void ZigbeeCommissioning::clearEndDeviceState(
   state->preconfiguredKeyMode = keyMode;
   state->joinAttempts = joinAttempts;
   state->rejoinAttempts = rejoinAttempts;
+  state->state = ZigbeeCommissioningState::kLeaveReset;
 }
 
 void ZigbeeCommissioning::populatePersistentState(
@@ -1555,9 +1559,24 @@ void ZigbeeCommissioning::applyUpdateDevice(
     state->rejoinPending = false;
     state->securityEnabled = state->haveActiveNetworkKey;
     markEndDeviceTimeoutPending(state);
-    state->state = ZigbeeCommissioningState::kJoined;
+    state->state = ZigbeeCommissioningState::kRejoinVerify;
     state->lastFailure = ZigbeeCommissioningFailure::kNone;
   }
+}
+
+void ZigbeeCommissioning::completeRejoinVerification(
+    ZigbeeEndDeviceCommonState* state) {
+  if (state == nullptr) {
+    return;
+  }
+
+  if (state->state != ZigbeeCommissioningState::kRejoinVerify ||
+      !state->joined || state->rejoinPending || !state->securityEnabled ||
+      !state->haveActiveNetworkKey) {
+    return;
+  }
+
+  state->state = ZigbeeCommissioningState::kJoined;
 }
 
 bool ZigbeeCommissioning::acceptSwitchKeyCommand(
@@ -1661,8 +1680,12 @@ const char* ZigbeeCommissioning::stateName(ZigbeeCommissioningState state) {
       return "rejoin_pending";
     case ZigbeeCommissioningState::kWaitingUpdateDevice:
       return "waiting_update_device";
+    case ZigbeeCommissioningState::kRejoinVerify:
+      return "rejoin_verify";
     case ZigbeeCommissioningState::kJoined:
       return "joined";
+    case ZigbeeCommissioningState::kLeaveReset:
+      return "leave_reset";
     case ZigbeeCommissioningState::kFailed:
       return "failed";
     case ZigbeeCommissioningState::kIdle:
