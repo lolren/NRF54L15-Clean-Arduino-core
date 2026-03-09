@@ -1103,9 +1103,21 @@ static bool testCommissioningStateMachine() {
   ok = ok && state.joined && !state.rejoinPending &&
        state.localShort == 0x3344U &&
        state.state == ZigbeeCommissioningState::kRejoinVerify &&
+       state.deviceAnnouncePending && state.endDeviceTimeoutPending &&
        ZigbeeCommissioning::shouldPollParent(state) &&
        state.incomingApsFrameCounter == apsSecurity.frameCounter;
-  ZigbeeCommissioning::completeRejoinVerification(&state);
+  ZigbeeCommissioning::completeDeviceAnnounce(&state);
+  ok = ok && ZigbeeCommissioning::nextAction(&state, 2800U) ==
+                     ZigbeeCommissioningAction::kRequestEndDeviceTimeout &&
+       state.state == ZigbeeCommissioningState::kRejoinVerify;
+  ZigbeeNwkEndDeviceTimeoutResponse successTimeout{};
+  successTimeout.valid = true;
+  successTimeout.status = kZigbeeNwkEndDeviceTimeoutSuccess;
+  successTimeout.parentInformation = 0x01U;
+  ZigbeeCommissioning::applyEndDeviceTimeoutResponse(&state, successTimeout);
+  ok = ok && state.state == ZigbeeCommissioningState::kRejoinVerify &&
+       !state.endDeviceTimeoutPending;
+  (void)ZigbeeCommissioning::nextAction(&state, 2801U);
   ok = ok && state.state == ZigbeeCommissioningState::kJoined;
 
   ZigbeePersistentState persisted{};
@@ -1123,7 +1135,7 @@ static bool testCommissioningStateMachine() {
        restored.deviceAnnouncePending && restored.endDeviceTimeoutPending;
 
   reportResult("CommissioningState", ok,
-               "transport_key_source+state+tc_rejects+key_update+switch_key+leave_disposition+leave_reset+rejoin_verify+device_announce_scheduler+end_device_timeout_scheduler+update_device");
+               "transport_key_source+state+tc_rejects+key_update+switch_key+leave_disposition+leave_reset+rejoin_verify_scheduler+device_announce_scheduler+end_device_timeout_scheduler+update_device");
   return ok;
 }
 

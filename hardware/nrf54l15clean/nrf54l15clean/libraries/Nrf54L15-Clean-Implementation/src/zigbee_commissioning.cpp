@@ -1125,6 +1125,8 @@ ZigbeeCommissioningAction ZigbeeCommissioning::nextAction(
     return ZigbeeCommissioningAction::kNone;
   }
 
+  completeRejoinVerification(state);
+
   if (state->deviceAnnouncePending &&
       (state->lastDeviceAnnounceMs == 0U ||
        (nowMs - state->lastDeviceAnnounceMs) >=
@@ -1663,7 +1665,8 @@ void ZigbeeCommissioning::completeRejoinVerification(
 
   if (state->state != ZigbeeCommissioningState::kRejoinVerify ||
       !state->joined || state->rejoinPending || !state->securityEnabled ||
-      !state->haveActiveNetworkKey) {
+      !state->haveActiveNetworkKey || state->deviceAnnouncePending ||
+      state->endDeviceTimeoutPending) {
     return;
   }
 
