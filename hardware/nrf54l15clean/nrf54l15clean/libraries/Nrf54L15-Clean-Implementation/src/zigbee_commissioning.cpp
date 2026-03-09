@@ -137,6 +137,13 @@ uint32_t negotiatedPollIntervalMs(const ZigbeeEndDeviceCommonState& state,
   return pollMs;
 }
 
+uint32_t deviceAnnounceRetryDelayMs(
+    const ZigbeeEndDeviceCommonState& state) {
+  return (state.policy.deviceAnnounceRetryDelayMs != 0UL)
+             ? state.policy.deviceAnnounceRetryDelayMs
+             : 1000UL;
+}
+
 uint32_t endDeviceTimeoutRetryDelayMs(
     const ZigbeeEndDeviceCommonState& state) {
   return (state.policy.endDeviceTimeoutRetryDelayMs != 0UL)
@@ -871,6 +878,8 @@ void ZigbeeCommissioning::restoreEndDeviceState(
       persistent.nwkAddress != 0xFFFFU) {
     state->localShort = persistent.nwkAddress;
     state->joined = true;
+    state->deviceAnnouncePending =
+        state->securityEnabled && state->haveActiveNetworkKey;
     state->endDeviceTimeoutPending = true;
     state->state = ZigbeeCommissioningState::kJoined;
   } else {
@@ -1006,6 +1015,33 @@ bool ZigbeeCommissioning::shouldRequestEndDeviceTimeout(
          state.endDeviceTimeoutPending;
 }
 
+void ZigbeeCommissioning::markDeviceAnnouncePending(
+    ZigbeeEndDeviceCommonState* state) {
+  if (state == nullptr) {
+    return;
+  }
+  state->deviceAnnouncePending =
+      state->joined && state->securityEnabled && state->haveActiveNetworkKey;
+  state->lastDeviceAnnounceMs = 0U;
+}
+
+void ZigbeeCommissioning::recordDeviceAnnounceAttempt(
+    ZigbeeEndDeviceCommonState* state, uint32_t nowMs) {
+  if (state == nullptr || !state->deviceAnnouncePending) {
+    return;
+  }
+  state->lastDeviceAnnounceMs = nowMs;
+}
+
+void ZigbeeCommissioning::completeDeviceAnnounce(
+    ZigbeeEndDeviceCommonState* state) {
+  if (state == nullptr) {
+    return;
+  }
+  state->deviceAnnouncePending = false;
+  state->lastDeviceAnnounceMs = 0U;
+}
+
 void ZigbeeCommissioning::markEndDeviceTimeoutPending(
     ZigbeeEndDeviceCommonState* state) {
   if (state == nullptr) {
@@ -1070,6 +1106,13 @@ ZigbeeCommissioningAction ZigbeeCommissioning::nextAction(
     ZigbeeEndDeviceCommonState* state, uint32_t nowMs) {
   if (state == nullptr) {
     return ZigbeeCommissioningAction::kNone;
+  }
+
+  if (state->deviceAnnouncePending &&
+      (state->lastDeviceAnnounceMs == 0U ||
+       (nowMs - state->lastDeviceAnnounceMs) >=
+           deviceAnnounceRetryDelayMs(*state))) {
+    return ZigbeeCommissioningAction::kSendDeviceAnnounce;
   }
 
   if (shouldRequestEndDeviceTimeout(*state) &&
@@ -1516,6 +1559,7 @@ void ZigbeeCommissioning::applyTransportKeyInstall(
     state->incomingNwkFrameCounter = 0U;
     state->joined = true;
     state->rejoinPending = false;
+    markDeviceAnnouncePending(state);
     markEndDeviceTimeoutPending(state);
     state->state = ZigbeeCommissioningState::kJoined;
   }
@@ -1587,6 +1631,7 @@ void ZigbeeCommissioning::applyUpdateDevice(
     state->joined = true;
     state->rejoinPending = false;
     state->securityEnabled = state->haveActiveNetworkKey;
+    markDeviceAnnouncePending(state);
     markEndDeviceTimeoutPending(state);
     state->state = ZigbeeCommissioningState::kRejoinVerify;
     state->lastFailure = ZigbeeCommissioningFailure::kNone;

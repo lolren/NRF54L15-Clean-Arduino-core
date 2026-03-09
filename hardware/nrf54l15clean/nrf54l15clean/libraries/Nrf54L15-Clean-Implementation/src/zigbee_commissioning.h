@@ -22,6 +22,7 @@ struct ZigbeeCommissioningPolicy {
   uint32_t secureRejoinRetryDelayMs = 2000UL;
   uint32_t transportKeyTimeoutMs = 4000UL;
   uint32_t updateDeviceTimeoutMs = 4000UL;
+  uint32_t deviceAnnounceRetryDelayMs = 1000UL;
   uint32_t endDeviceTimeoutRetryDelayMs = 1500UL;
   uint32_t initialPollIntervalMs = 250UL;
   uint16_t preferredPanId = 0U;
@@ -79,7 +80,8 @@ enum class ZigbeeCommissioningAction : uint8_t {
   kPollParent = 1U,
   kJoin = 2U,
   kSecureRejoin = 3U,
-  kRequestEndDeviceTimeout = 4U,
+  kSendDeviceAnnounce = 4U,
+  kRequestEndDeviceTimeout = 5U,
 };
 
 struct ZigbeeBeaconCandidate {
@@ -115,12 +117,14 @@ struct ZigbeeEndDeviceCommonState {
   uint8_t endDeviceConfiguration = 0U;
   uint8_t parentInformation = 0U;
   uint32_t parentPollIntervalMs = 250UL;
+  uint32_t lastDeviceAnnounceMs = 0U;
   uint32_t lastEndDeviceTimeoutRequestMs = 0U;
   bool joined = false;
   bool rejoinPending = false;
   bool securityEnabled = false;
   bool haveActiveNetworkKey = false;
   bool haveAlternateNetworkKey = false;
+  bool deviceAnnouncePending = false;
   bool endDeviceTimeoutPending = false;
   bool endDeviceTimeoutNegotiated = false;
   ZigbeePreconfiguredKeyMode preconfiguredKeyMode =
@@ -194,6 +198,12 @@ class ZigbeeCommissioning {
   static bool shouldPollParent(const ZigbeeEndDeviceCommonState& state);
   static bool shouldRequestEndDeviceTimeout(
       const ZigbeeEndDeviceCommonState& state);
+  static void markDeviceAnnouncePending(
+      ZigbeeEndDeviceCommonState* state);
+  static void recordDeviceAnnounceAttempt(
+      ZigbeeEndDeviceCommonState* state, uint32_t nowMs);
+  static void completeDeviceAnnounce(
+      ZigbeeEndDeviceCommonState* state);
   static void markEndDeviceTimeoutPending(ZigbeeEndDeviceCommonState* state);
   static void recordEndDeviceTimeoutRequest(
       ZigbeeEndDeviceCommonState* state, uint32_t nowMs);

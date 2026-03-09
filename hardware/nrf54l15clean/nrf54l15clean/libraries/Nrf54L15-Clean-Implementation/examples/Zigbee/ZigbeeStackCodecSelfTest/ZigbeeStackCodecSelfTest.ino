@@ -761,6 +761,7 @@ static bool testCommissioningStateMachine() {
   policy.secureRejoinRetryDelayMs = 150U;
   policy.transportKeyTimeoutMs = 250U;
   policy.updateDeviceTimeoutMs = 300U;
+  policy.deviceAnnounceRetryDelayMs = 150U;
   policy.endDeviceTimeoutRetryDelayMs = 200U;
   policy.maxJoinAttempts = 2U;
   policy.maxRejoinAttempts = 2U;
@@ -821,14 +822,24 @@ static bool testCommissioningStateMachine() {
   schedulerState.joined = true;
   schedulerState.securityEnabled = true;
   schedulerState.haveActiveNetworkKey = true;
+  schedulerState.deviceAnnouncePending = true;
+  schedulerState.lastDeviceAnnounceMs = 0U;
   schedulerState.endDeviceTimeoutPending = true;
   schedulerState.lastEndDeviceTimeoutRequestMs = 0U;
   ok = ok && ZigbeeCommissioning::nextAction(&schedulerState, 2400U) ==
-                     ZigbeeCommissioningAction::kRequestEndDeviceTimeout;
-  ZigbeeCommissioning::recordEndDeviceTimeoutRequest(&schedulerState, 2400U);
+                     ZigbeeCommissioningAction::kSendDeviceAnnounce;
+  ZigbeeCommissioning::recordDeviceAnnounceAttempt(&schedulerState, 2400U);
   ok = ok && ZigbeeCommissioning::nextAction(&schedulerState, 2500U) ==
                      ZigbeeCommissioningAction::kNone;
-  ok = ok && ZigbeeCommissioning::nextAction(&schedulerState, 2605U) ==
+  ok = ok && ZigbeeCommissioning::nextAction(&schedulerState, 2555U) ==
+                     ZigbeeCommissioningAction::kSendDeviceAnnounce;
+  ZigbeeCommissioning::completeDeviceAnnounce(&schedulerState);
+  ok = ok && ZigbeeCommissioning::nextAction(&schedulerState, 2560U) ==
+                     ZigbeeCommissioningAction::kRequestEndDeviceTimeout;
+  ZigbeeCommissioning::recordEndDeviceTimeoutRequest(&schedulerState, 2560U);
+  ok = ok && ZigbeeCommissioning::nextAction(&schedulerState, 2660U) ==
+                     ZigbeeCommissioningAction::kNone;
+  ok = ok && ZigbeeCommissioning::nextAction(&schedulerState, 2765U) ==
                      ZigbeeCommissioningAction::kRequestEndDeviceTimeout;
 
   ZigbeeApsTransportKey transportKey{};
@@ -1068,10 +1079,11 @@ static bool testCommissioningStateMachine() {
        restored.trustCenterIeee == state.trustCenterIeee &&
        restored.preconfiguredKeyMode == state.preconfiguredKeyMode &&
        restored.activeNetworkKeySequence == state.activeNetworkKeySequence &&
-       !restored.haveAlternateNetworkKey;
+       !restored.haveAlternateNetworkKey &&
+       restored.deviceAnnouncePending && restored.endDeviceTimeoutPending;
 
   reportResult("CommissioningState", ok,
-               "transport_key_source+state+tc_rejects+key_update+switch_key+leave_reset+rejoin_verify+end_device_timeout_scheduler+update_device");
+               "transport_key_source+state+tc_rejects+key_update+switch_key+leave_reset+rejoin_verify+device_announce_scheduler+end_device_timeout_scheduler+update_device");
   return ok;
 }
 

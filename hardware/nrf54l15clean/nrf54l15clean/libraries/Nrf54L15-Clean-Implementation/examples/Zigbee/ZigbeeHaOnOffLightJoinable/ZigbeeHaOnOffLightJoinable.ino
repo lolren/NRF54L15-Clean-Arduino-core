@@ -702,13 +702,19 @@ bool sendEndDeviceTimeoutRequest() {
 }
 
 bool sendDeviceAnnounce() {
+  ZigbeeCommissioning::recordDeviceAnnounceAttempt(&g_network, millis());
   uint8_t payload[127] = {0U};
   uint8_t payloadLength = 0U;
   if (!g_device.buildDeviceAnnounce(g_zdoSequence++, payload, &payloadLength)) {
     return false;
   }
-  return sendApsFrame(g_parentShort, 0U, kZigbeeZdoDeviceAnnounce,
-                      kZigbeeProfileZdo, 0U, payload, payloadLength);
+  const bool sent = sendApsFrame(g_parentShort, 0U, kZigbeeZdoDeviceAnnounce,
+                                 kZigbeeProfileZdo, 0U, payload,
+                                 payloadLength);
+  if (sent) {
+    ZigbeeCommissioning::completeDeviceAnnounce(&g_network);
+  }
+  return sent;
 }
 
 bool sendAttributeReport(uint16_t clusterId) {
@@ -825,9 +831,6 @@ bool handleApsCommand(const uint8_t* frame, uint8_t length, uint16_t sourceShort
       Serial.print(transportInstall.apsSecurity.frameCounter);
     }
     Serial.print("\r\n");
-    if (transportInstall.activatesNetworkKey) {
-      (void)sendDeviceAnnounce();
-    }
     return true;
   }
 
@@ -846,7 +849,6 @@ bool handleApsCommand(const uint8_t* frame, uint8_t length, uint16_t sourceShort
       configureDeviceForCurrentNetwork();
       applyLedState();
       persistState();
-      (void)sendDeviceAnnounce();
       ZigbeeCommissioning::completeRejoinVerification(&g_network);
     }
     Serial.print("update_device short=0x");
@@ -1257,9 +1259,6 @@ void setup() {
 
   if (g_joined) {
     g_radio.setChannel(g_channel);
-    if (g_securityEnabled && g_haveActiveNetworkKey) {
-      (void)sendDeviceAnnounce();
-    }
   }
 }
 
@@ -1317,6 +1316,11 @@ void loop() {
   if (action == ZigbeeCommissioningAction::kRequestEndDeviceTimeout) {
     const bool ok = sendEndDeviceTimeoutRequest();
     Serial.print("end_device_timeout_req ");
+    Serial.print(ok ? "OK" : "FAIL");
+    Serial.print("\r\n");
+  } else if (action == ZigbeeCommissioningAction::kSendDeviceAnnounce) {
+    const bool ok = sendDeviceAnnounce();
+    Serial.print("device_announce ");
     Serial.print(ok ? "OK" : "FAIL");
     Serial.print("\r\n");
   }
