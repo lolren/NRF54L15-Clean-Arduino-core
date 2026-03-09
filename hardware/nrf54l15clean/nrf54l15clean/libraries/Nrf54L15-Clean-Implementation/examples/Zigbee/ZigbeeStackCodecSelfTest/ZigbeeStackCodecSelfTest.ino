@@ -1562,6 +1562,74 @@ static bool testOnOffLightResponses() {
        discovered[3].attributeId == 0xFFFDU &&
        discovered[3].dataType == ZigbeeZclDataType::kUint16;
 
+  uint8_t discoverCommandsReq[127] = {0};
+  uint8_t discoverCommandsReqLength = 0U;
+  uint8_t discoveredCommands[4] = {0U};
+  uint8_t discoveredCommandCount = 0U;
+
+  responseLength = 0U;
+  discoveryComplete = false;
+  ok = ok &&
+       ZigbeeCodec::buildDiscoverCommandsReceivedRequest(
+           0x00U, 3U, 0x35U, discoverCommandsReq, &discoverCommandsReqLength) &&
+       device.handleZclRequest(kZigbeeClusterOnOff, discoverCommandsReq,
+                               discoverCommandsReqLength, response,
+                               &responseLength) &&
+       ZigbeeCodec::parseZclFrame(response, responseLength, &parsed) &&
+       parsed.valid && parsed.commandId == 0x12U &&
+       parsed.transactionSequence == 0x35U &&
+       ZigbeeCodec::parseDiscoverCommandsResponse(
+           parsed.payload, parsed.payloadLength, &discoveryComplete,
+           discoveredCommands,
+           static_cast<uint8_t>(sizeof(discoveredCommands)),
+           &discoveredCommandCount) &&
+       discoveryComplete && discoveredCommandCount == 3U &&
+       discoveredCommands[0] == 0x00U && discoveredCommands[1] == 0x01U &&
+       discoveredCommands[2] == 0x02U;
+
+  responseLength = 0U;
+  discoveredCommandCount = 0U;
+  discoveryComplete = false;
+  memset(discoveredCommands, 0, sizeof(discoveredCommands));
+  ok = ok &&
+       ZigbeeCodec::buildDiscoverCommandsGeneratedRequest(
+           0x00U, 3U, 0x36U, discoverCommandsReq, &discoverCommandsReqLength) &&
+       device.handleZclRequest(kZigbeeClusterGroups, discoverCommandsReq,
+                               discoverCommandsReqLength, response,
+                               &responseLength) &&
+       ZigbeeCodec::parseZclFrame(response, responseLength, &parsed) &&
+       parsed.valid && parsed.commandId == 0x14U &&
+       parsed.transactionSequence == 0x36U &&
+       ZigbeeCodec::parseDiscoverCommandsResponse(
+           parsed.payload, parsed.payloadLength, &discoveryComplete,
+           discoveredCommands,
+           static_cast<uint8_t>(sizeof(discoveredCommands)),
+           &discoveredCommandCount) &&
+       !discoveryComplete && discoveredCommandCount == 3U &&
+       discoveredCommands[0] == 0x00U && discoveredCommands[1] == 0x01U &&
+       discoveredCommands[2] == 0x02U;
+
+  responseLength = 0U;
+  discoveredCommandCount = 0U;
+  discoveryComplete = false;
+  memset(discoveredCommands, 0, sizeof(discoveredCommands));
+  ok = ok &&
+       ZigbeeCodec::buildDiscoverCommandsGeneratedRequest(
+           0x03U, 3U, 0x37U, discoverCommandsReq, &discoverCommandsReqLength) &&
+       device.handleZclRequest(kZigbeeClusterGroups, discoverCommandsReq,
+                               discoverCommandsReqLength, response,
+                               &responseLength) &&
+       ZigbeeCodec::parseZclFrame(response, responseLength, &parsed) &&
+       parsed.valid && parsed.commandId == 0x14U &&
+       parsed.transactionSequence == 0x37U &&
+       ZigbeeCodec::parseDiscoverCommandsResponse(
+           parsed.payload, parsed.payloadLength, &discoveryComplete,
+           discoveredCommands,
+           static_cast<uint8_t>(sizeof(discoveredCommands)),
+           &discoveredCommandCount) &&
+       discoveryComplete && discoveredCommandCount == 1U &&
+       discoveredCommands[0] == 0x03U;
+
   responseLength = 0U;
   ok = ok && device.handleZclRequest(kZigbeeClusterBasic, readBasicReq,
                                      sizeof(readBasicReq), response,
@@ -1584,13 +1652,13 @@ static bool testOnOffLightResponses() {
                             kClusterRevisionTag,
                             sizeof(kClusterRevisionTag));
 
-  const uint8_t onReq[] = {0x01U, 0x35U, 0x01U};
+  const uint8_t onReq[] = {0x01U, 0x38U, 0x01U};
   responseLength = 0U;
   ok = ok && device.handleZclRequest(kZigbeeClusterOnOff, onReq, sizeof(onReq),
                                      response, &responseLength) &&
        device.onOff();
 
-  const uint8_t readOnOffReq[] = {0x00U, 0x36U, 0x00U, 0x00U};
+  const uint8_t readOnOffReq[] = {0x00U, 0x39U, 0x00U, 0x00U};
   responseLength = 0U;
   ok = ok && device.handleZclRequest(kZigbeeClusterOnOff, readOnOffReq,
                                      sizeof(readOnOffReq), response,
@@ -1601,7 +1669,7 @@ static bool testOnOffLightResponses() {
   ok = ok && containsByteSequence(parsed.payload, parsed.payloadLength,
                                   kOnValue, sizeof(kOnValue));
 
-  reportResult("HA Light", ok, "discover+basic_read+onoff");
+  reportResult("HA Light", ok, "discover+discover_cmds+basic_read+onoff");
   return ok;
 }
 
@@ -1967,7 +2035,74 @@ static bool testZclClientCodec() {
        parsedDiscovered[1].dataType == ZigbeeZclDataType::kBitmap32 &&
        parsedDiscovered[2].attributeId == 0xFFFDU &&
        parsedDiscovered[2].dataType == ZigbeeZclDataType::kUint16;
+  
+  ok = ok && ZigbeeCodec::buildDiscoverCommandsReceivedRequest(
+                   0x00U, 3U, 0x74U, encoded, &encodedLength) &&
+       ZigbeeCodec::parseZclFrame(encoded, encodedLength, &request) &&
+       request.valid && request.commandId == 0x11U &&
+       request.transactionSequence == 0x74U &&
+       request.payloadLength == 2U;
 
+  uint8_t startCommandId = 0U;
+  uint8_t maxCommandIds = 0U;
+  ok = ok && ZigbeeCodec::parseDiscoverCommandsRequest(
+                   request.payload, request.payloadLength, &startCommandId,
+                   &maxCommandIds) &&
+       startCommandId == 0x00U && maxCommandIds == 3U;
+
+  ok = ok && ZigbeeCodec::buildDiscoverCommandsGeneratedRequest(
+                   0x01U, 2U, 0x75U, encoded, &encodedLength) &&
+       ZigbeeCodec::parseZclFrame(encoded, encodedLength, &request) &&
+       request.valid && request.commandId == 0x13U &&
+       request.transactionSequence == 0x75U &&
+       request.payloadLength == 2U &&
+       ZigbeeCodec::parseDiscoverCommandsRequest(
+           request.payload, request.payloadLength, &startCommandId,
+           &maxCommandIds) &&
+       startCommandId == 0x01U && maxCommandIds == 2U;
+
+  const uint8_t receivedCommandIds[] = {0x00U, 0x01U, 0x02U};
+  ok = ok && ZigbeeCodec::buildDiscoverCommandsReceivedResponse(
+                   receivedCommandIds,
+                   static_cast<uint8_t>(sizeof(receivedCommandIds) /
+                                        sizeof(receivedCommandIds[0])),
+                   true, 0x76U, encoded, &encodedLength) &&
+       ZigbeeCodec::parseZclFrame(encoded, encodedLength, &response) &&
+       response.valid && response.commandId == 0x12U &&
+       response.transactionSequence == 0x76U;
+
+  uint8_t parsedCommandIds[4] = {0U};
+  uint8_t parsedCommandCount = 0U;
+  discoveryComplete = false;
+  ok = ok && ZigbeeCodec::parseDiscoverCommandsResponse(
+                   response.payload, response.payloadLength, &discoveryComplete,
+                   parsedCommandIds,
+                   static_cast<uint8_t>(sizeof(parsedCommandIds)),
+                   &parsedCommandCount) &&
+       discoveryComplete && parsedCommandCount == 3U &&
+       parsedCommandIds[0] == 0x00U && parsedCommandIds[1] == 0x01U &&
+       parsedCommandIds[2] == 0x02U;
+
+  const uint8_t generatedCommandIds[] = {0x01U, 0x02U};
+  ok = ok && ZigbeeCodec::buildDiscoverCommandsGeneratedResponse(
+                   generatedCommandIds,
+                   static_cast<uint8_t>(sizeof(generatedCommandIds) /
+                                        sizeof(generatedCommandIds[0])),
+                   false, 0x77U, encoded, &encodedLength) &&
+       ZigbeeCodec::parseZclFrame(encoded, encodedLength, &response) &&
+       response.valid && response.commandId == 0x14U &&
+       response.transactionSequence == 0x77U;
+
+  memset(parsedCommandIds, 0, sizeof(parsedCommandIds));
+  parsedCommandCount = 0U;
+  discoveryComplete = true;
+  ok = ok && ZigbeeCodec::parseDiscoverCommandsResponse(
+                   response.payload, response.payloadLength, &discoveryComplete,
+                   parsedCommandIds,
+                   static_cast<uint8_t>(sizeof(parsedCommandIds)),
+                   &parsedCommandCount) &&
+       !discoveryComplete && parsedCommandCount == 2U &&
+       parsedCommandIds[0] == 0x01U && parsedCommandIds[1] == 0x02U;
 
   ZigbeeReportingConfiguration reporting{};
   reporting.used = true;
@@ -1989,10 +2124,10 @@ static bool testZclClientCodec() {
   readReportingRequest[1].direction = 1U;
   readReportingRequest[1].attributeId = 0x0001U;
   ok = ok && ZigbeeCodec::buildReadReportingConfigurationRequest(
-                   readReportingRequest, 2U, 0x74U, encoded, &encodedLength) &&
+                   readReportingRequest, 2U, 0x78U, encoded, &encodedLength) &&
        ZigbeeCodec::parseZclFrame(encoded, encodedLength, &request) &&
        request.valid && request.commandId == 0x08U &&
-       request.transactionSequence == 0x74U &&
+       request.transactionSequence == 0x78U &&
        request.payloadLength == 6U;
 
   ZigbeeReadReportingConfigurationRecord parsedReadReportingRequest[2];
@@ -2018,10 +2153,10 @@ static bool testZclClientCodec() {
   readReportingResponse[1].direction = 1U;
   readReportingResponse[1].attributeId = 0x0001U;
   ok = ok && ZigbeeCodec::buildReadReportingConfigurationResponse(
-                   readReportingResponse, 2U, 0x75U, encoded, &encodedLength) &&
+                   readReportingResponse, 2U, 0x79U, encoded, &encodedLength) &&
        ZigbeeCodec::parseZclFrame(encoded, encodedLength, &response) &&
        response.valid && response.commandId == 0x09U &&
-       response.transactionSequence == 0x75U;
+       response.transactionSequence == 0x79U;
 
   ZigbeeReadReportingConfigurationResponseRecord parsedReadReportingResponse[2];
   uint8_t parsedReadReportingResponseCount = 0U;
@@ -2045,11 +2180,11 @@ static bool testZclClientCodec() {
   reportRecord.attributeId = 0x0000U;
   reportRecord.value.type = ZigbeeZclDataType::kBoolean;
   reportRecord.value.data.boolValue = true;
-  ok = ok && ZigbeeCodec::buildAttributeReport(&reportRecord, 1U, 0x76U,
+  ok = ok && ZigbeeCodec::buildAttributeReport(&reportRecord, 1U, 0x7AU,
                                                encoded, &encodedLength) &&
        ZigbeeCodec::parseZclFrame(encoded, encodedLength, &response) &&
        response.valid && response.commandId == 0x0AU &&
-       response.transactionSequence == 0x76U;
+       response.transactionSequence == 0x7AU;
 
   ZigbeeAttributeReportRecord parsedReports[2];
   uint8_t parsedReportCount = 0U;
@@ -2060,7 +2195,9 @@ static bool testZclClientCodec() {
        parsedReports[0].value.type == ZigbeeZclDataType::kBoolean &&
        parsedReports[0].value.data.boolValue;
 
-  reportResult("ZCL Client Codec", ok, "read+discover+cfg+read_cfg+report");
+  reportResult("ZCL Client Codec",
+               ok,
+               "read+discover+discover_cmds+cfg+read_cfg+report");
   return ok;
 }
 
