@@ -69,6 +69,7 @@
 
 #define ANALOG_PWM_CHANNELS               4U
 #define ANALOG_PWM_DEFAULT_HZ             1000UL
+#define ANALOG_PWM_BASE                   ((uintptr_t)NRF_PWM20)
 
 static inline volatile uint32_t* regptr(uintptr_t base, uintptr_t off)
 {
@@ -113,7 +114,7 @@ static uint8_t g_pwm_initialized = 0U;
 static uint8_t g_pwm_running = 0U;
 static uint8_t g_pwm_channel_used[ANALOG_PWM_CHANNELS] = {0U, 0U, 0U, 0U};
 static uint16_t g_pwm_channel_pulse[ANALOG_PWM_CHANNELS] = {0U, 0U, 0U, 0U};
-static uint16_t g_pwm_sequence[ANALOG_PWM_CHANNELS] = {0U, 0U, 0U, 0U};
+static uint16_t g_pwm_sequence[ANALOG_PWM_CHANNELS] __attribute__((aligned(4))) = {0U, 0U, 0U, 0U};
 static uint16_t g_pwm_countertop = 16000U;
 static uint8_t g_pwm_prescaler = 0U;
 
@@ -309,7 +310,7 @@ static uint8_t pwm_init_once(void)
         return 0U;
     }
 
-    const uintptr_t base = (uintptr_t)NRF_PWM21;
+    const uintptr_t base = ANALOG_PWM_BASE;
 
     *regptr(base, PWM_ENABLE) = PWM_ENABLE_DISABLED;
     *regptr(base, PWM_SHORTS) = 0U;
@@ -319,10 +320,9 @@ static uint8_t pwm_init_once(void)
     *regptr(base, PWM_DECODER) =
         (PWM_DECODER_LOAD_INDIVIDUAL << 0U) |
         (PWM_DECODER_MODE_REFRESHCOUNT << 8U);
-    // Keep the single 4-channel sample looping continuously. With LOOP=0 the
-    // peripheral stops after one PWM frame, so analogWrite() looks like a
-    // static on/off drive instead of sustained PWM.
-    *regptr(base, PWM_LOOP) = 1U;
+    // Mirror the HAL PWM helper's playback model: duplicate the same buffer
+    // into both sequences and use LOOPSDONE->SEQSTART for continuous output.
+    *regptr(base, PWM_LOOP) = 0U;
     *regptr(base, PWM_IDLEOUT) = 0U;
     *regptr(base, PWM_SEQ0_REFRESH) = 0U;
     *regptr(base, PWM_SEQ0_ENDDELAY) = 0U;
@@ -349,7 +349,7 @@ static void pwm_start_if_needed(void)
         return;
     }
 
-    const uintptr_t base = (uintptr_t)NRF_PWM21;
+    const uintptr_t base = ANALOG_PWM_BASE;
 
     pwm_apply_outputs(base);
 
@@ -374,7 +374,7 @@ static void pwm_stop_all(void)
         return;
     }
 
-    const uintptr_t base = (uintptr_t)NRF_PWM21;
+    const uintptr_t base = ANALOG_PWM_BASE;
 
     if (g_pwm_running != 0U) {
         *regptr(base, PWM_EVENTS_STOPPED) = 0U;
@@ -410,7 +410,7 @@ void analogWriteDisable(uint8_t pin)
     g_pwm_sequence[channel] = 0U;
 
     if (g_pwm_initialized != 0U) {
-        const uintptr_t base = (uintptr_t)NRF_PWM21;
+        const uintptr_t base = ANALOG_PWM_BASE;
         *regptr(base, PWM_PSEL_OUT0 + ((uintptr_t)channel * PWM_PSEL_OUT_STRIDE)) = PWM_PSEL_DISCONNECTED;
     }
 
@@ -651,7 +651,7 @@ void analogWrite(uint8_t pin, int value)
 
     if (pwm_any_dynamic_channel() != 0U) {
         if (pwm_init_once()) {
-            pwm_apply_outputs((uintptr_t)NRF_PWM21);
+            pwm_apply_outputs(ANALOG_PWM_BASE);
         }
         pwm_start_if_needed();
         return;
