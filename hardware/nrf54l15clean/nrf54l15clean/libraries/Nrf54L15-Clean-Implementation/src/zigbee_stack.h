@@ -349,6 +349,11 @@ struct ZigbeeReadAttributeRecord {
   ZigbeeAttributeValue value{};
 };
 
+struct ZigbeeDiscoveredAttributeRecord {
+  uint16_t attributeId = 0U;
+  ZigbeeZclDataType dataType = ZigbeeZclDataType::kUint8;
+};
+
 struct ZigbeeAttributeReportRecord {
   uint16_t attributeId = 0U;
   ZigbeeAttributeValue value{};
@@ -679,6 +684,19 @@ class ZigbeeCodec {
       const uint8_t* payload, uint8_t length,
       ZigbeeReadAttributeRecord* outRecords, uint8_t maxRecords,
       uint8_t* outCount);
+  static bool parseDiscoverAttributesRequest(const uint8_t* payload,
+                                             uint8_t length,
+                                             uint16_t* outStartAttributeId,
+                                             uint8_t* outMaxAttributeIds);
+  static bool buildDiscoverAttributesRequest(uint16_t startAttributeId,
+                                             uint8_t maxAttributeIds,
+                                             uint8_t transactionSequence,
+                                             uint8_t* outFrame,
+                                             uint8_t* outLength);
+  static bool parseDiscoverAttributesResponse(
+      const uint8_t* payload, uint8_t length, bool* outDiscoveryComplete,
+      ZigbeeDiscoveredAttributeRecord* outRecords, uint8_t maxRecords,
+      uint8_t* outCount);
   static bool parseConfigureReportingRequest(
       const uint8_t* payload, uint8_t length,
       ZigbeeReportingConfiguration* outConfigurations,
@@ -693,6 +711,10 @@ class ZigbeeCodec {
   static bool buildReadAttributesResponse(
       const ZigbeeReadAttributeRecord* records, uint8_t recordCount,
       uint8_t transactionSequence, uint8_t* outFrame, uint8_t* outLength);
+  static bool buildDiscoverAttributesResponse(
+      const ZigbeeDiscoveredAttributeRecord* records, uint8_t recordCount,
+      bool discoveryComplete, uint8_t transactionSequence, uint8_t* outFrame,
+      uint8_t* outLength);
   static bool buildConfigureReportingResponse(
       const ZigbeeConfigureReportingStatusRecord* records, uint8_t recordCount,
       uint8_t transactionSequence, uint8_t* outFrame, uint8_t* outLength);
@@ -886,6 +908,10 @@ class ZigbeeHomeAutomationDevice {
                                     uint8_t outputClusterCount,
                                     uint8_t* outPayload,
                                     uint8_t* outLength) const;
+  bool collectDiscoverAttributesForCluster(
+      uint16_t clusterId, uint16_t startAttributeId, uint8_t maxAttributeIds,
+      ZigbeeDiscoveredAttributeRecord* outRecords, uint8_t maxRecords,
+      uint8_t* outCount, bool* outDiscoveryComplete) const;
   bool appendReadRecordForCluster(uint16_t clusterId, uint16_t attributeId,
                                   ZigbeeReadAttributeRecord* outRecord) const;
   bool makeAttributeValueForCluster(uint16_t clusterId, uint16_t attributeId,

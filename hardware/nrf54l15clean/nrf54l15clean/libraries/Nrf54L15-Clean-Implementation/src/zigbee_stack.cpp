@@ -16,6 +16,8 @@ constexpr uint8_t kZclCommandConfigureReporting = 0x06U;
 constexpr uint8_t kZclCommandConfigureReportingResponse = 0x07U;
 constexpr uint8_t kZclCommandReportAttributes = 0x0AU;
 constexpr uint8_t kZclCommandDefaultResponse = 0x0BU;
+constexpr uint8_t kZclCommandDiscoverAttributes = 0x0CU;
+constexpr uint8_t kZclCommandDiscoverAttributesResponse = 0x0DU;
 
 constexpr uint8_t kZclStatusSuccess = 0x00U;
 constexpr uint8_t kZclStatusUnsupportedClusterCommand = 0x81U;
@@ -64,6 +66,21 @@ constexpr uint8_t kLevelControlCommandMoveToLevelWithOnOff = 0x04U;
 constexpr uint8_t kLevelControlCommandMoveWithOnOff = 0x05U;
 constexpr uint8_t kLevelControlCommandStepWithOnOff = 0x06U;
 constexpr uint8_t kLevelControlCommandStopWithOnOff = 0x07U;
+
+constexpr uint16_t kBasicDiscoverAttributeIds[] = {0x0000U, 0x0001U, 0x0002U,
+                                                   0x0003U, 0x0004U, 0x0005U,
+                                                   0x0007U, 0x4000U};
+constexpr uint16_t kPowerConfigurationDiscoverAttributeIds[] = {0x0020U,
+                                                                0x0021U};
+constexpr uint16_t kIdentifyDiscoverAttributeIds[] = {0x0000U};
+constexpr uint16_t kGroupsDiscoverAttributeIds[] = {0x0000U};
+constexpr uint16_t kScenesDiscoverAttributeIds[] = {0x0000U, 0x0001U, 0x0002U,
+                                                    0x0003U, 0x0004U};
+constexpr uint16_t kTemperatureDiscoverAttributeIds[] = {0x0000U, 0x0001U,
+                                                         0x0002U, 0x0003U};
+constexpr uint16_t kOnOffDiscoverAttributeIds[] = {0x0000U};
+constexpr uint16_t kLevelControlDiscoverAttributeIds[] = {0x0000U, 0x0002U,
+                                                          0x0003U};
 
 struct ParsedSceneExtensionData {
   bool hasOnOff = false;
@@ -899,6 +916,43 @@ bool buildReadResponseForRecords(const ZigbeeReadAttributeRecord* records,
                                     outLength);
 }
 
+bool buildDiscoverAttributesResponseForRecords(
+    const ZigbeeDiscoveredAttributeRecord* records, uint8_t recordCount,
+    bool discoveryComplete, uint8_t transactionSequence, uint8_t* outFrame,
+    uint8_t* outLength) {
+  if (outFrame == nullptr || outLength == nullptr) {
+    return false;
+  }
+  if (recordCount > 0U && records == nullptr) {
+    return false;
+  }
+
+  uint8_t payload[127] = {0};
+  uint8_t payloadLength = 0U;
+  const uint8_t complete = discoveryComplete ? 1U : 0U;
+  if (!appendBytes(payload, sizeof(payload), &payloadLength, &complete, 1U)) {
+    return false;
+  }
+
+  for (uint8_t i = 0U; i < recordCount; ++i) {
+    const uint8_t dataType = static_cast<uint8_t>(records[i].dataType);
+    if (!appendLe16(payload, sizeof(payload), &payloadLength,
+                    records[i].attributeId) ||
+        !appendBytes(payload, sizeof(payload), &payloadLength, &dataType, 1U)) {
+      return false;
+    }
+  }
+
+  ZigbeeZclFrame response{};
+  response.frameType = ZigbeeZclFrameType::kGlobal;
+  response.directionToClient = true;
+  response.disableDefaultResponse = true;
+  response.transactionSequence = transactionSequence;
+  response.commandId = kZclCommandDiscoverAttributesResponse;
+  return ZigbeeCodec::buildZclFrame(response, payload, payloadLength, outFrame,
+                                    outLength);
+}
+
 bool buildConfigureReportingResponseForRecords(
     const ZigbeeConfigureReportingStatusRecord* records, uint8_t recordCount,
     uint8_t transactionSequence, uint8_t* outFrame, uint8_t* outLength) {
@@ -996,6 +1050,64 @@ bool appendClusterIds(const uint16_t* clusters, uint8_t clusterCount,
 
 uint8_t descriptorCount(const ZigbeeHomeAutomationConfig& config) {
   return config.endpointCount > 4U ? 4U : config.endpointCount;
+}
+
+bool attributeCatalogForCluster(uint16_t clusterId,
+                                const uint16_t** outAttributeIds,
+                                uint8_t* outCount) {
+  if (outAttributeIds == nullptr || outCount == nullptr) {
+    return false;
+  }
+
+  *outAttributeIds = nullptr;
+  *outCount = 0U;
+  switch (clusterId) {
+    case kZigbeeClusterBasic:
+      *outAttributeIds = kBasicDiscoverAttributeIds;
+      *outCount = static_cast<uint8_t>(sizeof(kBasicDiscoverAttributeIds) /
+                                       sizeof(kBasicDiscoverAttributeIds[0]));
+      return true;
+    case kZigbeeClusterPowerConfiguration:
+      *outAttributeIds = kPowerConfigurationDiscoverAttributeIds;
+      *outCount = static_cast<uint8_t>(
+          sizeof(kPowerConfigurationDiscoverAttributeIds) /
+          sizeof(kPowerConfigurationDiscoverAttributeIds[0]));
+      return true;
+    case kZigbeeClusterIdentify:
+      *outAttributeIds = kIdentifyDiscoverAttributeIds;
+      *outCount = static_cast<uint8_t>(sizeof(kIdentifyDiscoverAttributeIds) /
+                                       sizeof(kIdentifyDiscoverAttributeIds[0]));
+      return true;
+    case kZigbeeClusterGroups:
+      *outAttributeIds = kGroupsDiscoverAttributeIds;
+      *outCount = static_cast<uint8_t>(sizeof(kGroupsDiscoverAttributeIds) /
+                                       sizeof(kGroupsDiscoverAttributeIds[0]));
+      return true;
+    case kZigbeeClusterScenes:
+      *outAttributeIds = kScenesDiscoverAttributeIds;
+      *outCount = static_cast<uint8_t>(sizeof(kScenesDiscoverAttributeIds) /
+                                       sizeof(kScenesDiscoverAttributeIds[0]));
+      return true;
+    case kZigbeeClusterTemperatureMeasurement:
+      *outAttributeIds = kTemperatureDiscoverAttributeIds;
+      *outCount =
+          static_cast<uint8_t>(sizeof(kTemperatureDiscoverAttributeIds) /
+                               sizeof(kTemperatureDiscoverAttributeIds[0]));
+      return true;
+    case kZigbeeClusterOnOff:
+      *outAttributeIds = kOnOffDiscoverAttributeIds;
+      *outCount = static_cast<uint8_t>(sizeof(kOnOffDiscoverAttributeIds) /
+                                       sizeof(kOnOffDiscoverAttributeIds[0]));
+      return true;
+    case kZigbeeClusterLevelControl:
+      *outAttributeIds = kLevelControlDiscoverAttributeIds;
+      *outCount = static_cast<uint8_t>(
+          sizeof(kLevelControlDiscoverAttributeIds) /
+          sizeof(kLevelControlDiscoverAttributeIds[0]));
+      return true;
+    default:
+      return false;
+  }
 }
 
 uint8_t buildMacCapabilityFlags(const ZigbeeHomeAutomationConfig& config) {
@@ -2300,6 +2412,83 @@ bool ZigbeeCodec::parseReadAttributesResponse(
   return true;
 }
 
+bool ZigbeeCodec::parseDiscoverAttributesRequest(const uint8_t* payload,
+                                                 uint8_t length,
+                                                 uint16_t* outStartAttributeId,
+                                                 uint8_t* outMaxAttributeIds) {
+  if (outStartAttributeId != nullptr) {
+    *outStartAttributeId = 0U;
+  }
+  if (outMaxAttributeIds != nullptr) {
+    *outMaxAttributeIds = 0U;
+  }
+  if (payload == nullptr || outStartAttributeId == nullptr ||
+      outMaxAttributeIds == nullptr || length != 3U) {
+    return false;
+  }
+
+  *outStartAttributeId = readLe16(payload);
+  *outMaxAttributeIds = payload[2];
+  return true;
+}
+
+bool ZigbeeCodec::buildDiscoverAttributesRequest(uint16_t startAttributeId,
+                                                 uint8_t maxAttributeIds,
+                                                 uint8_t transactionSequence,
+                                                 uint8_t* outFrame,
+                                                 uint8_t* outLength) {
+  if (outFrame == nullptr || outLength == nullptr || maxAttributeIds == 0U) {
+    return false;
+  }
+
+  uint8_t payload[3] = {0U, 0U, maxAttributeIds};
+  writeLe16(payload, startAttributeId);
+
+  ZigbeeZclFrame request{};
+  request.frameType = ZigbeeZclFrameType::kGlobal;
+  request.disableDefaultResponse = true;
+  request.transactionSequence = transactionSequence;
+  request.commandId = kZclCommandDiscoverAttributes;
+  return ZigbeeCodec::buildZclFrame(request, payload, sizeof(payload), outFrame,
+                                    outLength);
+}
+
+bool ZigbeeCodec::parseDiscoverAttributesResponse(
+    const uint8_t* payload, uint8_t length, bool* outDiscoveryComplete,
+    ZigbeeDiscoveredAttributeRecord* outRecords, uint8_t maxRecords,
+    uint8_t* outCount) {
+  if (outDiscoveryComplete != nullptr) {
+    *outDiscoveryComplete = false;
+  }
+  if (outCount != nullptr) {
+    *outCount = 0U;
+  }
+  if (payload == nullptr || outDiscoveryComplete == nullptr ||
+      outRecords == nullptr || outCount == nullptr || length < 1U) {
+    return false;
+  }
+
+  const uint8_t recordBytes = static_cast<uint8_t>(length - 1U);
+  if ((recordBytes % 3U) != 0U) {
+    return false;
+  }
+
+  const uint8_t count = static_cast<uint8_t>(recordBytes / 3U);
+  if (count > maxRecords) {
+    return false;
+  }
+
+  *outDiscoveryComplete = payload[0] != 0U;
+  uint8_t offset = 1U;
+  for (uint8_t i = 0U; i < count; ++i) {
+    outRecords[i].attributeId = readLe16(&payload[offset]);
+    offset = static_cast<uint8_t>(offset + 2U);
+    outRecords[i].dataType = static_cast<ZigbeeZclDataType>(payload[offset++]);
+  }
+  *outCount = count;
+  return true;
+}
+
 bool ZigbeeCodec::parseConfigureReportingRequest(
     const uint8_t* payload, uint8_t length,
     ZigbeeReportingConfiguration* outConfigurations,
@@ -2441,6 +2630,15 @@ bool ZigbeeCodec::buildReadAttributesResponse(
     uint8_t transactionSequence, uint8_t* outFrame, uint8_t* outLength) {
   return buildReadResponseForRecords(records, recordCount, transactionSequence,
                                      outFrame, outLength);
+}
+
+bool ZigbeeCodec::buildDiscoverAttributesResponse(
+    const ZigbeeDiscoveredAttributeRecord* records, uint8_t recordCount,
+    bool discoveryComplete, uint8_t transactionSequence, uint8_t* outFrame,
+    uint8_t* outLength) {
+  return buildDiscoverAttributesResponseForRecords(
+      records, recordCount, discoveryComplete, transactionSequence, outFrame,
+      outLength);
 }
 
 bool ZigbeeCodec::buildConfigureReportingResponse(
@@ -3149,6 +3347,56 @@ bool ZigbeeHomeAutomationDevice::endpointMatches(
       return false;
     }
   }
+  return true;
+}
+
+bool ZigbeeHomeAutomationDevice::collectDiscoverAttributesForCluster(
+    uint16_t clusterId, uint16_t startAttributeId, uint8_t maxAttributeIds,
+    ZigbeeDiscoveredAttributeRecord* outRecords, uint8_t maxRecords,
+    uint8_t* outCount, bool* outDiscoveryComplete) const {
+  if (outCount != nullptr) {
+    *outCount = 0U;
+  }
+  if (outDiscoveryComplete != nullptr) {
+    *outDiscoveryComplete = true;
+  }
+  if (outRecords == nullptr || outCount == nullptr ||
+      outDiscoveryComplete == nullptr || maxAttributeIds == 0U ||
+      maxRecords == 0U) {
+    return false;
+  }
+
+  const uint16_t* attributeIds = nullptr;
+  uint8_t attributeCount = 0U;
+  if (!attributeCatalogForCluster(clusterId, &attributeIds, &attributeCount) ||
+      attributeIds == nullptr || attributeCount == 0U) {
+    return true;
+  }
+
+  const uint8_t limit = (maxAttributeIds < maxRecords) ? maxAttributeIds
+                                                       : maxRecords;
+  uint8_t count = 0U;
+  for (uint8_t i = 0U; i < attributeCount; ++i) {
+    if (attributeIds[i] < startAttributeId) {
+      continue;
+    }
+
+    ZigbeeAttributeValue value{};
+    if (!makeAttributeValueForCluster(clusterId, attributeIds[i], &value)) {
+      continue;
+    }
+
+    if (count >= limit) {
+      *outDiscoveryComplete = false;
+      break;
+    }
+
+    outRecords[count].attributeId = attributeIds[i];
+    outRecords[count].dataType = value.type;
+    ++count;
+  }
+
+  *outCount = count;
   return true;
 }
 
@@ -4219,6 +4467,35 @@ bool ZigbeeHomeAutomationDevice::handleZclRequest(
   }
 
   if (frame.frameType == ZigbeeZclFrameType::kGlobal) {
+    if (frame.commandId == kZclCommandDiscoverAttributes) {
+      uint16_t startAttributeId = 0U;
+      uint8_t maxAttributeIds = 0U;
+      if (!ZigbeeCodec::parseDiscoverAttributesRequest(
+              frame.payload, frame.payloadLength, &startAttributeId,
+              &maxAttributeIds) ||
+          maxAttributeIds == 0U) {
+        return ZigbeeCodec::buildDefaultResponse(
+            frame.transactionSequence, true, frame.commandId,
+            kZclStatusInvalidField, outFrame, outLength);
+      }
+
+      ZigbeeDiscoveredAttributeRecord records[16];
+      uint8_t recordCount = 0U;
+      bool discoveryComplete = true;
+      if (!collectDiscoverAttributesForCluster(clusterId, startAttributeId,
+                                               maxAttributeIds, records,
+                                               static_cast<uint8_t>(
+                                                   sizeof(records) /
+                                                   sizeof(records[0])),
+                                               &recordCount,
+                                               &discoveryComplete)) {
+        return false;
+      }
+      return ZigbeeCodec::buildDiscoverAttributesResponse(
+          records, recordCount, discoveryComplete, frame.transactionSequence,
+          outFrame, outLength);
+    }
+
     if (frame.commandId == kZclCommandReadAttributes) {
       uint16_t attributeIds[16] = {0};
       uint8_t attributeCount = 0U;

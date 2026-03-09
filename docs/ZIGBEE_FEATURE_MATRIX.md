@@ -41,6 +41,7 @@ This matrix separates the existing raw 802.15.4 capability from the Zigbee stack
 | Persistent network state (PAN/channel/addresses/keys/counters) | Partial | `zigbee_persistence.h/.cpp` now persists joined-state metadata, active and alternate demo network keys, outgoing NWK counters, incoming NWK secure-frame counters, inbound APS anti-replay counters, trust-center IEEE identity, preconfigured-key mode, reporting configuration, binding tables, and HA device state such as on/off and brightness level. |
 | ZCL frame codec | Foundation | Added reusable ZCL frame encode/decode logic. |
 | ZCL read-attributes request/response | Foundation | Client request build plus response build/parse now exist. |
+| ZCL discover-attributes request/response | Foundation | Client request build plus shared server response build/parse now exist for the HA attribute sets currently modeled in-tree. |
 | ZCL default responses | Foundation | Implemented for supported and unsupported commands. |
 | ZCL configure-reporting request/response | Foundation | Client request build plus server response parsing/building now exist. |
 | ZCL attribute-report parsing | Foundation | Clean parser now decodes report payloads for controller-side handling. |
