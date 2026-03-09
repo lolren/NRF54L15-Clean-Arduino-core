@@ -1000,17 +1000,28 @@ void ZigbeeCommissioning::restoreEndDeviceState(
   }
   state->securityEnabled =
       (persistent.flags & kPersistentFlagSecurityEnabled) != 0U;
-  if ((persistent.flags & kPersistentFlagJoined) != 0U &&
-      persistent.nwkAddress != 0U &&
-      persistent.nwkAddress != 0xFFFFU) {
+  const bool haveRetainedAddress =
+      persistent.nwkAddress != 0U && persistent.nwkAddress != 0xFFFFU;
+  if (haveRetainedAddress) {
     state->localShort = persistent.nwkAddress;
-    state->joined = true;
-    state->deviceAnnouncePending =
-        state->securityEnabled && state->haveActiveNetworkKey;
-    state->endDeviceTimeoutPending = true;
-    state->state = ZigbeeCommissioningState::kJoined;
   } else {
     state->localShort = defaultShort;
+  }
+
+  state->joined = false;
+  state->rejoinPending = false;
+  state->deviceAnnouncePending = false;
+  state->endDeviceTimeoutPending = false;
+  state->endDeviceTimeoutNegotiated = false;
+  state->lastDeviceAnnounceMs = 0U;
+  state->lastEndDeviceTimeoutRequestMs = 0U;
+  state->parentPollIntervalMs = defaultPollIntervalMs(*state);
+
+  if (haveRetainedAddress && state->securityEnabled &&
+      state->haveActiveNetworkKey && shouldAttemptSecureRejoin(*state)) {
+    state->rejoinPending = true;
+    state->state = ZigbeeCommissioningState::kRejoinPending;
+  } else {
     state->state = ZigbeeCommissioningState::kRestored;
   }
 }

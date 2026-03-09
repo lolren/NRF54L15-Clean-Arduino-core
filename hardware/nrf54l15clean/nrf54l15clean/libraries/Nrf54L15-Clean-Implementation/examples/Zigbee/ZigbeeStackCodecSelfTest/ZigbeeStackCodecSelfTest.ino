@@ -1169,15 +1169,34 @@ static bool testCommissioningStateMachine() {
   ZigbeeCommissioning::initializeEndDeviceState(&restored, policy, 15U,
                                                 0x1234U, 0x7E01U, 0x0000U);
   ZigbeeCommissioning::restoreEndDeviceState(&restored, persisted, kLocalIeee);
-  ok = ok && restored.joined && restored.localShort == state.localShort &&
+  ok = ok && !restored.joined && restored.rejoinPending &&
+       restored.localShort == state.localShort &&
        restored.trustCenterIeee == state.trustCenterIeee &&
        restored.preconfiguredKeyMode == state.preconfiguredKeyMode &&
        restored.activeNetworkKeySequence == state.activeNetworkKeySequence &&
        !restored.haveAlternateNetworkKey &&
-       restored.deviceAnnouncePending && restored.endDeviceTimeoutPending;
+       restored.state == ZigbeeCommissioningState::kRejoinPending &&
+       !restored.deviceAnnouncePending && !restored.endDeviceTimeoutPending;
+
+  ZigbeeEndDeviceCommonState rejoinPersistState = state;
+  ZigbeeCommissioning::requestSecureRejoin(&rejoinPersistState);
+  ZigbeePersistentState rejoinPersisted{};
+  ZigbeeCommissioning::populatePersistentState(
+      rejoinPersistState, kLocalIeee, ZigbeeLogicalType::kEndDevice, 0x0000U,
+      &rejoinPersisted);
+  ZigbeeEndDeviceCommonState restoredRejoin{};
+  ZigbeeCommissioning::initializeEndDeviceState(&restoredRejoin, policy, 15U,
+                                                0x1234U, 0x7E01U, 0x0000U);
+  ZigbeeCommissioning::restoreEndDeviceState(&restoredRejoin, rejoinPersisted,
+                                             kLocalIeee);
+  ok = ok && !restoredRejoin.joined && restoredRejoin.rejoinPending &&
+       restoredRejoin.localShort == rejoinPersistState.localShort &&
+       restoredRejoin.state == ZigbeeCommissioningState::kRejoinPending &&
+       !restoredRejoin.deviceAnnouncePending &&
+       !restoredRejoin.endDeviceTimeoutPending;
 
   reportResult("CommissioningState", ok,
-               "transport_key_source+state+tc_rejects+key_update+switch_key+leave_disposition+leave_reset+rejoin_verify_scheduler+device_announce_scheduler+end_device_timeout_scheduler+update_device");
+               "transport_key_source+state+tc_rejects+key_update+switch_key+leave_disposition+leave_reset+startup_restore_rejoin+rejoin_verify_scheduler+device_announce_scheduler+end_device_timeout_scheduler+update_device");
   return ok;
 }
 

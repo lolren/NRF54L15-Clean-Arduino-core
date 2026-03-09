@@ -35,7 +35,7 @@ Current clean examples do not implement BDB steering or install-code discovery o
 
 Expected sequence:
 
-1. End device restores retained PAN, parent, trust-center IEEE, link-key provenance, and active network key.
+1. End device restores retained PAN, parent, trust-center IEEE, link-key provenance, and active network key, but does not immediately report itself as joined.
 2. End device first emits MAC orphan notification on the retained channel and waits for coordinator realignment.
 3. If that misses, the device sends a NWK-secured `Rejoin Request` to the retained parent before giving up on the retained channel.
 4. If that still misses, the device performs the retained-network scan across the configured primary and secondary masks, retries orphan recovery and NWK rejoin on the best retained-network candidate it finds, and only then falls back to reassociation.
