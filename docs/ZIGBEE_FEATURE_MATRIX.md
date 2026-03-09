@@ -41,11 +41,11 @@ This matrix separates the existing raw 802.15.4 capability from the Zigbee stack
 | Persistent network state (PAN/channel/addresses/keys/counters) | Partial | `zigbee_persistence.h/.cpp` now persists joined-state metadata, active and alternate demo network keys, outgoing NWK counters, incoming NWK secure-frame counters, inbound APS anti-replay counters, trust-center IEEE identity, preconfigured-key mode, reporting configuration, binding tables, and HA device state such as on/off and brightness level. |
 | ZCL frame codec | Foundation | Added reusable ZCL frame encode/decode logic. |
 | ZCL read-attributes request/response | Foundation | Client request build plus response build/parse now exist. |
-| ZCL discover-attributes request/response | Foundation | Client request build plus shared server response build/parse now exist for the HA attribute sets currently modeled in-tree. |
+| ZCL discover-attributes request/response | Foundation | Client request build plus shared server response build/parse now exist for the HA attribute sets currently modeled in-tree, including the standard `FeatureMap` and `ClusterRevision` global attributes on those clusters. |
 | ZCL default responses | Foundation | Implemented for supported and unsupported commands. |
 | ZCL configure-reporting request/response | Foundation | Client request build plus server response parsing/building now exist. |
 | ZCL attribute-report parsing | Foundation | Clean parser now decodes report payloads for controller-side handling. |
-| HA Basic cluster attributes | Foundation | Implemented for manufacturer/model/build/version/power-source reads. |
+| HA Basic cluster attributes | Foundation | Implemented for manufacturer/model/build/version/power-source reads plus the standard `FeatureMap` and `ClusterRevision` global attributes. |
 | HA On/Off cluster server | Foundation | Implemented read support plus `Off`, `On`, and `Toggle` commands. |
 | HA Level Control cluster server | Foundation | Implemented read support plus `MoveToLevel`, `Move`, `Step`, `Stop`, and the `WithOnOff` command variants. |
 | HA Power Configuration cluster server | Foundation | Implemented battery voltage and percentage reads. |

@@ -117,6 +117,7 @@ enum class ZigbeeZclDataType : uint8_t {
   kBoolean = 0x10U,
   kBitmap8 = 0x18U,
   kBitmap16 = 0x19U,
+  kBitmap32 = 0x1BU,
   kUint8 = 0x20U,
   kUint16 = 0x21U,
   kUint32 = 0x23U,

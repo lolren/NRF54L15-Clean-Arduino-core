@@ -18,6 +18,8 @@ constexpr uint8_t kZclCommandReportAttributes = 0x0AU;
 constexpr uint8_t kZclCommandDefaultResponse = 0x0BU;
 constexpr uint8_t kZclCommandDiscoverAttributes = 0x0CU;
 constexpr uint8_t kZclCommandDiscoverAttributesResponse = 0x0DU;
+constexpr uint16_t kZclGlobalAttributeFeatureMap = 0xFFFCU;
+constexpr uint16_t kZclGlobalAttributeClusterRevision = 0xFFFDU;
 
 constexpr uint8_t kZclStatusSuccess = 0x00U;
 constexpr uint8_t kZclStatusUnsupportedClusterCommand = 0x81U;
@@ -66,21 +68,37 @@ constexpr uint8_t kLevelControlCommandMoveToLevelWithOnOff = 0x04U;
 constexpr uint8_t kLevelControlCommandMoveWithOnOff = 0x05U;
 constexpr uint8_t kLevelControlCommandStepWithOnOff = 0x06U;
 constexpr uint8_t kLevelControlCommandStopWithOnOff = 0x07U;
+constexpr uint32_t kZclFeatureMapNone = 0U;
+constexpr uint16_t kZclClusterRevision1 = 1U;
 
 constexpr uint16_t kBasicDiscoverAttributeIds[] = {0x0000U, 0x0001U, 0x0002U,
                                                    0x0003U, 0x0004U, 0x0005U,
-                                                   0x0007U, 0x4000U};
-constexpr uint16_t kPowerConfigurationDiscoverAttributeIds[] = {0x0020U,
-                                                                0x0021U};
-constexpr uint16_t kIdentifyDiscoverAttributeIds[] = {0x0000U};
-constexpr uint16_t kGroupsDiscoverAttributeIds[] = {0x0000U};
+                                                   0x0007U, 0x4000U,
+                                                   kZclGlobalAttributeFeatureMap,
+                                                   kZclGlobalAttributeClusterRevision};
+constexpr uint16_t kPowerConfigurationDiscoverAttributeIds[] = {
+    0x0020U, 0x0021U, kZclGlobalAttributeFeatureMap,
+    kZclGlobalAttributeClusterRevision};
+constexpr uint16_t kIdentifyDiscoverAttributeIds[] = {
+    0x0000U, kZclGlobalAttributeFeatureMap,
+    kZclGlobalAttributeClusterRevision};
+constexpr uint16_t kGroupsDiscoverAttributeIds[] = {
+    0x0000U, kZclGlobalAttributeFeatureMap,
+    kZclGlobalAttributeClusterRevision};
 constexpr uint16_t kScenesDiscoverAttributeIds[] = {0x0000U, 0x0001U, 0x0002U,
-                                                    0x0003U, 0x0004U};
+                                                    0x0003U, 0x0004U,
+                                                    kZclGlobalAttributeFeatureMap,
+                                                    kZclGlobalAttributeClusterRevision};
 constexpr uint16_t kTemperatureDiscoverAttributeIds[] = {0x0000U, 0x0001U,
-                                                         0x0002U, 0x0003U};
-constexpr uint16_t kOnOffDiscoverAttributeIds[] = {0x0000U};
-constexpr uint16_t kLevelControlDiscoverAttributeIds[] = {0x0000U, 0x0002U,
-                                                          0x0003U};
+                                                         0x0002U, 0x0003U,
+                                                         kZclGlobalAttributeFeatureMap,
+                                                         kZclGlobalAttributeClusterRevision};
+constexpr uint16_t kOnOffDiscoverAttributeIds[] = {
+    0x0000U, kZclGlobalAttributeFeatureMap,
+    kZclGlobalAttributeClusterRevision};
+constexpr uint16_t kLevelControlDiscoverAttributeIds[] = {
+    0x0000U, 0x0002U, 0x0003U, kZclGlobalAttributeFeatureMap,
+    kZclGlobalAttributeClusterRevision};
 
 struct ParsedSceneExtensionData {
   bool hasOnOff = false;
@@ -541,6 +559,7 @@ bool zclDataTypeHasReportableChange(ZigbeeZclDataType type) {
     case ZigbeeZclDataType::kUint8:
     case ZigbeeZclDataType::kUint16:
     case ZigbeeZclDataType::kUint32:
+    case ZigbeeZclDataType::kBitmap32:
     case ZigbeeZclDataType::kInt16:
       return true;
     default:
@@ -559,6 +578,7 @@ uint8_t zclDataTypeStorageLength(ZigbeeZclDataType type) {
     case ZigbeeZclDataType::kUint16:
     case ZigbeeZclDataType::kInt16:
       return 2U;
+    case ZigbeeZclDataType::kBitmap32:
     case ZigbeeZclDataType::kUint32:
       return 4U;
     default:
@@ -582,6 +602,7 @@ bool attributeValueEquals(const ZigbeeAttributeValue& left,
     case ZigbeeZclDataType::kBitmap16:
     case ZigbeeZclDataType::kUint16:
       return left.data.u16 == right.data.u16;
+    case ZigbeeZclDataType::kBitmap32:
     case ZigbeeZclDataType::kUint32:
       return left.data.u32 == right.data.u32;
     case ZigbeeZclDataType::kInt16:
@@ -631,6 +652,7 @@ bool attributeValueMeetsReportableChange(const ZigbeeAttributeValue& current,
                                                          current.data.u16);
       return delta >= reportableChange;
     }
+    case ZigbeeZclDataType::kBitmap32:
     case ZigbeeZclDataType::kUint32: {
       const uint32_t delta = current.data.u32 > baseline.data.u32
                                  ? current.data.u32 - baseline.data.u32
@@ -691,6 +713,7 @@ bool readAttributeValue(const uint8_t* payload, uint8_t length, uint8_t* ioOffse
       outValue->data.i16 = static_cast<int16_t>(readLe16(&payload[*ioOffset]));
       *ioOffset = static_cast<uint8_t>(*ioOffset + 2U);
       return true;
+    case ZigbeeZclDataType::kBitmap32:
     case ZigbeeZclDataType::kUint32:
       if (length < static_cast<uint8_t>(*ioOffset + 4U)) {
         return false;
@@ -851,6 +874,7 @@ bool writeAttributeValue(uint8_t* outBuffer, uint8_t maxLength, uint8_t* ioOffse
       const uint16_t encoded = static_cast<uint16_t>(value.data.i16);
       return appendLe16(outBuffer, maxLength, ioOffset, encoded);
     }
+    case ZigbeeZclDataType::kBitmap32:
     case ZigbeeZclDataType::kUint32: {
       uint8_t bytes[4];
       bytes[0] = static_cast<uint8_t>(value.data.u32 & 0xFFU);
@@ -1104,6 +1128,33 @@ bool attributeCatalogForCluster(uint16_t clusterId,
       *outCount = static_cast<uint8_t>(
           sizeof(kLevelControlDiscoverAttributeIds) /
           sizeof(kLevelControlDiscoverAttributeIds[0]));
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool makeGlobalAttributeValueForCluster(uint16_t clusterId, uint16_t attributeId,
+                                        ZigbeeAttributeValue* outValue) {
+  if (outValue == nullptr) {
+    return false;
+  }
+
+  const uint16_t* attributeIds = nullptr;
+  uint8_t attributeCount = 0U;
+  if (!attributeCatalogForCluster(clusterId, &attributeIds, &attributeCount) ||
+      attributeCount == 0U) {
+    return false;
+  }
+
+  switch (attributeId) {
+    case kZclGlobalAttributeFeatureMap:
+      outValue->type = ZigbeeZclDataType::kBitmap32;
+      outValue->data.u32 = kZclFeatureMapNone;
+      return true;
+    case kZclGlobalAttributeClusterRevision:
+      outValue->type = ZigbeeZclDataType::kUint16;
+      outValue->data.u16 = kZclClusterRevision1;
       return true;
     default:
       return false;
@@ -3588,6 +3639,9 @@ bool ZigbeeHomeAutomationDevice::makeAttributeValueForCluster(
     return false;
   }
   memset(outValue, 0, sizeof(*outValue));
+  if (makeGlobalAttributeValueForCluster(clusterId, attributeId, outValue)) {
+    return true;
+  }
   switch (clusterId) {
     case kZigbeeClusterBasic:
       switch (attributeId) {

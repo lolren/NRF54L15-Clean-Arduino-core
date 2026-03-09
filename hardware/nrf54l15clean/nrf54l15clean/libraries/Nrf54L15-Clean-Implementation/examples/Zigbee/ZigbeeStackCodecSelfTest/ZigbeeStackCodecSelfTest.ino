@@ -1505,7 +1505,8 @@ static bool testOnOffLightResponses() {
     return false;
   }
 
-  const uint8_t readBasicReq[] = {0x00U, 0x34U, 0x04U, 0x00U, 0x05U, 0x00U};
+  const uint8_t readBasicReq[] = {0x00U, 0x34U, 0x04U, 0x00U, 0x05U,
+                                  0x00U, 0xFCU, 0xFFU, 0xFDU, 0xFFU};
   uint8_t response[127] = {0};
   uint8_t responseLength = 0U;
   bool ok = device.handleZclRequest(kZigbeeClusterBasic, readBasicReq,
@@ -1551,11 +1552,15 @@ static bool testOnOffLightResponses() {
            parsed.payload, parsed.payloadLength, &discoveryComplete, discovered,
            static_cast<uint8_t>(sizeof(discovered) / sizeof(discovered[0])),
            &discoveredCount) &&
-       discoveryComplete && discoveredCount == 2U &&
+       discoveryComplete && discoveredCount == 4U &&
        discovered[0].attributeId == 0x0007U &&
        discovered[0].dataType == ZigbeeZclDataType::kUint8 &&
        discovered[1].attributeId == 0x4000U &&
-       discovered[1].dataType == ZigbeeZclDataType::kCharString;
+       discovered[1].dataType == ZigbeeZclDataType::kCharString &&
+       discovered[2].attributeId == 0xFFFCU &&
+       discovered[2].dataType == ZigbeeZclDataType::kBitmap32 &&
+       discovered[3].attributeId == 0xFFFDU &&
+       discovered[3].dataType == ZigbeeZclDataType::kUint16;
 
   responseLength = 0U;
   ok = ok && device.handleZclRequest(kZigbeeClusterBasic, readBasicReq,
@@ -1566,9 +1571,18 @@ static bool testOnOffLightResponses() {
        parsed.transactionSequence == 0x34U;
   static const uint8_t kManufacturerTag[] = {
       0x04U, 0x00U, 0x00U, 0x42U, 0x09U, 'C', 'l', 'e', 'a', 'n', 'C', 'o', 'r', 'e'};
+  static const uint8_t kFeatureMapTag[] = {0xFCU, 0xFFU, 0x00U, 0x1BU,
+                                           0x00U, 0x00U, 0x00U, 0x00U};
+  static const uint8_t kClusterRevisionTag[] = {0xFDU, 0xFFU, 0x00U, 0x21U,
+                                                0x01U, 0x00U};
   ok = ok && containsByteSequence(parsed.payload, parsed.payloadLength,
                                   kManufacturerTag,
-                                  sizeof(kManufacturerTag));
+                                  sizeof(kManufacturerTag)) &&
+       containsByteSequence(parsed.payload, parsed.payloadLength,
+                            kFeatureMapTag, sizeof(kFeatureMapTag)) &&
+       containsByteSequence(parsed.payload, parsed.payloadLength,
+                            kClusterRevisionTag,
+                            sizeof(kClusterRevisionTag));
 
   const uint8_t onReq[] = {0x01U, 0x35U, 0x01U};
   responseLength = 0U;
@@ -1855,7 +1869,7 @@ static bool testTemperatureSensorResponses() {
 static bool testZclClientCodec() {
   uint8_t encoded[127] = {0};
   uint8_t encodedLength = 0U;
-  const uint16_t attributeIds[] = {0x0004U, 0x0005U, 0x0007U};
+  const uint16_t attributeIds[] = {0x0004U, 0x0005U, 0xFFFCU, 0xFFFDU};
   bool ok = ZigbeeCodec::buildReadAttributesRequest(
       attributeIds,
       static_cast<uint8_t>(sizeof(attributeIds) / sizeof(attributeIds[0])),
@@ -1865,20 +1879,29 @@ static bool testZclClientCodec() {
   ok = ok && ZigbeeCodec::parseZclFrame(encoded, encodedLength, &request) &&
        request.valid && request.commandId == 0x00U &&
        request.transactionSequence == 0x71U &&
-       request.payloadLength == 6U;
+       request.payloadLength == 8U;
 
-  ZigbeeReadAttributeRecord records[2];
+  ZigbeeReadAttributeRecord records[4];
   records[0].attributeId = 0x0004U;
   records[0].status = 0x00U;
   records[0].value.type = ZigbeeZclDataType::kCharString;
   records[0].value.stringValue = "CleanCore";
   records[0].value.stringLength = 9U;
-  records[1].attributeId = 0x0007U;
+  records[1].attributeId = 0x0005U;
   records[1].status = 0x00U;
-  records[1].value.type = ZigbeeZclDataType::kUint8;
-  records[1].value.data.u8 = 0x01U;
+  records[1].value.type = ZigbeeZclDataType::kCharString;
+  records[1].value.stringValue = "X54-LIGHT";
+  records[1].value.stringLength = 9U;
+  records[2].attributeId = 0xFFFCU;
+  records[2].status = 0x00U;
+  records[2].value.type = ZigbeeZclDataType::kBitmap32;
+  records[2].value.data.u32 = 0U;
+  records[3].attributeId = 0xFFFDU;
+  records[3].status = 0x00U;
+  records[3].value.type = ZigbeeZclDataType::kUint16;
+  records[3].value.data.u16 = 1U;
 
-  ok = ok && ZigbeeCodec::buildReadAttributesResponse(records, 2U, 0x72U,
+  ok = ok && ZigbeeCodec::buildReadAttributesResponse(records, 4U, 0x72U,
                                                       encoded, &encodedLength);
   ZigbeeZclFrame response{};
   ok = ok && ZigbeeCodec::parseZclFrame(encoded, encodedLength, &response) &&
@@ -1890,11 +1913,18 @@ static bool testZclClientCodec() {
   ok = ok && ZigbeeCodec::parseReadAttributesResponse(
                    response.payload, response.payloadLength, parsedRecords, 4U,
                    &parsedRecordCount) &&
-       parsedRecordCount == 2U && parsedRecords[0].attributeId == 0x0004U &&
+       parsedRecordCount == 4U && parsedRecords[0].attributeId == 0x0004U &&
        parsedRecords[0].value.type == ZigbeeZclDataType::kCharString &&
        parsedRecords[0].value.stringLength == 9U &&
-       parsedRecords[1].attributeId == 0x0007U &&
-       parsedRecords[1].value.data.u8 == 0x01U;
+       parsedRecords[1].attributeId == 0x0005U &&
+       parsedRecords[1].value.type == ZigbeeZclDataType::kCharString &&
+       parsedRecords[1].value.stringLength == 9U &&
+       parsedRecords[2].attributeId == 0xFFFCU &&
+       parsedRecords[2].value.type == ZigbeeZclDataType::kBitmap32 &&
+       parsedRecords[2].value.data.u32 == 0U &&
+       parsedRecords[3].attributeId == 0xFFFDU &&
+       parsedRecords[3].value.type == ZigbeeZclDataType::kUint16 &&
+       parsedRecords[3].value.data.u16 == 1U;
 
   ok = ok && ZigbeeCodec::buildDiscoverAttributesRequest(0x0004U, 3U, 0x72U,
                                                          encoded,
@@ -1914,10 +1944,12 @@ static bool testZclClientCodec() {
   ZigbeeDiscoveredAttributeRecord discovered[3];
   discovered[0].attributeId = 0x0004U;
   discovered[0].dataType = ZigbeeZclDataType::kCharString;
-  discovered[1].attributeId = 0x0005U;
-  discovered[1].dataType = ZigbeeZclDataType::kCharString;
+  discovered[1].attributeId = 0xFFFCU;
+  discovered[1].dataType = ZigbeeZclDataType::kBitmap32;
+  discovered[2].attributeId = 0xFFFDU;
+  discovered[2].dataType = ZigbeeZclDataType::kUint16;
   ok = ok && ZigbeeCodec::buildDiscoverAttributesResponse(
-                   discovered, 2U, false, 0x73U, encoded, &encodedLength) &&
+                   discovered, 3U, false, 0x73U, encoded, &encodedLength) &&
        ZigbeeCodec::parseZclFrame(encoded, encodedLength, &response) &&
        response.valid && response.commandId == 0x0DU &&
        response.transactionSequence == 0x73U;
@@ -1928,11 +1960,14 @@ static bool testZclClientCodec() {
   ok = ok && ZigbeeCodec::parseDiscoverAttributesResponse(
                    response.payload, response.payloadLength, &discoveryComplete,
                    parsedDiscovered, 4U, &discoveredCount) &&
-       !discoveryComplete && discoveredCount == 2U &&
+       !discoveryComplete && discoveredCount == 3U &&
        parsedDiscovered[0].attributeId == 0x0004U &&
        parsedDiscovered[0].dataType == ZigbeeZclDataType::kCharString &&
-       parsedDiscovered[1].attributeId == 0x0005U &&
-       parsedDiscovered[1].dataType == ZigbeeZclDataType::kCharString;
+       parsedDiscovered[1].attributeId == 0xFFFCU &&
+       parsedDiscovered[1].dataType == ZigbeeZclDataType::kBitmap32 &&
+       parsedDiscovered[2].attributeId == 0xFFFDU &&
+       parsedDiscovered[2].dataType == ZigbeeZclDataType::kUint16;
+
 
   ZigbeeReportingConfiguration reporting{};
   reporting.used = true;
