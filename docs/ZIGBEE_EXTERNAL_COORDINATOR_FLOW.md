@@ -75,14 +75,20 @@ Relevant compile-time knobs already present in the joinable examples:
 
 - `NRF54L15_CLEAN_ZIGBEE_PRIMARY_CHANNEL_MASK`
 - `NRF54L15_CLEAN_ZIGBEE_SECONDARY_CHANNEL_MASK`
+- `NRF54L15_CLEAN_ZIGBEE_PREFERRED_EXTENDED_PAN_ID`
 - `NRF54L15_CLEAN_ZIGBEE_USE_INSTALL_CODE`
 - `NRF54L15_CLEAN_ZIGBEE_ALLOW_WELL_KNOWN_LINK_KEY`
 - `NRF54L15_CLEAN_ZIGBEE_REQUIRE_ENCRYPTED_TRANSPORT_KEY`
 - `NRF54L15_CLEAN_ZIGBEE_TRUST_CENTER_IEEE`
+- `NRF54L15_CLEAN_ZIGBEE_COORDINATOR_SHORT`
+- `NRF54L15_CLEAN_ZIGBEE_LOCAL_SHORT`
+- `NRF54L15_CLEAN_ZIGBEE_LOCAL_IEEE`
+- `NRF54L15_CLEAN_ZIGBEE_INSTALL_CODE_BYTES`
 
 Behavior:
 
 - Primary and secondary scan masks can be narrowed for external-coordinator bring-up instead of hard-coding a full-channel demo scan.
+- Preferred extended PAN, coordinator short, local short/IEEE identity, and install code can now be overridden at build time instead of editing the sketches.
 - Trust-center IEEE may be pinned or learned on first secure install.
 - Well-known link-key fallback is optional.
 - Encrypted `Transport Key` is required by default.

@@ -47,6 +47,28 @@
 #define NRF54L15_CLEAN_ZIGBEE_TRUST_CENTER_IEEE 0ULL
 #endif
 
+#ifndef NRF54L15_CLEAN_ZIGBEE_PREFERRED_EXTENDED_PAN_ID
+#define NRF54L15_CLEAN_ZIGBEE_PREFERRED_EXTENDED_PAN_ID 0ULL
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_COORDINATOR_SHORT
+#define NRF54L15_CLEAN_ZIGBEE_COORDINATOR_SHORT 0x0000U
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_LOCAL_SHORT
+#define NRF54L15_CLEAN_ZIGBEE_LOCAL_SHORT 0x7E02U
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_LOCAL_IEEE
+#define NRF54L15_CLEAN_ZIGBEE_LOCAL_IEEE 0x00124B0001AC1002ULL
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_INSTALL_CODE_BYTES
+#define NRF54L15_CLEAN_ZIGBEE_INSTALL_CODE_BYTES                                  \
+  0x10U, 0xACU, 0x02U, 0x01U, 0x24U, 0x4BU, 0x00U, 0xAAU, 0xBBU, 0xCCU, 0xDDU, \
+      0xEEU, 0xFFU, 0x11U, 0x22U, 0x33U, 0xFEU, 0xC9U
+#endif
+
 using namespace xiao_nrf54l15;
 
 namespace {
@@ -95,16 +117,20 @@ static constexpr uint8_t kPreferredChannel =
     static_cast<uint8_t>(NRF54L15_CLEAN_ZIGBEE_CHANNEL);
 static constexpr uint16_t kPreferredPanId =
     static_cast<uint16_t>(NRF54L15_CLEAN_ZIGBEE_PAN_ID);
-static constexpr uint16_t kCoordinatorShort = 0x0000U;
-static constexpr uint16_t kLightShort = 0x7E02U;
+static constexpr uint16_t kCoordinatorShort =
+    static_cast<uint16_t>(NRF54L15_CLEAN_ZIGBEE_COORDINATOR_SHORT);
+static constexpr uint16_t kLightShort =
+    static_cast<uint16_t>(NRF54L15_CLEAN_ZIGBEE_LOCAL_SHORT);
 static constexpr uint8_t kLocalEndpoint = 1U;
 static constexpr uint8_t kCoordinatorEndpoint = 1U;
-static constexpr uint64_t kIeeeAddress = 0x00124B0001AC1002ULL;
+static constexpr uint64_t kConfiguredPreferredExtendedPanId =
+    static_cast<uint64_t>(NRF54L15_CLEAN_ZIGBEE_PREFERRED_EXTENDED_PAN_ID);
+static constexpr uint64_t kIeeeAddress =
+    static_cast<uint64_t>(NRF54L15_CLEAN_ZIGBEE_LOCAL_IEEE);
 static constexpr uint8_t kStateFlagJoined = 0x01U;
 static constexpr uint8_t kStateFlagSecurityEnabled = 0x02U;
 static const uint8_t kInstallCode[18] = {
-    0x10U, 0xACU, 0x02U, 0x01U, 0x24U, 0x4BU, 0x00U, 0xAAU, 0xBBU,
-    0xCCU, 0xDDU, 0xEEU, 0xFFU, 0x11U, 0x22U, 0x33U, 0xFEU, 0xC9U};
+    NRF54L15_CLEAN_ZIGBEE_INSTALL_CODE_BYTES};
 
 static uint8_t& g_channel = g_network.channel;
 static uint16_t& g_panId = g_network.panId;
@@ -162,7 +188,9 @@ ZigbeeCommissioningPolicy commissioningPolicy() {
   policy.secondaryChannelMask =
       static_cast<uint32_t>(NRF54L15_CLEAN_ZIGBEE_SECONDARY_CHANNEL_MASK);
   policy.preferredPanId = kPreferredPanId;
-  policy.preferredExtendedPanId = g_extendedPanId;
+  policy.preferredExtendedPanId =
+      (g_extendedPanId != 0U) ? g_extendedPanId
+                              : kConfiguredPreferredExtendedPanId;
   policy.pinnedTrustCenterIeee =
       static_cast<uint64_t>(NRF54L15_CLEAN_ZIGBEE_TRUST_CENTER_IEEE);
   policy.allowWellKnownKey = (NRF54L15_CLEAN_ZIGBEE_ALLOW_WELL_KNOWN_LINK_KEY != 0);
