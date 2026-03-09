@@ -65,6 +65,7 @@ static uint32_t& g_lastInboundApsFrameCounter =
     g_network.incomingApsFrameCounter;
 static uint8_t& g_apsCounter = g_network.apsCounter;
 static uint8_t g_zclSequence = 1U;
+static uint8_t g_zdoSequence = 1U;
 static uint32_t& g_lastJoinAttemptMs = g_network.lastJoinAttemptMs;
 static uint32_t g_lastStatusMs = 0U;
 static uint32_t g_lastPollMs = 0U;
@@ -674,7 +675,7 @@ bool sendEndDeviceTimeoutRequest() {
 bool sendDeviceAnnounce() {
   uint8_t payload[127] = {0U};
   uint8_t payloadLength = 0U;
-  if (!g_device.buildDeviceAnnounce(g_zclSequence++, payload, &payloadLength)) {
+  if (!g_device.buildDeviceAnnounce(g_zdoSequence++, payload, &payloadLength)) {
     return false;
   }
   return sendApsFrame(g_parentShort, 0U, kZigbeeZdoDeviceAnnounce,
@@ -816,6 +817,7 @@ bool handleApsCommand(const uint8_t* frame, uint8_t length, uint16_t sourceShort
       configureDeviceForCurrentNetwork();
       applyLedState();
       persistState();
+      (void)sendDeviceAnnounce();
       (void)sendEndDeviceTimeoutRequest();
     }
     Serial.print("update_device short=0x");

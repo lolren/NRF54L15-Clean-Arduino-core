@@ -41,7 +41,7 @@ Expected sequence:
 4. If that still misses, the device performs the retained-network scan across the configured primary and secondary masks, retries orphan recovery and NWK rejoin on the best retained-network candidate it finds, and only then falls back to reassociation.
 5. Coordinator recognizes the node as known and either answers with coordinator realignment, returns a NWK-secured `Rejoin Response`, or accepts the reassociation.
 6. Coordinator delivers APS-secured `Update Device` from the expected trust-center source.
-7. End device accepts `Update Device` only while it is in the secure-rejoin wait state, restores joined state, and resumes secured polling and reporting.
+7. End device accepts `Update Device` only while it is in the secure-rejoin wait state, restores joined state, re-emits `Device Announce`, and resumes secured polling and reporting.
 
 Current clean examples require retained key material before they will attempt secure rejoin. This is still not BDB rejoin.
 

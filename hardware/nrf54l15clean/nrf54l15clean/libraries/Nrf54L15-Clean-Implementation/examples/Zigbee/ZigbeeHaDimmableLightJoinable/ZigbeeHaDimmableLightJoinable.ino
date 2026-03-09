@@ -846,6 +846,7 @@ bool handleApsCommand(const uint8_t* frame, uint8_t length, uint16_t sourceShort
       configureDeviceForCurrentNetwork();
       applyLedState();
       persistState();
+      (void)sendDeviceAnnounce();
       (void)sendEndDeviceTimeoutRequest();
     }
     Serial.print("update_device short=0x");
