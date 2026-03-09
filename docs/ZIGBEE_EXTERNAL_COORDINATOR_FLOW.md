@@ -86,6 +86,7 @@ Behavior:
 - Encrypted `Transport Key` is required by default.
 - Secure rejoin depends on retained key material and link-key provenance.
 - `Transport Key`, `Update Device`, and `Switch Key` are only accepted from the expected trust-center source, only in the right device lifecycle state, and encrypted by default.
+- Rejected trust-center commands now surface immediately in the end-device commissioning failure state and serial logs instead of only degenerating into a later timeout.
 
 ## What An External Coordinator Must Match
 

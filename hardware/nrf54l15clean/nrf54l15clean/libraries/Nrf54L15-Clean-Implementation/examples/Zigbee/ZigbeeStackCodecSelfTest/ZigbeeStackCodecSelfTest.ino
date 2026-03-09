@@ -964,14 +964,24 @@ static bool testCommissioningStateMachine() {
                    &switchFrameLength);
   ZigbeeSwitchKeyAcceptance acceptedSwitch{};
   ZigbeeSwitchKeyAcceptance rejectedSwitch{};
+  ZigbeeEndDeviceCommonState wrongSwitchState = state;
+  wrongSwitchState.rejoinPending = true;
+  wrongSwitchState.state = ZigbeeCommissioningState::kWaitingUpdateDevice;
   ok = ok && ZigbeeCommissioning::acceptSwitchKeyCommand(
                      state, 0x0000U, kTrustCenterIeee, true, false, switchFrame,
                      switchFrameLength, installCodeKey, true,
                      &acceptedSwitch) &&
        !ZigbeeCommissioning::acceptSwitchKeyCommand(
+           wrongSwitchState, 0x0000U, kTrustCenterIeee, true, false,
+           switchFrame, switchFrameLength, installCodeKey, true,
+           &rejectedSwitch) &&
+       !ZigbeeCommissioning::acceptSwitchKeyCommand(
            state, 0x1111U, kTrustCenterIeee, true, false, switchFrame,
            switchFrameLength, installCodeKey, true, &rejectedSwitch) &&
        acceptedSwitch.valid;
+  ok = ok && ZigbeeCommissioning::classifyRejectedTrustCenterCommand(
+                     state, switchFrame, switchFrameLength, installCodeKey,
+                     true) == ZigbeeCommissioningFailure::kSwitchKeyRejected;
   ZigbeeCommissioning::applySwitchKey(&state, acceptedSwitch);
   ok = ok && state.haveActiveNetworkKey && !state.haveAlternateNetworkKey &&
        state.activeNetworkKeySequence == 0x02U &&
@@ -1018,6 +1028,9 @@ static bool testCommissioningStateMachine() {
            updateFrame, updateFrameLength, installCodeKey, true,
            &rejectedUpdate) &&
        acceptedUpdate.valid;
+  ok = ok && ZigbeeCommissioning::classifyRejectedTrustCenterCommand(
+                     state, updateFrame, updateFrameLength, installCodeKey,
+                     true) == ZigbeeCommissioningFailure::kUpdateDeviceRejected;
   ZigbeeCommissioning::applyUpdateDevice(&state, acceptedUpdate);
   ok = ok && state.joined && !state.rejoinPending &&
        state.localShort == 0x3344U &&
@@ -1039,7 +1052,7 @@ static bool testCommissioningStateMachine() {
        !restored.haveAlternateNetworkKey;
 
   reportResult("CommissioningState", ok,
-               "transport_key_source+state+key_update+switch_key+rejoin+update_device");
+               "transport_key_source+state+tc_rejects+key_update+switch_key+rejoin+update_device");
   return ok;
 }
 

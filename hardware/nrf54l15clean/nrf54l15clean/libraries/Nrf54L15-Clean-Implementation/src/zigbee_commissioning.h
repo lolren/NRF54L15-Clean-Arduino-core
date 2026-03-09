@@ -213,6 +213,10 @@ class ZigbeeCommissioning {
       uint16_t sourceShort, uint64_t securedSourceIeee, bool nwkSecured,
       const uint8_t* frame, uint8_t length, const uint8_t installCodeKey[16],
       bool haveInstallCodeKey, ZigbeeTransportKeyInstallResult* outResult);
+  static ZigbeeCommissioningFailure classifyRejectedTrustCenterCommand(
+      const ZigbeeEndDeviceCommonState& state, const uint8_t* frame,
+      uint8_t length, const uint8_t installCodeKey[16],
+      bool haveInstallCodeKey);
   static void applyTransportKeyInstall(
       ZigbeeEndDeviceCommonState* state,
       const ZigbeeTransportKeyInstallResult& result);

@@ -239,6 +239,70 @@ bool validTransportKeyLifecycle(const ZigbeeEndDeviceCommonState& state) {
          state.state == ZigbeeCommissioningState::kJoined;
 }
 
+bool expectsTransportKeyCommand(const ZigbeeEndDeviceCommonState& state) {
+  return state.state == ZigbeeCommissioningState::kWaitingTransportKey ||
+         (state.securityEnabled && state.joined && !state.rejoinPending &&
+          state.state == ZigbeeCommissioningState::kJoined);
+}
+
+bool expectsUpdateDeviceCommand(const ZigbeeEndDeviceCommonState& state) {
+  return state.rejoinPending ||
+         state.state == ZigbeeCommissioningState::kWaitingUpdateDevice;
+}
+
+bool validSwitchKeyLifecycle(const ZigbeeEndDeviceCommonState& state) {
+  return state.securityEnabled && state.joined && !state.rejoinPending &&
+         state.state == ZigbeeCommissioningState::kJoined;
+}
+
+bool expectsSwitchKeyCommand(const ZigbeeEndDeviceCommonState& state) {
+  return validSwitchKeyLifecycle(state);
+}
+
+bool parseRecognizedTrustCenterCommand(const uint8_t* frame, uint8_t length,
+                                       const uint8_t installCodeKey[16],
+                                       bool haveInstallCodeKey,
+                                       ZigbeeApsCommandFrame* outCommand) {
+  if (outCommand != nullptr) {
+    memset(outCommand, 0, sizeof(*outCommand));
+  }
+  if (frame == nullptr || outCommand == nullptr) {
+    return false;
+  }
+
+  ZigbeeApsCommandFrame rawCommand{};
+  if (!ZigbeeCodec::parseApsCommandFrame(frame, length, &rawCommand) ||
+      !rawCommand.valid) {
+    return false;
+  }
+
+  if (!rawCommand.securityEnabled) {
+    *outCommand = rawCommand;
+    return true;
+  }
+
+  ZigbeeApsSecurityHeader apsSecurity{};
+  uint8_t payload[127] = {0U};
+  uint8_t payloadLength = 0U;
+  if (haveInstallCodeKey && installCodeKey != nullptr &&
+      ZigbeeSecurity::parseSecuredApsCommandFrame(frame, length, installCodeKey,
+                                                  outCommand, &apsSecurity,
+                                                  payload, &payloadLength)) {
+    return outCommand->valid;
+  }
+
+  uint8_t wellKnownLinkKey[16] = {0U};
+  if (ZigbeeSecurity::loadZigbeeAlliance09LinkKey(wellKnownLinkKey) &&
+      ZigbeeSecurity::parseSecuredApsCommandFrame(frame, length,
+                                                  wellKnownLinkKey, outCommand,
+                                                  &apsSecurity, payload,
+                                                  &payloadLength)) {
+    return outCommand->valid;
+  }
+
+  return false;
+}
+
 bool waitForCoordinatorRealignment(ZigbeeRadio& radio, uint64_t localIeee,
                                    ZigbeeMacCoordinatorRealignmentView* outView) {
   if (outView != nullptr) {
@@ -1360,6 +1424,34 @@ bool ZigbeeCommissioning::acceptTransportKeyCommand(
   return true;
 }
 
+ZigbeeCommissioningFailure
+ZigbeeCommissioning::classifyRejectedTrustCenterCommand(
+    const ZigbeeEndDeviceCommonState& state, const uint8_t* frame,
+    uint8_t length, const uint8_t installCodeKey[16], bool haveInstallCodeKey) {
+  ZigbeeApsCommandFrame command{};
+  if (!parseRecognizedTrustCenterCommand(frame, length, installCodeKey,
+                                         haveInstallCodeKey, &command)) {
+    return ZigbeeCommissioningFailure::kNone;
+  }
+
+  switch (command.commandId) {
+    case kZigbeeApsCommandTransportKey:
+      return expectsTransportKeyCommand(state)
+                 ? ZigbeeCommissioningFailure::kTransportKeyRejected
+                 : ZigbeeCommissioningFailure::kNone;
+    case kZigbeeApsCommandUpdateDevice:
+      return expectsUpdateDeviceCommand(state)
+                 ? ZigbeeCommissioningFailure::kUpdateDeviceRejected
+                 : ZigbeeCommissioningFailure::kNone;
+    case kZigbeeApsCommandSwitchKey:
+      return expectsSwitchKeyCommand(state)
+                 ? ZigbeeCommissioningFailure::kSwitchKeyRejected
+                 : ZigbeeCommissioningFailure::kNone;
+    default:
+      return ZigbeeCommissioningFailure::kNone;
+  }
+}
+
 void ZigbeeCommissioning::applyTransportKeyInstall(
     ZigbeeEndDeviceCommonState* state,
     const ZigbeeTransportKeyInstallResult& result) {
@@ -1407,8 +1499,7 @@ bool ZigbeeCommissioning::acceptUpdateDeviceCommand(
     memset(outResult, 0, sizeof(*outResult));
   }
   if (frame == nullptr || outResult == nullptr ||
-      (!state.rejoinPending &&
-       state.state != ZigbeeCommissioningState::kWaitingUpdateDevice)) {
+      !expectsUpdateDeviceCommand(state)) {
     return false;
   }
 
@@ -1478,8 +1569,7 @@ bool ZigbeeCommissioning::acceptSwitchKeyCommand(
   if (outResult != nullptr) {
     memset(outResult, 0, sizeof(*outResult));
   }
-  if (frame == nullptr || outResult == nullptr ||
-      !state.securityEnabled) {
+  if (frame == nullptr || outResult == nullptr || !validSwitchKeyLifecycle(state)) {
     return false;
   }
 

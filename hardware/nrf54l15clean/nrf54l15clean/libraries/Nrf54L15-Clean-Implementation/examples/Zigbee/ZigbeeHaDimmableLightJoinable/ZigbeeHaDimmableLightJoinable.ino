@@ -885,6 +885,19 @@ bool handleApsCommand(const uint8_t* frame, uint8_t length, uint16_t sourceShort
     return true;
   }
 
+  const ZigbeeCommissioningFailure rejectedFailure =
+      ZigbeeCommissioning::classifyRejectedTrustCenterCommand(
+          g_network, frame, length, installCodeKey, haveInstallCodeKey);
+  if (rejectedFailure != ZigbeeCommissioningFailure::kNone) {
+    g_network.lastFailure = rejectedFailure;
+    Serial.print("tc_cmd reject=");
+    Serial.print(ZigbeeCommissioning::failureName(rejectedFailure));
+    Serial.print(" mode=");
+    Serial.print(ZigbeeCommissioning::stateName(g_network.state));
+    Serial.print("\r\n");
+    return true;
+  }
+
   return false;
 }
 
