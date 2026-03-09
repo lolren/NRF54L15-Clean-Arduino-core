@@ -368,16 +368,18 @@ void requestSecureRejoin() {
 }
 
 void handleAcceptedLeaveRequest(uint8_t leaveFlags) {
-  if ((leaveFlags & kZigbeeMgmtLeaveFlagRejoin) == 0U) {
+  const ZigbeeAcceptedLeaveDisposition disposition =
+      ZigbeeCommissioning::applyAcceptedLeaveRequest(&g_network, leaveFlags);
+
+  if (disposition == ZigbeeAcceptedLeaveDisposition::kClearState) {
     Serial.print("mgmt_leave accepted clear\r\n");
     clearJoinState(true);
     return;
   }
 
-  requestSecureRejoin();
   clearPendingApsAck();
   clearRecentInboundAps();
-  if (g_rejoinPending) {
+  if (disposition == ZigbeeAcceptedLeaveDisposition::kPersistRejoin) {
     persistState();
     Serial.print("mgmt_leave accepted rejoin\r\n");
     return;

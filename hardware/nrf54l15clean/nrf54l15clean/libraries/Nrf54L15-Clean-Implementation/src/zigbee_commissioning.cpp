@@ -1002,6 +1002,23 @@ void ZigbeeCommissioning::requestSecureRejoin(
   state->lastFailure = ZigbeeCommissioningFailure::kNone;
 }
 
+ZigbeeAcceptedLeaveDisposition
+ZigbeeCommissioning::applyAcceptedLeaveRequest(
+    ZigbeeEndDeviceCommonState* state, uint8_t leaveFlags) {
+  if (state == nullptr) {
+    return ZigbeeAcceptedLeaveDisposition::kClearState;
+  }
+
+  if ((leaveFlags & kZigbeeMgmtLeaveFlagRejoin) == 0U) {
+    return ZigbeeAcceptedLeaveDisposition::kClearState;
+  }
+
+  requestSecureRejoin(state);
+  return state->rejoinPending
+             ? ZigbeeAcceptedLeaveDisposition::kPersistRejoin
+             : ZigbeeAcceptedLeaveDisposition::kClearStateAfterRejoinFailure;
+}
+
 bool ZigbeeCommissioning::shouldPollParent(
     const ZigbeeEndDeviceCommonState& state) {
   return state.joined ||

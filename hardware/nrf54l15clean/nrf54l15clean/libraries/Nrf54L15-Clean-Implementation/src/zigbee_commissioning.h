@@ -84,6 +84,12 @@ enum class ZigbeeCommissioningAction : uint8_t {
   kRequestEndDeviceTimeout = 5U,
 };
 
+enum class ZigbeeAcceptedLeaveDisposition : uint8_t {
+  kClearState = 0U,
+  kPersistRejoin = 1U,
+  kClearStateAfterRejoinFailure = 2U,
+};
+
 struct ZigbeeBeaconCandidate {
   bool valid = false;
   uint8_t channel = 0U;
@@ -195,6 +201,8 @@ class ZigbeeCommissioning {
   static bool shouldAttemptSecureRejoin(
       const ZigbeeEndDeviceCommonState& state);
   static void requestSecureRejoin(ZigbeeEndDeviceCommonState* state);
+  static ZigbeeAcceptedLeaveDisposition applyAcceptedLeaveRequest(
+      ZigbeeEndDeviceCommonState* state, uint8_t leaveFlags);
   static bool shouldPollParent(const ZigbeeEndDeviceCommonState& state);
   static bool shouldRequestEndDeviceTimeout(
       const ZigbeeEndDeviceCommonState& state);

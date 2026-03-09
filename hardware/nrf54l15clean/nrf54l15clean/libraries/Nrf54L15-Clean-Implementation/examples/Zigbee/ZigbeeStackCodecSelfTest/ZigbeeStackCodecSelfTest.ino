@@ -1023,6 +1023,46 @@ static bool testCommissioningStateMachine() {
   ok = ok && !state.joined && state.rejoinPending &&
        state.securityEnabled &&
        state.state == ZigbeeCommissioningState::kRejoinPending;
+  ZigbeeEndDeviceCommonState plainLeaveState = state;
+  plainLeaveState.joined = true;
+  plainLeaveState.rejoinPending = false;
+  plainLeaveState.state = ZigbeeCommissioningState::kJoined;
+  ok = ok &&
+       ZigbeeCommissioning::applyAcceptedLeaveRequest(&plainLeaveState, 0U) ==
+           ZigbeeAcceptedLeaveDisposition::kClearState &&
+       plainLeaveState.joined;
+
+  ZigbeeEndDeviceCommonState rejoinLeaveState = state;
+  rejoinLeaveState.joined = true;
+  rejoinLeaveState.rejoinPending = false;
+  rejoinLeaveState.state = ZigbeeCommissioningState::kJoined;
+  rejoinLeaveState.securityEnabled = true;
+  rejoinLeaveState.haveActiveNetworkKey = true;
+  rejoinLeaveState.preconfiguredKeyMode =
+      ZigbeePreconfiguredKeyMode::kInstallCodeDerived;
+  rejoinLeaveState.trustCenterIeee = kTrustCenterIeee;
+  rejoinLeaveState.panId = 0x1234U;
+  rejoinLeaveState.channel = 15U;
+  ok = ok &&
+       ZigbeeCommissioning::applyAcceptedLeaveRequest(
+           &rejoinLeaveState, kZigbeeMgmtLeaveFlagRejoin) ==
+           ZigbeeAcceptedLeaveDisposition::kPersistRejoin &&
+       rejoinLeaveState.rejoinPending &&
+       rejoinLeaveState.state == ZigbeeCommissioningState::kRejoinPending;
+
+  ZigbeeEndDeviceCommonState unavailableLeaveState = rejoinLeaveState;
+  unavailableLeaveState.rejoinPending = false;
+  unavailableLeaveState.joined = true;
+  unavailableLeaveState.state = ZigbeeCommissioningState::kJoined;
+  unavailableLeaveState.preconfiguredKeyMode =
+      ZigbeePreconfiguredKeyMode::kWellKnown;
+  ok = ok &&
+       ZigbeeCommissioning::applyAcceptedLeaveRequest(
+           &unavailableLeaveState, kZigbeeMgmtLeaveFlagRejoin) ==
+           ZigbeeAcceptedLeaveDisposition::kClearStateAfterRejoinFailure &&
+       !unavailableLeaveState.rejoinPending &&
+       unavailableLeaveState.lastFailure ==
+           ZigbeeCommissioningFailure::kSecureRejoinUnavailable;
 
   ZigbeeApsUpdateDevice updateDevice{};
   updateDevice.valid = true;
@@ -1083,7 +1123,7 @@ static bool testCommissioningStateMachine() {
        restored.deviceAnnouncePending && restored.endDeviceTimeoutPending;
 
   reportResult("CommissioningState", ok,
-               "transport_key_source+state+tc_rejects+key_update+switch_key+leave_reset+rejoin_verify+device_announce_scheduler+end_device_timeout_scheduler+update_device");
+               "transport_key_source+state+tc_rejects+key_update+switch_key+leave_disposition+leave_reset+rejoin_verify+device_announce_scheduler+end_device_timeout_scheduler+update_device");
   return ok;
 }
 
