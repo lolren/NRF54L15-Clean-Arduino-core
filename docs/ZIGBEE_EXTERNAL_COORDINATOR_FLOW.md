@@ -22,7 +22,7 @@ Expected sequence:
 2. End device performs active scan and ranks beacon candidates through `zigbee_commissioning`.
 3. End device sends MAC association request and polls for MAC association response.
 4. Coordinator allocates a short address and returns the association response on the next poll.
-5. Coordinator delivers APS `Transport Key` with the network key.
+5. Coordinator delivers APS `Transport Key` with the network key from the expected coordinator short address and trust-center source while the end device is still in the transport-key wait state.
 6. The `Transport Key` is expected to be APS encrypted by default.
 7. The end device accepts either:
    - an install-code-derived preconfigured link key
@@ -85,7 +85,7 @@ Behavior:
 - Well-known link-key fallback is optional.
 - Encrypted `Transport Key` is required by default.
 - Secure rejoin depends on retained key material and link-key provenance.
-- `Update Device` and `Switch Key` are only accepted from the expected trust-center source, only in the right device lifecycle state, and encrypted by default.
+- `Transport Key`, `Update Device`, and `Switch Key` are only accepted from the expected trust-center source, only in the right device lifecycle state, and encrypted by default.
 
 ## What An External Coordinator Must Match
 

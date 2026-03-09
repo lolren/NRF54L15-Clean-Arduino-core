@@ -229,6 +229,16 @@ bool validTrustCenterSource(const ZigbeeEndDeviceCommonState& state,
   return securedSourceIeee != 0U && securedSourceIeee == expectedTc;
 }
 
+bool validTransportKeyLifecycle(const ZigbeeEndDeviceCommonState& state) {
+  if (!state.haveActiveNetworkKey) {
+    return !state.joined && !state.rejoinPending &&
+           state.state == ZigbeeCommissioningState::kWaitingTransportKey;
+  }
+
+  return state.securityEnabled && state.joined && !state.rejoinPending &&
+         state.state == ZigbeeCommissioningState::kJoined;
+}
+
 bool waitForCoordinatorRealignment(ZigbeeRadio& radio, uint64_t localIeee,
                                    ZigbeeMacCoordinatorRealignmentView* outView) {
   if (outView != nullptr) {
@@ -1242,12 +1252,14 @@ bool ZigbeeCommissioning::performSecureRejoin(
 
 bool ZigbeeCommissioning::acceptTransportKeyCommand(
     const ZigbeeEndDeviceCommonState& state, uint64_t localIeee,
+    uint16_t sourceShort, uint64_t securedSourceIeee, bool nwkSecured,
     const uint8_t* frame, uint8_t length, const uint8_t installCodeKey[16],
     bool haveInstallCodeKey, ZigbeeTransportKeyInstallResult* outResult) {
   if (outResult != nullptr) {
     memset(outResult, 0, sizeof(*outResult));
   }
-  if (frame == nullptr || outResult == nullptr) {
+  if (frame == nullptr || outResult == nullptr ||
+      !validTransportKeyLifecycle(state)) {
     return false;
   }
 
@@ -1287,14 +1299,21 @@ bool ZigbeeCommissioning::acceptTransportKeyCommand(
   }
 
   const uint64_t expectedTc = expectedTrustCenterIeee(state);
+  const uint64_t effectiveSourceIeee =
+      apsSecurity.valid ? apsSecurity.sourceIeee : securedSourceIeee;
+  const bool effectiveSecured = nwkSecured || apsSecurity.valid;
   if (!transportKey.valid ||
       transportKey.keyType != kZigbeeApsTransportKeyStandardNetworkKey ||
       transportKey.destinationIeee != localIeee ||
       (expectedTc != 0U && transportKey.sourceIeee != expectedTc) ||
+      !validTrustCenterSource(state, sourceShort, effectiveSourceIeee,
+                              effectiveSecured) ||
       (!apsSecurity.valid && state.policy.requireEncryptedTransportKey) ||
       (apsSecurity.valid &&
        (apsSecurity.sourceIeee != transportKey.sourceIeee ||
         apsSecurity.frameCounter <= state.incomingApsFrameCounter)) ||
+      (!apsSecurity.valid && effectiveSourceIeee != 0U &&
+       effectiveSourceIeee != transportKey.sourceIeee) ||
       (state.policy.installCodeOnly &&
        keyMode != ZigbeePreconfiguredKeyMode::kInstallCodeDerived)) {
     return false;

@@ -775,7 +775,8 @@ bool handleApsCommand(const uint8_t* frame, uint8_t length, uint16_t sourceShort
   const bool haveInstallCodeKey = loadInstallCodeLinkKey(installCodeKey);
   ZigbeeTransportKeyInstallResult transportInstall{};
   if (ZigbeeCommissioning::acceptTransportKeyCommand(
-          g_network, kIeeeAddress, frame, length, installCodeKey,
+          g_network, kIeeeAddress, sourceShort, securedSourceIeee, nwkSecured,
+          frame, length, installCodeKey,
           haveInstallCodeKey, &transportInstall)) {
     ZigbeeCommissioning::applyTransportKeyInstall(&g_network, transportInstall);
     if (transportInstall.activatesNetworkKey) {

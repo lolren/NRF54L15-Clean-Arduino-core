@@ -835,9 +835,29 @@ static bool testCommissioningStateMachine() {
                      transportFrame, &transportFrameLength);
 
   ZigbeeTransportKeyInstallResult install{};
+  ZigbeeEndDeviceCommonState wrongTransportState = state;
+  wrongTransportState.state = ZigbeeCommissioningState::kRestored;
+  ok = ok && !ZigbeeCommissioning::acceptTransportKeyCommand(
+                     wrongTransportState, kLocalIeee, 0x0000U, 0U, false,
+                     transportFrame, transportFrameLength, installCodeKey, true,
+                     &install) &&
+       !ZigbeeCommissioning::acceptTransportKeyCommand(
+           state, kLocalIeee, 0x2222U, 0U, false, transportFrame,
+           transportFrameLength, installCodeKey, true, &install);
+  apsSecurity.sourceIeee = 0x00124B00000000AAULL;
+  ok = ok && ZigbeeSecurity::buildSecuredApsTransportKeyCommand(
+                   transportKey, apsSecurity, installCodeKey, 0x2A, transportFrame,
+                   &transportFrameLength) &&
+       !ZigbeeCommissioning::acceptTransportKeyCommand(
+           state, kLocalIeee, 0x0000U, 0U, false, transportFrame,
+           transportFrameLength, installCodeKey, true, &install);
+  apsSecurity.sourceIeee = kTrustCenterIeee;
+  ok = ok && ZigbeeSecurity::buildSecuredApsTransportKeyCommand(
+                   transportKey, apsSecurity, installCodeKey, 0x2AU,
+                   transportFrame, &transportFrameLength);
   ok = ok && ZigbeeCommissioning::acceptTransportKeyCommand(
-                     state, kLocalIeee, transportFrame, transportFrameLength,
-                     installCodeKey, true, &install) &&
+                     state, kLocalIeee, 0x0000U, 0U, false, transportFrame,
+                     transportFrameLength, installCodeKey, true, &install) &&
        install.valid;
   ZigbeeCommissioning::applyTransportKeyInstall(&state, install);
   ok = ok && state.joined && state.haveActiveNetworkKey &&
@@ -854,8 +874,8 @@ static bool testCommissioningStateMachine() {
                    transportFrame, &transportFrameLength);
   memset(&install, 0, sizeof(install));
   ok = ok && ZigbeeCommissioning::acceptTransportKeyCommand(
-                     state, kLocalIeee, transportFrame, transportFrameLength,
-                     installCodeKey, true, &install) &&
+                     state, kLocalIeee, 0x0000U, 0U, false, transportFrame,
+                     transportFrameLength, installCodeKey, true, &install) &&
        install.valid && install.refreshesActiveNetworkKey &&
        !install.activatesNetworkKey && !install.stagesAlternateKey &&
        !install.refreshesAlternateKey;
@@ -875,8 +895,8 @@ static bool testCommissioningStateMachine() {
                    transportFrame, &transportFrameLength);
   memset(&install, 0, sizeof(install));
   ok = ok && !ZigbeeCommissioning::acceptTransportKeyCommand(
-                     state, kLocalIeee, transportFrame, transportFrameLength,
-                     installCodeKey, true, &install);
+                     state, kLocalIeee, 0x0000U, 0U, false, transportFrame,
+                     transportFrameLength, installCodeKey, true, &install);
 
   ZigbeeApsTransportKey updatedTransportKey = transportKey;
   memcpy(updatedTransportKey.key, kUpdatedNetworkKey,
@@ -887,9 +907,18 @@ static bool testCommissioningStateMachine() {
                      updatedTransportKey, apsSecurity, installCodeKey, 0x2DU,
                      transportFrame, &transportFrameLength);
   memset(&install, 0, sizeof(install));
+  ZigbeeEndDeviceCommonState wrongUpdateTransportState = state;
+  wrongUpdateTransportState.state =
+      ZigbeeCommissioningState::kWaitingUpdateDevice;
+  wrongUpdateTransportState.rejoinPending = true;
+  ok = ok && !ZigbeeCommissioning::acceptTransportKeyCommand(
+                     wrongUpdateTransportState, kLocalIeee, 0x0000U, 0U, false,
+                     transportFrame, transportFrameLength, installCodeKey, true,
+                     &install);
+  memset(&install, 0, sizeof(install));
   ok = ok && ZigbeeCommissioning::acceptTransportKeyCommand(
-                     state, kLocalIeee, transportFrame, transportFrameLength,
-                     installCodeKey, true, &install) &&
+                     state, kLocalIeee, 0x0000U, 0U, false, transportFrame,
+                     transportFrameLength, installCodeKey, true, &install) &&
        install.valid && install.stagesAlternateKey &&
        !install.activatesNetworkKey;
   ZigbeeCommissioning::applyTransportKeyInstall(&state, install);
@@ -905,8 +934,8 @@ static bool testCommissioningStateMachine() {
                    transportFrame, &transportFrameLength);
   memset(&install, 0, sizeof(install));
   ok = ok && ZigbeeCommissioning::acceptTransportKeyCommand(
-                     state, kLocalIeee, transportFrame, transportFrameLength,
-                     installCodeKey, true, &install) &&
+                     state, kLocalIeee, 0x0000U, 0U, false, transportFrame,
+                     transportFrameLength, installCodeKey, true, &install) &&
        install.valid && install.refreshesAlternateKey &&
        !install.activatesNetworkKey && !install.stagesAlternateKey &&
        !install.refreshesActiveNetworkKey;
@@ -921,8 +950,8 @@ static bool testCommissioningStateMachine() {
                    transportFrame, &transportFrameLength);
   memset(&install, 0, sizeof(install));
   ok = ok && !ZigbeeCommissioning::acceptTransportKeyCommand(
-                     state, kLocalIeee, transportFrame, transportFrameLength,
-                     installCodeKey, true, &install);
+                     state, kLocalIeee, 0x0000U, 0U, false, transportFrame,
+                     transportFrameLength, installCodeKey, true, &install);
 
   ZigbeeApsSwitchKey switchKey{};
   switchKey.valid = true;
@@ -1010,7 +1039,7 @@ static bool testCommissioningStateMachine() {
        !restored.haveAlternateNetworkKey;
 
   reportResult("CommissioningState", ok,
-               "transport_key+key_update+switch_key+rejoin+update_device");
+               "transport_key_source+state+key_update+switch_key+rejoin+update_device");
   return ok;
 }
 
