@@ -103,6 +103,22 @@ class ZigbeeSecurity {
       const uint8_t* frame, uint8_t length, const uint8_t key[16],
       ZigbeeApsTransportKey* outTransportKey,
       ZigbeeApsSecurityHeader* outSecurity, uint8_t* outCounter);
+  static bool buildSecuredApsUpdateDeviceCommand(
+      const ZigbeeApsUpdateDevice& updateDevice,
+      const ZigbeeApsSecurityHeader& security, const uint8_t key[16],
+      uint8_t counter, uint8_t* outFrame, uint8_t* outLength);
+  static bool parseSecuredApsUpdateDeviceCommand(
+      const uint8_t* frame, uint8_t length, const uint8_t key[16],
+      ZigbeeApsUpdateDevice* outUpdateDevice,
+      ZigbeeApsSecurityHeader* outSecurity, uint8_t* outCounter);
+  static bool buildSecuredApsSwitchKeyCommand(
+      const ZigbeeApsSwitchKey& switchKey,
+      const ZigbeeApsSecurityHeader& security, const uint8_t key[16],
+      uint8_t counter, uint8_t* outFrame, uint8_t* outLength);
+  static bool parseSecuredApsSwitchKeyCommand(
+      const uint8_t* frame, uint8_t length, const uint8_t key[16],
+      ZigbeeApsSwitchKey* outSwitchKey, ZigbeeApsSecurityHeader* outSecurity,
+      uint8_t* outCounter);
 };
 
 }  // namespace xiao_nrf54l15

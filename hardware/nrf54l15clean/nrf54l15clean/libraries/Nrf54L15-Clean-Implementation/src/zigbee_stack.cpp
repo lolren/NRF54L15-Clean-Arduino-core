@@ -1159,6 +1159,116 @@ bool ZigbeeCodec::parseAssociationResponse(
   return true;
 }
 
+bool ZigbeeCodec::buildOrphanNotification(uint8_t sequence,
+                                          uint64_t deviceExtended,
+                                          uint8_t* outFrame,
+                                          uint8_t* outLength) {
+  ZigbeeMacFrame frame{};
+  frame.frameType = ZigbeeMacFrameType::kCommand;
+  frame.sequence = sequence;
+  frame.panCompression = true;
+  frame.destination.mode = ZigbeeMacAddressMode::kShort;
+  frame.destination.panId = 0xFFFFU;
+  frame.destination.shortAddress = 0xFFFFU;
+  frame.source.mode = ZigbeeMacAddressMode::kExtended;
+  frame.source.panId = 0xFFFFU;
+  frame.source.extendedAddress = deviceExtended;
+  frame.commandId = kZigbeeMacCommandOrphanNotification;
+  return buildMacFrame(frame, nullptr, 0U, outFrame, outLength);
+}
+
+bool ZigbeeCodec::parseOrphanNotification(
+    const uint8_t* frame, uint8_t length,
+    ZigbeeMacOrphanNotificationView* outView) {
+  if (outView != nullptr) {
+    memset(outView, 0, sizeof(*outView));
+  }
+  if (frame == nullptr || outView == nullptr) {
+    return false;
+  }
+
+  ZigbeeMacFrame parsed{};
+  if (!parseMacFrame(frame, length, &parsed) || !parsed.valid ||
+      parsed.frameType != ZigbeeMacFrameType::kCommand ||
+      parsed.commandId != kZigbeeMacCommandOrphanNotification ||
+      parsed.destination.mode != ZigbeeMacAddressMode::kShort ||
+      parsed.destination.shortAddress != 0xFFFFU ||
+      parsed.source.mode != ZigbeeMacAddressMode::kExtended ||
+      parsed.payloadLength != 0U) {
+    return false;
+  }
+
+  outView->valid = true;
+  outView->sequence = parsed.sequence;
+  outView->panId = parsed.destination.panId;
+  outView->deviceExtended = parsed.source.extendedAddress;
+  return true;
+}
+
+bool ZigbeeCodec::buildCoordinatorRealignment(uint8_t sequence, uint16_t panId,
+                                              uint16_t coordinatorShort,
+                                              uint8_t channel,
+                                              uint16_t assignedShort,
+                                              uint64_t destinationExtended,
+                                              uint8_t* outFrame,
+                                              uint8_t* outLength) {
+  uint8_t payload[5] = {0U};
+  writeLe16(&payload[0], panId);
+  writeLe16(&payload[2], coordinatorShort);
+  payload[4] = channel;
+
+  uint8_t tail[2] = {0U};
+  writeLe16(&tail[0], assignedShort);
+
+  uint8_t fullPayload[7] = {0U};
+  memcpy(fullPayload, payload, sizeof(payload));
+  memcpy(&fullPayload[5], tail, sizeof(tail));
+
+  ZigbeeMacFrame frame{};
+  frame.frameType = ZigbeeMacFrameType::kCommand;
+  frame.sequence = sequence;
+  frame.panCompression = true;
+  frame.destination.mode = ZigbeeMacAddressMode::kExtended;
+  frame.destination.panId = panId;
+  frame.destination.extendedAddress = destinationExtended;
+  frame.source.mode = ZigbeeMacAddressMode::kShort;
+  frame.source.panId = panId;
+  frame.source.shortAddress = coordinatorShort;
+  frame.commandId = kZigbeeMacCommandCoordinatorRealignment;
+  return buildMacFrame(frame, fullPayload, sizeof(fullPayload), outFrame,
+                       outLength);
+}
+
+bool ZigbeeCodec::parseCoordinatorRealignment(
+    const uint8_t* frame, uint8_t length,
+    ZigbeeMacCoordinatorRealignmentView* outView) {
+  if (outView != nullptr) {
+    memset(outView, 0, sizeof(*outView));
+  }
+  if (frame == nullptr || outView == nullptr) {
+    return false;
+  }
+
+  ZigbeeMacFrame parsed{};
+  if (!parseMacFrame(frame, length, &parsed) || !parsed.valid ||
+      parsed.frameType != ZigbeeMacFrameType::kCommand ||
+      parsed.commandId != kZigbeeMacCommandCoordinatorRealignment ||
+      parsed.destination.mode != ZigbeeMacAddressMode::kExtended ||
+      parsed.source.mode != ZigbeeMacAddressMode::kShort ||
+      parsed.payloadLength < 7U) {
+    return false;
+  }
+
+  outView->valid = true;
+  outView->sequence = parsed.sequence;
+  outView->panId = readLe16(&parsed.payload[0]);
+  outView->coordinatorShort = readLe16(&parsed.payload[2]);
+  outView->channel = parsed.payload[4];
+  outView->assignedShort = readLe16(&parsed.payload[5]);
+  outView->destinationExtended = parsed.destination.extendedAddress;
+  return true;
+}
+
 bool ZigbeeCodec::buildBeaconFrame(uint8_t sequence, uint16_t panId,
                                    uint16_t coordinatorShort,
                                    const ZigbeeMacBeaconPayload& payload,

@@ -146,6 +146,10 @@ ZigbeeCommissioningPolicy commissioningPolicy() {
       (NRF54L15_CLEAN_ZIGBEE_ALLOW_WELL_KNOWN_LINK_KEY == 0);
   policy.requireEncryptedTransportKey =
       (NRF54L15_CLEAN_ZIGBEE_REQUIRE_ENCRYPTED_TRANSPORT_KEY != 0);
+  policy.requireEncryptedUpdateDevice =
+      (NRF54L15_CLEAN_ZIGBEE_ALLOW_DEMO_PLAINTEXT_TC_CMDS == 0);
+  policy.requireEncryptedSwitchKey =
+      (NRF54L15_CLEAN_ZIGBEE_ALLOW_DEMO_PLAINTEXT_TC_CMDS == 0);
   policy.requireUniqueTrustCenterForRejoin = true;
   return policy;
 }
@@ -551,7 +555,7 @@ bool handleApsCommand(const uint8_t* frame, uint8_t length, uint16_t sourceShort
 #else
           false,
 #endif
-          frame, length, &updateDevice)) {
+          frame, length, installCodeKey, haveInstallCodeKey, &updateDevice)) {
     ZigbeeCommissioning::applyUpdateDevice(&g_network, updateDevice);
     if (updateDevice.updateDevice.status ==
         kZigbeeApsUpdateDeviceStatusStandardSecureRejoin) {
@@ -565,6 +569,10 @@ bool handleApsCommand(const uint8_t* frame, uint8_t length, uint16_t sourceShort
     Serial.print(updateDevice.updateDevice.status, HEX);
     Serial.print(" nwk_sec=");
     Serial.print(nwkSecured ? "1" : "0");
+    if (updateDevice.apsSecurity.valid) {
+      Serial.print(" aps_sec_fc=");
+      Serial.print(updateDevice.apsSecurity.frameCounter);
+    }
     Serial.print("\r\n");
     return true;
   }
@@ -572,7 +580,7 @@ bool handleApsCommand(const uint8_t* frame, uint8_t length, uint16_t sourceShort
   ZigbeeSwitchKeyAcceptance switchKey{};
   if (ZigbeeCommissioning::acceptSwitchKeyCommand(
           g_network, sourceShort, securedSourceIeee, nwkSecured, false, frame,
-          length, &switchKey)) {
+          length, installCodeKey, haveInstallCodeKey, &switchKey)) {
     ZigbeeCommissioning::applySwitchKey(&g_network, switchKey);
     g_lastInboundSecurityFrameCounter = 0U;
     configureDeviceForCurrentNetwork();
@@ -582,6 +590,10 @@ bool handleApsCommand(const uint8_t* frame, uint8_t length, uint16_t sourceShort
     Serial.print(g_activeNetworkKeySequence);
     Serial.print(" ctr=");
     Serial.print(switchKey.counter);
+    if (switchKey.apsSecurity.valid) {
+      Serial.print(" aps_sec_fc=");
+      Serial.print(switchKey.apsSecurity.frameCounter);
+    }
     Serial.print("\r\n");
     return true;
   }

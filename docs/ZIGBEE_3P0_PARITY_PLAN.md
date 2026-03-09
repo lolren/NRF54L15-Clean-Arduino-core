@@ -36,7 +36,7 @@ That is useful foundation work, but it is still not real Zigbee 3.0 parity.
 
 Objective: replace the sketch-local join flow with a shared commissioning engine that can drive first join, steering retries, and retained-key rejoin without hard-coded demo assumptions.
 
-Status: partially landed. The joinable HA examples now use shared commissioning state, active scan, association, parent polling while waiting for Transport Key or Update Device, retry/timeout handling, masked-channel fallback scanning for retained-network secure rejoin, and retained-key rejoin transitions through `zigbee_commissioning`, but the behavior is still demo-network commissioning rather than BDB.
+Status: partially landed. The joinable HA examples now use shared commissioning state, active scan, association, parent polling while waiting for Transport Key or Update Device, retry/timeout handling, masked-channel fallback scanning for retained-network secure rejoin, MAC orphan-notification plus coordinator-realignment recovery before the reassociation fallback, and retained-key rejoin transitions through `zigbee_commissioning`, but the behavior is still demo-network commissioning rather than BDB.
 
 Deliverables:
 
@@ -56,7 +56,7 @@ Verification:
 
 Objective: move from a single demo Transport Key exchange toward a real trust-center lifecycle with durable identity and key-management policy.
 
-Status: partially landed. Install-code-derived and ZigBeeAlliance09 link-key policy, persisted trust-center identity, encrypted Transport Key enforcement, retained-key rejoin gating, alternate network-key persistence, Switch Key rollout, and trust-center source/state validation for `Update Device` and `Switch Key` now exist in-tree for the clean demo coordinator and joinable HA examples, but the behavior is still a demo trust-center lifecycle rather than full Zigbee 3.0 commissioning.
+Status: partially landed. Install-code-derived and ZigBeeAlliance09 link-key policy, persisted trust-center identity, encrypted Transport Key enforcement, retained-key rejoin gating, alternate network-key persistence, APS-secured Update Device and Switch Key handling with inbound APS anti-replay checks, and trust-center source/state validation for `Update Device` and `Switch Key` now exist in-tree for the clean demo coordinator and joinable HA examples, but the behavior is still a demo trust-center lifecycle rather than full Zigbee 3.0 commissioning.
 
 Deliverables:
 

@@ -36,10 +36,10 @@ Current clean examples do not implement BDB steering or install-code discovery o
 Expected sequence:
 
 1. End device restores retained PAN, parent, trust-center IEEE, link-key provenance, and active network key.
-2. End device performs a retained-key reassociation attempt on the retained channel and parent.
-3. If that misses, the device scans the configured primary and secondary masks for a beacon matching the retained PAN or Extended PAN ID, then retries reassociation on the best retained-network candidate it finds.
-4. Coordinator recognizes the node as known and accepts the reassociation.
-5. Coordinator delivers NWK-secured APS `Update Device` from the expected trust-center source.
+2. End device first emits MAC orphan notification on the retained channel and waits for coordinator realignment.
+3. If that misses, the device performs the retained-network scan across the configured primary and secondary masks, retries orphan recovery on the best retained-network candidate it finds, and only then falls back to reassociation.
+4. Coordinator recognizes the node as known and either answers with coordinator realignment or accepts the reassociation.
+5. Coordinator delivers APS-secured `Update Device` from the expected trust-center source.
 6. End device accepts `Update Device` only while it is in the secure-rejoin wait state, restores joined state, and resumes secured polling and reporting.
 
 Current clean examples require retained key material before they will attempt secure rejoin. This is still not BDB rejoin.
@@ -53,7 +53,7 @@ Expected sequence:
 1. Coordinator keeps the current active network key and key sequence in use for normal secured NWK traffic.
 2. Coordinator delivers a new APS-secured `Transport Key` carrying an alternate network key and a higher sequence number.
 3. End device validates the APS security context and stores the new key as `alternate`, without activating it immediately.
-4. Coordinator later sends APS `Switch Key` over NWK security using the still-active network key.
+4. Coordinator later sends APS-secured `Switch Key`, typically carried inside NWK-secured traffic using the still-active network key.
 5. End device promotes the alternate key to active, clears the staged alternate slot, resets NWK replay state, and resumes secured traffic on the new sequence.
 
 This is a demo rollout path for the in-tree coordinator. It is not yet validated against a third-party Trust Center.
@@ -76,7 +76,7 @@ Behavior:
 - Well-known link-key fallback is optional.
 - Encrypted `Transport Key` is required by default.
 - Secure rejoin depends on retained key material and link-key provenance.
-- `Update Device` and `Switch Key` are only accepted from the expected trust-center source, and only in the right device lifecycle state.
+- `Update Device` and `Switch Key` are only accepted from the expected trust-center source, only in the right device lifecycle state, and encrypted by default.
 
 ## What An External Coordinator Must Match
 
@@ -84,8 +84,9 @@ Minimum behavioral match for future ZHA/Zigbee2MQTT interop work:
 
 - Beacon and association timing that the current MAC polling path can interoperate with.
 - APS-encrypted `Transport Key` delivery with the expected preconfigured link key.
-- NWK-secured `Update Device` for retained-key rejoin handling, sourced from the coordinator short address and expected trust-center IEEE.
-- NWK-secured APS `Switch Key` if network-key update is attempted, again sourced from the expected trust center.
+- MAC orphan-recovery behavior that can interoperate with an end device expecting orphan notification plus coordinator realignment before reassociation fallback.
+- APS-secured `Update Device` for retained-key rejoin handling, sourced from the coordinator short address and expected trust-center IEEE.
+- APS-secured `Switch Key` if network-key update is attempted, again sourced from the expected trust center.
 - Home Automation descriptor discovery, reporting configuration, and standard ZDO responses.
 
 ## What Still Blocks Real Interop

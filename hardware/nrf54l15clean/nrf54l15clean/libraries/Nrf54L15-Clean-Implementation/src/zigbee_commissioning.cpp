@@ -164,6 +164,132 @@ bool validTrustCenterSource(const ZigbeeEndDeviceCommonState& state,
   return securedSourceIeee != 0U && securedSourceIeee == expectedTc;
 }
 
+bool waitForCoordinatorRealignment(ZigbeeRadio& radio, uint64_t localIeee,
+                                   ZigbeeMacCoordinatorRealignmentView* outView) {
+  if (outView != nullptr) {
+    memset(outView, 0, sizeof(*outView));
+  }
+  if (outView == nullptr) {
+    return false;
+  }
+
+  const uint32_t deadline = millis() + 180U;
+  while (static_cast<int32_t>(millis() - deadline) < 0) {
+    ZigbeeFrame frame{};
+    if (!radio.receive(&frame, 5000U, 300000UL)) {
+      continue;
+    }
+
+    ZigbeeMacCoordinatorRealignmentView realignment{};
+    if (!ZigbeeCodec::parseCoordinatorRealignment(frame.psdu, frame.length,
+                                                  &realignment) ||
+        !realignment.valid ||
+        realignment.destinationExtended != localIeee) {
+      continue;
+    }
+
+    *outView = realignment;
+    return true;
+  }
+
+  return false;
+}
+
+bool attemptOrphanRecovery(ZigbeeRadio& radio, uint8_t* ioMacSequence,
+                           uint64_t localIeee,
+                           ZigbeeEndDeviceCommonState* state,
+                           uint8_t channel) {
+  if (ioMacSequence == nullptr || state == nullptr || channel < kMinZigbeeChannel ||
+      channel > kMaxZigbeeChannel || !radio.setChannel(channel)) {
+    return false;
+  }
+
+  uint8_t request[127] = {0U};
+  uint8_t requestLength = 0U;
+  if (!ZigbeeCodec::buildOrphanNotification((*ioMacSequence)++, localIeee,
+                                            request, &requestLength) ||
+      !radio.transmit(request, requestLength, false, 1200000UL)) {
+    return false;
+  }
+
+  ZigbeeMacCoordinatorRealignmentView realignment{};
+  if (!waitForCoordinatorRealignment(radio, localIeee, &realignment) ||
+      !realignment.valid) {
+    return false;
+  }
+
+  state->channel = realignment.channel;
+  state->panId = realignment.panId;
+  state->parentShort = realignment.coordinatorShort;
+  state->localShort = realignment.assignedShort;
+  state->joined = false;
+  state->rejoinPending = true;
+  state->securityEnabled = true;
+  state->state = ZigbeeCommissioningState::kWaitingUpdateDevice;
+  state->lastFailure = ZigbeeCommissioningFailure::kNone;
+  return true;
+}
+
+bool tryParseSecuredUpdateDeviceCommand(
+    const ZigbeeEndDeviceCommonState& state, const uint8_t* frame,
+    uint8_t length, const uint8_t installCodeKey[16], bool haveInstallCodeKey,
+    ZigbeeApsUpdateDevice* outUpdateDevice, ZigbeeApsSecurityHeader* outSecurity,
+    uint8_t* outCounter) {
+  if (outUpdateDevice == nullptr || outSecurity == nullptr ||
+      outCounter == nullptr) {
+    return false;
+  }
+
+  if (state.policy.allowInstallCodeKey && haveInstallCodeKey &&
+      installCodeKey != nullptr &&
+      ZigbeeSecurity::parseSecuredApsUpdateDeviceCommand(
+          frame, length, installCodeKey, outUpdateDevice, outSecurity,
+          outCounter)) {
+    return true;
+  }
+
+  if (state.policy.allowWellKnownKey) {
+    uint8_t linkKey[16] = {0U};
+    if (ZigbeeSecurity::loadZigbeeAlliance09LinkKey(linkKey) &&
+        ZigbeeSecurity::parseSecuredApsUpdateDeviceCommand(
+            frame, length, linkKey, outUpdateDevice, outSecurity, outCounter)) {
+      return !state.policy.installCodeOnly;
+    }
+  }
+
+  return false;
+}
+
+bool tryParseSecuredSwitchKeyCommand(
+    const ZigbeeEndDeviceCommonState& state, const uint8_t* frame,
+    uint8_t length, const uint8_t installCodeKey[16], bool haveInstallCodeKey,
+    ZigbeeApsSwitchKey* outSwitchKey, ZigbeeApsSecurityHeader* outSecurity,
+    uint8_t* outCounter) {
+  if (outSwitchKey == nullptr || outSecurity == nullptr ||
+      outCounter == nullptr) {
+    return false;
+  }
+
+  if (state.policy.allowInstallCodeKey && haveInstallCodeKey &&
+      installCodeKey != nullptr &&
+      ZigbeeSecurity::parseSecuredApsSwitchKeyCommand(
+          frame, length, installCodeKey, outSwitchKey, outSecurity,
+          outCounter)) {
+    return true;
+  }
+
+  if (state.policy.allowWellKnownKey) {
+    uint8_t linkKey[16] = {0U};
+    if (ZigbeeSecurity::loadZigbeeAlliance09LinkKey(linkKey) &&
+        ZigbeeSecurity::parseSecuredApsSwitchKeyCommand(
+            frame, length, linkKey, outSwitchKey, outSecurity, outCounter)) {
+      return !state.policy.installCodeOnly;
+    }
+  }
+
+  return false;
+}
+
 bool scanForKnownNetwork(ZigbeeRadio& radio, uint8_t* ioMacSequence,
                          ZigbeeEndDeviceCommonState* state,
                          ZigbeeBeaconCandidate* outResult) {
@@ -797,6 +923,11 @@ bool ZigbeeCommissioning::performSecureRejoin(
   state->lastJoinAttemptMs = millis();
   state->state = ZigbeeCommissioningState::kAssociating;
 
+  if (attemptOrphanRecovery(radio, ioMacSequence, localIeee, state,
+                            state->channel)) {
+    return true;
+  }
+
   uint16_t assignedShort = 0U;
   bool associated = attemptAssociationRequest(
       radio, ioMacSequence, state->panId, state->parentShort, localIeee,
@@ -812,6 +943,10 @@ bool ZigbeeCommissioning::performSecureRejoin(
     state->panId = candidate.beacon.panId;
     state->parentShort = candidate.beacon.sourceShort;
     state->extendedPanId = candidate.beacon.network.extendedPanId;
+    if (attemptOrphanRecovery(radio, ioMacSequence, localIeee, state,
+                              candidate.channel)) {
+      return true;
+    }
     state->state = ZigbeeCommissioningState::kAssociating;
     associated = attemptAssociationRequest(
         radio, ioMacSequence, state->panId, state->parentShort, localIeee,
@@ -944,23 +1079,36 @@ bool ZigbeeCommissioning::acceptUpdateDeviceCommand(
     const ZigbeeEndDeviceCommonState& state, uint64_t localIeee,
     uint16_t sourceShort, uint64_t securedSourceIeee, bool nwkSecured,
     bool allowPlaintext, const uint8_t* frame, uint8_t length,
+    const uint8_t installCodeKey[16], bool haveInstallCodeKey,
     ZigbeeUpdateDeviceAcceptance* outResult) {
   if (outResult != nullptr) {
     memset(outResult, 0, sizeof(*outResult));
   }
   if (frame == nullptr || outResult == nullptr ||
-      (!allowPlaintext && !nwkSecured) ||
-      !validTrustCenterSource(state, sourceShort, securedSourceIeee,
-                              nwkSecured) ||
       (!state.rejoinPending &&
        state.state != ZigbeeCommissioningState::kWaitingUpdateDevice)) {
     return false;
   }
 
   ZigbeeApsUpdateDevice updateDevice{};
+  ZigbeeApsSecurityHeader apsSecurity{};
   uint8_t counter = 0U;
-  if (!ZigbeeCodec::parseApsUpdateDeviceCommand(frame, length, &updateDevice,
-                                                &counter) ||
+  bool parsed = tryParseSecuredUpdateDeviceCommand(
+      state, frame, length, installCodeKey, haveInstallCodeKey, &updateDevice,
+      &apsSecurity, &counter);
+  if (!parsed && !state.policy.requireEncryptedUpdateDevice && allowPlaintext) {
+    parsed = ZigbeeCodec::parseApsUpdateDeviceCommand(frame, length,
+                                                      &updateDevice, &counter);
+  }
+  const uint64_t effectiveSourceIeee =
+      apsSecurity.valid ? apsSecurity.sourceIeee : securedSourceIeee;
+  const bool effectiveSecured = nwkSecured || apsSecurity.valid;
+  if (!parsed || (!allowPlaintext && !effectiveSecured) ||
+      !validTrustCenterSource(state, sourceShort, effectiveSourceIeee,
+                              effectiveSecured) ||
+      (!apsSecurity.valid && state.policy.requireEncryptedUpdateDevice) ||
+      (apsSecurity.valid &&
+       apsSecurity.frameCounter <= state.incomingApsFrameCounter) ||
       !updateDevice.valid || updateDevice.deviceIeee != localIeee ||
       updateDevice.status !=
           kZigbeeApsUpdateDeviceStatusStandardSecureRejoin) {
@@ -969,6 +1117,7 @@ bool ZigbeeCommissioning::acceptUpdateDeviceCommand(
 
   outResult->valid = true;
   outResult->updateDevice = updateDevice;
+  outResult->apsSecurity = apsSecurity;
   outResult->counter = counter;
   return true;
 }
@@ -984,6 +1133,9 @@ void ZigbeeCommissioning::applyUpdateDevice(
       result.updateDevice.deviceShort != 0xFFFFU) {
     state->localShort = result.updateDevice.deviceShort;
   }
+  if (result.apsSecurity.valid) {
+    state->incomingApsFrameCounter = result.apsSecurity.frameCounter;
+  }
   if (result.updateDevice.status ==
       kZigbeeApsUpdateDeviceStatusStandardSecureRejoin) {
     state->joined = true;
@@ -997,23 +1149,36 @@ void ZigbeeCommissioning::applyUpdateDevice(
 bool ZigbeeCommissioning::acceptSwitchKeyCommand(
     const ZigbeeEndDeviceCommonState& state, uint16_t sourceShort,
     uint64_t securedSourceIeee, bool nwkSecured, bool allowPlaintext,
-    const uint8_t* frame, uint8_t length,
+    const uint8_t* frame, uint8_t length, const uint8_t installCodeKey[16],
+    bool haveInstallCodeKey,
     ZigbeeSwitchKeyAcceptance* outResult) {
   if (outResult != nullptr) {
     memset(outResult, 0, sizeof(*outResult));
   }
   if (frame == nullptr || outResult == nullptr ||
-      (!allowPlaintext && !nwkSecured) ||
-      !validTrustCenterSource(state, sourceShort, securedSourceIeee,
-                              nwkSecured) ||
       !state.securityEnabled) {
     return false;
   }
 
   ZigbeeApsSwitchKey switchKey{};
+  ZigbeeApsSecurityHeader apsSecurity{};
   uint8_t counter = 0U;
-  if (!ZigbeeCodec::parseApsSwitchKeyCommand(frame, length, &switchKey,
-                                             &counter) ||
+  bool parsed = tryParseSecuredSwitchKeyCommand(
+      state, frame, length, installCodeKey, haveInstallCodeKey, &switchKey,
+      &apsSecurity, &counter);
+  if (!parsed && !state.policy.requireEncryptedSwitchKey && allowPlaintext) {
+    parsed = ZigbeeCodec::parseApsSwitchKeyCommand(frame, length, &switchKey,
+                                                   &counter);
+  }
+  const uint64_t effectiveSourceIeee =
+      apsSecurity.valid ? apsSecurity.sourceIeee : securedSourceIeee;
+  const bool effectiveSecured = nwkSecured || apsSecurity.valid;
+  if (!parsed || (!allowPlaintext && !effectiveSecured) ||
+      !validTrustCenterSource(state, sourceShort, effectiveSourceIeee,
+                              effectiveSecured) ||
+      (!apsSecurity.valid && state.policy.requireEncryptedSwitchKey) ||
+      (apsSecurity.valid &&
+       apsSecurity.frameCounter <= state.incomingApsFrameCounter) ||
       !switchKey.valid || !state.haveAlternateNetworkKey ||
       !state.haveActiveNetworkKey ||
       switchKey.keySequence != state.alternateNetworkKeySequence) {
@@ -1022,6 +1187,7 @@ bool ZigbeeCommissioning::acceptSwitchKeyCommand(
 
   outResult->valid = true;
   outResult->switchKey = switchKey;
+  outResult->apsSecurity = apsSecurity;
   outResult->counter = counter;
   return true;
 }
@@ -1039,6 +1205,9 @@ void ZigbeeCommissioning::applySwitchKey(
   state->activeNetworkKeySequence = state->alternateNetworkKeySequence;
   state->haveActiveNetworkKey = true;
   clearAlternateNetworkKey(state);
+  if (result.apsSecurity.valid) {
+    state->incomingApsFrameCounter = result.apsSecurity.frameCounter;
+  }
   state->nwkSecurityFrameCounter = 1U;
   state->incomingNwkFrameCounter = 0U;
   state->securityEnabled = true;

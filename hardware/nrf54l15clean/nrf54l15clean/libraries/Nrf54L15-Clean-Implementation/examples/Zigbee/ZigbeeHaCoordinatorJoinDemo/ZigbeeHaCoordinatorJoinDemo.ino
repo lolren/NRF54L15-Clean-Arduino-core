@@ -343,6 +343,21 @@ bool sendBeacon() {
   return sendPsdu(frame, length);
 }
 
+bool sendCoordinatorRealignment(NodeEntry* node) {
+  if (node == nullptr || node->ieeeAddress == 0U || node->shortAddress == 0U) {
+    return false;
+  }
+
+  uint8_t frame[127] = {0U};
+  uint8_t length = 0U;
+  if (!ZigbeeCodec::buildCoordinatorRealignment(
+          g_macSequence++, kPanId, kCoordinatorShort, kChannel,
+          node->shortAddress, node->ieeeAddress, frame, &length)) {
+    return false;
+  }
+  return sendPsdu(frame, length);
+}
+
 bool queuePendingApsFrameExtended(NodeEntry* node, uint8_t deliveryMode,
                                   uint16_t destinationGroup,
                                   uint16_t clusterId, uint16_t profileId,
@@ -700,6 +715,13 @@ bool sendSwitchKey(NodeEntry* node) {
     return false;
   }
 
+  uint8_t linkKey[16] = {0U};
+  ZigbeePreconfiguredKeyMode keyMode = ZigbeePreconfiguredKeyMode::kNone;
+  if (!resolveTrustCenterLinkKey(node, linkKey, &keyMode)) {
+    return false;
+  }
+  node->preconfiguredKeyMode = keyMode;
+
   const uint8_t* currentKey = keyForSequence(node->currentNetworkKeySequence);
   if (currentKey == nullptr) {
     return false;
@@ -711,8 +733,14 @@ bool sendSwitchKey(NodeEntry* node) {
 
   uint8_t apsFrame[127] = {0U};
   uint8_t apsLength = 0U;
-  if (!ZigbeeCodec::buildApsSwitchKeyCommand(switchKey, g_apsCounter++, apsFrame,
-                                             &apsLength)) {
+  ZigbeeApsSecurityHeader apsSecurity{};
+  apsSecurity.valid = true;
+  apsSecurity.securityControl = kZigbeeSecurityControlApsEncMic32;
+  apsSecurity.frameCounter = g_apsTrustCenterFrameCounter++;
+  apsSecurity.sourceIeee = kCoordinatorIeee;
+  if (!ZigbeeSecurity::buildSecuredApsSwitchKeyCommand(
+          switchKey, apsSecurity, linkKey, g_apsCounter++, apsFrame,
+          &apsLength)) {
     return false;
   }
 
@@ -756,6 +784,13 @@ bool sendUpdateDevice(NodeEntry* node) {
     return false;
   }
 
+  uint8_t linkKey[16] = {0U};
+  ZigbeePreconfiguredKeyMode keyMode = ZigbeePreconfiguredKeyMode::kNone;
+  if (!resolveTrustCenterLinkKey(node, linkKey, &keyMode)) {
+    return false;
+  }
+  node->preconfiguredKeyMode = keyMode;
+
   ZigbeeApsUpdateDevice updateDevice{};
   updateDevice.valid = true;
   updateDevice.deviceIeee = node->ieeeAddress;
@@ -764,8 +799,14 @@ bool sendUpdateDevice(NodeEntry* node) {
 
   uint8_t apsFrame[127] = {0U};
   uint8_t apsLength = 0U;
-  if (!ZigbeeCodec::buildApsUpdateDeviceCommand(updateDevice, g_apsCounter++,
-                                                apsFrame, &apsLength)) {
+  ZigbeeApsSecurityHeader apsSecurity{};
+  apsSecurity.valid = true;
+  apsSecurity.securityControl = kZigbeeSecurityControlApsEncMic32;
+  apsSecurity.frameCounter = g_apsTrustCenterFrameCounter++;
+  apsSecurity.sourceIeee = kCoordinatorIeee;
+  if (!ZigbeeSecurity::buildSecuredApsUpdateDeviceCommand(
+          updateDevice, apsSecurity, linkKey, g_apsCounter++, apsFrame,
+          &apsLength)) {
     return false;
   }
 
@@ -1646,6 +1687,28 @@ void handleDataRequest(const ZigbeeMacFrame& frame) {
   }
 }
 
+void handleOrphanNotification(const ZigbeeMacOrphanNotificationView& orphan,
+                              int8_t rssiDbm) {
+  NodeEntry* node = findNodeByIeee(orphan.deviceExtended);
+  if (node == nullptr || node->shortAddress == 0U || !secureRejoinAllowed(node)) {
+    return;
+  }
+
+  if (!sendCoordinatorRealignment(node)) {
+    return;
+  }
+
+  node->pendingSecureRejoin = true;
+  node->lastSeenMs = millis();
+  Serial.print("orphan_realign short=0x");
+  Serial.print(node->shortAddress, HEX);
+  Serial.print(" lk=");
+  Serial.print(ZigbeeCommissioning::keyModeName(node->preconfiguredKeyMode));
+  Serial.print(" rssi=");
+  Serial.print(rssiDbm);
+  Serial.print("dBm\r\n");
+}
+
 void handleZdoFrame(NodeEntry* node, const ZigbeeApsDataFrame& aps) {
   if (node == nullptr) {
     return;
@@ -1982,6 +2045,13 @@ void processIncomingFrame(const ZigbeeFrame& frame) {
   if (mac.frameType == ZigbeeMacFrameType::kCommand) {
     if (mac.commandId == kZigbeeMacCommandBeaconRequest) {
       (void)sendBeacon();
+      return;
+    }
+
+    ZigbeeMacOrphanNotificationView orphan{};
+    if (ZigbeeCodec::parseOrphanNotification(frame.psdu, frame.length,
+                                             &orphan)) {
+      handleOrphanNotification(orphan, frame.rssiDbm);
       return;
     }
 

@@ -160,6 +160,23 @@ struct ZigbeeMacAssociationResponseView {
   uint8_t status = 0U;
 };
 
+struct ZigbeeMacOrphanNotificationView {
+  bool valid = false;
+  uint8_t sequence = 0U;
+  uint16_t panId = 0xFFFFU;
+  uint64_t deviceExtended = 0U;
+};
+
+struct ZigbeeMacCoordinatorRealignmentView {
+  bool valid = false;
+  uint8_t sequence = 0U;
+  uint16_t panId = 0U;
+  uint16_t coordinatorShort = 0U;
+  uint8_t channel = 0U;
+  uint16_t assignedShort = 0U;
+  uint64_t destinationExtended = 0U;
+};
+
 struct ZigbeeMacBeaconPayload {
   bool valid = false;
   uint8_t protocolId = 0U;
@@ -494,6 +511,23 @@ class ZigbeeCodec {
   static bool parseAssociationResponse(
       const uint8_t* frame, uint8_t length,
       ZigbeeMacAssociationResponseView* outView);
+  static bool buildOrphanNotification(uint8_t sequence,
+                                      uint64_t deviceExtended,
+                                      uint8_t* outFrame,
+                                      uint8_t* outLength);
+  static bool parseOrphanNotification(
+      const uint8_t* frame, uint8_t length,
+      ZigbeeMacOrphanNotificationView* outView);
+  static bool buildCoordinatorRealignment(uint8_t sequence, uint16_t panId,
+                                          uint16_t coordinatorShort,
+                                          uint8_t channel,
+                                          uint16_t assignedShort,
+                                          uint64_t destinationExtended,
+                                          uint8_t* outFrame,
+                                          uint8_t* outLength);
+  static bool parseCoordinatorRealignment(
+      const uint8_t* frame, uint8_t length,
+      ZigbeeMacCoordinatorRealignmentView* outView);
   static bool buildBeaconFrame(uint8_t sequence, uint16_t panId,
                                uint16_t coordinatorShort,
                                const ZigbeeMacBeaconPayload& payload,

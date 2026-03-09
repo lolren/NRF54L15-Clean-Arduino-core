@@ -35,6 +35,8 @@ struct ZigbeeCommissioningPolicy {
   bool allowInstallCodeKey = true;
   bool installCodeOnly = false;
   bool requireEncryptedTransportKey = true;
+  bool requireEncryptedUpdateDevice = true;
+  bool requireEncryptedSwitchKey = true;
   bool requireUniqueTrustCenterForRejoin = true;
   bool fallbackToJoinAfterRejoinFailure = true;
 };
@@ -129,12 +131,14 @@ struct ZigbeeTransportKeyInstallResult {
 struct ZigbeeUpdateDeviceAcceptance {
   bool valid = false;
   ZigbeeApsUpdateDevice updateDevice{};
+  ZigbeeApsSecurityHeader apsSecurity{};
   uint8_t counter = 0U;
 };
 
 struct ZigbeeSwitchKeyAcceptance {
   bool valid = false;
   ZigbeeApsSwitchKey switchKey{};
+  ZigbeeApsSecurityHeader apsSecurity{};
   uint8_t counter = 0U;
 };
 
@@ -194,13 +198,15 @@ class ZigbeeCommissioning {
       const ZigbeeEndDeviceCommonState& state, uint64_t localIeee,
       uint16_t sourceShort, uint64_t securedSourceIeee, bool nwkSecured,
       bool allowPlaintext, const uint8_t* frame, uint8_t length,
+      const uint8_t installCodeKey[16], bool haveInstallCodeKey,
       ZigbeeUpdateDeviceAcceptance* outResult);
   static void applyUpdateDevice(ZigbeeEndDeviceCommonState* state,
                                 const ZigbeeUpdateDeviceAcceptance& result);
   static bool acceptSwitchKeyCommand(
       const ZigbeeEndDeviceCommonState& state, uint16_t sourceShort,
       uint64_t securedSourceIeee, bool nwkSecured, bool allowPlaintext,
-      const uint8_t* frame, uint8_t length,
+      const uint8_t* frame, uint8_t length, const uint8_t installCodeKey[16],
+      bool haveInstallCodeKey,
       ZigbeeSwitchKeyAcceptance* outResult);
   static void applySwitchKey(ZigbeeEndDeviceCommonState* state,
                              const ZigbeeSwitchKeyAcceptance& result);

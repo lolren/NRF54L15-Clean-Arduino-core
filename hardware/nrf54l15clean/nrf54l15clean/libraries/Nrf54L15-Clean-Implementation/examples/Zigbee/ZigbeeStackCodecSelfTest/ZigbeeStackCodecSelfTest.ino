@@ -76,6 +76,37 @@ static bool testNwkCodec() {
   return parsedOk;
 }
 
+static bool testMacCommandCodec() {
+  uint8_t encoded[127] = {0U};
+  uint8_t encodedLength = 0U;
+  bool ok = ZigbeeCodec::buildOrphanNotification(
+      0x41U, 0x00124B0001AC1001ULL, encoded, &encodedLength);
+
+  ZigbeeMacOrphanNotificationView orphan{};
+  ok = ok && ZigbeeCodec::parseOrphanNotification(encoded, encodedLength,
+                                                  &orphan) &&
+       orphan.valid && orphan.sequence == 0x41U &&
+       orphan.deviceExtended == 0x00124B0001AC1001ULL &&
+       orphan.panId == 0xFFFFU;
+
+  ok = ok && ZigbeeCodec::buildCoordinatorRealignment(
+                   0x42U, 0x1234U, 0x0000U, 15U, 0x3344U,
+                   0x00124B0001AC1001ULL, encoded, &encodedLength);
+  ZigbeeMacCoordinatorRealignmentView realignment{};
+  ok = ok &&
+       ZigbeeCodec::parseCoordinatorRealignment(encoded, encodedLength,
+                                                &realignment) &&
+       realignment.valid && realignment.sequence == 0x42U &&
+       realignment.panId == 0x1234U &&
+       realignment.coordinatorShort == 0x0000U &&
+       realignment.channel == 15U &&
+       realignment.assignedShort == 0x3344U &&
+       realignment.destinationExtended == 0x00124B0001AC1001ULL;
+
+  reportResult("MAC Command Codec", ok, "orphan+realignment");
+  return ok;
+}
+
 static bool testApsCodec() {
   static const uint8_t kPayload[] = {0x18U, 0x44U, 0x55U};
 
@@ -227,6 +258,21 @@ static bool testApsCommandCodec() {
        parsedDevice.deviceShort == updateDevice.deviceShort &&
        parsedDevice.status == updateDevice.status;
 
+  apsSecurity.frameCounter = 0x01020305UL;
+  ok = ok && ZigbeeSecurity::buildSecuredApsUpdateDeviceCommand(
+                   updateDevice, apsSecurity, linkKey, 0x35U, encoded,
+                   &encodedLength);
+  ZigbeeApsUpdateDevice parsedSecuredDevice{};
+  parsedCounter = 0U;
+  ok = ok && ZigbeeSecurity::parseSecuredApsUpdateDeviceCommand(
+                   encoded, encodedLength, linkKey, &parsedSecuredDevice,
+                   &parsedApsSecurity, &parsedCounter) &&
+       parsedCounter == 0x35U && parsedSecuredDevice.valid &&
+       parsedSecuredDevice.deviceIeee == updateDevice.deviceIeee &&
+       parsedSecuredDevice.deviceShort == updateDevice.deviceShort &&
+       parsedSecuredDevice.status == updateDevice.status &&
+       parsedApsSecurity.frameCounter == apsSecurity.frameCounter;
+
   ZigbeeApsSwitchKey switchKey{};
   switchKey.valid = true;
   switchKey.keySequence = 0x05U;
@@ -239,8 +285,20 @@ static bool testApsCommandCodec() {
        parsedCounter == 0x22U && parsedSwitchKey.valid &&
        parsedSwitchKey.keySequence == switchKey.keySequence;
 
+  apsSecurity.frameCounter = 0x01020306UL;
+  ok = ok && ZigbeeSecurity::buildSecuredApsSwitchKeyCommand(
+                   switchKey, apsSecurity, linkKey, 0x36U, encoded,
+                   &encodedLength);
+  parsedCounter = 0U;
+  ok = ok && ZigbeeSecurity::parseSecuredApsSwitchKeyCommand(
+                   encoded, encodedLength, linkKey, &parsedSwitchKey,
+                   &parsedApsSecurity, &parsedCounter) &&
+       parsedCounter == 0x36U && parsedSwitchKey.valid &&
+       parsedSwitchKey.keySequence == switchKey.keySequence &&
+       parsedApsSecurity.frameCounter == apsSecurity.frameCounter;
+
   reportResult("APS Command Codec", ok,
-               "command+transport_key+update_device+switch_key");
+               "command+transport_key+secured_update+secured_switch");
   return ok;
 }
 
@@ -737,16 +795,19 @@ static bool testCommissioningStateMachine() {
   switchKey.keySequence = 0x02U;
   uint8_t switchFrame[127] = {0U};
   uint8_t switchFrameLength = 0U;
-  ok = ok && ZigbeeCodec::buildApsSwitchKeyCommand(
-                   switchKey, 0x2CU, switchFrame, &switchFrameLength);
+  apsSecurity.frameCounter = 0x11223346UL;
+  ok = ok && ZigbeeSecurity::buildSecuredApsSwitchKeyCommand(
+                   switchKey, apsSecurity, installCodeKey, 0x2CU, switchFrame,
+                   &switchFrameLength);
   ZigbeeSwitchKeyAcceptance acceptedSwitch{};
   ZigbeeSwitchKeyAcceptance rejectedSwitch{};
   ok = ok && ZigbeeCommissioning::acceptSwitchKeyCommand(
                      state, 0x0000U, kTrustCenterIeee, true, false, switchFrame,
-                     switchFrameLength, &acceptedSwitch) &&
+                     switchFrameLength, installCodeKey, true,
+                     &acceptedSwitch) &&
        !ZigbeeCommissioning::acceptSwitchKeyCommand(
            state, 0x1111U, kTrustCenterIeee, true, false, switchFrame,
-           switchFrameLength, &rejectedSwitch) &&
+           switchFrameLength, installCodeKey, true, &rejectedSwitch) &&
        acceptedSwitch.valid;
   ZigbeeCommissioning::applySwitchKey(&state, acceptedSwitch);
   ok = ok && state.haveActiveNetworkKey && !state.haveAlternateNetworkKey &&
@@ -754,7 +815,8 @@ static bool testCommissioningStateMachine() {
        memcmp(state.activeNetworkKey, kUpdatedNetworkKey,
               sizeof(state.activeNetworkKey)) == 0 &&
        state.nwkSecurityFrameCounter == 1U &&
-       state.incomingNwkFrameCounter == 0U;
+       state.incomingNwkFrameCounter == 0U &&
+       state.incomingApsFrameCounter == apsSecurity.frameCounter;
 
   ZigbeeCommissioning::requestSecureRejoin(&state);
   ok = ok && !state.joined && state.rejoinPending &&
@@ -769,9 +831,10 @@ static bool testCommissioningStateMachine() {
 
   uint8_t updateFrame[127] = {0U};
   uint8_t updateFrameLength = 0U;
-  ok = ok && ZigbeeCodec::buildApsUpdateDeviceCommand(updateDevice, 0x33U,
-                                                      updateFrame,
-                                                      &updateFrameLength);
+  apsSecurity.frameCounter = 0x11223347UL;
+  ok = ok && ZigbeeSecurity::buildSecuredApsUpdateDeviceCommand(
+                   updateDevice, apsSecurity, installCodeKey, 0x33U,
+                   updateFrame, &updateFrameLength);
 
   ZigbeeUpdateDeviceAcceptance acceptedUpdate{};
   ZigbeeUpdateDeviceAcceptance rejectedUpdate{};
@@ -781,19 +844,23 @@ static bool testCommissioningStateMachine() {
   state.state = ZigbeeCommissioningState::kWaitingUpdateDevice;
   ok = ok && ZigbeeCommissioning::acceptUpdateDeviceCommand(
                      state, kLocalIeee, 0x0000U, kTrustCenterIeee, true, false,
-                     updateFrame, updateFrameLength, &acceptedUpdate) &&
+                     updateFrame, updateFrameLength, installCodeKey, true,
+                     &acceptedUpdate) &&
        !ZigbeeCommissioning::acceptUpdateDeviceCommand(
            wrongUpdateState, kLocalIeee, 0x0000U, kTrustCenterIeee, true,
-           false, updateFrame, updateFrameLength, &rejectedUpdate) &&
+           false, updateFrame, updateFrameLength, installCodeKey, true,
+           &rejectedUpdate) &&
        !ZigbeeCommissioning::acceptUpdateDeviceCommand(
            state, kLocalIeee, 0x2222U, kTrustCenterIeee, true, false,
-           updateFrame, updateFrameLength, &rejectedUpdate) &&
+           updateFrame, updateFrameLength, installCodeKey, true,
+           &rejectedUpdate) &&
        acceptedUpdate.valid;
   ZigbeeCommissioning::applyUpdateDevice(&state, acceptedUpdate);
   ok = ok && state.joined && !state.rejoinPending &&
        state.localShort == 0x3344U &&
        state.state == ZigbeeCommissioningState::kJoined &&
-       ZigbeeCommissioning::shouldPollParent(state);
+       ZigbeeCommissioning::shouldPollParent(state) &&
+       state.incomingApsFrameCounter == apsSecurity.frameCounter;
 
   ZigbeePersistentState persisted{};
   ZigbeeCommissioning::populatePersistentState(
@@ -1541,6 +1608,7 @@ void setup() {
   Serial.print("\r\nZigbeeStackCodecSelfTest\r\n");
 
   testNwkCodec();
+  testMacCommandCodec();
   testApsCodec();
   testApsCommandCodec();
   testApsAcknowledgementCodec();

@@ -1098,4 +1098,110 @@ bool ZigbeeSecurity::parseSecuredApsTransportKeyCommand(
   return true;
 }
 
+bool ZigbeeSecurity::buildSecuredApsUpdateDeviceCommand(
+    const ZigbeeApsUpdateDevice& updateDevice,
+    const ZigbeeApsSecurityHeader& security, const uint8_t key[16],
+    uint8_t counter, uint8_t* outFrame, uint8_t* outLength) {
+  if (outFrame == nullptr || outLength == nullptr) {
+    return false;
+  }
+
+  uint8_t payload[16] = {0U};
+  uint8_t payloadLength = 0U;
+  if (!appendLe64(payload, sizeof(payload), &payloadLength,
+                  updateDevice.deviceIeee) ||
+      !appendLe16(payload, sizeof(payload), &payloadLength,
+                  updateDevice.deviceShort) ||
+      !appendBytes(payload, sizeof(payload), &payloadLength,
+                   &updateDevice.status, 1U)) {
+    return false;
+  }
+
+  ZigbeeApsCommandFrame command{};
+  command.frameType = ZigbeeApsFrameType::kCommand;
+  command.deliveryMode = kZigbeeApsDeliveryUnicast;
+  command.counter = counter;
+  command.commandId = kZigbeeApsCommandUpdateDevice;
+  return buildSecuredApsCommandFrame(command, security, key, payload,
+                                     payloadLength, outFrame, outLength);
+}
+
+bool ZigbeeSecurity::parseSecuredApsUpdateDeviceCommand(
+    const uint8_t* frame, uint8_t length, const uint8_t key[16],
+    ZigbeeApsUpdateDevice* outUpdateDevice,
+    ZigbeeApsSecurityHeader* outSecurity, uint8_t* outCounter) {
+  if (outUpdateDevice != nullptr) {
+    memset(outUpdateDevice, 0, sizeof(*outUpdateDevice));
+  }
+  if (outCounter != nullptr) {
+    *outCounter = 0U;
+  }
+  if (frame == nullptr || key == nullptr || outUpdateDevice == nullptr ||
+      outSecurity == nullptr || outCounter == nullptr) {
+    return false;
+  }
+
+  ZigbeeApsCommandFrame command{};
+  uint8_t payload[16] = {0U};
+  uint8_t payloadLength = 0U;
+  if (!parseSecuredApsCommandFrame(frame, length, key, &command, outSecurity,
+                                   payload, &payloadLength) ||
+      !command.valid || command.commandId != kZigbeeApsCommandUpdateDevice ||
+      payloadLength != 11U) {
+    return false;
+  }
+
+  outUpdateDevice->valid = true;
+  outUpdateDevice->deviceIeee = readLe64(&payload[0]);
+  outUpdateDevice->deviceShort = readLe16(&payload[8]);
+  outUpdateDevice->status = payload[10];
+  *outCounter = command.counter;
+  return true;
+}
+
+bool ZigbeeSecurity::buildSecuredApsSwitchKeyCommand(
+    const ZigbeeApsSwitchKey& switchKey,
+    const ZigbeeApsSecurityHeader& security, const uint8_t key[16],
+    uint8_t counter, uint8_t* outFrame, uint8_t* outLength) {
+  ZigbeeApsCommandFrame command{};
+  command.frameType = ZigbeeApsFrameType::kCommand;
+  command.deliveryMode = kZigbeeApsDeliveryUnicast;
+  command.counter = counter;
+  command.commandId = kZigbeeApsCommandSwitchKey;
+  return buildSecuredApsCommandFrame(command, security, key,
+                                     &switchKey.keySequence, 1U, outFrame,
+                                     outLength);
+}
+
+bool ZigbeeSecurity::parseSecuredApsSwitchKeyCommand(
+    const uint8_t* frame, uint8_t length, const uint8_t key[16],
+    ZigbeeApsSwitchKey* outSwitchKey, ZigbeeApsSecurityHeader* outSecurity,
+    uint8_t* outCounter) {
+  if (outSwitchKey != nullptr) {
+    memset(outSwitchKey, 0, sizeof(*outSwitchKey));
+  }
+  if (outCounter != nullptr) {
+    *outCounter = 0U;
+  }
+  if (frame == nullptr || key == nullptr || outSwitchKey == nullptr ||
+      outSecurity == nullptr || outCounter == nullptr) {
+    return false;
+  }
+
+  ZigbeeApsCommandFrame command{};
+  uint8_t payload[8] = {0U};
+  uint8_t payloadLength = 0U;
+  if (!parseSecuredApsCommandFrame(frame, length, key, &command, outSecurity,
+                                   payload, &payloadLength) ||
+      !command.valid || command.commandId != kZigbeeApsCommandSwitchKey ||
+      payloadLength != 1U) {
+    return false;
+  }
+
+  outSwitchKey->valid = true;
+  outSwitchKey->keySequence = payload[0];
+  *outCounter = command.counter;
+  return true;
+}
+
 }  // namespace xiao_nrf54l15
