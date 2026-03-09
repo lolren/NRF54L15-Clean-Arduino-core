@@ -27,7 +27,6 @@ static uint8_t g_nwkSequence = 1U;
 static uint8_t g_apsCounter = 1U;
 static uint8_t g_zclSequence = 1U;
 static uint32_t g_lastStatusMs = 0U;
-static uint32_t g_lastReportMs[8] = {0U};
 
 static constexpr uint8_t kChannel =
     static_cast<uint8_t>(NRF54L15_CLEAN_ZIGBEE_CHANNEL);
@@ -187,6 +186,48 @@ static bool sendAttributeReport(uint16_t clusterId) {
                       zclLength);
 }
 
+static bool sendDueAttributeReport(uint32_t nowMs, uint16_t* outClusterId) {
+  if (outClusterId != nullptr) {
+    *outClusterId = 0U;
+  }
+
+  uint8_t zclFrame[127] = {0};
+  uint8_t zclLength = 0U;
+  uint16_t clusterId = 0U;
+  if (!g_device.buildDueAttributeReport(nowMs, g_zclSequence++, &clusterId,
+                                        zclFrame, &zclLength) ||
+      zclLength == 0U) {
+    return false;
+  }
+
+  uint64_t destinationIeee = 0U;
+  uint8_t destinationEndpoint = kCoordinatorEndpoint;
+  bool ok = false;
+  if (g_device.resolveBindingDestination(kLocalEndpoint, clusterId,
+                                         &destinationIeee,
+                                         &destinationEndpoint) &&
+      destinationEndpoint != 0U) {
+    ok = sendApsFrame(kCoordinatorShort, destinationEndpoint, clusterId,
+                      kZigbeeProfileHomeAutomation, kLocalEndpoint, zclFrame,
+                      zclLength);
+  } else {
+    ok = sendApsFrame(kCoordinatorShort, kCoordinatorEndpoint, clusterId,
+                      kZigbeeProfileHomeAutomation, kLocalEndpoint, zclFrame,
+                      zclLength);
+  }
+
+  if (!ok) {
+    g_device.discardDueAttributeReport();
+    return false;
+  }
+
+  (void)g_device.commitDueAttributeReport(nowMs);
+  if (outClusterId != nullptr) {
+    *outClusterId = clusterId;
+  }
+  return true;
+}
+
 static void applyLedState() {
   Gpio::write(kPinUserLed, !g_device.onOff());
 }
@@ -220,25 +261,11 @@ static void handleSerialCommands() {
 }
 
 static void maybeSendScheduledReports(uint32_t nowMs) {
-  const ZigbeeReportingConfiguration* reporting = g_device.reportingConfigurations();
-  for (uint8_t i = 0U; i < 8U; ++i) {
-    if (!reporting[i].used || reporting[i].maximumIntervalSeconds == 0U ||
-        reporting[i].maximumIntervalSeconds == 0xFFFFU) {
-      continue;
-    }
-
-    const uint32_t periodMs =
-        static_cast<uint32_t>(reporting[i].maximumIntervalSeconds) * 1000UL;
-    if ((nowMs - g_lastReportMs[i]) < periodMs) {
-      continue;
-    }
-
-    if (sendAttributeReport(reporting[i].clusterId)) {
-      g_lastReportMs[i] = nowMs;
-      Serial.print("scheduled_report cluster=0x");
-      Serial.print(reporting[i].clusterId, HEX);
-      Serial.print("\r\n");
-    }
+  uint16_t clusterId = 0U;
+  while (sendDueAttributeReport(nowMs, &clusterId)) {
+    Serial.print("scheduled_report cluster=0x");
+    Serial.print(clusterId, HEX);
+    Serial.print("\r\n");
   }
 }
 

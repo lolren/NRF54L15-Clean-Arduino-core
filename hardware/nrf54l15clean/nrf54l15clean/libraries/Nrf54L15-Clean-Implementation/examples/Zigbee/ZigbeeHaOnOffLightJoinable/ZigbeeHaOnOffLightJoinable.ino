@@ -68,7 +68,6 @@ static uint8_t g_zclSequence = 1U;
 static uint32_t& g_lastJoinAttemptMs = g_network.lastJoinAttemptMs;
 static uint32_t g_lastStatusMs = 0U;
 static uint32_t g_lastPollMs = 0U;
-static uint32_t g_lastReportMs[8] = {0U};
 static uint8_t (&g_activeNetworkKey)[16] = g_network.activeNetworkKey;
 static uint8_t& g_activeNetworkKeySequence = g_network.activeNetworkKeySequence;
 static uint8_t (&g_alternateNetworkKey)[16] = g_network.alternateNetworkKey;
@@ -684,6 +683,48 @@ bool sendAttributeReport(uint16_t clusterId) {
                       zclLength);
 }
 
+bool sendDueAttributeReport(uint32_t nowMs, uint16_t* outClusterId) {
+  if (outClusterId != nullptr) {
+    *outClusterId = 0U;
+  }
+
+  uint8_t zclFrame[127] = {0U};
+  uint8_t zclLength = 0U;
+  uint16_t clusterId = 0U;
+  if (!g_device.buildDueAttributeReport(nowMs, g_zclSequence++, &clusterId,
+                                        zclFrame, &zclLength) ||
+      zclLength == 0U) {
+    return false;
+  }
+
+  uint64_t destinationIeee = 0U;
+  uint8_t destinationEndpoint = kCoordinatorEndpoint;
+  bool ok = false;
+  if (g_device.resolveBindingDestination(kLocalEndpoint, clusterId,
+                                         &destinationIeee,
+                                         &destinationEndpoint) &&
+      destinationEndpoint != 0U) {
+    ok = sendApsFrame(g_parentShort, destinationEndpoint, clusterId,
+                      kZigbeeProfileHomeAutomation, kLocalEndpoint, zclFrame,
+                      zclLength);
+  } else {
+    ok = sendApsFrame(g_parentShort, kCoordinatorEndpoint, clusterId,
+                      kZigbeeProfileHomeAutomation, kLocalEndpoint, zclFrame,
+                      zclLength);
+  }
+
+  if (!ok) {
+    g_device.discardDueAttributeReport();
+    return false;
+  }
+
+  (void)g_device.commitDueAttributeReport(nowMs);
+  if (outClusterId != nullptr) {
+    *outClusterId = clusterId;
+  }
+  return true;
+}
+
 bool handleApsCommand(const uint8_t* frame, uint8_t length, uint16_t sourceShort,
                       uint64_t securedSourceIeee, bool nwkSecured) {
   refreshCommissioningState();
@@ -1054,22 +1095,7 @@ void maybeSendScheduledReports(uint32_t nowMs) {
     return;
   }
 
-  const ZigbeeReportingConfiguration* reporting = g_device.reportingConfigurations();
-  for (uint8_t i = 0U; i < 8U; ++i) {
-    if (!reporting[i].used || reporting[i].maximumIntervalSeconds == 0U ||
-        reporting[i].maximumIntervalSeconds == 0xFFFFU) {
-      continue;
-    }
-
-    const uint32_t periodMs =
-        static_cast<uint32_t>(reporting[i].maximumIntervalSeconds) * 1000UL;
-    if ((nowMs - g_lastReportMs[i]) < periodMs) {
-      continue;
-    }
-
-    if (sendAttributeReport(reporting[i].clusterId)) {
-      g_lastReportMs[i] = nowMs;
-    }
+  while (sendDueAttributeReport(nowMs, nullptr)) {
   }
 }
 

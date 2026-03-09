@@ -1,5 +1,7 @@
 #include "zigbee_stack.h"
 
+#include <Arduino.h>
+
 #include <string.h>
 
 namespace xiao_nrf54l15 {
@@ -546,6 +548,90 @@ uint8_t zclDataTypeStorageLength(ZigbeeZclDataType type) {
       break;
   }
   return 0U;
+}
+
+bool attributeValueEquals(const ZigbeeAttributeValue& left,
+                          const ZigbeeAttributeValue& right) {
+  if (left.type != right.type) {
+    return false;
+  }
+
+  switch (left.type) {
+    case ZigbeeZclDataType::kBoolean:
+      return left.data.boolValue == right.data.boolValue;
+    case ZigbeeZclDataType::kBitmap8:
+    case ZigbeeZclDataType::kUint8:
+      return left.data.u8 == right.data.u8;
+    case ZigbeeZclDataType::kBitmap16:
+    case ZigbeeZclDataType::kUint16:
+      return left.data.u16 == right.data.u16;
+    case ZigbeeZclDataType::kUint32:
+      return left.data.u32 == right.data.u32;
+    case ZigbeeZclDataType::kInt16:
+      return left.data.i16 == right.data.i16;
+    case ZigbeeZclDataType::kCharString:
+      return left.stringLength == right.stringLength &&
+             (left.stringLength == 0U ||
+              memcmp(left.stringValue, right.stringValue,
+                     left.stringLength) == 0);
+    default:
+      break;
+  }
+
+  return false;
+}
+
+bool attributeValueMeetsReportableChange(const ZigbeeAttributeValue& current,
+                                         const ZigbeeAttributeValue& baseline,
+                                         uint32_t reportableChange) {
+  if (!attributeValueEquals(current, baseline) &&
+      !zclDataTypeHasReportableChange(current.type)) {
+    return true;
+  }
+  if (current.type != baseline.type || attributeValueEquals(current, baseline)) {
+    return current.type != baseline.type;
+  }
+
+  if (reportableChange == 0U) {
+    return true;
+  }
+
+  switch (current.type) {
+    case ZigbeeZclDataType::kUint8: {
+      const uint8_t delta = current.data.u8 > baseline.data.u8
+                                ? static_cast<uint8_t>(current.data.u8 -
+                                                       baseline.data.u8)
+                                : static_cast<uint8_t>(baseline.data.u8 -
+                                                       current.data.u8);
+      return delta >= reportableChange;
+    }
+    case ZigbeeZclDataType::kUint16:
+    case ZigbeeZclDataType::kBitmap16: {
+      const uint16_t delta = current.data.u16 > baseline.data.u16
+                                 ? static_cast<uint16_t>(current.data.u16 -
+                                                         baseline.data.u16)
+                                 : static_cast<uint16_t>(baseline.data.u16 -
+                                                         current.data.u16);
+      return delta >= reportableChange;
+    }
+    case ZigbeeZclDataType::kUint32: {
+      const uint32_t delta = current.data.u32 > baseline.data.u32
+                                 ? current.data.u32 - baseline.data.u32
+                                 : baseline.data.u32 - current.data.u32;
+      return delta >= reportableChange;
+    }
+    case ZigbeeZclDataType::kInt16: {
+      const int32_t delta = static_cast<int32_t>(current.data.i16) -
+                            static_cast<int32_t>(baseline.data.i16);
+      const uint32_t magnitude =
+          static_cast<uint32_t>(delta < 0 ? -delta : delta);
+      return magnitude >= reportableChange;
+    }
+    default:
+      break;
+  }
+
+  return true;
 }
 
 bool readAttributeValue(const uint8_t* payload, uint8_t length, uint8_t* ioOffset,
@@ -2816,6 +2902,7 @@ bool ZigbeeHomeAutomationDevice::configureOnOffLight(
 
   memset(&config_, 0, sizeof(config_));
   memset(reporting_, 0, sizeof(reporting_));
+  memset(reportingState_, 0, sizeof(reportingState_));
   leaveRequested_ = false;
   config_.logicalType = ZigbeeLogicalType::kEndDevice;
   config_.manufacturerCode = manufacturerCode;
@@ -2865,6 +2952,7 @@ bool ZigbeeHomeAutomationDevice::configureDimmableLight(
 
   memset(&config_, 0, sizeof(config_));
   memset(reporting_, 0, sizeof(reporting_));
+  memset(reportingState_, 0, sizeof(reportingState_));
   leaveRequested_ = false;
   config_.logicalType = ZigbeeLogicalType::kEndDevice;
   config_.manufacturerCode = manufacturerCode;
@@ -2914,6 +3002,7 @@ bool ZigbeeHomeAutomationDevice::configureTemperatureSensor(
 
   memset(&config_, 0, sizeof(config_));
   memset(reporting_, 0, sizeof(reporting_));
+  memset(reportingState_, 0, sizeof(reportingState_));
   leaveRequested_ = false;
   config_.logicalType = ZigbeeLogicalType::kEndDevice;
   config_.manufacturerCode = manufacturerCode;
@@ -3443,6 +3532,30 @@ bool ZigbeeHomeAutomationDevice::appendReadRecordForCluster(
   return true;
 }
 
+void ZigbeeHomeAutomationDevice::resetReportingState(uint8_t index) {
+  if (index >= static_cast<uint8_t>(sizeof(reportingState_) /
+                                    sizeof(reportingState_[0]))) {
+    return;
+  }
+  memset(&reportingState_[index], 0, sizeof(reportingState_[index]));
+}
+
+void ZigbeeHomeAutomationDevice::seedReportingState(uint8_t index) {
+  if (index >= static_cast<uint8_t>(sizeof(reportingState_) /
+                                    sizeof(reportingState_[0])) ||
+      !reporting_[index].used) {
+    return;
+  }
+
+  resetReportingState(index);
+  if (makeAttributeValueForCluster(reporting_[index].clusterId,
+                                   reporting_[index].attributeId,
+                                   &reportingState_[index].lastReportedValue)) {
+    reportingState_[index].baselineValid = true;
+    reportingState_[index].lastReportMs = millis();
+  }
+}
+
 bool ZigbeeHomeAutomationDevice::configureReporting(
     uint16_t clusterId, uint16_t attributeId, ZigbeeZclDataType dataType,
     uint16_t minimumIntervalSeconds, uint16_t maximumIntervalSeconds,
@@ -3461,12 +3574,14 @@ bool ZigbeeHomeAutomationDevice::configureReporting(
         reporting_[i].attributeId == attributeId) {
       if (maximumIntervalSeconds == 0xFFFFU) {
         reporting_[i].used = false;
+        resetReportingState(i);
         return true;
       }
       reporting_[i].dataType = dataType;
       reporting_[i].minimumIntervalSeconds = minimumIntervalSeconds;
       reporting_[i].maximumIntervalSeconds = maximumIntervalSeconds;
       reporting_[i].reportableChange = reportableChange;
+      seedReportingState(i);
       return true;
     }
   }
@@ -3486,6 +3601,7 @@ bool ZigbeeHomeAutomationDevice::configureReporting(
     reporting_[i].minimumIntervalSeconds = minimumIntervalSeconds;
     reporting_[i].maximumIntervalSeconds = maximumIntervalSeconds;
     reporting_[i].reportableChange = reportableChange;
+    seedReportingState(i);
     return true;
   }
 
@@ -3522,6 +3638,126 @@ bool ZigbeeHomeAutomationDevice::buildAttributeReport(
   return ZigbeeCodec::buildAttributeReport(records, recordCount,
                                            transactionSequence, outFrame,
                                            outLength);
+}
+
+bool ZigbeeHomeAutomationDevice::buildDueAttributeReport(
+    uint32_t nowMs, uint8_t transactionSequence, uint16_t* outClusterId,
+    uint8_t* outFrame, uint8_t* outLength) {
+  if (outClusterId != nullptr) {
+    *outClusterId = 0U;
+  }
+  if (outLength != nullptr) {
+    *outLength = 0U;
+  }
+  if (outClusterId == nullptr || outFrame == nullptr || outLength == nullptr) {
+    return false;
+  }
+
+  discardDueAttributeReport();
+
+  ZigbeeAttributeReportRecord records[8];
+  ZigbeeAttributeValue pendingValues[8];
+  uint8_t pendingIndices[8] = {0U};
+  uint8_t recordCount = 0U;
+  uint16_t selectedClusterId = 0U;
+  bool selectedCluster = false;
+
+  for (uint8_t i = 0U;
+       i < static_cast<uint8_t>(sizeof(reporting_) / sizeof(reporting_[0]));
+       ++i) {
+    if (!reporting_[i].used) {
+      continue;
+    }
+
+    ZigbeeAttributeValue currentValue{};
+    if (!makeAttributeValueForCluster(reporting_[i].clusterId,
+                                      reporting_[i].attributeId,
+                                      &currentValue)) {
+      continue;
+    }
+
+    if (!reportingState_[i].baselineValid) {
+      reportingState_[i].baselineValid = true;
+      reportingState_[i].lastReportedValue = currentValue;
+      reportingState_[i].lastReportMs = nowMs;
+      continue;
+    }
+
+    const uint32_t elapsedMs = nowMs - reportingState_[i].lastReportMs;
+    const uint32_t minimumMs =
+        static_cast<uint32_t>(reporting_[i].minimumIntervalSeconds) * 1000UL;
+    const uint16_t maximumIntervalSeconds = reporting_[i].maximumIntervalSeconds;
+    const bool maximumExpired =
+        maximumIntervalSeconds != 0U && maximumIntervalSeconds != 0xFFFFU &&
+        elapsedMs >= static_cast<uint32_t>(maximumIntervalSeconds) * 1000UL;
+    const bool minimumExpired = elapsedMs >= minimumMs;
+    const bool thresholdReached =
+        attributeValueMeetsReportableChange(currentValue,
+                                            reportingState_[i].lastReportedValue,
+                                            reporting_[i].reportableChange);
+    if (!maximumExpired && !(minimumExpired && thresholdReached)) {
+      continue;
+    }
+
+    if (!selectedCluster) {
+      selectedClusterId = reporting_[i].clusterId;
+      selectedCluster = true;
+    }
+    if (reporting_[i].clusterId != selectedClusterId) {
+      continue;
+    }
+
+    records[recordCount].attributeId = reporting_[i].attributeId;
+    records[recordCount].value = currentValue;
+    pendingValues[recordCount] = currentValue;
+    pendingIndices[recordCount] = i;
+    ++recordCount;
+  }
+
+  if (recordCount == 0U ||
+      !ZigbeeCodec::buildAttributeReport(records, recordCount,
+                                         transactionSequence, outFrame,
+                                         outLength)) {
+    return false;
+  }
+
+  *outClusterId = selectedClusterId;
+  for (uint8_t i = 0U; i < recordCount; ++i) {
+    reportingState_[pendingIndices[i]].pending = true;
+    reportingState_[pendingIndices[i]].pendingValue = pendingValues[i];
+  }
+  return true;
+}
+
+bool ZigbeeHomeAutomationDevice::commitDueAttributeReport(uint32_t nowMs) {
+  bool committed = false;
+  for (uint8_t i = 0U;
+       i < static_cast<uint8_t>(sizeof(reportingState_) /
+                                sizeof(reportingState_[0]));
+       ++i) {
+    if (!reportingState_[i].pending) {
+      continue;
+    }
+    reportingState_[i].pending = false;
+    reportingState_[i].baselineValid = true;
+    reportingState_[i].lastReportedValue = reportingState_[i].pendingValue;
+    reportingState_[i].lastReportMs = nowMs;
+    memset(&reportingState_[i].pendingValue, 0,
+           sizeof(reportingState_[i].pendingValue));
+    committed = true;
+  }
+  return committed;
+}
+
+void ZigbeeHomeAutomationDevice::discardDueAttributeReport() {
+  for (uint8_t i = 0U;
+       i < static_cast<uint8_t>(sizeof(reportingState_) /
+                                sizeof(reportingState_[0]));
+       ++i) {
+    reportingState_[i].pending = false;
+    memset(&reportingState_[i].pendingValue, 0,
+           sizeof(reportingState_[i].pendingValue));
+  }
 }
 
 uint8_t ZigbeeHomeAutomationDevice::reportingConfigurationCount() const {

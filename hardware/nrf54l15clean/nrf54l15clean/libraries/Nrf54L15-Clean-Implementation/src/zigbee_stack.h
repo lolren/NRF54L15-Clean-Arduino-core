@@ -361,6 +361,14 @@ struct ZigbeeReportingConfiguration {
   uint32_t reportableChange = 0U;
 };
 
+struct ZigbeeReportingRuntimeState {
+  bool baselineValid = false;
+  bool pending = false;
+  uint32_t lastReportMs = 0U;
+  ZigbeeAttributeValue lastReportedValue{};
+  ZigbeeAttributeValue pendingValue{};
+};
+
 struct ZigbeeConfigureReportingStatusRecord {
   uint8_t status = 0U;
   uint8_t direction = 0U;
@@ -809,6 +817,11 @@ class ZigbeeHomeAutomationDevice {
                           uint32_t reportableChange = 0U);
   bool buildAttributeReport(uint16_t clusterId, uint8_t transactionSequence,
                             uint8_t* outFrame, uint8_t* outLength) const;
+  bool buildDueAttributeReport(uint32_t nowMs, uint8_t transactionSequence,
+                               uint16_t* outClusterId, uint8_t* outFrame,
+                               uint8_t* outLength);
+  bool commitDueAttributeReport(uint32_t nowMs);
+  void discardDueAttributeReport();
   uint8_t reportingConfigurationCount() const;
   const ZigbeeReportingConfiguration* reportingConfigurations() const;
   bool addBinding(uint8_t sourceEndpoint, uint16_t clusterId,
@@ -861,6 +874,8 @@ class ZigbeeHomeAutomationDevice {
                                   ZigbeeReadAttributeRecord* outRecord) const;
   bool makeAttributeValueForCluster(uint16_t clusterId, uint16_t attributeId,
                                     ZigbeeAttributeValue* outValue) const;
+  void resetReportingState(uint8_t index);
+  void seedReportingState(uint8_t index);
   bool setBinding(uint8_t sourceEndpoint, uint16_t clusterId,
                   ZigbeeBindingAddressMode destinationMode,
                   uint16_t destinationGroup, uint64_t destinationIeee,
@@ -884,6 +899,7 @@ class ZigbeeHomeAutomationDevice {
   uint16_t temperatureSensorInputClusters_[4];
   uint16_t temperatureSensorOutputClusters_[1];
   ZigbeeReportingConfiguration reporting_[8];
+  ZigbeeReportingRuntimeState reportingState_[8];
   bool leaveRequested_ = false;
 };
 

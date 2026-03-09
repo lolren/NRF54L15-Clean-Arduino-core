@@ -1613,6 +1613,108 @@ static bool testReportingFlow() {
   return ok;
 }
 
+static bool testAutomaticReportingScheduler() {
+  ZigbeeBasicClusterConfig basic{};
+  basic.manufacturerName = "CleanCore";
+  basic.modelIdentifier = "X54-DIM";
+  basic.swBuildId = "0.1.0";
+  basic.powerSource = 0x01U;
+
+  ZigbeeHomeAutomationDevice device;
+  bool ok = device.configureDimmableLight(1U, 0x00124B0001ABCDF0ULL, 0x1234U,
+                                          0x1A2BU, basic, 0x0000U);
+  ok = ok &&
+       device.configureReporting(kZigbeeClusterLevelControl, 0x0000U,
+                                 ZigbeeZclDataType::kUint8, 5U, 60U, 25U);
+
+  const uint32_t baseMs = millis();
+  uint8_t response[127] = {0};
+  uint8_t responseLength = 0U;
+  uint16_t clusterId = 0U;
+  ZigbeeZclFrame parsed{};
+  ZigbeeAttributeReportRecord parsedReports[2];
+  uint8_t parsedReportCount = 0U;
+
+  ok = ok && !device.buildDueAttributeReport(baseMs + 1000U, 0x70U, &clusterId,
+                                             response, &responseLength);
+
+  ok = ok && device.setLevel(240U);
+  responseLength = 0U;
+  clusterId = 0U;
+  ok = ok && !device.buildDueAttributeReport(baseMs + 7000U, 0x71U, &clusterId,
+                                             response, &responseLength);
+
+  ok = ok && device.setLevel(200U);
+  responseLength = 0U;
+  clusterId = 0U;
+  parsedReportCount = 0U;
+  ok = ok &&
+       device.buildDueAttributeReport(baseMs + 8000U, 0x72U, &clusterId,
+                                      response, &responseLength) &&
+       clusterId == kZigbeeClusterLevelControl &&
+       ZigbeeCodec::parseZclFrame(response, responseLength, &parsed) &&
+       parsed.valid && parsed.commandId == 0x0AU &&
+       ZigbeeCodec::parseAttributeReport(parsed.payload, parsed.payloadLength,
+                                         parsedReports, 2U,
+                                         &parsedReportCount) &&
+       parsedReportCount == 1U &&
+       parsedReports[0].attributeId == 0x0000U &&
+       parsedReports[0].value.type == ZigbeeZclDataType::kUint8 &&
+       parsedReports[0].value.data.u8 == 200U &&
+       device.commitDueAttributeReport(baseMs + 8000U);
+
+  ok = ok && device.setLevel(180U);
+  responseLength = 0U;
+  clusterId = 0U;
+  ok = ok && !device.buildDueAttributeReport(baseMs + 14000U, 0x73U, &clusterId,
+                                             response, &responseLength);
+
+  ok = ok && device.setLevel(170U);
+  responseLength = 0U;
+  clusterId = 0U;
+  parsedReportCount = 0U;
+  ok = ok &&
+       device.buildDueAttributeReport(baseMs + 16000U, 0x74U, &clusterId,
+                                      response, &responseLength) &&
+       clusterId == kZigbeeClusterLevelControl &&
+       ZigbeeCodec::parseZclFrame(response, responseLength, &parsed) &&
+       parsed.valid && parsed.commandId == 0x0AU &&
+       ZigbeeCodec::parseAttributeReport(parsed.payload, parsed.payloadLength,
+                                         parsedReports, 2U,
+                                         &parsedReportCount) &&
+       parsedReportCount == 1U &&
+       parsedReports[0].attributeId == 0x0000U &&
+       parsedReports[0].value.type == ZigbeeZclDataType::kUint8 &&
+       parsedReports[0].value.data.u8 == 170U &&
+       device.commitDueAttributeReport(baseMs + 16000U);
+
+  responseLength = 0U;
+  clusterId = 0U;
+  ok = ok && !device.buildDueAttributeReport(baseMs + 70000U, 0x75U, &clusterId,
+                                             response, &responseLength);
+
+  responseLength = 0U;
+  clusterId = 0U;
+  parsedReportCount = 0U;
+  ok = ok &&
+       device.buildDueAttributeReport(baseMs + 77000U, 0x76U, &clusterId,
+                                      response, &responseLength) &&
+       clusterId == kZigbeeClusterLevelControl &&
+       ZigbeeCodec::parseZclFrame(response, responseLength, &parsed) &&
+       parsed.valid && parsed.commandId == 0x0AU &&
+       ZigbeeCodec::parseAttributeReport(parsed.payload, parsed.payloadLength,
+                                         parsedReports, 2U,
+                                         &parsedReportCount) &&
+       parsedReportCount == 1U &&
+       parsedReports[0].attributeId == 0x0000U &&
+       parsedReports[0].value.type == ZigbeeZclDataType::kUint8 &&
+       parsedReports[0].value.data.u8 == 170U &&
+       device.commitDueAttributeReport(baseMs + 77000U);
+
+  reportResult("Reporting Scheduler", ok, "min+max+delta");
+  return ok;
+}
+
 static bool testPersistenceStore() {
   ZigbeePersistentStateStore store;
   bool ok = store.begin("zbstack");
@@ -1696,6 +1798,7 @@ void setup() {
   testTemperatureSensorResponses();
   testZclClientCodec();
   testReportingFlow();
+  testAutomaticReportingScheduler();
   testPersistenceStore();
 
   char summary[64];
