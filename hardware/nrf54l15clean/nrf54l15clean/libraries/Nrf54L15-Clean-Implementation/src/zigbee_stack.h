@@ -43,6 +43,9 @@ constexpr uint16_t kZigbeeZdoUnbindResponse = 0x8022U;
 constexpr uint16_t kZigbeeZdoMgmtLeaveResponse = 0x8034U;
 constexpr uint16_t kZigbeeZdoMgmtPermitJoinResponse = 0x8036U;
 
+constexpr uint8_t kZigbeeMgmtLeaveFlagRemoveChildren = 0x40U;
+constexpr uint8_t kZigbeeMgmtLeaveFlagRejoin = 0x80U;
+
 constexpr uint16_t kZigbeeDeviceIdOnOffLight = 0x0100U;
 constexpr uint16_t kZigbeeDeviceIdDimmableLight = 0x0101U;
 constexpr uint16_t kZigbeeDeviceIdTemperatureSensor = 0x0302U;
@@ -839,7 +842,10 @@ class ZigbeeHomeAutomationDevice {
                                  uint8_t* outDestinationEndpoint) const;
   bool isInGroup(uint16_t groupId) const;
   bool leaveRequested() const;
+  uint8_t leaveRequestFlags() const;
+  bool leaveRequestWantsRejoin() const;
   bool consumeLeaveRequest();
+  bool consumeLeaveRequest(uint8_t* outFlags);
 
   bool buildDeviceAnnounce(uint8_t transactionSequence, uint8_t* outPayload,
                            uint8_t* outLength) const;
@@ -901,6 +907,7 @@ class ZigbeeHomeAutomationDevice {
   ZigbeeReportingConfiguration reporting_[8];
   ZigbeeReportingRuntimeState reportingState_[8];
   bool leaveRequested_ = false;
+  uint8_t leaveRequestFlags_ = 0U;
 };
 
 }  // namespace xiao_nrf54l15

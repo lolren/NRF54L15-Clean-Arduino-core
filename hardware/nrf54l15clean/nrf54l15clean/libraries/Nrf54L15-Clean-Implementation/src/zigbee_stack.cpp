@@ -2890,7 +2890,8 @@ ZigbeeHomeAutomationDevice::ZigbeeHomeAutomationDevice()
                                       kZigbeeClusterIdentify,
                                       kZigbeeClusterTemperatureMeasurement},
       temperatureSensorOutputClusters_{0U},
-      leaveRequested_(false) {}
+      leaveRequested_(false),
+      leaveRequestFlags_(0U) {}
 
 bool ZigbeeHomeAutomationDevice::configureOnOffLight(
     uint8_t endpoint, uint64_t ieeeAddress, uint16_t nwkAddress,
@@ -2904,6 +2905,7 @@ bool ZigbeeHomeAutomationDevice::configureOnOffLight(
   memset(reporting_, 0, sizeof(reporting_));
   memset(reportingState_, 0, sizeof(reportingState_));
   leaveRequested_ = false;
+  leaveRequestFlags_ = 0U;
   config_.logicalType = ZigbeeLogicalType::kEndDevice;
   config_.manufacturerCode = manufacturerCode;
   config_.ieeeAddress = ieeeAddress;
@@ -2954,6 +2956,7 @@ bool ZigbeeHomeAutomationDevice::configureDimmableLight(
   memset(reporting_, 0, sizeof(reporting_));
   memset(reportingState_, 0, sizeof(reportingState_));
   leaveRequested_ = false;
+  leaveRequestFlags_ = 0U;
   config_.logicalType = ZigbeeLogicalType::kEndDevice;
   config_.manufacturerCode = manufacturerCode;
   config_.ieeeAddress = ieeeAddress;
@@ -3004,6 +3007,7 @@ bool ZigbeeHomeAutomationDevice::configureTemperatureSensor(
   memset(reporting_, 0, sizeof(reporting_));
   memset(reportingState_, 0, sizeof(reportingState_));
   leaveRequested_ = false;
+  leaveRequestFlags_ = 0U;
   config_.logicalType = ZigbeeLogicalType::kEndDevice;
   config_.manufacturerCode = manufacturerCode;
   config_.ieeeAddress = ieeeAddress;
@@ -3847,9 +3851,26 @@ bool ZigbeeHomeAutomationDevice::leaveRequested() const {
   return leaveRequested_;
 }
 
+uint8_t ZigbeeHomeAutomationDevice::leaveRequestFlags() const {
+  return leaveRequestFlags_;
+}
+
+bool ZigbeeHomeAutomationDevice::leaveRequestWantsRejoin() const {
+  return leaveRequested_ &&
+         (leaveRequestFlags_ & kZigbeeMgmtLeaveFlagRejoin) != 0U;
+}
+
 bool ZigbeeHomeAutomationDevice::consumeLeaveRequest() {
+  return consumeLeaveRequest(nullptr);
+}
+
+bool ZigbeeHomeAutomationDevice::consumeLeaveRequest(uint8_t* outFlags) {
+  if (outFlags != nullptr) {
+    *outFlags = leaveRequestFlags_;
+  }
   const bool requested = leaveRequested_;
   leaveRequested_ = false;
+  leaveRequestFlags_ = 0U;
   return requested;
 }
 
@@ -4133,7 +4154,7 @@ bool ZigbeeHomeAutomationDevice::handleZdoRequest(
                                             outPayload, outLength);
       }
       leaveRequested_ = true;
-      (void)flags;
+      leaveRequestFlags_ = flags;
       return buildSimpleZdoStatusResponse(transactionSequence, kZdoStatusSuccess,
                                           outPayload, outLength);
     }

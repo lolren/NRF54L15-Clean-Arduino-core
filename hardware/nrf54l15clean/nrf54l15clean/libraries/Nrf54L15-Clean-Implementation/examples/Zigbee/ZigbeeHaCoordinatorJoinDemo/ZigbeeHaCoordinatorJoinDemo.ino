@@ -125,6 +125,7 @@ struct NodeEntry {
   bool pendingTransportKey = false;
   bool pendingNetworkKeyUpdate = false;
   bool pendingSwitchKey = false;
+  bool pendingLeaveWithRejoin = false;
   bool pendingSecureRejoin = false;
   bool pendingAssociationResponse = false;
   uint16_t pendingAssignedShort = 0U;
@@ -451,6 +452,26 @@ void clearRecentInboundAps(NodeEntry* node) {
     return;
   }
   memset(&node->recentInboundAps, 0, sizeof(node->recentInboundAps));
+}
+
+void prepareNodeForRetainedRejoin(NodeEntry* node) {
+  if (node == nullptr) {
+    return;
+  }
+  node->pending.used = false;
+  node->pending.payloadLength = 0U;
+  node->pendingTransportKey = false;
+  node->pendingNetworkKeyUpdate = false;
+  node->pendingSwitchKey = false;
+  node->pendingLeaveWithRejoin = false;
+  node->pendingSecureRejoin = false;
+  node->pendingAssociationResponse = false;
+  node->pendingAssignedShort = 0U;
+  node->pendingAssociationStatus = 0U;
+  node->secureNwkSeen = false;
+  node->lastInboundSecurityFrameCounter = 0U;
+  clearPendingApsAck(node);
+  clearRecentInboundAps(node);
 }
 
 void rememberPendingApsAck(NodeEntry* node, const ZigbeeApsDataFrame& aps,
@@ -1255,20 +1276,27 @@ bool queueBindRequest(NodeEntry* node, uint16_t clusterId) {
   return queued;
 }
 
-bool queueMgmtLeaveRequest(NodeEntry* node) {
+bool queueMgmtLeaveRequest(NodeEntry* node, bool requestRejoin = false) {
   if (node == nullptr || node->ieeeAddress == 0U) {
     return false;
   }
 
   uint8_t payload[16] = {0U};
   uint8_t payloadLength = 0U;
+  const uint8_t leaveFlags =
+      requestRejoin ? kZigbeeMgmtLeaveFlagRejoin : 0x00U;
   if (!ZigbeeCodec::buildZdoMgmtLeaveRequest(
-          g_zdoSequence++, node->ieeeAddress, 0x00U, payload, &payloadLength)) {
+          g_zdoSequence++, node->ieeeAddress, leaveFlags, payload,
+          &payloadLength)) {
     return false;
   }
-  return queuePendingApsFrame(node, kZigbeeZdoMgmtLeaveRequest,
-                              kZigbeeProfileZdo, 0U, 0U, payload,
-                              payloadLength);
+  const bool queued = queuePendingApsFrame(node, kZigbeeZdoMgmtLeaveRequest,
+                                           kZigbeeProfileZdo, 0U, 0U, payload,
+                                           payloadLength);
+  if (queued) {
+    node->pendingLeaveWithRejoin = requestRejoin;
+  }
+  return queued;
 }
 
 bool queueLevelConfigureReporting(NodeEntry* node) {
@@ -2084,9 +2112,17 @@ void handleZdoFrame(NodeEntry* node, const ZigbeeApsDataFrame& aps) {
     Serial.print(node->shortAddress, HEX);
     Serial.print(" status=0x");
     Serial.print(status, HEX);
+    Serial.print(" rejoin=");
+    Serial.print(node->pendingLeaveWithRejoin ? "yes" : "no");
     Serial.print("\r\n");
     if (status == 0x00U) {
-      memset(node, 0, sizeof(*node));
+      if (node->pendingLeaveWithRejoin) {
+        prepareNodeForRetainedRejoin(node);
+      } else {
+        memset(node, 0, sizeof(*node));
+      }
+    } else {
+      node->pendingLeaveWithRejoin = false;
     }
     return;
   }
@@ -2469,10 +2505,14 @@ void handleSerialCommands() {
       Serial.print("discover ");
       Serial.print(queued ? "OK" : "FAIL");
       Serial.print("\r\n");
-    } else if (ch == 'v') {
+    } else if (ch == 'v' || ch == 'V') {
       NodeEntry* node = firstJoinedNode();
-      const bool queued = (node != nullptr) && queueMgmtLeaveRequest(node);
+      const bool requestRejoin = (ch == 'V');
+      const bool queued =
+          (node != nullptr) && queueMgmtLeaveRequest(node, requestRejoin);
       Serial.print("queue_leave ");
+      Serial.print("rejoin=");
+      Serial.print(requestRejoin ? "yes " : "no ");
       Serial.print(queued ? "OK" : "FAIL");
       Serial.print("\r\n");
     } else if (ch == 'k') {
@@ -2578,7 +2618,7 @@ void setup() {
   Serial.print(" nwk_seq=");
   Serial.print(g_activeNetworkKeySequence);
   Serial.print("\r\n");
-  Serial.print("serial commands: b=beacon l=list p=permit_join x=close_join d=discover v=leave k=key_update t=toggle o=on f=off U=brighter D=dimmer M=mid g=enroll_group O/F/T=group on/off/toggle +/-/m=group level\r\n");
+  Serial.print("serial commands: b=beacon l=list p=permit_join x=close_join d=discover v=leave V=leave_rejoin k=key_update t=toggle o=on f=off U=brighter D=dimmer M=mid g=enroll_group O/F/T=group on/off/toggle +/-/m=group level\r\n");
   g_permitJoinEnabled = true;
   g_permitJoinDeadlineMs = millis() + kPermitJoinWindowMs;
 }

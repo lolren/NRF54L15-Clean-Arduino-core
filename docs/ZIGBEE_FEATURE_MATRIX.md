@@ -87,7 +87,7 @@ Today the repo can:
 - Accept APS group-addressed On/Off and Level Control commands on HA light examples once they join a configured group.
 - Exchange unicast APS ACK frames between the clean coordinator and joinable HA endpoints for ZDO and HA application traffic, with bounded retransmission and duplicate suppression on the clean demos.
 - Answer ZDO IEEE-address and NWK-address requests on the joinable HA endpoint examples.
-- Accept management leave requests on the joinable HA endpoint examples and clear joined-state after responding.
+- Accept management leave requests on the joinable HA endpoint examples, clearing joined-state for plain leave or transitioning into retained-key secure rejoin when the leave request sets the rejoin flag.
 - Reuse persisted demo network keys, trust-center identity, key provenance, and counters for retained-key rejoin attempts on the joinable HA endpoint examples.
 - Run static-network HA examples for:
   - an On/Off Light
