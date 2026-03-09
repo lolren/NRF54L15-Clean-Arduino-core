@@ -137,6 +137,13 @@ uint32_t negotiatedPollIntervalMs(const ZigbeeEndDeviceCommonState& state,
   return pollMs;
 }
 
+uint32_t endDeviceTimeoutRetryDelayMs(
+    const ZigbeeEndDeviceCommonState& state) {
+  return (state.policy.endDeviceTimeoutRetryDelayMs != 0UL)
+             ? state.policy.endDeviceTimeoutRetryDelayMs
+             : 1500UL;
+}
+
 bool waitForAssociationResponse(ZigbeeRadio& radio, uint8_t* ioMacSequence,
                                 uint16_t panId, uint16_t parentShort,
                                 uint64_t localIeee,
@@ -1006,10 +1013,19 @@ void ZigbeeCommissioning::markEndDeviceTimeoutPending(
   }
   state->endDeviceTimeoutPending = state->joined;
   state->endDeviceTimeoutNegotiated = false;
+  state->lastEndDeviceTimeoutRequestMs = 0U;
   state->parentInformation = 0U;
   state->endDeviceTimeoutIndex = state->policy.requestedEndDeviceTimeout;
   state->endDeviceConfiguration = state->policy.endDeviceConfiguration;
   state->parentPollIntervalMs = defaultPollIntervalMs(*state);
+}
+
+void ZigbeeCommissioning::recordEndDeviceTimeoutRequest(
+    ZigbeeEndDeviceCommonState* state, uint32_t nowMs) {
+  if (state == nullptr || !shouldRequestEndDeviceTimeout(*state)) {
+    return;
+  }
+  state->lastEndDeviceTimeoutRequestMs = nowMs;
 }
 
 bool ZigbeeCommissioning::acceptEndDeviceTimeoutResponse(
@@ -1037,12 +1053,14 @@ void ZigbeeCommissioning::applyEndDeviceTimeoutResponse(
   if (response.status == kZigbeeNwkEndDeviceTimeoutSuccess) {
     state->endDeviceTimeoutPending = false;
     state->endDeviceTimeoutNegotiated = true;
+    state->lastEndDeviceTimeoutRequestMs = 0U;
     state->parentInformation = response.parentInformation;
     state->parentPollIntervalMs =
         negotiatedPollIntervalMs(*state, state->endDeviceTimeoutIndex);
   } else {
     state->endDeviceTimeoutPending = false;
     state->endDeviceTimeoutNegotiated = false;
+    state->lastEndDeviceTimeoutRequestMs = 0U;
     state->parentInformation = response.parentInformation;
     state->parentPollIntervalMs = defaultPollIntervalMs(*state);
   }
@@ -1050,7 +1068,18 @@ void ZigbeeCommissioning::applyEndDeviceTimeoutResponse(
 
 ZigbeeCommissioningAction ZigbeeCommissioning::nextAction(
     ZigbeeEndDeviceCommonState* state, uint32_t nowMs) {
-  if (state == nullptr || state->joined) {
+  if (state == nullptr) {
+    return ZigbeeCommissioningAction::kNone;
+  }
+
+  if (shouldRequestEndDeviceTimeout(*state) &&
+      (state->lastEndDeviceTimeoutRequestMs == 0U ||
+       (nowMs - state->lastEndDeviceTimeoutRequestMs) >=
+           endDeviceTimeoutRetryDelayMs(*state))) {
+    return ZigbeeCommissioningAction::kRequestEndDeviceTimeout;
+  }
+
+  if (state->joined) {
     return ZigbeeCommissioningAction::kNone;
   }
 

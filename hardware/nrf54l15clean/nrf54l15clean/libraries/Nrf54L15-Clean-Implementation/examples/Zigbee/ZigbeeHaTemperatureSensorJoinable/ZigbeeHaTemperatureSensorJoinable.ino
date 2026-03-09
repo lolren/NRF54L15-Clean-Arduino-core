@@ -708,6 +708,7 @@ bool sendEndDeviceTimeoutRequest() {
   if (!ZigbeeCommissioning::shouldRequestEndDeviceTimeout(g_network)) {
     return false;
   }
+  ZigbeeCommissioning::recordEndDeviceTimeoutRequest(&g_network, millis());
 
   uint8_t command[8] = {0U};
   uint8_t commandLength = 0U;
@@ -845,7 +846,6 @@ bool handleApsCommand(const uint8_t* frame, uint8_t length, uint16_t sourceShort
     Serial.print("\r\n");
     if (transportInstall.activatesNetworkKey) {
       (void)sendDeviceAnnounce();
-      (void)sendEndDeviceTimeoutRequest();
     }
     return true;
   }
@@ -866,7 +866,6 @@ bool handleApsCommand(const uint8_t* frame, uint8_t length, uint16_t sourceShort
       applyJoinLed();
       persistState();
       (void)sendDeviceAnnounce();
-      (void)sendEndDeviceTimeoutRequest();
       ZigbeeCommissioning::completeRejoinVerification(&g_network);
     }
     Serial.print("update_device short=0x");
@@ -1264,7 +1263,6 @@ void setup() {
     g_radio.setChannel(g_channel);
     if (g_securityEnabled && g_haveActiveNetworkKey) {
       (void)sendDeviceAnnounce();
-      (void)sendEndDeviceTimeoutRequest();
     }
   }
 }
@@ -1273,11 +1271,11 @@ void loop() {
   handleSerialCommands();
 
   const uint32_t now = millis();
+  const ZigbeeCommissioningAction action =
+      ZigbeeCommissioning::nextAction(&g_network, now);
   if (!g_joined) {
     clearPendingApsAck();
     clearRecentInboundAps();
-    const ZigbeeCommissioningAction action =
-        ZigbeeCommissioning::nextAction(&g_network, now);
     if (action == ZigbeeCommissioningAction::kPollParent &&
         (now - g_lastPollMs) >= 250U) {
       g_lastPollMs = now;
@@ -1318,6 +1316,13 @@ void loop() {
     }
     delay(1);
     return;
+  }
+
+  if (action == ZigbeeCommissioningAction::kRequestEndDeviceTimeout) {
+    const bool ok = sendEndDeviceTimeoutRequest();
+    Serial.print("end_device_timeout_req ");
+    Serial.print(ok ? "OK" : "FAIL");
+    Serial.print("\r\n");
   }
 
   if ((now - g_lastPollMs) >= g_parentPollIntervalMs) {
