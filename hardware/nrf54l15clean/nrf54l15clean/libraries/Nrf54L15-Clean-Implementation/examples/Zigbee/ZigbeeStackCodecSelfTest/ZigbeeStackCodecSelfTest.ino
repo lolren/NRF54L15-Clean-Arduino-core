@@ -810,6 +810,13 @@ static bool testCommissioningStateMachine() {
   ok = ok && schedulerState.state == ZigbeeCommissioningState::kLeaveReset &&
        ZigbeeCommissioning::nextAction(&schedulerState, 1000U) ==
            ZigbeeCommissioningAction::kNone;
+  ok = ok && ZigbeeCommissioning::requestRejoinOrSteering(&schedulerState) ==
+                     ZigbeeCommissioningStartRequest::kNetworkSteering &&
+       !schedulerState.rejoinPending &&
+       schedulerState.state == ZigbeeCommissioningState::kRestored &&
+       schedulerState.lastFailure == ZigbeeCommissioningFailure::kNone;
+  ok = ok && ZigbeeCommissioning::nextAction(&schedulerState, 1000U) ==
+                     ZigbeeCommissioningAction::kJoin;
   schedulerState.state = ZigbeeCommissioningState::kWaitingTransportKey;
   schedulerState.joinAttempts = 1U;
   schedulerState.lastJoinAttemptMs = 1000U;
@@ -1050,6 +1057,14 @@ static bool testCommissioningStateMachine() {
   ok = ok && !state.joined && state.rejoinPending &&
        state.securityEnabled &&
        state.state == ZigbeeCommissioningState::kRejoinPending;
+  ZigbeeEndDeviceCommonState requestState = state;
+  requestState.joined = true;
+  requestState.rejoinPending = false;
+  requestState.state = ZigbeeCommissioningState::kJoined;
+  ok = ok && ZigbeeCommissioning::requestRejoinOrSteering(&requestState) ==
+                     ZigbeeCommissioningStartRequest::kSecureRejoin &&
+       requestState.rejoinPending &&
+       requestState.state == ZigbeeCommissioningState::kRejoinPending;
   ZigbeeEndDeviceCommonState plainLeaveState = state;
   plainLeaveState.joined = true;
   plainLeaveState.rejoinPending = false;

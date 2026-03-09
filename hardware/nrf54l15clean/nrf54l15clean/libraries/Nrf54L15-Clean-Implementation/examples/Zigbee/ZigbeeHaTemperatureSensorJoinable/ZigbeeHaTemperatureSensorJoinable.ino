@@ -382,9 +382,9 @@ void clearJoinState(bool clearStore) {
   }
 }
 
-void requestSecureRejoin() {
+ZigbeeCommissioningStartRequest requestCommissioningStart() {
   refreshCommissioningState();
-  ZigbeeCommissioning::requestSecureRejoin(&g_network);
+  return ZigbeeCommissioning::requestRejoinOrSteering(&g_network);
 }
 
 void handleAcceptedLeaveRequest(uint8_t leaveFlags) {
@@ -1204,9 +1204,16 @@ void handleSerialCommands() {
       Serial.print(powerOk ? "OK" : "FAIL");
       Serial.print("\r\n");
     } else if (ch == 'j') {
-      requestSecureRejoin();
-      Serial.print(g_rejoinPending ? "secure_rejoin requested\r\n"
-                                   : "rejoin requested\r\n");
+      const ZigbeeCommissioningStartRequest request =
+          requestCommissioningStart();
+      if (request == ZigbeeCommissioningStartRequest::kSecureRejoin) {
+        Serial.print("secure_rejoin requested\r\n");
+      } else if (request ==
+                 ZigbeeCommissioningStartRequest::kNetworkSteering) {
+        Serial.print("network_steering requested\r\n");
+      } else {
+        Serial.print("commissioning request ignored\r\n");
+      }
     } else if (ch == 'c') {
       clearJoinState(true);
       Serial.print("state cleared\r\n");

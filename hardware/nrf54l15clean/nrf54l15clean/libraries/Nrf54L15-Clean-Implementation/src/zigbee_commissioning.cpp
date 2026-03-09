@@ -1109,6 +1109,39 @@ bool ZigbeeCommissioning::shouldAttemptSecureRejoin(
           isUniqueLinkKeyMode(state.preconfiguredKeyMode));
 }
 
+void ZigbeeCommissioning::requestNetworkSteering(
+    ZigbeeEndDeviceCommonState* state) {
+  if (state == nullptr) {
+    return;
+  }
+
+  state->joined = false;
+  state->rejoinPending = false;
+  state->state = ZigbeeCommissioningState::kRestored;
+  state->lastFailure = ZigbeeCommissioningFailure::kNone;
+  state->lastJoinAttemptMs =
+      millis() - ((state->policy.joinRetryDelayMs != 0UL)
+                      ? state->policy.joinRetryDelayMs
+                      : 1UL);
+}
+
+ZigbeeCommissioningStartRequest ZigbeeCommissioning::requestRejoinOrSteering(
+    ZigbeeEndDeviceCommonState* state) {
+  if (state == nullptr) {
+    return ZigbeeCommissioningStartRequest::kNone;
+  }
+
+  if (shouldAttemptSecureRejoin(*state)) {
+    requestSecureRejoin(state);
+    return state->rejoinPending
+               ? ZigbeeCommissioningStartRequest::kSecureRejoin
+               : ZigbeeCommissioningStartRequest::kNone;
+  }
+
+  requestNetworkSteering(state);
+  return ZigbeeCommissioningStartRequest::kNetworkSteering;
+}
+
 void ZigbeeCommissioning::requestSecureRejoin(
     ZigbeeEndDeviceCommonState* state) {
   if (state == nullptr) {

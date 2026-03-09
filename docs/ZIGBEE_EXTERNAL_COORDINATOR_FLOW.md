@@ -88,6 +88,7 @@ Relevant compile-time knobs already present in the joinable examples:
 Behavior:
 
 - Primary and secondary scan masks can be narrowed for external-coordinator bring-up instead of hard-coding a full-channel demo scan, and the current device-side steering path now exhausts the primary set before it falls back to the secondary set.
+- Manual or sketch-driven commissioning restart now routes through a shared request path that picks secure rejoin when retained key state allows it and falls back directly to fresh network steering otherwise, instead of forcing a synthetic secure-rejoin failure first.
 - Preferred extended PAN, coordinator short, local short/IEEE identity, and install code can now be overridden at build time instead of editing the sketches.
 - Trust-center IEEE may be pinned or learned on first secure install.
 - Well-known link-key fallback is optional.

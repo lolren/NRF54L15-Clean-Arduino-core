@@ -90,6 +90,12 @@ enum class ZigbeeAcceptedLeaveDisposition : uint8_t {
   kClearStateAfterRejoinFailure = 2U,
 };
 
+enum class ZigbeeCommissioningStartRequest : uint8_t {
+  kNone = 0U,
+  kNetworkSteering = 1U,
+  kSecureRejoin = 2U,
+};
+
 struct ZigbeeBeaconCandidate {
   bool valid = false;
   uint8_t channel = 0U;
@@ -203,6 +209,9 @@ class ZigbeeCommissioning {
   static uint32_t timeoutIndexToMs(uint8_t timeoutIndex);
   static bool shouldAttemptSecureRejoin(
       const ZigbeeEndDeviceCommonState& state);
+  static void requestNetworkSteering(ZigbeeEndDeviceCommonState* state);
+  static ZigbeeCommissioningStartRequest requestRejoinOrSteering(
+      ZigbeeEndDeviceCommonState* state);
   static void requestSecureRejoin(ZigbeeEndDeviceCommonState* state);
   static ZigbeeAcceptedLeaveDisposition applyAcceptedLeaveRequest(
       ZigbeeEndDeviceCommonState* state, uint8_t leaveFlags);
