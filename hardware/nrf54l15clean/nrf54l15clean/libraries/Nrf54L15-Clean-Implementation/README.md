@@ -28,8 +28,9 @@ This package uses direct peripheral register access from the nRF54L15 datasheet 
 - `I2sDuplex`: reusable full-duplex `I2S20` wrapper with shared stop/restart handling, TX refill callback, and RX delivery callback.
 - `BleRadio`: register-level BLE 1M link layer + minimal ATT/GATT peripheral path via `RADIO`.
 - `ZigbeeRadio`: IEEE 802.15.4 PHY/MAC-lite data-frame + MAC-command frame TX/RX helpers via `RADIO`.
-- `zigbee_stack`: clean MAC/NWK/APS/ZDO/ZCL codec, beacon/join helpers, APS group-address transport, ZDO Bind/Unbind handling, and Home Assistant-oriented device-model foundation, including Level Control plus clean Identify/Groups/Scenes support for lights.
-- `zigbee_persistence`: Preferences-backed storage for Zigbee-oriented persistent state, reporting configuration, binding tables, and HA endpoint state such as on/off and brightness.
+- `zigbee_stack`: clean MAC/NWK/APS/ZDO/ZCL codec, beacon/join helpers, APS unicast acknowledgement plus group-address transport, APS Switch Key codec support, ZDO Bind/Unbind plus IEEE/NWK-address and management-leave handling, and Home Assistant-oriented device-model foundation, including Level Control plus clean Identify/Groups/Scenes support for lights.
+- `zigbee_commissioning`: shared end-device commissioning state, active-scan/association helpers, parent polling while waiting for trust-center follow-up, retained-network fallback scanning for secure rejoin, Transport Key acceptance, staged alternate-network-key handling, Switch Key application, retained-key demo rejoin transitions, retry/timeout policy, and trust-center policy helpers for the joinable HA examples.
+- `zigbee_persistence`: Preferences-backed storage for Zigbee-oriented persistent state, active and alternate network-key material, reporting configuration, binding tables, and HA endpoint state such as on/off and brightness.
 - `RawRadioLink`: proprietary 1 Mbit packet TX/RX helper via `RADIO`.
 - `nrf_to_nrf`: thin RF24-style compatibility wrapper for common sketch flows on top of `RawRadioLink`.
 
@@ -246,23 +247,23 @@ Zigbee examples:
 - `examples/Zigbee/ZigbeePongResponder/ZigbeePongResponder.ino`
   - Companion responder for the two-board Zigbee ping flow.
 - `examples/Zigbee/ZigbeeStackCodecSelfTest/ZigbeeStackCodecSelfTest.ino`
-  - Compile-safe self-test for the clean Zigbee MAC/NWK/APS/ZDO/ZCL foundation, including demo secured-NWK AES-CCM* coverage, APS command plus APS-secured Transport Key coverage, APS group delivery, beacon parsing, and client-side request handling.
+  - Compile-safe self-test for the clean Zigbee MAC/NWK/APS/ZDO/ZCL foundation, including demo secured-NWK AES-CCM* coverage, install-code CRC and install-code-derived link-key validation, APS acknowledgements, APS command plus APS-secured Transport Key coverage, APS group delivery, beacon parsing, address-management codecs, commissioning policy helpers, retry/timeout decisions, and client-side request handling.
 - `examples/Zigbee/ZigbeeHaCoordinatorJoinDemo/ZigbeeHaCoordinatorJoinDemo.ino`
-  - Clean coordinator-side demo with beaconing, association, queued MAC polling delivery, demo APS-secured Transport Key install using the ZigBeeAlliance09 link key, descriptor/reporting discovery, binding setup, demo secured-NWK traffic, and demo group-based On/Off plus Level Control commands for joined HA lights.
+  - Clean coordinator-side demo with beaconing, timed permit-join enforcement, ZDO Mgmt Permit Join handling, association, queued MAC polling delivery, unicast APS ACK handling, demo APS-secured Transport Key install using per-node preconfigured link-key policy, descriptor/reporting discovery, binding setup, demo secured-NWK traffic, demo leave requests, retained-key demo rejoin handling through a NWK-secured APS Update Device, and demo group-based On/Off plus Level Control commands for joined HA lights.
 - `examples/Zigbee/ZigbeeHaOnOffLightStatic/ZigbeeHaOnOffLightStatic.ino`
   - Static-network Home Assistant-style On/Off Light endpoint with ZDO/ZCL handling, reporting, and persistence.
 - `examples/Zigbee/ZigbeeHaOnOffLightJoinable/ZigbeeHaOnOffLightJoinable.ino`
-  - Joinable Home Assistant-style On/Off Light endpoint with active scan, association, APS-secured Transport Key install using the ZigBeeAlliance09 link key, device announce, polling, demo secured-NWK traffic, replay checks, and persisted joined-state restore.
+  - Joinable Home Assistant-style On/Off Light endpoint with active scan, configurable channel masks, association, APS-secured Transport Key install using install-code-derived or ZigBeeAlliance09 preconfigured link keys, learned or pinned trust-center identity, parent polling during trust-center wait states, masked-channel fallback scanning for retained-network secure rejoin, trust-center source/state validation for `Update Device` and `Switch Key`, unicast APS ACK handling, demo secured-NWK traffic, IEEE/NWK-address plus management-leave handling, retained-key demo rejoin attempts, replay checks, retry/failure reporting, and persisted joined-state restore.
 - `examples/Zigbee/ZigbeeHaDimmableLightStatic/ZigbeeHaDimmableLightStatic.ino`
   - Static-network Home Assistant-style Dimmable Light endpoint with Level Control, PWM LED output, reporting, and persistence.
 - `examples/Zigbee/ZigbeeHaDimmableLightJoinable/ZigbeeHaDimmableLightJoinable.ino`
-  - Joinable Home Assistant-style Dimmable Light endpoint with active scan, association, APS-secured Transport Key install using the ZigBeeAlliance09 link key, device announce, polling, Level Control, PWM LED output, demo secured-NWK traffic, replay checks, and persisted joined-state restore.
+  - Joinable Home Assistant-style Dimmable Light endpoint with active scan, configurable channel masks, association, APS-secured Transport Key install using install-code-derived or ZigBeeAlliance09 preconfigured link keys, learned or pinned trust-center identity, parent polling during trust-center wait states, masked-channel fallback scanning for retained-network secure rejoin, trust-center source/state validation for `Update Device` and `Switch Key`, unicast APS ACK handling, Level Control, PWM LED output, demo secured-NWK traffic, IEEE/NWK-address plus management-leave handling, retained-key demo rejoin attempts, replay checks, retry/failure reporting, and persisted joined-state restore.
 - `examples/Zigbee/ZigbeeHaTemperatureSensorStatic/ZigbeeHaTemperatureSensorStatic.ino`
   - Static-network Home Assistant-style Temperature Sensor endpoint with on-die temperature sampling, reporting, and persistence.
 - `examples/Zigbee/ZigbeeHaTemperatureSensorJoinable/ZigbeeHaTemperatureSensorJoinable.ino`
-  - Joinable Home Assistant-style Temperature Sensor endpoint with active scan, association, APS-secured Transport Key install using the ZigBeeAlliance09 link key, device announce, polling, sensor reporting, demo secured-NWK traffic, replay checks, and persisted joined-state restore.
+  - Joinable Home Assistant-style Temperature Sensor endpoint with active scan, configurable channel masks, association, APS-secured Transport Key install using install-code-derived or ZigBeeAlliance09 preconfigured link keys, learned or pinned trust-center identity, parent polling during trust-center wait states, masked-channel fallback scanning for retained-network secure rejoin, trust-center source/state validation for `Update Device` and `Switch Key`, unicast APS ACK handling, sensor reporting, demo secured-NWK traffic, IEEE/NWK-address plus management-leave handling, retained-key demo rejoin attempts, replay checks, retry/failure reporting, and persisted joined-state restore.
 
-See `docs/ZIGBEE_FEATURE_MATRIX.md` at the repo root for the current boundary between the raw 802.15.4 implementation and the missing work for real Home Assistant or Zigbee2MQTT interoperability.
+See `docs/ZIGBEE_FEATURE_MATRIX.md` and `docs/ZIGBEE_3P0_PARITY_PLAN.md` at the repo root for the current boundary between the raw 802.15.4 implementation, the in-tree demo-network behavior, and the remaining work for real Home Assistant or Zigbee2MQTT interoperability.
 
 ## Low-Power Examples
 

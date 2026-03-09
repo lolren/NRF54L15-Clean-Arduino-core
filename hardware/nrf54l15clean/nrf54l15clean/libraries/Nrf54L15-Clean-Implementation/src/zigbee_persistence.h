@@ -21,14 +21,19 @@ struct ZigbeePersistentState {
   uint32_t nwkFrameCounter = 0U;
   uint32_t apsFrameCounter = 0U;
   uint8_t keySequence = 0U;
+  uint8_t alternateNetworkKey[16] = {0};
+  uint8_t alternateKeySequence = 0U;
   uint8_t flags = 0U;
+  uint8_t preconfiguredKeyMode = 0U;
   bool onOffState = false;
   uint8_t levelState = 0U;
+  uint64_t trustCenterIeee = 0U;
   uint8_t reportingCount = 0U;
   ZigbeeReportingConfiguration reporting[8] = {};
   uint8_t bindingCount = 0U;
   ZigbeeBindingEntry bindings[8] = {};
   uint32_t incomingNwkFrameCounter = 0U;
+  uint32_t incomingApsFrameCounter = 0U;
 };
 
 class ZigbeePersistentStateStore {

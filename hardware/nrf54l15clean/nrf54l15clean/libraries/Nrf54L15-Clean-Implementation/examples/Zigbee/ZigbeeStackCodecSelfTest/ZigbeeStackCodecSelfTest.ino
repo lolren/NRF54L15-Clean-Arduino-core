@@ -1,5 +1,6 @@
 #include <Arduino.h>
 
+#include "zigbee_commissioning.h"
 #include "zigbee_persistence.h"
 #include "zigbee_security.h"
 #include "zigbee_stack.h"
@@ -226,7 +227,64 @@ static bool testApsCommandCodec() {
        parsedDevice.deviceShort == updateDevice.deviceShort &&
        parsedDevice.status == updateDevice.status;
 
-  reportResult("APS Command Codec", ok, "command+transport_key+update_device");
+  ZigbeeApsSwitchKey switchKey{};
+  switchKey.valid = true;
+  switchKey.keySequence = 0x05U;
+  ok = ok && ZigbeeCodec::buildApsSwitchKeyCommand(switchKey, 0x22U, encoded,
+                                                   &encodedLength);
+  ZigbeeApsSwitchKey parsedSwitchKey{};
+  parsedCounter = 0U;
+  ok = ok && ZigbeeCodec::parseApsSwitchKeyCommand(
+                   encoded, encodedLength, &parsedSwitchKey, &parsedCounter) &&
+       parsedCounter == 0x22U && parsedSwitchKey.valid &&
+       parsedSwitchKey.keySequence == switchKey.keySequence;
+
+  reportResult("APS Command Codec", ok,
+               "command+transport_key+update_device+switch_key");
+  return ok;
+}
+
+static bool testApsAcknowledgementCodec() {
+  ZigbeeApsDataFrame data{};
+  data.frameType = ZigbeeApsFrameType::kData;
+  data.deliveryMode = kZigbeeApsDeliveryUnicast;
+  data.destinationEndpoint = 1U;
+  data.clusterId = kZigbeeClusterOnOff;
+  data.profileId = kZigbeeProfileHomeAutomation;
+  data.sourceEndpoint = 2U;
+  data.counter = 0x45U;
+
+  uint8_t encoded[127] = {0U};
+  uint8_t encodedLength = 0U;
+  bool ok = ZigbeeCodec::buildApsDataAcknowledgement(data, encoded,
+                                                     &encodedLength);
+
+  ZigbeeApsAcknowledgementFrame parsed{};
+  ok = ok &&
+       ZigbeeCodec::parseApsAcknowledgementFrame(encoded, encodedLength,
+                                                 &parsed) &&
+       parsed.valid &&
+       !parsed.ackFormatCommand &&
+       parsed.destinationEndpoint == data.sourceEndpoint &&
+       parsed.clusterId == data.clusterId &&
+       parsed.profileId == data.profileId &&
+       parsed.sourceEndpoint == data.destinationEndpoint &&
+       parsed.counter == data.counter;
+
+  ZigbeeApsAcknowledgementFrame commandAck{};
+  commandAck.frameType = ZigbeeApsFrameType::kAcknowledgement;
+  commandAck.deliveryMode = kZigbeeApsDeliveryUnicast;
+  commandAck.ackFormatCommand = true;
+  commandAck.counter = 0x46U;
+  ok = ok && ZigbeeCodec::buildApsAcknowledgementFrame(commandAck, encoded,
+                                                       &encodedLength) &&
+       ZigbeeCodec::parseApsAcknowledgementFrame(encoded, encodedLength,
+                                                 &parsed) &&
+       parsed.valid &&
+       parsed.ackFormatCommand &&
+       parsed.counter == commandAck.counter;
+
+  reportResult("APS Ack Codec", ok, "data+command_format");
   return ok;
 }
 
@@ -464,6 +522,297 @@ static bool testNwkSecurityCodec() {
   return ok;
 }
 
+static bool testInstallCodeAndCommissioningPolicy() {
+  static const uint8_t kInstallCode[] = {0x88U, 0x77U, 0x66U, 0x55U, 0x44U, 0x33U,
+                                         0x22U, 0x11U, 0x11U, 0x22U, 0x33U, 0x44U,
+                                         0x55U, 0x66U, 0x77U, 0x88U, 0xD4U, 0x90U};
+  static const uint8_t kDerivedKey[] = {0xFAU, 0x80U, 0x81U, 0xCAU, 0xAAU, 0x41U,
+                                        0xD5U, 0xADU, 0xE9U, 0xB5U, 0x65U, 0x87U,
+                                        0x99U, 0x26U, 0x8BU, 0x88U};
+
+  bool ok = ZigbeeSecurity::calculateInstallCodeCrc(
+                kInstallCode,
+                static_cast<uint8_t>(sizeof(kInstallCode) - 2U)) == 0x90D4U &&
+            ZigbeeSecurity::validateInstallCode(kInstallCode,
+                                                sizeof(kInstallCode));
+
+  uint8_t derivedKey[16] = {0U};
+  ok = ok && ZigbeeSecurity::deriveInstallCodeLinkKey(kInstallCode,
+                                                      sizeof(kInstallCode),
+                                                      derivedKey) &&
+       memcmp(derivedKey, kDerivedKey, sizeof(derivedKey)) == 0;
+
+  ZigbeeCommissioningPolicy policy{};
+  policy.primaryChannelMask = (1UL << 15U) | (1UL << 20U);
+  policy.secondaryChannelMask = (1UL << 25U);
+  policy.preferredPanId = 0x1234U;
+  policy.preferredExtendedPanId = 0x00124B000054C0DEULL;
+
+  ZigbeeMacBeaconView preferredBeacon{};
+  preferredBeacon.valid = true;
+  preferredBeacon.panId = 0x1234U;
+  preferredBeacon.associationPermit = true;
+  preferredBeacon.panCoordinator = true;
+  preferredBeacon.network.valid = true;
+  preferredBeacon.network.protocolId = 0U;
+  preferredBeacon.network.stackProfile = 2U;
+  preferredBeacon.network.protocolVersion = 2U;
+  preferredBeacon.network.extendedPanId = 0x00124B000054C0DEULL;
+  preferredBeacon.network.routerCapacity = true;
+  preferredBeacon.network.endDeviceCapacity = true;
+
+  ZigbeeMacBeaconView secondaryBeacon = preferredBeacon;
+  secondaryBeacon.panId = 0x4567U;
+  secondaryBeacon.network.extendedPanId = 0x00124B0000112233ULL;
+
+  int16_t preferredScore = 0;
+  int16_t secondaryScore = 0;
+  ZigbeeEndDeviceCommonState knownNetwork{};
+  ZigbeeCommissioning::initializeEndDeviceState(&knownNetwork, policy, 15U,
+                                                0x1234U, 0x7E01U, 0x0000U);
+  knownNetwork.panId = preferredBeacon.panId;
+  knownNetwork.channel = 15U;
+  knownNetwork.parentShort = 0x0000U;
+  knownNetwork.extendedPanId = preferredBeacon.network.extendedPanId;
+  int16_t knownNetworkScore = 0;
+  int16_t wrongNetworkScore = 0;
+  ok = ok && ZigbeeCommissioning::channelInMask(policy.primaryChannelMask, 15U) &&
+       !ZigbeeCommissioning::channelInMask(policy.primaryChannelMask, 11U) &&
+       ZigbeeCommissioning::scoreBeacon(policy, 15U, -45, preferredBeacon,
+                                        &preferredScore) &&
+       ZigbeeCommissioning::scoreBeacon(policy, 25U, -40, secondaryBeacon,
+                                        &secondaryScore) &&
+       ZigbeeCommissioning::scoreKnownNetworkBeacon(
+           knownNetwork, 15U, -45, preferredBeacon, &knownNetworkScore) &&
+       !ZigbeeCommissioning::scoreKnownNetworkBeacon(
+           knownNetwork, 25U, -40, secondaryBeacon, &wrongNetworkScore) &&
+       preferredScore > secondaryScore &&
+       ZigbeeCommissioning::isUniqueLinkKeyMode(
+           ZigbeePreconfiguredKeyMode::kInstallCodeDerived) &&
+       !ZigbeeCommissioning::isUniqueLinkKeyMode(
+           ZigbeePreconfiguredKeyMode::kWellKnown);
+
+  reportResult("InstallCode+Commissioning", ok,
+               "crc+derive_key+beacon_policy");
+  return ok;
+}
+
+static bool testCommissioningStateMachine() {
+  static const uint8_t kInstallCode[] = {0x88U, 0x77U, 0x66U, 0x55U, 0x44U, 0x33U,
+                                         0x22U, 0x11U, 0x11U, 0x22U, 0x33U, 0x44U,
+                                         0x55U, 0x66U, 0x77U, 0x88U, 0xD4U, 0x90U};
+  static const uint64_t kLocalIeee = 0x00124B0001ABCDEFULL;
+  static const uint64_t kTrustCenterIeee = 0x00124B000054A11FULL;
+  static const uint8_t kNetworkKey[16] = {0xA1U, 0xB2U, 0xC3U, 0xD4U,
+                                          0xE5U, 0xF6U, 0x07U, 0x18U,
+                                          0x29U, 0x3AU, 0x4BU, 0x5CU,
+                                          0x6DU, 0x7EU, 0x8FU, 0x90U};
+  static const uint8_t kUpdatedNetworkKey[16] = {
+      0xC1U, 0xD2U, 0xE3U, 0xF4U, 0x05U, 0x16U, 0x27U, 0x38U,
+      0x49U, 0x5AU, 0x6BU, 0x7CU, 0x8DU, 0x9EU, 0xAFU, 0xB0U};
+
+  uint8_t installCodeKey[16] = {0U};
+  bool ok = ZigbeeSecurity::deriveInstallCodeLinkKey(
+      kInstallCode, sizeof(kInstallCode), installCodeKey);
+
+  ZigbeeCommissioningPolicy policy{};
+  policy.allowInstallCodeKey = true;
+  policy.allowWellKnownKey = false;
+  policy.installCodeOnly = true;
+  policy.requireEncryptedTransportKey = true;
+  policy.joinRetryDelayMs = 100U;
+  policy.secureRejoinRetryDelayMs = 150U;
+  policy.transportKeyTimeoutMs = 250U;
+  policy.updateDeviceTimeoutMs = 300U;
+  policy.maxJoinAttempts = 2U;
+  policy.maxRejoinAttempts = 2U;
+
+  ZigbeeEndDeviceCommonState state{};
+  ZigbeeCommissioning::initializeEndDeviceState(&state, policy, 15U, 0x1234U,
+                                                0x7E01U, 0x0000U);
+
+  ZigbeeEndDeviceCommonState schedulerState{};
+  ZigbeeCommissioning::initializeEndDeviceState(&schedulerState, policy, 15U,
+                                                0x1234U, 0x7E01U, 0x0000U);
+  schedulerState.state = ZigbeeCommissioningState::kRestored;
+  schedulerState.lastJoinAttemptMs = 50U;
+  ok = ok && ZigbeeCommissioning::nextAction(&schedulerState, 120U) ==
+                     ZigbeeCommissioningAction::kNone;
+  ok = ok && ZigbeeCommissioning::nextAction(&schedulerState, 180U) ==
+                     ZigbeeCommissioningAction::kJoin;
+  schedulerState.state = ZigbeeCommissioningState::kWaitingTransportKey;
+  schedulerState.joinAttempts = 1U;
+  schedulerState.lastJoinAttemptMs = 1000U;
+  ok = ok && ZigbeeCommissioning::nextAction(&schedulerState, 1200U) ==
+                     ZigbeeCommissioningAction::kPollParent;
+  ok = ok && ZigbeeCommissioning::nextAction(&schedulerState, 1305U) ==
+                     ZigbeeCommissioningAction::kNone &&
+       schedulerState.state == ZigbeeCommissioningState::kFailed &&
+       schedulerState.lastFailure ==
+           ZigbeeCommissioningFailure::kTransportKeyTimeout;
+  schedulerState.rejoinPending = true;
+  schedulerState.haveActiveNetworkKey = true;
+  schedulerState.securityEnabled = true;
+  schedulerState.trustCenterIeee = kTrustCenterIeee;
+  schedulerState.preconfiguredKeyMode =
+      ZigbeePreconfiguredKeyMode::kInstallCodeDerived;
+  schedulerState.panId = 0x1234U;
+  schedulerState.channel = 15U;
+  schedulerState.state = ZigbeeCommissioningState::kRejoinPending;
+  schedulerState.rejoinAttempts = 0U;
+  schedulerState.lastJoinAttemptMs = 1400U;
+  ok = ok && ZigbeeCommissioning::nextAction(&schedulerState, 1500U) ==
+                     ZigbeeCommissioningAction::kNone;
+  ok = ok && ZigbeeCommissioning::nextAction(&schedulerState, 1555U) ==
+                     ZigbeeCommissioningAction::kSecureRejoin;
+  schedulerState.state = ZigbeeCommissioningState::kWaitingUpdateDevice;
+  schedulerState.rejoinAttempts = 2U;
+  schedulerState.lastJoinAttemptMs = 2000U;
+  ok = ok && ZigbeeCommissioning::nextAction(&schedulerState, 2200U) ==
+                     ZigbeeCommissioningAction::kPollParent;
+  ok = ok && ZigbeeCommissioning::nextAction(&schedulerState, 2310U) ==
+                     ZigbeeCommissioningAction::kNone &&
+       schedulerState.state == ZigbeeCommissioningState::kRestored &&
+       !schedulerState.rejoinPending &&
+       schedulerState.lastFailure ==
+           ZigbeeCommissioningFailure::kRejoinAttemptBudgetExceeded;
+
+  ZigbeeApsTransportKey transportKey{};
+  transportKey.valid = true;
+  transportKey.keyType = kZigbeeApsTransportKeyStandardNetworkKey;
+  memcpy(transportKey.key, kNetworkKey, sizeof(transportKey.key));
+  transportKey.keySequence = 0x01U;
+  transportKey.destinationIeee = kLocalIeee;
+  transportKey.sourceIeee = kTrustCenterIeee;
+
+  ZigbeeApsSecurityHeader apsSecurity{};
+  apsSecurity.valid = true;
+  apsSecurity.securityControl = kZigbeeSecurityControlApsEncMic32;
+  apsSecurity.frameCounter = 0x11223344UL;
+  apsSecurity.sourceIeee = kTrustCenterIeee;
+
+  uint8_t transportFrame[127] = {0U};
+  uint8_t transportFrameLength = 0U;
+  ok = ok && ZigbeeSecurity::buildSecuredApsTransportKeyCommand(
+                     transportKey, apsSecurity, installCodeKey, 0x2AU,
+                     transportFrame, &transportFrameLength);
+
+  ZigbeeTransportKeyInstallResult install{};
+  ok = ok && ZigbeeCommissioning::acceptTransportKeyCommand(
+                     state, kLocalIeee, transportFrame, transportFrameLength,
+                     installCodeKey, true, &install) &&
+       install.valid;
+  ZigbeeCommissioning::applyTransportKeyInstall(&state, install);
+  ok = ok && state.joined && state.haveActiveNetworkKey &&
+       state.trustCenterIeee == kTrustCenterIeee &&
+       state.incomingApsFrameCounter == apsSecurity.frameCounter &&
+       state.preconfiguredKeyMode ==
+           ZigbeePreconfiguredKeyMode::kInstallCodeDerived &&
+       state.state == ZigbeeCommissioningState::kJoined &&
+       ZigbeeCommissioning::shouldAttemptSecureRejoin(state);
+
+  ZigbeeApsTransportKey updatedTransportKey = transportKey;
+  memcpy(updatedTransportKey.key, kUpdatedNetworkKey,
+         sizeof(updatedTransportKey.key));
+  updatedTransportKey.keySequence = 0x02U;
+  apsSecurity.frameCounter = 0x11223345UL;
+  ok = ok && ZigbeeSecurity::buildSecuredApsTransportKeyCommand(
+                     updatedTransportKey, apsSecurity, installCodeKey, 0x2BU,
+                     transportFrame, &transportFrameLength);
+  memset(&install, 0, sizeof(install));
+  ok = ok && ZigbeeCommissioning::acceptTransportKeyCommand(
+                     state, kLocalIeee, transportFrame, transportFrameLength,
+                     installCodeKey, true, &install) &&
+       install.valid && install.stagesAlternateKey &&
+       !install.activatesNetworkKey;
+  ZigbeeCommissioning::applyTransportKeyInstall(&state, install);
+  ok = ok && state.haveAlternateNetworkKey &&
+       state.alternateNetworkKeySequence == 0x02U &&
+       state.activeNetworkKeySequence == 0x01U &&
+       memcmp(state.alternateNetworkKey, kUpdatedNetworkKey,
+              sizeof(state.alternateNetworkKey)) == 0;
+
+  ZigbeeApsSwitchKey switchKey{};
+  switchKey.valid = true;
+  switchKey.keySequence = 0x02U;
+  uint8_t switchFrame[127] = {0U};
+  uint8_t switchFrameLength = 0U;
+  ok = ok && ZigbeeCodec::buildApsSwitchKeyCommand(
+                   switchKey, 0x2CU, switchFrame, &switchFrameLength);
+  ZigbeeSwitchKeyAcceptance acceptedSwitch{};
+  ZigbeeSwitchKeyAcceptance rejectedSwitch{};
+  ok = ok && ZigbeeCommissioning::acceptSwitchKeyCommand(
+                     state, 0x0000U, kTrustCenterIeee, true, false, switchFrame,
+                     switchFrameLength, &acceptedSwitch) &&
+       !ZigbeeCommissioning::acceptSwitchKeyCommand(
+           state, 0x1111U, kTrustCenterIeee, true, false, switchFrame,
+           switchFrameLength, &rejectedSwitch) &&
+       acceptedSwitch.valid;
+  ZigbeeCommissioning::applySwitchKey(&state, acceptedSwitch);
+  ok = ok && state.haveActiveNetworkKey && !state.haveAlternateNetworkKey &&
+       state.activeNetworkKeySequence == 0x02U &&
+       memcmp(state.activeNetworkKey, kUpdatedNetworkKey,
+              sizeof(state.activeNetworkKey)) == 0 &&
+       state.nwkSecurityFrameCounter == 1U &&
+       state.incomingNwkFrameCounter == 0U;
+
+  ZigbeeCommissioning::requestSecureRejoin(&state);
+  ok = ok && !state.joined && state.rejoinPending &&
+       state.securityEnabled &&
+       state.state == ZigbeeCommissioningState::kRejoinPending;
+
+  ZigbeeApsUpdateDevice updateDevice{};
+  updateDevice.valid = true;
+  updateDevice.deviceIeee = kLocalIeee;
+  updateDevice.deviceShort = 0x3344U;
+  updateDevice.status = kZigbeeApsUpdateDeviceStatusStandardSecureRejoin;
+
+  uint8_t updateFrame[127] = {0U};
+  uint8_t updateFrameLength = 0U;
+  ok = ok && ZigbeeCodec::buildApsUpdateDeviceCommand(updateDevice, 0x33U,
+                                                      updateFrame,
+                                                      &updateFrameLength);
+
+  ZigbeeUpdateDeviceAcceptance acceptedUpdate{};
+  ZigbeeUpdateDeviceAcceptance rejectedUpdate{};
+  ZigbeeEndDeviceCommonState wrongUpdateState = state;
+  wrongUpdateState.state = ZigbeeCommissioningState::kJoined;
+  wrongUpdateState.rejoinPending = false;
+  state.state = ZigbeeCommissioningState::kWaitingUpdateDevice;
+  ok = ok && ZigbeeCommissioning::acceptUpdateDeviceCommand(
+                     state, kLocalIeee, 0x0000U, kTrustCenterIeee, true, false,
+                     updateFrame, updateFrameLength, &acceptedUpdate) &&
+       !ZigbeeCommissioning::acceptUpdateDeviceCommand(
+           wrongUpdateState, kLocalIeee, 0x0000U, kTrustCenterIeee, true,
+           false, updateFrame, updateFrameLength, &rejectedUpdate) &&
+       !ZigbeeCommissioning::acceptUpdateDeviceCommand(
+           state, kLocalIeee, 0x2222U, kTrustCenterIeee, true, false,
+           updateFrame, updateFrameLength, &rejectedUpdate) &&
+       acceptedUpdate.valid;
+  ZigbeeCommissioning::applyUpdateDevice(&state, acceptedUpdate);
+  ok = ok && state.joined && !state.rejoinPending &&
+       state.localShort == 0x3344U &&
+       state.state == ZigbeeCommissioningState::kJoined &&
+       ZigbeeCommissioning::shouldPollParent(state);
+
+  ZigbeePersistentState persisted{};
+  ZigbeeCommissioning::populatePersistentState(
+      state, kLocalIeee, ZigbeeLogicalType::kEndDevice, 0x0000U, &persisted);
+  ZigbeeEndDeviceCommonState restored{};
+  ZigbeeCommissioning::initializeEndDeviceState(&restored, policy, 15U,
+                                                0x1234U, 0x7E01U, 0x0000U);
+  ZigbeeCommissioning::restoreEndDeviceState(&restored, persisted, kLocalIeee);
+  ok = ok && restored.joined && restored.localShort == state.localShort &&
+       restored.trustCenterIeee == state.trustCenterIeee &&
+       restored.preconfiguredKeyMode == state.preconfiguredKeyMode &&
+       restored.activeNetworkKeySequence == state.activeNetworkKeySequence &&
+       !restored.haveAlternateNetworkKey;
+
+  reportResult("CommissioningState", ok,
+               "transport_key+key_update+switch_key+rejoin+update_device");
+  return ok;
+}
+
 static bool testZdoBindingCodecAndFlow() {
   uint8_t payload[127] = {0};
   uint8_t payloadLength = 0U;
@@ -533,6 +882,123 @@ static bool testZdoBindingCodecAndFlow() {
        status == 0x00U && device.bindingCount() == 0U;
 
   reportResult("ZDO Binding", ok, "bind+unbind");
+  return ok;
+}
+
+static bool testZdoAddressAndManagementFlow() {
+  uint8_t payload[127] = {0};
+  uint8_t payloadLength = 0U;
+  bool ok = ZigbeeCodec::buildZdoNetworkAddressRequest(
+      0x50U, 0x00124B0001ABCDEFULL, true, 0x00U, payload, &payloadLength);
+  ok = ok && payloadLength == 11U && payload[0] == 0x50U &&
+       payload[9] == 0x01U && payload[10] == 0x00U;
+
+  ok = ok && ZigbeeCodec::buildZdoIeeeAddressRequest(
+                   0x51U, 0x3344U, false, 0x00U, payload, &payloadLength) &&
+       payloadLength == 5U && payload[0] == 0x51U && payload[1] == 0x44U &&
+       payload[2] == 0x33U && payload[3] == 0x00U;
+
+  ok = ok && ZigbeeCodec::buildZdoMgmtLeaveRequest(
+                   0x52U, 0x00124B0001ABCDEFULL, 0x40U, payload,
+                   &payloadLength) &&
+       payloadLength == 10U && payload[0] == 0x52U && payload[9] == 0x40U;
+
+  uint8_t transactionSequence = 0U;
+  uint64_t deviceIeeeAddress = 0U;
+  uint8_t flags = 0U;
+  ok = ok && ZigbeeCodec::parseZdoMgmtLeaveRequest(
+                   payload, payloadLength, &transactionSequence,
+                   &deviceIeeeAddress, &flags) &&
+       transactionSequence == 0x52U &&
+       deviceIeeeAddress == 0x00124B0001ABCDEFULL && flags == 0x40U;
+
+  ok = ok && ZigbeeCodec::buildZdoMgmtPermitJoinRequest(
+                   0x53U, 0x3CU, true, payload, &payloadLength) &&
+       payloadLength == 3U && payload[0] == 0x53U && payload[1] == 0x3CU &&
+       payload[2] == 0x01U;
+
+  uint8_t permitDurationSeconds = 0U;
+  bool trustCenterSignificance = false;
+  ok = ok && ZigbeeCodec::parseZdoMgmtPermitJoinRequest(
+                   payload, payloadLength, &transactionSequence,
+                   &permitDurationSeconds, &trustCenterSignificance) &&
+       transactionSequence == 0x53U && permitDurationSeconds == 0x3CU &&
+       trustCenterSignificance;
+
+  const uint8_t addressResponse[] = {
+      0x54U, 0x00U, 0xEFU, 0xCDU, 0xABU, 0x01U, 0x00U, 0x4BU,
+      0x12U, 0x00U, 0x44U, 0x33U, 0x01U, 0x00U, 0x88U, 0x77U};
+  ZigbeeZdoAddressResponseView addressView{};
+  ok = ok && ZigbeeCodec::parseZdoAddressResponse(
+                   addressResponse, sizeof(addressResponse), &addressView) &&
+       addressView.valid && addressView.status == 0x00U &&
+       addressView.ieeeAddress == 0x00124B0001ABCDEFULL &&
+       addressView.nwkAddress == 0x3344U &&
+       addressView.associatedDeviceCount == 1U &&
+       addressView.startIndex == 0U &&
+       addressView.associatedDeviceListCount == 1U &&
+       addressView.associatedDevices[0] == 0x7788U;
+
+  const uint8_t notFoundResponse[] = {0x55U, 0x81U};
+  ok = ok && ZigbeeCodec::parseZdoAddressResponse(
+                   notFoundResponse, sizeof(notFoundResponse), &addressView) &&
+       addressView.valid && addressView.status == 0x81U;
+
+  ZigbeeBasicClusterConfig basic{};
+  basic.manufacturerName = "CleanCore";
+  basic.modelIdentifier = "X54-MGMT";
+  basic.swBuildId = "0.4.0";
+  basic.powerSource = 0x01U;
+  ZigbeeHomeAutomationDevice device;
+  ok = ok &&
+       device.configureOnOffLight(1U, 0x00124B0001ABCDEFULL, 0x3344U, 0x1A2BU,
+                                  basic, 0x0000U);
+
+  payloadLength = 0U;
+  ok = ok && ZigbeeCodec::buildZdoNetworkAddressRequest(
+                   0x56U, 0x00124B0001ABCDEFULL, true, 0x00U, payload,
+                   &payloadLength);
+  uint16_t responseClusterId = 0U;
+  uint8_t response[127] = {0};
+  uint8_t responseLength = 0U;
+  ok = ok && device.handleZdoRequest(kZigbeeZdoNetworkAddressRequest, payload,
+                                     payloadLength, &responseClusterId,
+                                     response, &responseLength) &&
+       responseClusterId == kZigbeeZdoNetworkAddressResponse &&
+       ZigbeeCodec::parseZdoAddressResponse(response, responseLength,
+                                            &addressView) &&
+       addressView.valid && addressView.status == 0x00U &&
+       addressView.ieeeAddress == 0x00124B0001ABCDEFULL &&
+       addressView.nwkAddress == 0x3344U;
+
+  payloadLength = 0U;
+  ok = ok && ZigbeeCodec::buildZdoIeeeAddressRequest(
+                   0x57U, 0x3344U, false, 0x00U, payload, &payloadLength) &&
+       device.handleZdoRequest(kZigbeeZdoIeeeAddressRequest, payload,
+                               payloadLength, &responseClusterId, response,
+                               &responseLength) &&
+       responseClusterId == kZigbeeZdoIeeeAddressResponse &&
+       ZigbeeCodec::parseZdoAddressResponse(response, responseLength,
+                                            &addressView) &&
+       addressView.valid && addressView.status == 0x00U &&
+       addressView.ieeeAddress == 0x00124B0001ABCDEFULL &&
+       addressView.nwkAddress == 0x3344U;
+
+  payloadLength = 0U;
+  ok = ok && ZigbeeCodec::buildZdoMgmtLeaveRequest(
+                   0x58U, 0x00124B0001ABCDEFULL, 0x00U, payload,
+                   &payloadLength) &&
+       device.handleZdoRequest(kZigbeeZdoMgmtLeaveRequest, payload,
+                               payloadLength, &responseClusterId, response,
+                               &responseLength) &&
+       responseClusterId == kZigbeeZdoMgmtLeaveResponse &&
+       ZigbeeCodec::parseZdoStatusResponse(response, responseLength,
+                                           &transactionSequence, &flags) &&
+       transactionSequence == 0x58U && flags == 0x00U &&
+       device.leaveRequested() && device.consumeLeaveRequest() &&
+       !device.consumeLeaveRequest();
+
+  reportResult("ZDO Address+Mgmt", ok, "addr_req+leave+permit_join");
   return ok;
 }
 
@@ -1023,7 +1489,11 @@ static bool testPersistenceStore() {
   state.ieeeAddress = 0x00124B0001ABCDEFULL;
   state.onOffState = true;
   state.levelState = 77U;
+  state.trustCenterIeee = 0x00124B000054A11FULL;
+  state.preconfiguredKeyMode =
+      static_cast<uint8_t>(ZigbeePreconfiguredKeyMode::kInstallCodeDerived);
   state.incomingNwkFrameCounter = 0x01020304UL;
+  state.incomingApsFrameCounter = 0x02030405UL;
   state.reportingCount = 1U;
   state.reporting[0].used = true;
   state.reporting[0].clusterId = kZigbeeClusterOnOff;
@@ -1047,7 +1517,10 @@ static bool testPersistenceStore() {
        loaded.ieeeAddress == state.ieeeAddress &&
        loaded.onOffState == state.onOffState &&
        loaded.levelState == state.levelState &&
+       loaded.trustCenterIeee == state.trustCenterIeee &&
+       loaded.preconfiguredKeyMode == state.preconfiguredKeyMode &&
        loaded.incomingNwkFrameCounter == state.incomingNwkFrameCounter &&
+       loaded.incomingApsFrameCounter == state.incomingApsFrameCounter &&
        loaded.reportingCount == 1U &&
        loaded.reporting[0].clusterId == kZigbeeClusterOnOff &&
        loaded.bindingCount == 1U &&
@@ -1070,10 +1543,14 @@ void setup() {
   testNwkCodec();
   testApsCodec();
   testApsCommandCodec();
+  testApsAcknowledgementCodec();
   testMacCodec();
   testBeaconAndZdoClientCodec();
   testNwkSecurityCodec();
+  testInstallCodeAndCommissioningPolicy();
+  testCommissioningStateMachine();
   testZdoBindingCodecAndFlow();
+  testZdoAddressAndManagementFlow();
   testZdoDescriptors();
   testOnOffLightResponses();
   testDimmableLightResponses();

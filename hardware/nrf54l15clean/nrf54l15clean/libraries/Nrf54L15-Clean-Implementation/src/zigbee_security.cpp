@@ -10,6 +10,7 @@ constexpr uint8_t kZigbeeNwkProtocolVersion = 2U;
 constexpr uint8_t kCcmMicLength = 4U;
 constexpr uint8_t kCcmNonceLength = 13U;
 constexpr uint8_t kCcmLengthFieldSize = 2U;
+constexpr uint8_t kInstallCodeMaxLength = 18U;
 
 using AesState = uint8_t[4][4];
 
@@ -339,6 +340,63 @@ bool computeCcmMic(const uint8_t key[16], const uint8_t nonce[13],
   return true;
 }
 
+uint16_t calculateInstallCodeCrcX25(const uint8_t* installCode,
+                                    uint8_t lengthWithoutCrc) {
+  if (installCode == nullptr) {
+    return 0U;
+  }
+
+  uint16_t crc = 0xFFFFU;
+  for (uint8_t i = 0U; i < lengthWithoutCrc; ++i) {
+    crc ^= installCode[i];
+    for (uint8_t bit = 0U; bit < 8U; ++bit) {
+      if ((crc & 0x0001U) != 0U) {
+        crc = static_cast<uint16_t>((crc >> 1U) ^ 0x8408U);
+      } else {
+        crc = static_cast<uint16_t>(crc >> 1U);
+      }
+    }
+  }
+  return static_cast<uint16_t>(crc ^ 0xFFFFU);
+}
+
+bool isSupportedInstallCodeLength(uint8_t length) {
+  return length == 8U || length == 10U || length == 14U || length == 18U;
+}
+
+bool mmoHashInstallCode(const uint8_t* installCode, uint8_t length,
+                        uint8_t outKey[16]) {
+  if (installCode == nullptr || outKey == nullptr ||
+      !isSupportedInstallCodeLength(length) || length > kInstallCodeMaxLength) {
+    return false;
+  }
+
+  uint8_t padded[32] = {0U};
+  uint8_t offset = 0U;
+  memcpy(padded, installCode, length);
+  offset = length;
+  padded[offset++] = 0x80U;
+  while ((offset % 16U) != 14U) {
+    padded[offset++] = 0U;
+  }
+  const uint16_t bitLength = static_cast<uint16_t>(length * 8U);
+  padded[offset++] = static_cast<uint8_t>((bitLength >> 8U) & 0xFFU);
+  padded[offset++] = static_cast<uint8_t>(bitLength & 0xFFU);
+
+  uint8_t hash[16] = {0U};
+  uint8_t encrypted[16] = {0U};
+  for (uint8_t blockOffset = 0U; blockOffset < offset; blockOffset += 16U) {
+    if (!aesEncryptBlock(hash, &padded[blockOffset], encrypted)) {
+      return false;
+    }
+    for (uint8_t i = 0U; i < 16U; ++i) {
+      hash[i] = static_cast<uint8_t>(encrypted[i] ^ padded[blockOffset + i]);
+    }
+  }
+  memcpy(outKey, hash, 16U);
+  return true;
+}
+
 }  // namespace
 
 bool ZigbeeSecurity::loadZigbeeAlliance09LinkKey(uint8_t outKey[16]) {
@@ -350,6 +408,31 @@ bool ZigbeeSecurity::loadZigbeeAlliance09LinkKey(uint8_t outKey[16]) {
                                              'c', 'e', '0', '9'};
   memcpy(outKey, kAlliance09Key, sizeof(kAlliance09Key));
   return true;
+}
+
+uint16_t ZigbeeSecurity::calculateInstallCodeCrc(const uint8_t* installCode,
+                                                 uint8_t lengthWithoutCrc) {
+  return calculateInstallCodeCrcX25(installCode, lengthWithoutCrc);
+}
+
+bool ZigbeeSecurity::validateInstallCode(const uint8_t* installCode,
+                                         uint8_t length) {
+  if (installCode == nullptr || !isSupportedInstallCodeLength(length)) {
+    return false;
+  }
+  const uint8_t payloadLength = static_cast<uint8_t>(length - 2U);
+  const uint16_t expectedCrc =
+      calculateInstallCodeCrcX25(installCode, payloadLength);
+  return readLe16(&installCode[payloadLength]) == expectedCrc;
+}
+
+bool ZigbeeSecurity::deriveInstallCodeLinkKey(const uint8_t* installCode,
+                                              uint8_t length,
+                                              uint8_t outKey[16]) {
+  if (!validateInstallCode(installCode, length)) {
+    return false;
+  }
+  return mmoHashInstallCode(installCode, length, outKey);
 }
 
 bool ZigbeeSecurity::buildNwkNonce(uint64_t sourceIeee, uint32_t frameCounter,

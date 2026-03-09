@@ -39,6 +39,11 @@ struct ZigbeeApsSecurityHeader {
 class ZigbeeSecurity {
  public:
   static bool loadZigbeeAlliance09LinkKey(uint8_t outKey[16]);
+  static uint16_t calculateInstallCodeCrc(const uint8_t* installCode,
+                                          uint8_t lengthWithoutCrc);
+  static bool validateInstallCode(const uint8_t* installCode, uint8_t length);
+  static bool deriveInstallCodeLinkKey(const uint8_t* installCode,
+                                       uint8_t length, uint8_t outKey[16]);
 
   static bool buildNwkNonce(uint64_t sourceIeee, uint32_t frameCounter,
                             uint8_t securityControl, uint8_t outNonce[13]);

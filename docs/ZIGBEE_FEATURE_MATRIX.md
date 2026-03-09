@@ -1,6 +1,6 @@
 # Zigbee Feature Matrix
 
-Last updated: 2026-03-08
+Last updated: 2026-03-09
 
 This matrix separates the existing raw 802.15.4 capability from the Zigbee stack work needed for real interoperability with Home Assistant, ZHA, or Zigbee2MQTT.
 
@@ -20,22 +20,25 @@ This matrix separates the existing raw 802.15.4 capability from the Zigbee stack
 | MAC active scan / beacon parsing / automatic MAC ACK timing | Partial | Beacon build/parse and active-scan behavior now exist in the clean examples, but interoperable MAC ACK timing is still missing. |
 | MAC extended-address flows | Foundation | Generic MAC frame encode/decode now supports extended addressing, but runtime joining still is not wired. |
 | NWK frame codec | Partial | Clean encode/decode now covers unsecured NWK plus demo-network secured NWK frames with auxiliary security headers and MIC-32 payload protection. |
-| NWK join state machine | Partial | Clean examples now carry a single-parent join flow from MAC association into NWK/APS/ZDO traffic, including demo secure NWK operation after join, but not Zigbee 3.0 commissioning. |
+| NWK join state machine | Partial | `zigbee_commissioning` now owns shared end-device commissioning state, active-scan candidate selection, association wait handling, parent polling while waiting for Transport Key or Update Device, retry/timeout policy, and retained-key demo rejoin state transitions for the joinable HA examples, including a masked-channel fallback scan for the retained PAN or EPID when the first secure-rejoin attempt misses. The on-air behavior is still not full Zigbee 3.0 commissioning. |
 | NWK routing / route discovery / route repair | Missing | Required for router/coordinator roles and multi-hop reliability. |
 | NWK security headers / frame counters / nonce management | Partial | Clean security helpers now implement auxiliary security header encode/decode, nonce construction, AES-CCM* MIC-32 protection, persisted outgoing counters, and demo replay checks. Trust-center install and third-party interop remain open. |
-| APS data frame codec | Partial | Added clean APS unicast plus group-addressed data encode/decode support; APS ACK behavior is still missing. |
-| APS command frame codec | Partial | Clean APS command encode/decode now covers generic command frames plus Transport Key and Update Device commands. |
-| APS acknowledgements / binding / group delivery | Partial | Clean binding-table handling, ZDO Bind/Unbind request/response support, and demo-network APS group delivery now exist for HA lights. APS ACK behavior and real Zigbee multicast semantics remain open. |
-| APS security / transport-key handling | Partial | The clean demo coordinator now installs a demo network key through APS-secured Transport Key using the preconfigured ZigBeeAlliance09 link key, but authentic trust-center behavior, broader APS security coverage, and third-party interop are still missing. |
+| APS data frame codec | Partial | Added clean APS unicast plus group-addressed data encode/decode support, along with APS acknowledgement frame build/parse helpers for unicast HA and ZDO traffic. |
+| APS command frame codec | Partial | Clean APS command encode/decode now covers generic command frames plus Transport Key, Update Device, and Switch Key commands. |
+| APS acknowledgements / binding / group delivery | Partial | Clean binding-table handling, ZDO Bind/Unbind request/response support, demo-network APS group delivery, and unicast APS ACK generation/consumption now exist for the clean coordinator and joinable HA endpoints. Full retransmission policy and real Zigbee multicast semantics remain open. |
+| APS security / transport-key handling | Partial | The clean demo coordinator can now select a per-node preconfigured link key, including install-code-derived keys for the in-tree demo nodes, install the demo network key through APS-secured Transport Key, stage an alternate demo network key, and follow retained-key demo rejoins with a NWK-secured Update Device plus Switch Key rollout. The joinable HA examples now also require the correct coordinator short address and secured trust-center IEEE for `Update Device` and `Switch Key` acceptance. Full APS security coverage, trust-center lifecycle behavior, and third-party interop are still missing. |
 | ZDO Node Descriptor request/response | Foundation | Response builders and client-side request construction now exist. |
 | ZDO Power Descriptor request/response | Foundation | Response builders and client-side request construction now exist. |
 | ZDO Active Endpoints request/response | Foundation | Response builders, request construction, and response parsing now exist. |
 | ZDO Simple Descriptor request/response | Foundation | Response builders, request construction, and response parsing now exist. |
 | ZDO Match Descriptor response | Foundation | Implemented for HA-style endpoint matching. |
+| ZDO IEEE Address / Network Address request/response | Partial | Client request builders plus address-response parsing now exist, and the joinable HA endpoints answer IEEE/NWK-address requests for themselves. |
+| ZDO Management Leave request/response | Partial | Codec support now exists, and the joinable HA endpoints accept a leave request, send the ZDO status response, and clear persisted joined-state afterwards. |
+| ZDO Management Permit Join request/response | Partial | Request build/parse helpers now exist, and the clean coordinator demo now advertises, enforces, and updates timed permit-join windows through beaconing, association behavior, and incoming ZDO Mgmt Permit Join requests. |
 | Device Announce builder | Partial | Implemented and now used by the clean joinable HA light example after association completes. |
-| BDB commissioning / network steering / rejoin | Missing | Core requirement for Home Assistant and Zigbee2MQTT interoperability. |
-| Trust center default key / install-code support | Partial | The ZigBeeAlliance09 preconfigured link key is now used on the clean demo network to protect APS Transport Key delivery, but install-code derivation and full trust-center policy are still missing. |
-| Persistent network state (PAN/channel/addresses/keys/counters) | Partial | `zigbee_persistence.h/.cpp` now persists joined-state metadata, demo network keys, outgoing NWK counters, incoming secure-frame counters, reporting configuration, binding tables, and HA device state such as on/off and brightness level. |
+| BDB commissioning / network steering / rejoin | Partial | Core requirement for Home Assistant and Zigbee2MQTT interoperability. A shared commissioning state machine now exists in-tree for the joinable HA examples, including parent polling during trust-center wait states, retry/timeout handling, retained-network masked-channel fallback scanning, and fallback from exhausted secure-rejoin attempts back to fresh steering, but the current flow is still demo-network behavior rather than BDB-compliant Zigbee 3.0 commissioning. See `docs/ZIGBEE_3P0_PARITY_PLAN.md`. |
+| Trust center default key / install-code support | Partial | Install-code CRC validation and install-code-derived link-key generation now exist, the joinable HA examples persist learned trust-center identity plus preconfigured-key mode, reject `Update Device` and `Switch Key` from the wrong trust-center source or wrong lifecycle state, and the clean coordinator can stage alternate demo network keys followed by Switch Key rollout on already joined nodes. Full trust-center lifecycle policy and standards-validated key updates are still missing. |
+| Persistent network state (PAN/channel/addresses/keys/counters) | Partial | `zigbee_persistence.h/.cpp` now persists joined-state metadata, active and alternate demo network keys, outgoing NWK counters, incoming NWK secure-frame counters, inbound APS anti-replay counters, trust-center IEEE identity, preconfigured-key mode, reporting configuration, binding tables, and HA device state such as on/off and brightness level. |
 | ZCL frame codec | Foundation | Added reusable ZCL frame encode/decode logic. |
 | ZCL read-attributes request/response | Foundation | Client request build plus response build/parse now exist. |
 | ZCL default responses | Foundation | Implemented for supported and unsupported commands. |
@@ -51,12 +54,12 @@ This matrix separates the existing raw 802.15.4 capability from the Zigbee stack
 | Groups cluster behavior | Partial | Clean server-side group table plus Add/View/Membership/Remove flows are now implemented for HA light endpoints, and the demo coordinator can enroll lights into a shared test group. |
 | Scenes cluster behavior | Partial | Clean scene table plus Add/View/Store/Recall/Membership flows are now implemented for HA light endpoints, including On/Off and Level snapshots. |
 | OTA Upgrade cluster behavior | Missing | Not implemented. |
-| Home Assistant generic On/Off Light profile | Partial | Static and joinable clean examples now exist; the joinable example can scan, associate, announce, answer ZDO/ZCL, poll for queued coordinator traffic, accept APS group-addressed commands, and emit reports on the clean demo network. |
-| Home Assistant generic Dimmable Light profile | Partial | Static and joinable clean examples now exist; they add HA Level Control behavior, brightness persistence, PWM-backed LED output, and APS group-addressed command handling on the clean demo network. |
-| Home Assistant generic Temperature Sensor profile | Partial | Static and joinable clean examples now exist; the joinable example can scan, associate, announce, answer ZDO/ZCL, and emit temperature/power reports on the clean demo network. |
-| Real joined end device on an existing coordinator | Partial | Clean joinable On/Off Light, Dimmable Light, and Temperature Sensor examples now work against the in-tree clean coordinator demo; third-party coordinator interoperability is still missing. |
+| Home Assistant generic On/Off Light profile | Partial | Static and joinable clean examples now exist; the joinable example now uses the shared `zigbee_commissioning` state machine for scan, association, Transport Key install, retained-key demo rejoin, trust-center wait-state polling, retry/failure handling, configurable channel masks, and unicast APS ACK handling, while also answering ZDO/ZCL including IEEE/NWK-address and leave requests, learning or pinning trust-center identity, enforcing encrypted Transport Key delivery by default, accepting APS group-addressed commands, and emitting reports on the clean demo network. |
+| Home Assistant generic Dimmable Light profile | Partial | Static and joinable clean examples now exist; the joinable example now uses the shared `zigbee_commissioning` state machine for scan, association, Transport Key install, retained-key demo rejoin, trust-center wait-state polling, retry/failure handling, configurable channel masks, and unicast APS ACK handling, while also providing HA Level Control behavior, brightness persistence, PWM-backed LED output, learned or pinned trust-center identity, encrypted Transport Key enforcement, and APS group-addressed command handling on the clean demo network. |
+| Home Assistant generic Temperature Sensor profile | Partial | Static and joinable clean examples now exist; the joinable example now uses the shared `zigbee_commissioning` state machine for scan, association, Transport Key install, retained-key demo rejoin, trust-center wait-state polling, retry/failure handling, configurable channel masks, and unicast APS ACK handling, while also answering ZDO/ZCL including IEEE/NWK-address and leave requests, learning or pinning trust-center identity, enforcing encrypted Transport Key delivery by default, and emitting temperature/power reports on the clean demo network. |
+| Real joined end device on an existing coordinator | Partial | Clean joinable On/Off Light, Dimmable Light, and Temperature Sensor examples now work against the in-tree clean coordinator demo, no longer hard-code that trust center into their security checks, and can retry secure rejoin by scanning for the retained network across configured channel masks, but third-party coordinator interoperability is still missing. |
 | Router role | Missing | Requires MAC+NWK routing, security, and persistence. |
-| Coordinator role | Partial | Clean coordinator demo now performs beaconing, association, address allocation, queued delivery over MAC data-request polling, ZDO/ZCL discovery, ZDO binding setup, reporting setup, and demo On/Off plus Level Control commands for joined HA lights and temperature sensors, including a shared light-control group. Trust-center/security/routing remain open. |
+| Coordinator role | Partial | Clean coordinator demo now performs beaconing, timed permit-join enforcement, association, address allocation, queued delivery over MAC data-request polling, unicast APS ACK handling, ZDO/ZCL discovery, ZDO binding setup, reporting setup, demo leave requests, retained-key demo rejoin handling via NWK-secured Update Device, and a polled alternate-network-key rollout via APS-secured Transport Key plus Switch Key, along with demo On/Off and Level Control commands for joined HA lights and temperature sensors, including a shared light-control group. It also tracks per-node preconfigured-key provenance for the in-tree demo nodes. Trust-center/security/routing remain open. |
 | Zigbee2MQTT serial adapter / NCP compatibility | Missing | Needed only if this board should act as a coordinator directly under Z2M. |
 
 ## What Is Actually Supported Now
@@ -67,30 +70,36 @@ Today the repo can:
 - Send and receive raw 802.15.4 frames on a fixed channel/PAN.
 - Build and parse generic MAC, NWK, APS, and ZCL frames locally.
 - Build and parse demo-network secured NWK frames with clean AES-CCM* helpers, auxiliary security headers, and MIC validation.
-- Build and parse APS unicast plus group-addressed HA traffic locally.
-- Build and parse APS command frames, including Transport Key and Update Device payloads.
-- Protect demo APS Transport Key delivery with the preconfigured ZigBeeAlliance09 link key.
+- Build and parse APS unicast, acknowledgement, and group-addressed HA traffic locally.
+- Build and parse APS command frames, including Transport Key, Update Device, and Switch Key payloads.
+- Protect demo APS Transport Key delivery with either an install-code-derived link key or the ZigBeeAlliance09 fallback key, depending on node policy.
+- Build and parse ZDO IEEE-address, NWK-address, management-leave, and management permit-join request payloads plus address responses.
 - Perform clean active scan plus beacon parsing on the in-tree demo network.
-- Persist Zigbee-oriented network/reporting/binding state, demo security material, and secure-frame counters with a clean Preferences-backed store.
+- Reuse a shared end-device commissioning state machine for scan, association, Transport Key install, parent polling during trust-center wait states, retry/timeout handling, retained-network masked-channel fallback scanning, and retained-key demo rejoin across the joinable HA examples.
+- Persist Zigbee-oriented network/reporting/binding state, active and alternate demo security material, trust-center identity, preconfigured-key provenance, and secure-frame counters with a clean Preferences-backed store.
 - Build Home Assistant-oriented descriptors and standard cluster responses for:
   - an On/Off Light
   - a Dimmable Light
   - a Temperature Sensor
 - Maintain Identify, Groups, and a clean Scenes subset for HA light endpoints.
 - Accept APS group-addressed On/Off and Level Control commands on HA light examples once they join a configured group.
+- Exchange unicast APS ACK frames between the clean coordinator and joinable HA endpoints for ZDO and HA application traffic.
+- Answer ZDO IEEE-address and NWK-address requests on the joinable HA endpoint examples.
+- Accept management leave requests on the joinable HA endpoint examples and clear joined-state after responding.
+- Reuse persisted demo network keys, trust-center identity, key provenance, and counters for retained-key rejoin attempts on the joinable HA endpoint examples.
 - Run static-network HA examples for:
   - an On/Off Light
   - a Dimmable Light
   - a Temperature Sensor
-- Run clean joinable HA light, dimmable-light, and temperature-sensor examples that associate, install a demo network key through APS-secured Transport Key commands using the ZigBeeAlliance09 link key, announce, poll, serve ZDO/ZCL, reject replayed secured NWK frames from the demo coordinator, and report on the clean coordinator demo network.
-- Run a clean coordinator demo that beacons, accepts association, allocates short addresses, delivers a demo network key through APS-secured Transport Key commands using the ZigBeeAlliance09 link key, discovers descriptors, installs bindings, configures reporting, transitions nodes from plaintext post-join traffic to secured NWK traffic, enrolls demo light groups, and queues HA traffic for polled delivery, including brightness control for dimmable lights.
+- Run clean joinable HA light, dimmable-light, and temperature-sensor examples that associate, install a demo network key through APS-secured Transport Key commands using either install-code-derived or ZigBeeAlliance09 preconfigured keys, keep polling while waiting for trust-center follow-up, announce, poll, serve ZDO/ZCL, reject replayed secured NWK frames from the demo coordinator, persist inbound APS counters plus active and alternate network keys, accept `Update Device` and `Switch Key` only from the expected trust-center source and lifecycle state, retry retained-key secure rejoin by scanning for the retained network across configured channel masks, exchange unicast APS ACKs, and report on the clean coordinator demo network.
+- Run a clean coordinator demo that beacons, advertises and enforces timed permit-join windows, accepts association, allocates short addresses, delivers a demo network key through APS-secured Transport Key commands using per-node preconfigured link-key policy, discovers descriptors, installs bindings, configures reporting, transitions nodes from plaintext post-join traffic to secured NWK traffic, can queue management-leave requests, recognizes known nodes during reassociation, emits NWK-secured Update Device for demo secure-rejoin handling, can stage and switch an alternate demo network key on already joined children, enrolls demo light groups, exchanges unicast APS ACKs, and queues HA traffic for polled delivery, including brightness control for dimmable lights.
 
 Today the repo cannot yet:
 
 - join a third-party Zigbee 3.0 coordinator,
 - interoperate with a third-party trust center's APS-secured transport-key exchange,
 - negotiate trust-center security,
-- complete a secure joined-state lifecycle,
+- complete a Zigbee 3.0-compliant secure joined-state lifecycle,
 - act as a coordinator that Zigbee2MQTT can use as an adapter.
 
 ## Minimum Remaining Work For Home Assistant Device Interop
@@ -98,7 +107,9 @@ Today the repo cannot yet:
 1. Replace the demo-only join path with interoperable MAC timing and Zigbee 3.0 commissioning behavior.
 2. Extend the current preconfigured-link-key APS Transport Key path into full Zigbee 3.0 trust-center commissioning behavior.
 3. Extend the new joined end-device flow from the clean demo coordinator to third-party coordinators used by ZHA or Zigbee2MQTT.
-4. Extend the existing NWK security persistence and replay checks into full secure joined-state behavior across rejoin, APS security, and trust-center key updates.
+4. Extend the existing NWK security persistence and replay checks into full secure joined-state behavior across rejoin, APS security, and trust-center key updates, including retransmission policy beyond single APS ACK exchange.
+
+Execution planning for the first three blocker areas is tracked in `docs/ZIGBEE_3P0_PARITY_PLAN.md`, and the coordinator-facing packet flow expected for future ZHA/Zigbee2MQTT bring-up is tracked in `docs/ZIGBEE_EXTERNAL_COORDINATOR_FLOW.md`.
 
 ## Minimum Remaining Work For Zigbee2MQTT Coordinator Interop
 
@@ -106,6 +117,6 @@ If the goal is to use this board as the coordinator behind Zigbee2MQTT, the scop
 
 1. Complete coordinator-grade MAC/NWK/APS/security behavior.
 2. Add a stable host-facing serial protocol that Zigbee2MQTT already understands, or add a new adapter implementation upstream.
-3. Implement management, permit-join, child/address handling, and routing behavior expected of a real coordinator.
+3. Extend the current demo permit-join, leave, and child/address handling into the management behavior expected of a real coordinator, then add routing.
 
 That should be treated as a separate phase after end-device interoperability is real.

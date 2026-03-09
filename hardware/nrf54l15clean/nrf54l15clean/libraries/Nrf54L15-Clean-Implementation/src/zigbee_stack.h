@@ -18,6 +18,8 @@ constexpr uint16_t kZigbeeClusterLevelControl = 0x0008U;
 constexpr uint16_t kZigbeeClusterOtaUpgrade = 0x0019U;
 constexpr uint16_t kZigbeeClusterTemperatureMeasurement = 0x0402U;
 
+constexpr uint16_t kZigbeeZdoNetworkAddressRequest = 0x0000U;
+constexpr uint16_t kZigbeeZdoIeeeAddressRequest = 0x0001U;
 constexpr uint16_t kZigbeeZdoNodeDescriptorRequest = 0x0002U;
 constexpr uint16_t kZigbeeZdoPowerDescriptorRequest = 0x0003U;
 constexpr uint16_t kZigbeeZdoSimpleDescriptorRequest = 0x0004U;
@@ -26,7 +28,11 @@ constexpr uint16_t kZigbeeZdoMatchDescriptorRequest = 0x0006U;
 constexpr uint16_t kZigbeeZdoDeviceAnnounce = 0x0013U;
 constexpr uint16_t kZigbeeZdoBindRequest = 0x0021U;
 constexpr uint16_t kZigbeeZdoUnbindRequest = 0x0022U;
+constexpr uint16_t kZigbeeZdoMgmtLeaveRequest = 0x0034U;
+constexpr uint16_t kZigbeeZdoMgmtPermitJoinRequest = 0x0036U;
 
+constexpr uint16_t kZigbeeZdoNetworkAddressResponse = 0x8000U;
+constexpr uint16_t kZigbeeZdoIeeeAddressResponse = 0x8001U;
 constexpr uint16_t kZigbeeZdoNodeDescriptorResponse = 0x8002U;
 constexpr uint16_t kZigbeeZdoPowerDescriptorResponse = 0x8003U;
 constexpr uint16_t kZigbeeZdoSimpleDescriptorResponse = 0x8004U;
@@ -34,6 +40,8 @@ constexpr uint16_t kZigbeeZdoActiveEndpointsResponse = 0x8005U;
 constexpr uint16_t kZigbeeZdoMatchDescriptorResponse = 0x8006U;
 constexpr uint16_t kZigbeeZdoBindResponse = 0x8021U;
 constexpr uint16_t kZigbeeZdoUnbindResponse = 0x8022U;
+constexpr uint16_t kZigbeeZdoMgmtLeaveResponse = 0x8034U;
+constexpr uint16_t kZigbeeZdoMgmtPermitJoinResponse = 0x8036U;
 
 constexpr uint16_t kZigbeeDeviceIdOnOffLight = 0x0100U;
 constexpr uint16_t kZigbeeDeviceIdDimmableLight = 0x0101U;
@@ -45,6 +53,7 @@ constexpr uint8_t kZigbeeApsDeliveryBroadcast = 0x02U;
 constexpr uint8_t kZigbeeApsDeliveryGroup = 0x03U;
 constexpr uint8_t kZigbeeApsCommandTransportKey = 0x05U;
 constexpr uint8_t kZigbeeApsCommandUpdateDevice = 0x06U;
+constexpr uint8_t kZigbeeApsCommandSwitchKey = 0x09U;
 constexpr uint8_t kZigbeeApsTransportKeyStandardNetworkKey = 0x01U;
 constexpr uint8_t kZigbeeApsUpdateDeviceStatusStandardSecureRejoin = 0x00U;
 
@@ -156,6 +165,8 @@ struct ZigbeeMacBeaconPayload {
   uint8_t protocolId = 0U;
   uint8_t stackProfile = 0U;
   uint8_t protocolVersion = 0U;
+  bool panCoordinator = true;
+  bool associationPermit = true;
   bool routerCapacity = false;
   bool endDeviceCapacity = false;
   uint64_t extendedPanId = 0U;
@@ -221,6 +232,19 @@ struct ZigbeeApsCommandFrame {
   uint8_t payloadLength = 0U;
 };
 
+struct ZigbeeApsAcknowledgementFrame {
+  bool valid = false;
+  ZigbeeApsFrameType frameType = ZigbeeApsFrameType::kAcknowledgement;
+  uint8_t deliveryMode = kZigbeeApsDeliveryUnicast;
+  bool securityEnabled = false;
+  bool ackFormatCommand = false;
+  uint8_t destinationEndpoint = 0U;
+  uint16_t clusterId = 0U;
+  uint16_t profileId = 0U;
+  uint8_t sourceEndpoint = 0U;
+  uint8_t counter = 0U;
+};
+
 struct ZigbeeApsTransportKey {
   bool valid = false;
   uint8_t keyType = kZigbeeApsTransportKeyStandardNetworkKey;
@@ -235,6 +259,11 @@ struct ZigbeeApsUpdateDevice {
   uint64_t deviceIeee = 0U;
   uint16_t deviceShort = 0U;
   uint8_t status = 0U;
+};
+
+struct ZigbeeApsSwitchKey {
+  bool valid = false;
+  uint8_t keySequence = 0U;
 };
 
 struct ZigbeeZclFrame {
@@ -288,6 +317,18 @@ struct ZigbeeConfigureReportingStatusRecord {
   uint8_t status = 0U;
   uint8_t direction = 0U;
   uint16_t attributeId = 0U;
+};
+
+struct ZigbeeZdoAddressResponseView {
+  bool valid = false;
+  uint8_t transactionSequence = 0U;
+  uint8_t status = 0U;
+  uint64_t ieeeAddress = 0U;
+  uint16_t nwkAddress = 0U;
+  uint8_t associatedDeviceCount = 0U;
+  uint8_t startIndex = 0U;
+  uint8_t associatedDeviceListCount = 0U;
+  uint16_t associatedDevices[8] = {0U};
 };
 
 struct ZigbeeZdoActiveEndpointsResponseView {
@@ -483,6 +524,15 @@ class ZigbeeCodec {
                                    uint8_t* outLength);
   static bool parseApsCommandFrame(const uint8_t* frame, uint8_t length,
                                    ZigbeeApsCommandFrame* outFrame);
+  static bool buildApsAcknowledgementFrame(
+      const ZigbeeApsAcknowledgementFrame& frame, uint8_t* outFrame,
+      uint8_t* outLength);
+  static bool parseApsAcknowledgementFrame(
+      const uint8_t* frame, uint8_t length,
+      ZigbeeApsAcknowledgementFrame* outFrame);
+  static bool buildApsDataAcknowledgement(const ZigbeeApsDataFrame& request,
+                                          uint8_t* outFrame,
+                                          uint8_t* outLength);
   static bool buildApsTransportKeyCommand(const ZigbeeApsTransportKey& key,
                                           uint8_t counter, uint8_t* outFrame,
                                           uint8_t* outLength);
@@ -495,6 +545,12 @@ class ZigbeeCodec {
   static bool parseApsUpdateDeviceCommand(const uint8_t* frame, uint8_t length,
                                           ZigbeeApsUpdateDevice* outDevice,
                                           uint8_t* outCounter);
+  static bool buildApsSwitchKeyCommand(const ZigbeeApsSwitchKey& key,
+                                       uint8_t counter, uint8_t* outFrame,
+                                       uint8_t* outLength);
+  static bool parseApsSwitchKeyCommand(const uint8_t* frame, uint8_t length,
+                                       ZigbeeApsSwitchKey* outKey,
+                                       uint8_t* outCounter);
 
   static bool buildZclFrame(const ZigbeeZclFrame& frame,
                             const uint8_t* payload, uint8_t payloadLength,
@@ -540,6 +596,18 @@ class ZigbeeCodec {
                                    bool directionToClient, uint8_t commandId,
                                    uint8_t status, uint8_t* outFrame,
                                    uint8_t* outLength);
+  static bool buildZdoNetworkAddressRequest(uint8_t transactionSequence,
+                                            uint64_t ieeeAddressOfInterest,
+                                            bool requestExtendedResponse,
+                                            uint8_t startIndex,
+                                            uint8_t* outPayload,
+                                            uint8_t* outLength);
+  static bool buildZdoIeeeAddressRequest(uint8_t transactionSequence,
+                                         uint16_t nwkAddressOfInterest,
+                                         bool requestExtendedResponse,
+                                         uint8_t startIndex,
+                                         uint8_t* outPayload,
+                                         uint8_t* outLength);
   static bool buildZdoNodeDescriptorRequest(uint8_t transactionSequence,
                                             uint16_t nwkAddressOfInterest,
                                             uint8_t* outPayload,
@@ -579,9 +647,28 @@ class ZigbeeCodec {
                                     uint64_t destinationIeeeAddress,
                                     uint8_t destinationEndpoint,
                                     uint8_t* outPayload, uint8_t* outLength);
+  static bool buildZdoMgmtLeaveRequest(uint8_t transactionSequence,
+                                       uint64_t deviceIeeeAddress,
+                                       uint8_t flags, uint8_t* outPayload,
+                                       uint8_t* outLength);
+  static bool parseZdoMgmtLeaveRequest(const uint8_t* payload, uint8_t length,
+                                       uint8_t* outTransactionSequence,
+                                       uint64_t* outDeviceIeeeAddress,
+                                       uint8_t* outFlags);
+  static bool buildZdoMgmtPermitJoinRequest(uint8_t transactionSequence,
+                                            uint8_t permitDurationSeconds,
+                                            bool trustCenterSignificance,
+                                            uint8_t* outPayload,
+                                            uint8_t* outLength);
+  static bool parseZdoMgmtPermitJoinRequest(
+      const uint8_t* payload, uint8_t length, uint8_t* outTransactionSequence,
+      uint8_t* outPermitDurationSeconds,
+      bool* outTrustCenterSignificance);
   static bool parseZdoStatusResponse(const uint8_t* payload, uint8_t length,
                                      uint8_t* outTransactionSequence,
                                      uint8_t* outStatus);
+  static bool parseZdoAddressResponse(const uint8_t* payload, uint8_t length,
+                                      ZigbeeZdoAddressResponseView* outView);
   static bool parseZdoActiveEndpointsResponse(
       const uint8_t* payload, uint8_t length,
       ZigbeeZdoActiveEndpointsResponseView* outView);
@@ -648,6 +735,8 @@ class ZigbeeHomeAutomationDevice {
                                  uint64_t* outDestinationIeee,
                                  uint8_t* outDestinationEndpoint) const;
   bool isInGroup(uint16_t groupId) const;
+  bool leaveRequested() const;
+  bool consumeLeaveRequest();
 
   bool buildDeviceAnnounce(uint8_t transactionSequence, uint8_t* outPayload,
                            uint8_t* outLength) const;
@@ -705,6 +794,7 @@ class ZigbeeHomeAutomationDevice {
   uint16_t temperatureSensorInputClusters_[4];
   uint16_t temperatureSensorOutputClusters_[1];
   ZigbeeReportingConfiguration reporting_[8];
+  bool leaveRequested_ = false;
 };
 
 }  // namespace xiao_nrf54l15
