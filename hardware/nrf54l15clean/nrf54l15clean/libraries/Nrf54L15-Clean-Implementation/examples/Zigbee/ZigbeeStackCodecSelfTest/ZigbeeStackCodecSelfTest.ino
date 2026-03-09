@@ -172,7 +172,17 @@ static bool testMacCommandCodec() {
        realignment.assignedShort == 0x3344U &&
        realignment.destinationExtended == 0x00124B0001AC1001ULL;
 
-  reportResult("MAC Command Codec", ok, "orphan+realignment");
+  ok = ok &&
+       ZigbeeRadio::buildMacAcknowledgement(0x43U, encoded, &encodedLength,
+                                            true);
+  ZigbeeMacAcknowledgementView acknowledgement{};
+  ok = ok &&
+       ZigbeeRadio::parseMacAcknowledgement(encoded, encodedLength,
+                                            &acknowledgement) &&
+       acknowledgement.valid && acknowledgement.framePending &&
+       acknowledgement.sequence == 0x43U;
+
+  reportResult("MAC Command Codec", ok, "orphan+realignment+ack");
   return ok;
 }
 

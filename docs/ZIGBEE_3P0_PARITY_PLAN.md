@@ -17,6 +17,7 @@ Close the first three blocker areas in one coordinated execution batch:
 The in-tree clean Zigbee demo stack already has:
 
 - reusable MAC/NWK/APS/ZDO/ZCL codecs,
+- a clean best-effort MAC ACK request/reply path for unicast 802.15.4 data and command traffic,
 - a shared `zigbee_commissioning` end-device state machine for the joinable HA examples,
 - demo secured NWK transport with persisted counters,
 - APS-secured Transport Key delivery,

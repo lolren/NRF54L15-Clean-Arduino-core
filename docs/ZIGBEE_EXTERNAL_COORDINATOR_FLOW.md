@@ -102,8 +102,7 @@ Minimum behavioral match for future ZHA/Zigbee2MQTT interop work:
 
 ## What Still Blocks Real Interop
 
-- Interoperable MAC ACK timing.
 - Real BDB steering, startup, and rejoin behavior.
 - Trust-center key-update lifecycle validation against a third-party coordinator.
-- Validation of the new bounded APS retransmission and duplicate-suppression policy against real third-party coordinators.
+- Validation of the new bounded APS retransmission, duplicate-suppression, and best-effort MAC ACK policy against real third-party coordinators.
 - Packet-capture validation against ZHA or Zigbee2MQTT on real hardware.
