@@ -133,6 +133,7 @@ struct ZigbeeEndDeviceCommonState {
   uint32_t lastEndDeviceTimeoutRequestMs = 0U;
   bool joined = false;
   bool rejoinPending = false;
+  bool networkSteeringRequested = false;
   bool securityEnabled = false;
   bool haveActiveNetworkKey = false;
   bool haveAlternateNetworkKey = false;

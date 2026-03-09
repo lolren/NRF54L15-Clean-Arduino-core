@@ -366,6 +366,9 @@ void restoreState() {
     }
     ZigbeeCommissioning::restoreEndDeviceState(&g_network, state, kIeeeAddress);
   }
+  if (!g_joined && !g_rejoinPending) {
+    ZigbeeCommissioning::requestNetworkSteering(&g_network);
+  }
 
   configureDeviceForCurrentNetwork();
   applyLedState();

@@ -805,6 +805,10 @@ static bool testCommissioningStateMachine() {
   ok = ok && ZigbeeCommissioning::nextAction(&schedulerState, 120U) ==
                      ZigbeeCommissioningAction::kNone;
   ok = ok && ZigbeeCommissioning::nextAction(&schedulerState, 180U) ==
+                     ZigbeeCommissioningAction::kNone;
+  ZigbeeCommissioning::requestNetworkSteering(&schedulerState);
+  ok = ok && schedulerState.networkSteeringRequested &&
+       ZigbeeCommissioning::nextAction(&schedulerState, 180U) ==
                      ZigbeeCommissioningAction::kJoin;
   ZigbeeCommissioning::clearEndDeviceState(&schedulerState, true);
   ok = ok && schedulerState.state == ZigbeeCommissioningState::kLeaveReset &&
@@ -813,6 +817,7 @@ static bool testCommissioningStateMachine() {
   ok = ok && ZigbeeCommissioning::requestRejoinOrSteering(&schedulerState) ==
                      ZigbeeCommissioningStartRequest::kNetworkSteering &&
        !schedulerState.rejoinPending &&
+       schedulerState.networkSteeringRequested &&
        schedulerState.state == ZigbeeCommissioningState::kRestored &&
        schedulerState.lastFailure == ZigbeeCommissioningFailure::kNone;
   ok = ok && ZigbeeCommissioning::nextAction(&schedulerState, 1000U) ==
@@ -850,9 +855,12 @@ static bool testCommissioningStateMachine() {
   ok = ok && ZigbeeCommissioning::nextAction(&schedulerState, 2310U) ==
                      ZigbeeCommissioningAction::kNone &&
        schedulerState.state == ZigbeeCommissioningState::kRestored &&
+       schedulerState.networkSteeringRequested &&
        !schedulerState.rejoinPending &&
        schedulerState.lastFailure ==
            ZigbeeCommissioningFailure::kRejoinAttemptBudgetExceeded;
+  ok = ok && ZigbeeCommissioning::nextAction(&schedulerState, 2311U) ==
+                     ZigbeeCommissioningAction::kJoin;
   schedulerState.joined = true;
   schedulerState.securityEnabled = true;
   schedulerState.haveActiveNetworkKey = true;

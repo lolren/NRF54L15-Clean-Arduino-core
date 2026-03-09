@@ -1010,6 +1010,7 @@ void ZigbeeCommissioning::restoreEndDeviceState(
 
   state->joined = false;
   state->rejoinPending = false;
+  state->networkSteeringRequested = false;
   state->deviceAnnouncePending = false;
   state->endDeviceTimeoutPending = false;
   state->endDeviceTimeoutNegotiated = false;
@@ -1128,12 +1129,10 @@ void ZigbeeCommissioning::requestNetworkSteering(
 
   state->joined = false;
   state->rejoinPending = false;
+  state->networkSteeringRequested = true;
   state->state = ZigbeeCommissioningState::kRestored;
   state->lastFailure = ZigbeeCommissioningFailure::kNone;
-  state->lastJoinAttemptMs =
-      millis() - ((state->policy.joinRetryDelayMs != 0UL)
-                      ? state->policy.joinRetryDelayMs
-                      : 1UL);
+  state->lastJoinAttemptMs = 0U;
 }
 
 ZigbeeCommissioningStartRequest ZigbeeCommissioning::requestRejoinOrSteering(
@@ -1168,6 +1167,7 @@ void ZigbeeCommissioning::requestSecureRejoin(
 
   state->joined = false;
   state->rejoinPending = true;
+  state->networkSteeringRequested = false;
   state->securityEnabled = true;
   state->state = ZigbeeCommissioningState::kRejoinPending;
   state->lastFailure = ZigbeeCommissioningFailure::kNone;
@@ -1342,8 +1342,7 @@ ZigbeeCommissioningAction ZigbeeCommissioning::nextAction(
     state->state = ZigbeeCommissioningState::kFailed;
     state->lastJoinAttemptMs = nowMs;
     if (state->policy.fallbackToJoinAfterRejoinFailure) {
-      state->rejoinPending = false;
-      state->state = ZigbeeCommissioningState::kRestored;
+      requestNetworkSteering(state);
     }
     return ZigbeeCommissioningAction::kNone;
   }
@@ -1354,8 +1353,7 @@ ZigbeeCommissioningAction ZigbeeCommissioning::nextAction(
       state->state = ZigbeeCommissioningState::kFailed;
       state->lastJoinAttemptMs = nowMs;
       if (state->policy.fallbackToJoinAfterRejoinFailure) {
-        state->rejoinPending = false;
-        state->state = ZigbeeCommissioningState::kRestored;
+        requestNetworkSteering(state);
       }
       return ZigbeeCommissioningAction::kNone;
     }
@@ -1366,8 +1364,7 @@ ZigbeeCommissioningAction ZigbeeCommissioning::nextAction(
       state->state = ZigbeeCommissioningState::kFailed;
       state->lastJoinAttemptMs = nowMs;
       if (state->policy.fallbackToJoinAfterRejoinFailure) {
-        state->rejoinPending = false;
-        state->state = ZigbeeCommissioningState::kRestored;
+        requestNetworkSteering(state);
       }
       return ZigbeeCommissioningAction::kNone;
     }
@@ -1383,7 +1380,8 @@ ZigbeeCommissioningAction ZigbeeCommissioning::nextAction(
     state->state = ZigbeeCommissioningState::kFailed;
     return ZigbeeCommissioningAction::kNone;
   }
-  if (elapsedSinceAttempt >= state->policy.joinRetryDelayMs) {
+  if (state->networkSteeringRequested &&
+      elapsedSinceAttempt >= state->policy.joinRetryDelayMs) {
     if (state->state == ZigbeeCommissioningState::kIdle ||
         state->state == ZigbeeCommissioningState::kRestored ||
         state->state == ZigbeeCommissioningState::kFailed) {
@@ -1713,6 +1711,7 @@ void ZigbeeCommissioning::applyTransportKeyInstall(
     state->incomingNwkFrameCounter = 0U;
     state->joined = true;
     state->rejoinPending = false;
+    state->networkSteeringRequested = false;
     markDeviceAnnouncePending(state);
     markEndDeviceTimeoutPending(state);
     state->state = ZigbeeCommissioningState::kJoined;
@@ -1784,6 +1783,7 @@ void ZigbeeCommissioning::applyUpdateDevice(
       kZigbeeApsUpdateDeviceStatusStandardSecureRejoin) {
     state->joined = true;
     state->rejoinPending = false;
+    state->networkSteeringRequested = false;
     state->securityEnabled = state->haveActiveNetworkKey;
     markDeviceAnnouncePending(state);
     markEndDeviceTimeoutPending(state);
@@ -1874,6 +1874,7 @@ void ZigbeeCommissioning::applySwitchKey(
   state->securityEnabled = true;
   state->joined = true;
   state->rejoinPending = false;
+  state->networkSteeringRequested = false;
   state->state = ZigbeeCommissioningState::kJoined;
   state->lastFailure = ZigbeeCommissioningFailure::kNone;
 }
