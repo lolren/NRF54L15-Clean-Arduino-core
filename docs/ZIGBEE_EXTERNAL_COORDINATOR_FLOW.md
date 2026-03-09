@@ -53,7 +53,7 @@ Expected sequence:
 
 1. Coordinator keeps the current active network key and key sequence in use for normal secured NWK traffic.
 2. Coordinator delivers a new APS-secured `Transport Key` carrying an alternate network key and a higher sequence number.
-3. End device validates the APS security context and stores the new key as `alternate`, without activating it immediately.
+3. End device validates the APS security context and stores the new key as `alternate`, without activating it immediately. Duplicate secured `Transport Key` delivery for the current active or already-staged sequence is treated as a refresh, while stale or conflicting same-sequence reuse is rejected.
 4. Coordinator later sends APS-secured `Switch Key`, typically carried inside NWK-secured traffic using the still-active network key.
 5. End device promotes the alternate key to active, clears the staged alternate slot, resets NWK replay state, and resumes secured traffic on the new sequence.
 

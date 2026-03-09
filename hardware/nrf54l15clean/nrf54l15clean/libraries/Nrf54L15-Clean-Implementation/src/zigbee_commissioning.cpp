@@ -18,6 +18,11 @@ bool attemptBudgetExceeded(uint32_t attempts, uint8_t maxAttempts) {
   return maxAttempts != 0U && attempts >= maxAttempts;
 }
 
+bool keySequenceIsNewer(uint8_t candidate, uint8_t current) {
+  const uint8_t delta = static_cast<uint8_t>(candidate - current);
+  return delta != 0U && delta < 0x80U;
+}
+
 void appendScanMaskChannels(uint32_t mask, bool seenChannels[32],
                             uint8_t* channels, uint8_t* ioCount) {
   if (seenChannels == nullptr || channels == nullptr || ioCount == nullptr) {
@@ -1295,17 +1300,44 @@ bool ZigbeeCommissioning::acceptTransportKeyCommand(
     return false;
   }
 
+  bool activatesNetworkKey = false;
+  bool stagesAlternateKey = false;
+  bool refreshesActiveNetworkKey = false;
+  bool refreshesAlternateKey = false;
+  if (!state.haveActiveNetworkKey) {
+    activatesNetworkKey = true;
+  } else if (transportKey.keySequence == state.activeNetworkKeySequence) {
+    if (memcmp(transportKey.key, state.activeNetworkKey,
+               sizeof(state.activeNetworkKey)) != 0) {
+      return false;
+    }
+    refreshesActiveNetworkKey = true;
+  } else if (state.haveAlternateNetworkKey &&
+             transportKey.keySequence == state.alternateNetworkKeySequence) {
+    if (memcmp(transportKey.key, state.alternateNetworkKey,
+               sizeof(state.alternateNetworkKey)) != 0) {
+      return false;
+    }
+    refreshesAlternateKey = true;
+  } else if (!keySequenceIsNewer(transportKey.keySequence,
+                                 state.activeNetworkKeySequence) ||
+             (state.haveAlternateNetworkKey &&
+              !keySequenceIsNewer(transportKey.keySequence,
+                                  state.alternateNetworkKeySequence))) {
+    return false;
+  } else {
+    stagesAlternateKey = true;
+  }
+
   outResult->valid = true;
   outResult->transportKey = transportKey;
   outResult->apsSecurity = apsSecurity;
   outResult->keyMode = keyMode;
   outResult->counter = counter;
-  if (state.haveActiveNetworkKey &&
-      transportKey.keySequence != state.activeNetworkKeySequence) {
-    outResult->stagesAlternateKey = true;
-  } else {
-    outResult->activatesNetworkKey = true;
-  }
+  outResult->activatesNetworkKey = activatesNetworkKey;
+  outResult->stagesAlternateKey = stagesAlternateKey;
+  outResult->refreshesActiveNetworkKey = refreshesActiveNetworkKey;
+  outResult->refreshesAlternateKey = refreshesAlternateKey;
   return true;
 }
 
@@ -1328,7 +1360,7 @@ void ZigbeeCommissioning::applyTransportKeyInstall(
            sizeof(state->alternateNetworkKey));
     state->alternateNetworkKeySequence = result.transportKey.keySequence;
     state->haveAlternateNetworkKey = true;
-  } else {
+  } else if (result.activatesNetworkKey) {
     memcpy(state->activeNetworkKey, result.transportKey.key,
            sizeof(state->activeNetworkKey));
     state->activeNetworkKeySequence = result.transportKey.keySequence;

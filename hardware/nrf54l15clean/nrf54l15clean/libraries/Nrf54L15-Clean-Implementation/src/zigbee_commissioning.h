@@ -135,6 +135,8 @@ struct ZigbeeTransportKeyInstallResult {
   uint8_t counter = 0U;
   bool activatesNetworkKey = false;
   bool stagesAlternateKey = false;
+  bool refreshesActiveNetworkKey = false;
+  bool refreshesAlternateKey = false;
 };
 
 struct ZigbeeUpdateDeviceAcceptance {

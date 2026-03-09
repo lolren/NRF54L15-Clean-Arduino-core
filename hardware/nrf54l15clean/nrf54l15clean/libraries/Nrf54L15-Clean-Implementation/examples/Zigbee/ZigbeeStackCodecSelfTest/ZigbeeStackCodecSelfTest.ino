@@ -848,13 +848,43 @@ static bool testCommissioningStateMachine() {
        state.state == ZigbeeCommissioningState::kJoined &&
        ZigbeeCommissioning::shouldAttemptSecureRejoin(state);
 
+  apsSecurity.frameCounter = 0x11223345UL;
+  ok = ok && ZigbeeSecurity::buildSecuredApsTransportKeyCommand(
+                   transportKey, apsSecurity, installCodeKey, 0x2BU,
+                   transportFrame, &transportFrameLength);
+  memset(&install, 0, sizeof(install));
+  ok = ok && ZigbeeCommissioning::acceptTransportKeyCommand(
+                     state, kLocalIeee, transportFrame, transportFrameLength,
+                     installCodeKey, true, &install) &&
+       install.valid && install.refreshesActiveNetworkKey &&
+       !install.activatesNetworkKey && !install.stagesAlternateKey &&
+       !install.refreshesAlternateKey;
+  ZigbeeCommissioning::applyTransportKeyInstall(&state, install);
+  ok = ok && state.haveActiveNetworkKey && !state.haveAlternateNetworkKey &&
+       state.activeNetworkKeySequence == 0x01U &&
+       memcmp(state.activeNetworkKey, kNetworkKey,
+              sizeof(state.activeNetworkKey)) == 0 &&
+       state.incomingNwkFrameCounter == 0U &&
+       state.incomingApsFrameCounter == apsSecurity.frameCounter;
+
+  ZigbeeApsTransportKey conflictingTransportKey = transportKey;
+  conflictingTransportKey.key[0] ^= 0xFFU;
+  apsSecurity.frameCounter = 0x11223346UL;
+  ok = ok && ZigbeeSecurity::buildSecuredApsTransportKeyCommand(
+                   conflictingTransportKey, apsSecurity, installCodeKey, 0x2CU,
+                   transportFrame, &transportFrameLength);
+  memset(&install, 0, sizeof(install));
+  ok = ok && !ZigbeeCommissioning::acceptTransportKeyCommand(
+                     state, kLocalIeee, transportFrame, transportFrameLength,
+                     installCodeKey, true, &install);
+
   ZigbeeApsTransportKey updatedTransportKey = transportKey;
   memcpy(updatedTransportKey.key, kUpdatedNetworkKey,
          sizeof(updatedTransportKey.key));
   updatedTransportKey.keySequence = 0x02U;
-  apsSecurity.frameCounter = 0x11223345UL;
+  apsSecurity.frameCounter = 0x11223347UL;
   ok = ok && ZigbeeSecurity::buildSecuredApsTransportKeyCommand(
-                     updatedTransportKey, apsSecurity, installCodeKey, 0x2BU,
+                     updatedTransportKey, apsSecurity, installCodeKey, 0x2DU,
                      transportFrame, &transportFrameLength);
   memset(&install, 0, sizeof(install));
   ok = ok && ZigbeeCommissioning::acceptTransportKeyCommand(
@@ -869,12 +899,37 @@ static bool testCommissioningStateMachine() {
        memcmp(state.alternateNetworkKey, kUpdatedNetworkKey,
               sizeof(state.alternateNetworkKey)) == 0;
 
+  apsSecurity.frameCounter = 0x11223348UL;
+  ok = ok && ZigbeeSecurity::buildSecuredApsTransportKeyCommand(
+                   updatedTransportKey, apsSecurity, installCodeKey, 0x2EU,
+                   transportFrame, &transportFrameLength);
+  memset(&install, 0, sizeof(install));
+  ok = ok && ZigbeeCommissioning::acceptTransportKeyCommand(
+                     state, kLocalIeee, transportFrame, transportFrameLength,
+                     installCodeKey, true, &install) &&
+       install.valid && install.refreshesAlternateKey &&
+       !install.activatesNetworkKey && !install.stagesAlternateKey &&
+       !install.refreshesActiveNetworkKey;
+  ZigbeeCommissioning::applyTransportKeyInstall(&state, install);
+  ok = ok && state.haveAlternateNetworkKey &&
+       state.alternateNetworkKeySequence == 0x02U &&
+       state.incomingApsFrameCounter == apsSecurity.frameCounter;
+
+  apsSecurity.frameCounter = 0x11223349UL;
+  ok = ok && ZigbeeSecurity::buildSecuredApsTransportKeyCommand(
+                   transportKey, apsSecurity, installCodeKey, 0x2FU,
+                   transportFrame, &transportFrameLength);
+  memset(&install, 0, sizeof(install));
+  ok = ok && !ZigbeeCommissioning::acceptTransportKeyCommand(
+                     state, kLocalIeee, transportFrame, transportFrameLength,
+                     installCodeKey, true, &install);
+
   ZigbeeApsSwitchKey switchKey{};
   switchKey.valid = true;
   switchKey.keySequence = 0x02U;
   uint8_t switchFrame[127] = {0U};
   uint8_t switchFrameLength = 0U;
-  apsSecurity.frameCounter = 0x11223346UL;
+  apsSecurity.frameCounter = 0x1122334AUL;
   ok = ok && ZigbeeSecurity::buildSecuredApsSwitchKeyCommand(
                    switchKey, apsSecurity, installCodeKey, 0x2CU, switchFrame,
                    &switchFrameLength);
@@ -910,7 +965,7 @@ static bool testCommissioningStateMachine() {
 
   uint8_t updateFrame[127] = {0U};
   uint8_t updateFrameLength = 0U;
-  apsSecurity.frameCounter = 0x11223347UL;
+  apsSecurity.frameCounter = 0x1122334BUL;
   ok = ok && ZigbeeSecurity::buildSecuredApsUpdateDeviceCommand(
                    updateDevice, apsSecurity, installCodeKey, 0x33U,
                    updateFrame, &updateFrameLength);
@@ -1045,9 +1100,15 @@ static bool testZdoAddressAndManagementFlow() {
        payload[2] == 0x33U && payload[3] == 0x00U;
 
   ok = ok && ZigbeeCodec::buildZdoMgmtLeaveRequest(
-                   0x52U, 0x00124B0001ABCDEFULL, 0x40U, payload,
+                   0x52U, 0x00124B0001ABCDEFULL,
+                   static_cast<uint8_t>(kZigbeeMgmtLeaveFlagRemoveChildren |
+                                        kZigbeeMgmtLeaveFlagRejoin),
+                   payload,
                    &payloadLength) &&
-       payloadLength == 10U && payload[0] == 0x52U && payload[9] == 0x40U;
+       payloadLength == 10U && payload[0] == 0x52U &&
+       payload[9] ==
+           static_cast<uint8_t>(kZigbeeMgmtLeaveFlagRemoveChildren |
+                                kZigbeeMgmtLeaveFlagRejoin);
 
   uint8_t transactionSequence = 0U;
   uint64_t deviceIeeeAddress = 0U;
@@ -1056,7 +1117,9 @@ static bool testZdoAddressAndManagementFlow() {
                    payload, payloadLength, &transactionSequence,
                    &deviceIeeeAddress, &flags) &&
        transactionSequence == 0x52U &&
-       deviceIeeeAddress == 0x00124B0001ABCDEFULL && flags == 0x40U;
+       deviceIeeeAddress == 0x00124B0001ABCDEFULL &&
+       flags == static_cast<uint8_t>(kZigbeeMgmtLeaveFlagRemoveChildren |
+                                     kZigbeeMgmtLeaveFlagRejoin);
 
   ok = ok && ZigbeeCodec::buildZdoMgmtPermitJoinRequest(
                    0x53U, 0x3CU, true, payload, &payloadLength) &&
@@ -1132,7 +1195,8 @@ static bool testZdoAddressAndManagementFlow() {
 
   payloadLength = 0U;
   ok = ok && ZigbeeCodec::buildZdoMgmtLeaveRequest(
-                   0x58U, 0x00124B0001ABCDEFULL, 0x00U, payload,
+                   0x58U, 0x00124B0001ABCDEFULL, kZigbeeMgmtLeaveFlagRejoin,
+                   payload,
                    &payloadLength) &&
        device.handleZdoRequest(kZigbeeZdoMgmtLeaveRequest, payload,
                                payloadLength, &responseClusterId, response,
@@ -1141,8 +1205,12 @@ static bool testZdoAddressAndManagementFlow() {
        ZigbeeCodec::parseZdoStatusResponse(response, responseLength,
                                            &transactionSequence, &flags) &&
        transactionSequence == 0x58U && flags == 0x00U &&
-       device.leaveRequested() && device.consumeLeaveRequest() &&
-       !device.consumeLeaveRequest();
+       device.leaveRequested() &&
+       device.leaveRequestFlags() == kZigbeeMgmtLeaveFlagRejoin &&
+       device.leaveRequestWantsRejoin() &&
+       device.consumeLeaveRequest(&flags) &&
+       flags == kZigbeeMgmtLeaveFlagRejoin && !device.leaveRequested() &&
+       !device.leaveRequestWantsRejoin() && !device.consumeLeaveRequest();
 
   reportResult("ZDO Address+Mgmt", ok, "addr_req+leave+permit_join");
   return ok;

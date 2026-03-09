@@ -27,6 +27,7 @@ The in-tree clean Zigbee demo stack already has:
 - secured Update Device delivery for the retained-key demo rejoin path,
 - alternate demo network-key persistence plus Switch Key codec support,
 - a polled demo network-key update rollout on the clean coordinator,
+- duplicate/stale APS `Transport Key` hardening so joined nodes no longer treat same-sequence key reuse as a fresh activation,
 - a coordinator-facing flow document for future external-coordinator bring-up.
 
 That is useful foundation work, but it is still not real Zigbee 3.0 parity.

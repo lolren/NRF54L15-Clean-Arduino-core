@@ -368,6 +368,28 @@ void requestSecureRejoin() {
   ZigbeeCommissioning::requestSecureRejoin(&g_network);
 }
 
+void handleAcceptedLeaveRequest(uint8_t leaveFlags) {
+  if ((leaveFlags & kZigbeeMgmtLeaveFlagRejoin) == 0U) {
+    Serial.print("mgmt_leave accepted clear\r\n");
+    clearJoinState(true);
+    return;
+  }
+
+  requestSecureRejoin();
+  clearPendingApsAck();
+  clearRecentInboundAps();
+  if (g_rejoinPending) {
+    persistState();
+    Serial.print("mgmt_leave accepted rejoin\r\n");
+    return;
+  }
+
+  Serial.print("mgmt_leave accepted rejoin_unavailable failure=");
+  Serial.print(ZigbeeCommissioning::failureName(g_network.lastFailure));
+  Serial.print("\r\n");
+  clearJoinState(true);
+}
+
 void clearPendingApsAck() {
   memset(&g_pendingApsAck, 0, sizeof(g_pendingApsAck));
 }
@@ -770,11 +792,26 @@ bool handleApsCommand(const uint8_t* frame, uint8_t length, uint16_t sourceShort
       g_lastInboundSecurityFrameCounter = 0U;
     }
     persistState();
-    Serial.print(transportInstall.stagesAlternateKey ? "transport_key_update seq="
-                                                     : "transport_key seq=");
+    if (transportInstall.stagesAlternateKey) {
+      Serial.print("transport_key_update seq=");
+    } else if (transportInstall.refreshesAlternateKey) {
+      Serial.print("transport_key_update_refresh seq=");
+    } else {
+      Serial.print("transport_key seq=");
+    }
     Serial.print(transportInstall.transportKey.keySequence);
     Serial.print(" install=");
-    Serial.print(transportInstall.activatesNetworkKey ? "active" : "staged");
+    if (transportInstall.activatesNetworkKey) {
+      Serial.print("active");
+    } else if (transportInstall.stagesAlternateKey) {
+      Serial.print("staged");
+    } else if (transportInstall.refreshesActiveNetworkKey) {
+      Serial.print("active_refresh");
+    } else if (transportInstall.refreshesAlternateKey) {
+      Serial.print("staged_refresh");
+    } else {
+      Serial.print("noop");
+    }
     Serial.print(" tc=0x");
     Serial.print(static_cast<uint32_t>(g_trustCenterIeee >> 32U), HEX);
     Serial.print(static_cast<uint32_t>(g_trustCenterIeee & 0xFFFFFFFFUL), HEX);
@@ -1040,9 +1077,9 @@ void processIncomingFrame(const ZigbeeFrame& frame) {
         responseLength > 0U) {
       (void)sendApsFrame(nwk.sourceShort, 0U, responseClusterId,
                          kZigbeeProfileZdo, 0U, responsePayload, responseLength);
-      if (g_device.consumeLeaveRequest()) {
-        Serial.print("mgmt_leave accepted\r\n");
-        clearJoinState(true);
+      uint8_t leaveFlags = 0U;
+      if (g_device.consumeLeaveRequest(&leaveFlags)) {
+        handleAcceptedLeaveRequest(leaveFlags);
       }
     }
     return;
