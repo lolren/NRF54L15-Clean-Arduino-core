@@ -5,6 +5,9 @@
 #include <cmsis.h>
 #include "variant.h"
 
+extern uint32_t SystemCoreClock;
+extern "C" void nrf54l15_core_prepare_system_off_wake_timebase(void)
+    __attribute__((weak));
 extern "C" void nrf54l15_core_prepare_system_off(void) __attribute__((weak));
 extern "C" void nrf54l15_core_disable_system_off_retention(void)
     __attribute__((weak));
@@ -20,8 +23,7 @@ using namespace nrf54l15;
 
 static constexpr uint16_t kSystemOffTimeoutLfclk = 5U;
 static constexpr uint8_t kSystemOffWakeLeadLfclk = 4U;
-static constexpr uint32_t kLfclkFrequencyHz = 32768UL;
-static constexpr uint32_t kMaxCcLatchWaitUs = 77UL;
+static constexpr uint32_t kSystemOffCompareSyncSpinLimit = 2000000UL;
 static constexpr uint32_t kGrtcStartSettleUs = 93UL;
 #if defined(ARDUINO_XIAO_NRF54L15)
 static constexpr uint32_t kZephyrAllowedCcMaskXiao = 0x67UL;
@@ -165,6 +167,22 @@ bool grtcSyscounterReady(NRF_GRTC_Type* grtc) {
          GRTC_SYSCOUNTER_SYSCOUNTERH_BUSY_Ready;
 }
 
+void busyWaitApproxUs(uint32_t us) {
+  uint32_t cyclesPerUs = SystemCoreClock / 1000000UL;
+  if (cyclesPerUs == 0U) {
+    cyclesPerUs = 64U;
+  }
+
+  uint32_t iterations = cyclesPerUs * us;
+  if (iterations == 0U) {
+    iterations = 1U;
+  }
+
+  while (iterations-- > 0U) {
+    __asm volatile("nop");
+  }
+}
+
 void ensureGrtcReady(NRF_GRTC_Type* grtc) {
   if (grtc == nullptr) {
     return;
@@ -172,7 +190,7 @@ void ensureGrtcReady(NRF_GRTC_Type* grtc) {
 
   grtc->TASKS_START = GRTC_TASKS_START_TASKS_START_Trigger;
   __asm volatile("dsb 0xF" ::: "memory");
-  delayMicroseconds(kGrtcStartSettleUs);
+  busyWaitApproxUs(kGrtcStartSettleUs);
 
   const uint32_t active =
       NRF54L15_GRTC_SYSCOUNTER(grtc).ACTIVE & GRTC_SYSCOUNTER_ACTIVE_ACTIVE_Msk;
@@ -254,12 +272,22 @@ void ensureLfxoRunning() {
   }
 }
 
-void waitForSystemOffWakeLatch() {
-  const uint32_t waitUs =
-      (static_cast<uint32_t>(kSystemOffTimeoutLfclk) * 1000000UL) /
-          kLfclkFrequencyHz +
-      kMaxCcLatchWaitUs;
-  delayMicroseconds(waitUs);
+bool waitForSystemOffCompareSync(NRF_GRTC_Type* grtc, uint8_t wakeChannel) {
+  if (grtc == nullptr) {
+    return false;
+  }
+
+  uint32_t spinLimit = kSystemOffCompareSyncSpinLimit;
+  while (spinLimit-- > 0U) {
+    if (grtc->EVENTS_COMPARE[wakeChannel] != 0U) {
+      return false;
+    }
+    if (grtc->EVENTS_RTCOMPARESYNC != 0U) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 uint8_t systemOffWakeChannel() {
@@ -277,6 +305,9 @@ void programSystemOffWake(uint32_t delayUs) {
   }
 
   NRF_GRTC_Type* const grtc = NRF_GRTC;
+  if (nrf54l15_core_prepare_system_off_wake_timebase != nullptr) {
+    nrf54l15_core_prepare_system_off_wake_timebase();
+  }
   ensureLfxoRunning();
 
   uint32_t clkcfg = grtc->CLKCFG;
@@ -308,25 +339,37 @@ void programSystemOffWake(uint32_t delayUs) {
     }
   }
 
-  ensureGrtcReady(grtc);
+  for (uint8_t attempt = 0U; attempt < 3U; ++attempt) {
+    NRF54L15_GRTC_SYSCOUNTER(grtc).ACTIVE =
+        (GRTC_SYSCOUNTER_ACTIVE_ACTIVE_Active
+         << GRTC_SYSCOUNTER_ACTIVE_ACTIVE_Pos);
+    __asm volatile("dsb 0xF" ::: "memory");
 
-  const uint64_t wakeTimestamp = readGrtcCounter(grtc) + delayUs;
-  grtc->EVENTS_COMPARE[wakeChannel] = 0U;
-  grtc->CC[wakeChannel].CCEN =
-      (GRTC_CC_CCEN_ACTIVE_Disable << GRTC_CC_CCEN_ACTIVE_Pos);
-  grtc->CC[wakeChannel].CCL =
-      static_cast<uint32_t>(wakeTimestamp & 0xFFFFFFFFULL);
-  grtc->CC[wakeChannel].CCH =
-      (static_cast<uint32_t>((wakeTimestamp >> 32U) & 0xFFFFFUL)
-       << GRTC_CC_CCH_CCH_Pos) &
-      GRTC_CC_CCH_CCH_Msk;
-  NRF54L15_GRTC_INTENSET_REG(grtc) = (1UL << wakeChannel);
-  grtc->CC[wakeChannel].CCEN =
-      (GRTC_CC_CCEN_ACTIVE_Enable << GRTC_CC_CCEN_ACTIVE_Pos);
+    ensureGrtcReady(grtc);
 
-  // Match Zephyr's wake path closely enough that the compare value is known
-  // to be latched before we drop into SYSTEM OFF.
-  waitForSystemOffWakeLatch();
+    const uint64_t wakeTimestamp = readGrtcCounter(grtc) + delayUs;
+    grtc->EVENTS_RTCOMPARESYNC = 0U;
+    grtc->EVENTS_COMPARE[wakeChannel] = 0U;
+    grtc->CC[wakeChannel].CCEN =
+        (GRTC_CC_CCEN_ACTIVE_Disable << GRTC_CC_CCEN_ACTIVE_Pos);
+    grtc->CC[wakeChannel].CCL =
+        static_cast<uint32_t>(wakeTimestamp & 0xFFFFFFFFULL);
+    grtc->CC[wakeChannel].CCH =
+        (static_cast<uint32_t>((wakeTimestamp >> 32U) & 0xFFFFFUL)
+         << GRTC_CC_CCH_CCH_Pos) &
+        GRTC_CC_CCH_CCH_Msk;
+    grtc->CC[wakeChannel].CCEN =
+        (GRTC_CC_CCEN_ACTIVE_Enable << GRTC_CC_CCEN_ACTIVE_Pos);
+
+    NRF54L15_GRTC_SYSCOUNTER(grtc).ACTIVE =
+        (GRTC_SYSCOUNTER_ACTIVE_ACTIVE_NotActive
+         << GRTC_SYSCOUNTER_ACTIVE_ACTIVE_Pos);
+    __asm volatile("dsb 0xF" ::: "memory");
+
+    if (waitForSystemOffCompareSync(grtc, wakeChannel)) {
+      return;
+    }
+  }
 }
 
 double adcGainValue(xiao_nrf54l15::AdcGain gain) {

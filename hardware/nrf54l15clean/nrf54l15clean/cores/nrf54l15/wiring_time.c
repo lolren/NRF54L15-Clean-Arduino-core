@@ -9,6 +9,8 @@
 extern uint32_t SystemCoreClock;
 extern void SystemCoreClockUpdate(void);
 extern void nrf54l15_clean_idle_service(void);
+extern uint8_t nrf54l15_bridge_serial_active(void);
+void nrf54l15_core_prepare_system_off_wake_timebase(void);
 void nrf54l15_core_prepare_system_off(void);
 void nrf54l15_core_disable_system_off_retention(void);
 
@@ -18,9 +20,11 @@ static const uint32_t kScbScrSleepDeep_Msk = (1UL << 2);
 static const uint32_t kScbScrSleepOnExit_Msk = (1UL << 1);
 static const uint16_t kSystemOffTimeoutLfclk = 5U;
 static const uint8_t kSystemOffWakeLeadLfclk = 4U;
-static const uint32_t kSystemOffLfclkFrequencyHz = 32768UL;
-static const uint32_t kSystemOffMaxCcLatchWaitUs = 77UL;
+static const uint32_t kSystemOffCompareSyncSpinLimit = 2000000UL;
 static const uint32_t kGrtcStartSettleUs = 93UL;
+static const uint16_t kLowPowerDelayTimeoutLfclk = 5U;
+static const uint8_t kLowPowerDelayWakeLfclk = 4U;
+static const unsigned long kLowPowerDelayBoardCollapseThresholdMs = 30UL;
 #if defined(ARDUINO_XIAO_NRF54L15)
 static const uint32_t kZephyrAllowedCcMaskXiao = 0x67UL;
 static const uint8_t kZephyrMainCcChannelXiao = 1U;
@@ -120,11 +124,28 @@ static bool grtcSyscounterReady(NRF_GRTC_Type* grtc)
            GRTC_SYSCOUNTER_SYSCOUNTERH_BUSY_Ready;
 }
 
+static void busyWaitApproxUs(uint32_t us)
+{
+    uint32_t cyclesPerUs = SystemCoreClock / 1000000UL;
+    if (cyclesPerUs == 0UL) {
+        cyclesPerUs = 64UL;
+    }
+
+    uint32_t iterations = cyclesPerUs * us;
+    if (iterations == 0UL) {
+        iterations = 1UL;
+    }
+
+    while (iterations-- > 0UL) {
+        __NOP();
+    }
+}
+
 static void ensureGrtcReady(NRF_GRTC_Type* grtc)
 {
     grtc->TASKS_START = GRTC_TASKS_START_TASKS_START_Trigger;
     __asm volatile("dsb 0xF" ::: "memory");
-    delayMicroseconds(kGrtcStartSettleUs);
+    busyWaitApproxUs(kGrtcStartSettleUs);
 
     const uint32_t active =
         NRF54L15_GRTC_SYSCOUNTER(grtc).ACTIVE & GRTC_SYSCOUNTER_ACTIVE_ACTIVE_Msk;
@@ -262,8 +283,14 @@ static void initLowPowerTimebase(void)
     clkcfg |= (GRTC_CLKCFG_CLKSEL_SystemLFCLK << GRTC_CLKCFG_CLKSEL_Pos);
     g_low_power_grtc->CLKCFG = clkcfg;
 
+    g_low_power_grtc->TIMEOUT =
+        (((uint32_t)kLowPowerDelayTimeoutLfclk << GRTC_TIMEOUT_VALUE_Pos) &
+         GRTC_TIMEOUT_VALUE_Msk);
+    g_low_power_grtc->WAKETIME =
+        (((uint32_t)kLowPowerDelayWakeLfclk << GRTC_WAKETIME_VALUE_Pos) &
+         GRTC_WAKETIME_VALUE_Msk);
     g_low_power_grtc->MODE =
-        (GRTC_MODE_AUTOEN_Default << GRTC_MODE_AUTOEN_Pos) |
+        (GRTC_MODE_AUTOEN_CpuActive << GRTC_MODE_AUTOEN_Pos) |
         (GRTC_MODE_SYSCOUNTEREN_Enabled << GRTC_MODE_SYSCOUNTEREN_Pos);
     g_low_power_grtc->TASKS_START = GRTC_TASKS_START_TASKS_START_Trigger;
 
@@ -327,6 +354,44 @@ void GRTC_0_IRQHandler(void)
 }
 #endif
 
+static uint8_t delayBoardStateEnter(xiao_nrf54l15_board_state_t* state)
+{
+#if defined(ARDUINO_XIAO_NRF54L15)
+    if (state == 0 || xiaoNrf54l15SaveBoardState(state) == 0U) {
+        return 0U;
+    }
+
+    xiaoNrf54l15EnterLowestPowerBoardState();
+    return 1U;
+#else
+    (void)state;
+    return 0U;
+#endif
+}
+
+static void delayBoardStateExit(const xiao_nrf54l15_board_state_t* state, uint8_t active)
+{
+#if defined(ARDUINO_XIAO_NRF54L15)
+    if (active != 0U) {
+        (void)xiaoNrf54l15RestoreBoardState(state);
+    }
+#else
+    (void)state;
+    (void)active;
+#endif
+}
+
+static uint8_t delayShouldCollapseBoardState(unsigned long ms)
+{
+#if defined(ARDUINO_XIAO_NRF54L15)
+    return (ms >= kLowPowerDelayBoardCollapseThresholdMs) &&
+           (nrf54l15_bridge_serial_active() == 0U);
+#else
+    (void)ms;
+    return 0U;
+#endif
+}
+
 static uint8_t systemOffWakeChannel(void)
 {
 #if defined(ARDUINO_XIAO_NRF54L15)
@@ -338,13 +403,47 @@ static uint8_t systemOffWakeChannel(void)
 #endif
 }
 
-static void waitForSystemOffWakeLatch(void)
+void nrf54l15_core_prepare_system_off_wake_timebase(void)
 {
-    const uint32_t waitUs =
-        ((uint32_t)kSystemOffTimeoutLfclk * 1000000UL) /
-            kSystemOffLfclkFrequencyHz +
-        kSystemOffMaxCcLatchWaitUs;
-    delayMicroseconds(waitUs);
+#if defined(NRF54L15_CLEAN_POWER_LOW)
+    if (g_low_power_timebase_initialized != 0U) {
+        NRF54L15_GRTC_INTENCLR_REG(g_low_power_grtc) = 0xFFFFFFFFUL;
+        for (uint8_t channel = 0U; channel < GRTC_CC_MaxCount; ++channel) {
+            g_low_power_grtc->CC[channel].CCEN =
+                (GRTC_CC_CCEN_ACTIVE_Disable << GRTC_CC_CCEN_ACTIVE_Pos);
+            g_low_power_grtc->EVENTS_COMPARE[channel] = 0U;
+        }
+
+        NRF54L15_GRTC_SYSCOUNTER(g_low_power_grtc).ACTIVE =
+            (GRTC_SYSCOUNTER_ACTIVE_ACTIVE_NotActive <<
+             GRTC_SYSCOUNTER_ACTIVE_ACTIVE_Pos);
+        __asm volatile("dsb 0xF" ::: "memory");
+        g_low_power_grtc->TASKS_STOP = GRTC_TASKS_STOP_TASKS_STOP_Trigger;
+        __asm volatile("dsb 0xF" ::: "memory");
+        busyWaitApproxUs(kGrtcStartSettleUs);
+
+        NVIC_DisableIRQ(kLowPowerTickIrq);
+        NVIC->ICPR[((uint32_t)kLowPowerTickIrq) >> 5U] =
+            (1UL << (((uint32_t)kLowPowerTickIrq) & 0x1FUL));
+        g_low_power_delay_fired = 0U;
+        g_low_power_timebase_initialized = 0U;
+    }
+#endif
+}
+
+static bool waitForSystemOffCompareSync(NRF_GRTC_Type* grtc, uint8_t wakeChannel)
+{
+    uint32_t spinLimit = kSystemOffCompareSyncSpinLimit;
+    while (spinLimit-- > 0U) {
+        if (grtc->EVENTS_COMPARE[wakeChannel] != 0U) {
+            return false;
+        }
+        if (grtc->EVENTS_RTCOMPARESYNC != 0U) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 static void programSystemOffWakeUs(uint32_t delayUs)
@@ -354,6 +453,7 @@ static void programSystemOffWakeUs(uint32_t delayUs)
         delayUs = 1UL;
     }
 
+    nrf54l15_core_prepare_system_off_wake_timebase();
     ensureSystemOffLfxoRunning();
 
     uint32_t clkcfg = grtc->CLKCFG;
@@ -383,22 +483,36 @@ static void programSystemOffWakeUs(uint32_t delayUs)
         }
     }
 
-    ensureGrtcReady(grtc);
+    for (uint8_t attempt = 0U; attempt < 3U; ++attempt) {
+        NRF54L15_GRTC_SYSCOUNTER(grtc).ACTIVE =
+            (GRTC_SYSCOUNTER_ACTIVE_ACTIVE_Active <<
+             GRTC_SYSCOUNTER_ACTIVE_ACTIVE_Pos);
+        __asm volatile("dsb 0xF" ::: "memory");
 
-    const uint64_t wakeTimestamp = readGrtcCounterUs(grtc) + delayUs;
-    grtc->EVENTS_COMPARE[wakeChannel] = 0U;
-    grtc->CC[wakeChannel].CCEN =
-        (GRTC_CC_CCEN_ACTIVE_Disable << GRTC_CC_CCEN_ACTIVE_Pos);
-    grtc->CC[wakeChannel].CCL = (uint32_t)(wakeTimestamp & 0xFFFFFFFFULL);
-    grtc->CC[wakeChannel].CCH =
-        ((uint32_t)((wakeTimestamp >> 32U) & 0xFFFFFUL) <<
-         GRTC_CC_CCH_CCH_Pos) &
-        GRTC_CC_CCH_CCH_Msk;
-    NRF54L15_GRTC_INTENSET_REG(grtc) = (1UL << wakeChannel);
-    grtc->CC[wakeChannel].CCEN =
-        (GRTC_CC_CCEN_ACTIVE_Enable << GRTC_CC_CCEN_ACTIVE_Pos);
+        ensureGrtcReady(grtc);
 
-    waitForSystemOffWakeLatch();
+        const uint64_t wakeTimestamp = readGrtcCounterUs(grtc) + delayUs;
+        grtc->EVENTS_RTCOMPARESYNC = 0U;
+        grtc->EVENTS_COMPARE[wakeChannel] = 0U;
+        grtc->CC[wakeChannel].CCEN =
+            (GRTC_CC_CCEN_ACTIVE_Disable << GRTC_CC_CCEN_ACTIVE_Pos);
+        grtc->CC[wakeChannel].CCL = (uint32_t)(wakeTimestamp & 0xFFFFFFFFULL);
+        grtc->CC[wakeChannel].CCH =
+            ((uint32_t)((wakeTimestamp >> 32U) & 0xFFFFFUL) <<
+             GRTC_CC_CCH_CCH_Pos) &
+            GRTC_CC_CCH_CCH_Msk;
+        grtc->CC[wakeChannel].CCEN =
+            (GRTC_CC_CCEN_ACTIVE_Enable << GRTC_CC_CCEN_ACTIVE_Pos);
+
+        NRF54L15_GRTC_SYSCOUNTER(grtc).ACTIVE =
+            (GRTC_SYSCOUNTER_ACTIVE_ACTIVE_NotActive <<
+             GRTC_SYSCOUNTER_ACTIVE_ACTIVE_Pos);
+        __asm volatile("dsb 0xF" ::: "memory");
+
+        if (waitForSystemOffCompareSync(grtc, wakeChannel)) {
+            return;
+        }
+    }
 }
 
 static void enterTimedSystemOff(bool disableRamRetention, uint32_t delayUs)
@@ -441,9 +555,7 @@ void initSysTick(void)
     SysTick->CTRL = 0;
     SysTick->LOAD = ticks - 1UL;
     SysTick->VAL = 0UL;
-#if defined(NRF54L15_CLEAN_POWER_LOW)
-    initLowPowerTimebase();
-#else
+#if !defined(NRF54L15_CLEAN_POWER_LOW)
     SysTick->CTRL = SysTick_CTRL_CLKSOURCE_Msk |
                     SysTick_CTRL_TICKINT_Msk |
                     SysTick_CTRL_ENABLE_Msk;
@@ -453,6 +565,7 @@ void initSysTick(void)
 unsigned long millis(void)
 {
 #if defined(NRF54L15_CLEAN_POWER_LOW)
+    initLowPowerTimebase();
     return (unsigned long)(readLowPowerCounterUs() / 1000ULL);
 #else
     return (unsigned long)g_millis_ticks;
@@ -462,6 +575,7 @@ unsigned long millis(void)
 unsigned long micros(void)
 {
 #if defined(NRF54L15_CLEAN_POWER_LOW)
+    initLowPowerTimebase();
     return (unsigned long)(uint32_t)readLowPowerCounterUs();
 #else
     uint32_t ms_a;
@@ -494,8 +608,14 @@ void delay(unsigned long ms)
         return;
     }
 
+    initLowPowerTimebase();
+    xiao_nrf54l15_board_state_t boardState;
+    const uint8_t boardStateActive = delayShouldCollapseBoardState(ms) != 0U
+                                         ? delayBoardStateEnter(&boardState)
+                                         : 0U;
     const uint64_t targetUs = readLowPowerCounterUs() + ((uint64_t)ms * 1000ULL);
     delayUntilLowPowerCounterUs(targetUs);
+    delayBoardStateExit(&boardState, boardStateActive);
 #else
     const unsigned long start = millis();
     while ((millis() - start) < ms) {
@@ -513,12 +633,7 @@ void delayLowPowerIdle(unsigned long ms)
     }
 
     xiao_nrf54l15_board_state_t boardState;
-    if (xiaoNrf54l15SaveBoardState(&boardState) == 0U) {
-        delay(ms);
-        return;
-    }
-
-    xiaoNrf54l15EnterLowestPowerBoardState();
+    const uint8_t boardStateActive = delayBoardStateEnter(&boardState);
 
 #if defined(NRF54L15_CLEAN_POWER_LOW)
     initLowPowerTimebase();
@@ -539,7 +654,7 @@ void delayLowPowerIdle(unsigned long ms)
     }
 #endif
 
-    (void)xiaoNrf54l15RestoreBoardState(&boardState);
+    delayBoardStateExit(&boardState, boardStateActive);
 }
 
 void delaySystemOff(unsigned long ms)
@@ -563,10 +678,7 @@ void delaySystemOffNoRetention(unsigned long ms)
 void delayMicroseconds(unsigned int us)
 {
 #if defined(NRF54L15_CLEAN_POWER_LOW)
-    const uint64_t targetUs = readLowPowerCounterUs() + (uint64_t)us;
-    while ((int64_t)(targetUs - readLowPowerCounterUs()) > 0) {
-        __NOP();
-    }
+    busyWaitApproxUs((uint32_t)us);
 #else
     const unsigned long start = micros();
     while ((micros() - start) < (unsigned long)us) {

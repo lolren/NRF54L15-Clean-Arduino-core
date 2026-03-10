@@ -338,6 +338,14 @@ HardwareSerial::operator bool() const {
     return _configured && (_uart != nullptr);
 }
 
+bool HardwareSerial::isConfigured() const {
+    return _configured && (_uart != nullptr);
+}
+
+bool HardwareSerial::usesPins(uint8_t txPin, uint8_t rxPin) const {
+    return (_txPin == txPin) && (_rxPin == rxPin);
+}
+
 #if defined(NRF54L15_CLEAN_SERIAL_ROUTE_HEADER)
 HardwareSerial Serial(NRF_UARTE21, PIN_SERIAL_TX, PIN_SERIAL_RX);
 HardwareSerial Serial1(NRF_UARTE20, PIN_SAMD11_RX, PIN_SAMD11_TX);
@@ -348,3 +356,11 @@ HardwareSerial Serial1(NRF_UARTE21, PIN_SERIAL1_TX, PIN_SERIAL1_RX);
 
 // Compatibility alias for sketches/libraries that expect Serial2.
 HardwareSerial& Serial2 = Serial1;
+
+extern "C" uint8_t nrf54l15_bridge_serial_active(void) {
+    const bool serialBridgeActive =
+        Serial.isConfigured() && Serial.usesPins(PIN_SAMD11_RX, PIN_SAMD11_TX);
+    const bool serial1BridgeActive =
+        Serial1.isConfigured() && Serial1.usesPins(PIN_SAMD11_RX, PIN_SAMD11_TX);
+    return (serialBridgeActive || serial1BridgeActive) ? 1U : 0U;
+}

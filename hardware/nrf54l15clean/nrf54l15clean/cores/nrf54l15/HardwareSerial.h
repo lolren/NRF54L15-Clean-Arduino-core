@@ -27,6 +27,8 @@ public:
     using Print::write;
 
     operator bool() const;
+    bool isConfigured() const;
+    bool usesPins(uint8_t txPin, uint8_t rxPin) const;
 
 private:
     bool beginRxByte();
@@ -45,5 +47,7 @@ private:
 extern HardwareSerial Serial;
 extern HardwareSerial Serial1;
 extern HardwareSerial& Serial2;
+
+extern "C" uint8_t nrf54l15_bridge_serial_active(void);
 
 #endif

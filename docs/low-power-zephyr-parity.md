@@ -52,6 +52,7 @@ The shared power-off path lives in
 Use:
 
 - [`LowPowerZephyrParityBlink`](../hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples/LowPower/LowPowerZephyrParityBlink/LowPowerZephyrParityBlink.ino)
+- [`LowPowerDelaySystemOff`](../hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples/LowPower/LowPowerDelaySystemOff/LowPowerDelaySystemOff.ino) for the same timed `SYSTEM OFF` loop with a human-visible LED pulse
 
 Behavior:
 
@@ -59,6 +60,12 @@ Behavior:
 - arm GRTC wake for `1 s`
 - enter `SYSTEM OFF`
 - cold boot and repeat
+
+Notes:
+
+- `LowPowerZephyrParityBlink` is meant for current-floor measurement, not visual blink verification
+- a `5 ms` pulse every `1 s` is easy to miss by eye
+- if you want to verify wake behavior visually first, use `LowPowerDelaySystemOff`, which uses the same raw `P2.0` LED path with a wider visible pulse
 
 This sketch uses the explicit `NoRetention` system-off helper so it can chase the
 lowest current floor without changing the default `systemOff*()` behavior for the

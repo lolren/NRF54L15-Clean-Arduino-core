@@ -15,6 +15,11 @@ namespace {
 // - secure build only
 // - timed SYSTEM OFF wake
 // - RAM retention cleared for the lowest current
+//
+// This is a meter-oriented floor test, not a good visual blink test.
+// The LED is only on for 5 ms every 1000 ms, so use
+// `LowPowerDelaySystemOff` if you want an easier visible confirmation that the
+// timed SYSTEM OFF wake loop is running.
 constexpr uint32_t kBlinkOnUs = 5000UL;
 constexpr uint32_t kSystemOffUs = 1000000UL;
 constexpr uint8_t kLedPin = 0U;  // XIAO nRF54L15 LED = P2.0, active low.

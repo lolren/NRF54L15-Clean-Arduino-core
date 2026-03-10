@@ -90,8 +90,8 @@ In Arduino IDE they now appear under:
 
 Recommended library examples:
 
-- Low-power floor: `LowPowerZephyrParityBlink`
-- Arduino-style timed system off: `LowPowerDelaySystemOff`
+- Low-power floor measurement: `LowPowerZephyrParityBlink` (`5 ms` pulse, meter-oriented)
+- Visible timed system off check: `LowPowerDelaySystemOff`
 - Idle CPU scaling: `LowPowerIdleCpuScaling`
 - Continuous low-power BLE: `BleAdvertiserLowestPowerContinuous`, `BleAdvertiserRfSwitchDutyCycle`
 - Burst/beacon BLE: `BleAdvertiserPhoneBeacon15s`, `BleAdvertiserHybridDutyCycle`, `BleAdvertiserBurstSystemOff`
