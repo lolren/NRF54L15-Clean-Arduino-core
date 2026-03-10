@@ -66,7 +66,7 @@ In Arduino IDE they should appear under:
 
 Suggested starting points:
 
-- Basics: [`Blink`](hardware/nrf54l15clean/nrf54l15clean/examples/Basics/Blink), [`AnalogReadSerial`](hardware/nrf54l15clean/nrf54l15clean/examples/Basics/AnalogReadSerial)
+- Basics: [`Blink`](hardware/nrf54l15clean/nrf54l15clean/examples/Basics/Blink), [`AnalogReadSerial`](hardware/nrf54l15clean/nrf54l15clean/examples/Basics/AnalogReadSerial), [`AnalogWriteHardwarePwmFade`](hardware/nrf54l15clean/nrf54l15clean/examples/Basics/AnalogWriteHardwarePwmFade), [`AnalogWritePerPinFrequency`](hardware/nrf54l15clean/nrf54l15clean/examples/Basics/AnalogWritePerPinFrequency)
 - Power: [`LowPowerIdleTicker`](hardware/nrf54l15clean/nrf54l15clean/examples/Power/LowPowerIdleTicker), [`DelaySystemOffBlink`](hardware/nrf54l15clean/nrf54l15clean/examples/Power/DelaySystemOffBlink), [`IdleCpuScalingBlink`](hardware/nrf54l15clean/nrf54l15clean/examples/Power/IdleCpuScalingBlink)
 - Peripherals: [`PeripheralProbe`](hardware/nrf54l15clean/nrf54l15clean/examples/Peripherals/PeripheralProbe), [`RawI2sTxLoop`](hardware/nrf54l15clean/nrf54l15clean/examples/Peripherals/RawI2sTxLoop), [`RawI2sTxInterrupt`](hardware/nrf54l15clean/nrf54l15clean/examples/Peripherals/RawI2sTxInterrupt), [`I2sTxWrapperInterrupt`](hardware/nrf54l15clean/nrf54l15clean/examples/Peripherals/I2sTxWrapperInterrupt), [`I2sRxWrapperInterrupt`](hardware/nrf54l15clean/nrf54l15clean/examples/Peripherals/I2sRxWrapperInterrupt), [`I2sDuplexWrapperInterrupt`](hardware/nrf54l15clean/nrf54l15clean/examples/Peripherals/I2sDuplexWrapperInterrupt), [`RawRadioPacketTx`](hardware/nrf54l15clean/nrf54l15clean/examples/Peripherals/RawRadioPacketTx), [`RawRadioPacketRx`](hardware/nrf54l15clean/nrf54l15clean/examples/Peripherals/RawRadioPacketRx), [`RawRadioAckRequester`](hardware/nrf54l15clean/nrf54l15clean/examples/Peripherals/RawRadioAckRequester), [`RawRadioAckResponder`](hardware/nrf54l15clean/nrf54l15clean/examples/Peripherals/RawRadioAckResponder), [`nrf_to_nrfGettingStarted`](hardware/nrf54l15clean/nrf54l15clean/examples/Peripherals/nrf_to_nrfGettingStarted), [`nrf_to_nrfAcknowledgementPayloads`](hardware/nrf54l15clean/nrf54l15clean/examples/Peripherals/nrf_to_nrfAcknowledgementPayloads), [`WireImuRemapScanner`](hardware/nrf54l15clean/nrf54l15clean/examples/Peripherals/WireImuRemapScanner), [`XiaoBoardControlPins`](hardware/nrf54l15clean/nrf54l15clean/examples/Peripherals/XiaoBoardControlPins)
 - BLE: [`BleBeaconMinimal`](hardware/nrf54l15clean/nrf54l15clean/examples/BLE/BleBeaconMinimal), [`BleChannelSoundingReflector`](hardware/nrf54l15clean/nrf54l15clean/examples/BLE/BleChannelSoundingReflector), [`BleChannelSoundingInitiator`](hardware/nrf54l15clean/nrf54l15clean/examples/BLE/BleChannelSoundingInitiator), [`RawRadioRegisterProbe`](hardware/nrf54l15clean/nrf54l15clean/examples/BLE/RawRadioRegisterProbe)
@@ -183,6 +183,34 @@ What it is not:
 ## Board Notes
 
 Default peripheral routes and board-control helpers are documented in [Board Reference](docs/board-reference.md).
+
+### XIAO Pinout
+
+![XIAO nRF54L15 pinout](docs/xiao_nrf54l15_default_pin_routes.png)
+
+PWM on this pinout:
+
+- `D0-D5`: real hardware PWM pins
+- `D6-D9`: software PWM fallback
+- `D10-D15`, `LED_BUILTIN`: not `analogWrite()` PWM pins in this core
+
+### PWM On XIAO nRF54L15
+
+- `analogWrite()` PWM is available on `D0-D9`.
+- `D0-D5` are the real hardware PWM pins. They are `P1` pins and use the shared `PWM20` path for normal `analogWrite()`.
+- `analogWriteFrequency(hz)` sets the shared/default PWM frequency. On `D0-D5` it changes the shared `PWM20` frequency, and on `D6-D9` it changes the default software-PWM period.
+- `analogWritePinFrequency(pin, hz)` is the per-pin API for `D0-D5`. It uses `TIMER20-24 + GPIOTE20 + DPPIC20`, so sketches can give individual `D0-D5` pins different PWM frequencies.
+- The shared `PWM20` path can drive up to 4 hardware channels at once.
+- The per-pin timer-backed path can drive up to 5 independent `D0-D5` pins at once. If a sketch asks for more pin-specific frequencies than that, extra outputs fall back to software PWM.
+- `D6-D9` are software PWM only.
+- `D10-D15` and `LED_BUILTIN` are not `analogWrite()` PWM pins on this board.
+
+Practical rule:
+
+- use `analogWrite(pin, value)` on `D0-D5` when you just want normal hardware PWM
+- use `analogWritePinFrequency(pin, hz)` before `analogWrite(...)` when you want a different frequency on a specific `D0-D5` pin
+- use `D6-D9` only when software PWM is acceptable
+- start with `AnalogWriteHardwarePwmFade` for the shared `PWM20` path and `AnalogWritePerPinFrequency` for the timer-backed per-pin path
 
 Useful board-control calls:
 
