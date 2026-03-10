@@ -13,6 +13,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 
@@ -208,11 +209,37 @@ def append_uid(cmd: list[str], uid: str | None) -> list[str]:
     return cmd
 
 
+def append_connect_mode(cmd: list[str], connect_mode: str | None) -> list[str]:
+    if connect_mode:
+        cmd.extend(["-M", connect_mode])
+    return cmd
+
+
+def retry_connect_mode(target: str, attempt: int) -> str | None:
+    if attempt <= 1:
+        return None
+    if target.strip().lower() == "nrf54l":
+        return "under-reset"
+    return "halt"
+
+
+def maybe_wait_before_retry(attempt: int, retries: int, retry_delay: float) -> None:
+    if attempt >= retries:
+        return
+    delay = max(0.0, retry_delay)
+    print(
+        f"Attempt {attempt}/{retries} failed; retrying in {delay:.1f}s...",
+        file=sys.stderr,
+    )
+    time.sleep(delay)
+
+
 def flash_hex(
     pyocd_cmd: list[str], target: str, uid: str | None, hex_path: str,
-    *, auto_unlock: bool = True
+    *, auto_unlock: bool = True, connect_mode: str | None = None
 ) -> subprocess.CompletedProcess[str]:
     cmd = append_uid([*pyocd_cmd, "load", "-W", "-t", target], uid)
+    cmd = append_connect_mode(cmd, connect_mode)
     if not auto_unlock:
         cmd.extend(["-O", "auto_unlock=false"])
     cmd.extend([hex_path, "--format", "hex"])
@@ -222,10 +249,12 @@ def flash_hex(
 
 
 def recover_target(
-    pyocd_cmd: list[str], target: str, uid: str | None
+    pyocd_cmd: list[str], target: str, uid: str | None, *,
+    connect_mode: str | None = None
 ) -> subprocess.CompletedProcess[str]:
     print("Detected protected target; attempting chip erase and retry...")
     cmd = append_uid([*pyocd_cmd, "erase", "-W", "--chip", "-t", target], uid)
+    cmd = append_connect_mode(cmd, connect_mode)
     result = run(cmd)
     print_result(result)
     return result
@@ -303,6 +332,8 @@ def upload_pyocd(
     hex_path: str,
     target: str,
     requested_uid: str | None,
+    retries: int,
+    retry_delay: float,
     pyocd_cmd: list[str] | None = None,
 ) -> int:
     pyocd_cmd = pyocd_cmd if pyocd_cmd is not None else detect_pyocd_command()
@@ -315,24 +346,68 @@ def upload_pyocd(
     print(f"Flashing {hex_path}")
     print(f"Runner: pyocd")
     print(f"Probe UID: {uid or 'auto-select'}")
+    print(f"Retries: {retries}")
 
-    load_result = flash_hex(pyocd_cmd, target, uid, hex_path)
-    if load_result.returncode != 0 and looks_like_locked_target(load_result):
-        erase_result = recover_target(pyocd_cmd, target, uid)
-        if erase_result.returncode == 0:
-            load_result = flash_hex(pyocd_cmd, target, uid, hex_path)
-        elif looks_like_nrf54l_mass_erase_timeout(erase_result):
-            workaround_result = force_nrf54l_unlock_workaround(pyocd_cmd, target, uid)
-            if workaround_result.returncode == 0:
+    load_result = subprocess.CompletedProcess(args=[*pyocd_cmd, "load"], returncode=1)
+    retries = max(1, retries)
+    last_connect_mode: str | None = None
+
+    for attempt in range(1, retries + 1):
+        connect_mode = retry_connect_mode(target, attempt)
+        last_connect_mode = connect_mode
+        print(
+            f"Upload attempt {attempt}/{retries}"
+            + (
+                f" (pyocd, connect={connect_mode})"
+                if connect_mode
+                else " (pyocd)"
+            )
+        )
+
+        load_result = flash_hex(
+            pyocd_cmd,
+            target,
+            uid,
+            hex_path,
+            connect_mode=connect_mode,
+        )
+        if load_result.returncode != 0 and looks_like_locked_target(load_result):
+            erase_result = recover_target(
+                pyocd_cmd,
+                target,
+                uid,
+                connect_mode=connect_mode,
+            )
+            if erase_result.returncode == 0:
                 load_result = flash_hex(
-                    pyocd_cmd, target, uid, hex_path, auto_unlock=False
+                    pyocd_cmd,
+                    target,
+                    uid,
+                    hex_path,
+                    connect_mode=connect_mode,
                 )
+            elif looks_like_nrf54l_mass_erase_timeout(erase_result):
+                workaround_result = force_nrf54l_unlock_workaround(pyocd_cmd, target, uid)
+                if workaround_result.returncode == 0:
+                    load_result = flash_hex(
+                        pyocd_cmd,
+                        target,
+                        uid,
+                        hex_path,
+                        auto_unlock=False,
+                        connect_mode=connect_mode,
+                    )
+
+        if load_result.returncode == 0:
+            break
+        maybe_wait_before_retry(attempt, retries, retry_delay)
 
     if load_result.returncode != 0:
         print_linux_probe_permission_hint(load_result)
         return load_result.returncode
 
     reset_cmd = append_uid([*pyocd_cmd, "reset", "-W", "-t", target], uid)
+    reset_cmd = append_connect_mode(reset_cmd, last_connect_mode)
     if target.strip().lower() == "nrf54l":
         reset_cmd.extend(["-O", "auto_unlock=false"])
     reset_result = run(reset_cmd)
@@ -341,7 +416,12 @@ def upload_pyocd(
 
 
 def upload_openocd(
-    hex_path: str, openocd_script: str, openocd_speed: int, openocd_bin: str
+    hex_path: str,
+    openocd_script: str,
+    openocd_speed: int,
+    openocd_bin: str,
+    retries: int,
+    retry_delay: float,
 ) -> subprocess.CompletedProcess[str]:
     openocd_exe = resolve_tool(openocd_bin)
     if not openocd_exe:
@@ -354,18 +434,27 @@ def upload_openocd(
 
     print(f"Flashing {hex_path}")
     print("Runner: openocd")
+    print(f"Retries: {retries}")
 
-    cmd = [
-        openocd_exe,
-        "-f",
-        openocd_script,
-        "-c",
-        f"adapter speed {openocd_speed}",
-        "-c",
-        f'program "{hex_path}" verify reset exit',
-    ]
-    result = run(cmd)
-    print_result(result)
+    retries = max(1, retries)
+    result = subprocess.CompletedProcess(args=[openocd_exe], returncode=1, stdout="", stderr="")
+    for attempt in range(1, retries + 1):
+        print(f"Upload attempt {attempt}/{retries} (openocd)")
+        cmd = [
+            openocd_exe,
+            "-f",
+            openocd_script,
+            "-c",
+            f"adapter speed {openocd_speed}",
+            "-c",
+            f'program "{hex_path}" verify reset exit',
+        ]
+        result = run(cmd)
+        print_result(result)
+        if result.returncode == 0:
+            return result
+        maybe_wait_before_retry(attempt, retries, retry_delay)
+
     if result.returncode != 0:
         print_linux_probe_permission_hint(result)
     return result
@@ -404,6 +493,18 @@ def main() -> int:
         default="openocd",
         help="OpenOCD executable path or command name",
     )
+    parser.add_argument(
+        "--retries",
+        type=int,
+        default=4,
+        help="Number of upload attempts before failing (default: 4)",
+    )
+    parser.add_argument(
+        "--retry-delay",
+        type=float,
+        default=0.6,
+        help="Delay in seconds between upload attempts (default: 0.6)",
+    )
     args = parser.parse_args()
     requested_runner = args.runner.strip().lower()
     inferred_uid = infer_uid_from_port(args.port)
@@ -428,15 +529,31 @@ def main() -> int:
         return 4
 
     if runner == "pyocd":
-        rc = upload_pyocd(args.hex, args.target, args.uid)
+        rc = upload_pyocd(
+            args.hex,
+            args.target,
+            args.uid,
+            retries=args.retries,
+            retry_delay=args.retry_delay,
+        )
         if rc != 0 and requested_runner == "auto":
             print("pyocd upload failed in auto mode; trying openocd...")
             rc = upload_openocd(
-                args.hex, args.openocd_script, args.openocd_speed, args.openocd_bin
+                args.hex,
+                args.openocd_script,
+                args.openocd_speed,
+                args.openocd_bin,
+                retries=args.retries,
+                retry_delay=args.retry_delay,
             ).returncode
     elif runner == "openocd":
         openocd_result = upload_openocd(
-            args.hex, args.openocd_script, args.openocd_speed, args.openocd_bin
+            args.hex,
+            args.openocd_script,
+            args.openocd_speed,
+            args.openocd_bin,
+            retries=args.retries,
+            retry_delay=args.retry_delay,
         )
         rc = openocd_result.returncode
 
@@ -448,7 +565,14 @@ def main() -> int:
 
             if pyocd_cmd is not None:
                 print("OpenOCD indicates protected target; attempting pyocd recover/flash...")
-                rc = upload_pyocd(args.hex, args.target, args.uid, pyocd_cmd)
+                rc = upload_pyocd(
+                    args.hex,
+                    args.target,
+                    args.uid,
+                    retries=args.retries,
+                    retry_delay=args.retry_delay,
+                    pyocd_cmd=pyocd_cmd,
+                )
             elif requested_runner == "auto":
                 print(
                     "ERROR: Target appears protected and OpenOCD cannot recover it. "
@@ -457,7 +581,13 @@ def main() -> int:
                 )
         elif rc != 0 and detect_pyocd_command() is not None:
             print("OpenOCD upload failed; falling back to pyocd...")
-            rc = upload_pyocd(args.hex, args.target, args.uid)
+            rc = upload_pyocd(
+                args.hex,
+                args.target,
+                args.uid,
+                retries=args.retries,
+                retry_delay=args.retry_delay,
+            )
     else:
         print(f"ERROR: Unsupported runner: {runner}", file=sys.stderr)
         return 4
