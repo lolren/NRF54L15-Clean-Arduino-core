@@ -264,8 +264,30 @@ static bool sendDueAttributeReport(uint32_t nowMs, uint16_t* outClusterId) {
   return true;
 }
 
+static bool identifyIndicatorOn(uint32_t nowMs, uint8_t effectIdentifier) {
+  switch (effectIdentifier) {
+    case kZigbeeIdentifyEffectBlink:
+    case kZigbeeIdentifyEffectOkay:
+      return ((nowMs / 150U) & 0x01UL) == 0U;
+    case kZigbeeIdentifyEffectBreathe:
+      return ((nowMs % 1200U) < 800U);
+    case kZigbeeIdentifyEffectChannelChange:
+      return ((nowMs / 75U) & 0x01UL) == 0U;
+    case kZigbeeIdentifyEffectFinishEffect:
+      return true;
+    default:
+      return ((nowMs / 250U) & 0x01UL) == 0U;
+  }
+}
+
 static void applyLedState() {
-  Gpio::write(kPinUserLed, !g_device.onOff());
+  const uint32_t nowMs = millis();
+  g_device.updateIdentify(nowMs);
+  const bool ledOn =
+      g_device.identifying()
+          ? identifyIndicatorOn(nowMs, g_device.identifyEffect())
+          : g_device.onOff();
+  Gpio::write(kPinUserLed, !ledOn);
 }
 
 static void handleSerialCommands() {
@@ -427,6 +449,7 @@ void loop() {
 
   const uint32_t now = millis();
   maybeSendScheduledReports(now);
+  applyLedState();
 
   if ((now - g_lastStatusMs) >= 5000U) {
     g_lastStatusMs = now;

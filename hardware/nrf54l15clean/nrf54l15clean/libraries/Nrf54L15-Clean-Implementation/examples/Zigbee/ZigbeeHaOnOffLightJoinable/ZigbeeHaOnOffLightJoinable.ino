@@ -27,6 +27,30 @@
 #define NRF54L15_CLEAN_ZIGBEE_SECONDARY_CHANNEL_MASK 0U
 #endif
 
+#ifndef NRF54L15_CLEAN_ZIGBEE_ACTIVE_SCAN_WINDOW_MS
+#define NRF54L15_CLEAN_ZIGBEE_ACTIVE_SCAN_WINDOW_MS 120UL
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_ASSOCIATION_RESPONSE_TIMEOUT_MS
+#define NRF54L15_CLEAN_ZIGBEE_ASSOCIATION_RESPONSE_TIMEOUT_MS 4000UL
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_ASSOCIATION_POLL_LISTEN_MS
+#define NRF54L15_CLEAN_ZIGBEE_ASSOCIATION_POLL_LISTEN_MS 120UL
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_ASSOCIATION_POLL_RETRY_DELAY_MS
+#define NRF54L15_CLEAN_ZIGBEE_ASSOCIATION_POLL_RETRY_DELAY_MS 40UL
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_COORDINATOR_REALIGNMENT_TIMEOUT_MS
+#define NRF54L15_CLEAN_ZIGBEE_COORDINATOR_REALIGNMENT_TIMEOUT_MS 400UL
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_NWK_REJOIN_RESPONSE_TIMEOUT_MS
+#define NRF54L15_CLEAN_ZIGBEE_NWK_REJOIN_RESPONSE_TIMEOUT_MS 1500UL
+#endif
+
 #ifndef NRF54L15_CLEAN_ZIGBEE_USE_INSTALL_CODE
 #define NRF54L15_CLEAN_ZIGBEE_USE_INSTALL_CODE 1
 #endif
@@ -169,14 +193,17 @@ struct RecentInboundAps {
   uint32_t expiresMs = 0U;
 };
 
-static PendingApsAck g_pendingApsAck{};
+static constexpr uint8_t kPendingApsAckSlots = 3U;
+static PendingApsAck g_pendingApsAcks[kPendingApsAckSlots]{};
 static RecentInboundAps g_recentInboundAps{};
 static constexpr uint32_t kApsAckTimeoutMs = 900U;
 static constexpr uint32_t kRecentInboundApsWindowMs = 4000U;
 static constexpr uint8_t kApsAckRetryLimit = 2U;
 
 void clearPendingApsAck();
+void clearPendingApsAckSlot(uint8_t slot);
 void clearRecentInboundAps();
+void printEnergyDetectSweep();
 
 ZigbeeCommissioningPolicy commissioningPolicy() {
   ZigbeeCommissioningPolicy policy{};
@@ -184,6 +211,18 @@ ZigbeeCommissioningPolicy commissioningPolicy() {
       static_cast<uint32_t>(NRF54L15_CLEAN_ZIGBEE_PRIMARY_CHANNEL_MASK);
   policy.secondaryChannelMask =
       static_cast<uint32_t>(NRF54L15_CLEAN_ZIGBEE_SECONDARY_CHANNEL_MASK);
+  policy.activeScanWindowMs =
+      static_cast<uint32_t>(NRF54L15_CLEAN_ZIGBEE_ACTIVE_SCAN_WINDOW_MS);
+  policy.associationResponseTimeoutMs = static_cast<uint32_t>(
+      NRF54L15_CLEAN_ZIGBEE_ASSOCIATION_RESPONSE_TIMEOUT_MS);
+  policy.associationPollListenMs =
+      static_cast<uint32_t>(NRF54L15_CLEAN_ZIGBEE_ASSOCIATION_POLL_LISTEN_MS);
+  policy.associationPollRetryDelayMs = static_cast<uint32_t>(
+      NRF54L15_CLEAN_ZIGBEE_ASSOCIATION_POLL_RETRY_DELAY_MS);
+  policy.coordinatorRealignmentTimeoutMs = static_cast<uint32_t>(
+      NRF54L15_CLEAN_ZIGBEE_COORDINATOR_REALIGNMENT_TIMEOUT_MS);
+  policy.nwkRejoinResponseTimeoutMs = static_cast<uint32_t>(
+      NRF54L15_CLEAN_ZIGBEE_NWK_REJOIN_RESPONSE_TIMEOUT_MS);
   policy.preferredPanId = kPreferredPanId;
   policy.preferredExtendedPanId =
       (g_extendedPanId != 0U) ? g_extendedPanId
@@ -283,8 +322,30 @@ void configureDeviceForCurrentNetwork() {
   g_device.setOnOff(g_savedOnOffState);
 }
 
+static bool identifyIndicatorOn(uint32_t nowMs, uint8_t effectIdentifier) {
+  switch (effectIdentifier) {
+    case kZigbeeIdentifyEffectBlink:
+    case kZigbeeIdentifyEffectOkay:
+      return ((nowMs / 150U) & 0x01UL) == 0U;
+    case kZigbeeIdentifyEffectBreathe:
+      return ((nowMs % 1200U) < 800U);
+    case kZigbeeIdentifyEffectChannelChange:
+      return ((nowMs / 75U) & 0x01UL) == 0U;
+    case kZigbeeIdentifyEffectFinishEffect:
+      return true;
+    default:
+      return ((nowMs / 250U) & 0x01UL) == 0U;
+  }
+}
+
 void applyLedState() {
-  Gpio::write(kPinUserLed, !g_device.onOff());
+  const uint32_t nowMs = millis();
+  g_device.updateIdentify(nowMs);
+  const bool ledOn =
+      g_device.identifying()
+          ? identifyIndicatorOn(nowMs, g_device.identifyEffect())
+          : g_device.onOff();
+  Gpio::write(kPinUserLed, !ledOn);
 }
 
 void clearActiveNetworkKey() {
@@ -395,46 +456,102 @@ void handleAcceptedLeaveRequest(uint8_t leaveFlags) {
 }
 
 void clearPendingApsAck() {
-  memset(&g_pendingApsAck, 0, sizeof(g_pendingApsAck));
+  memset(g_pendingApsAcks, 0, sizeof(g_pendingApsAcks));
+}
+
+void clearPendingApsAckSlot(uint8_t slot) {
+  if (slot >= kPendingApsAckSlots) {
+    return;
+  }
+  memset(&g_pendingApsAcks[slot], 0, sizeof(g_pendingApsAcks[slot]));
 }
 
 void clearRecentInboundAps() {
   memset(&g_recentInboundAps, 0, sizeof(g_recentInboundAps));
 }
 
+bool matchesPendingApsAck(const PendingApsAck& pending,
+                          const ZigbeeApsAcknowledgementFrame& ack,
+                          uint16_t sourceShort) {
+  return pending.active && ack.valid && !ack.ackFormatCommand &&
+         sourceShort == pending.destinationShort &&
+         ack.counter == pending.counter &&
+         ack.clusterId == pending.clusterId &&
+         ack.profileId == pending.profileId &&
+         ack.destinationEndpoint == pending.sourceEndpoint &&
+         ack.sourceEndpoint == pending.destinationEndpoint;
+}
+
+bool findPendingApsAckSlot(const ZigbeeApsAcknowledgementFrame& ack,
+                           uint16_t sourceShort, uint8_t* outSlot) {
+  if (outSlot == nullptr) {
+    return false;
+  }
+
+  for (uint8_t i = 0U; i < kPendingApsAckSlots; ++i) {
+    if (matchesPendingApsAck(g_pendingApsAcks[i], ack, sourceShort)) {
+      *outSlot = i;
+      return true;
+    }
+  }
+  return false;
+}
+
 void rememberPendingApsAck(uint16_t destinationShort,
                            const ZigbeeApsDataFrame& aps,
                            const uint8_t* payload, uint8_t payloadLength) {
+  uint8_t slot = kPendingApsAckSlots;
   if (aps.deliveryMode != kZigbeeApsDeliveryUnicast || !aps.ackRequested ||
-      payloadLength > sizeof(g_pendingApsAck.payload) ||
+      payloadLength > sizeof(g_pendingApsAcks[0].payload) ||
       (payloadLength > 0U && payload == nullptr)) {
-    clearPendingApsAck();
     return;
   }
-  g_pendingApsAck.active = true;
-  g_pendingApsAck.destinationShort = destinationShort;
-  g_pendingApsAck.counter = aps.counter;
-  g_pendingApsAck.clusterId = aps.clusterId;
-  g_pendingApsAck.profileId = aps.profileId;
-  g_pendingApsAck.destinationEndpoint = aps.destinationEndpoint;
-  g_pendingApsAck.sourceEndpoint = aps.sourceEndpoint;
-  g_pendingApsAck.retriesRemaining = kApsAckRetryLimit;
-  g_pendingApsAck.payloadLength = payloadLength;
-  if (payloadLength > 0U) {
-    memcpy(g_pendingApsAck.payload, payload, payloadLength);
+  const uint32_t nowMs = millis();
+  uint8_t oldestActiveSlot = 0U;
+  bool haveOldestActiveSlot = false;
+  for (uint8_t i = 0U; i < kPendingApsAckSlots; ++i) {
+    PendingApsAck& pending = g_pendingApsAcks[i];
+    if (pending.active &&
+        pending.destinationShort == destinationShort &&
+        pending.counter == aps.counter &&
+        pending.clusterId == aps.clusterId &&
+        pending.profileId == aps.profileId &&
+        pending.destinationEndpoint == aps.destinationEndpoint &&
+        pending.sourceEndpoint == aps.sourceEndpoint) {
+      slot = i;
+      break;
+    }
+    if (!pending.active ||
+        static_cast<int32_t>(nowMs - pending.deadlineMs) >= 0) {
+      slot = i;
+      break;
+    }
+    if (!haveOldestActiveSlot ||
+        static_cast<int32_t>(pending.deadlineMs -
+                             g_pendingApsAcks[oldestActiveSlot].deadlineMs) < 0) {
+      oldestActiveSlot = i;
+      haveOldestActiveSlot = true;
+    }
   }
-  g_pendingApsAck.deadlineMs = millis() + kApsAckTimeoutMs;
-}
+  if (slot >= kPendingApsAckSlots) {
+    slot = oldestActiveSlot;
+  }
 
-bool matchesPendingApsAck(const ZigbeeApsAcknowledgementFrame& ack,
-                          uint16_t sourceShort) {
-  return g_pendingApsAck.active && ack.valid && !ack.ackFormatCommand &&
-         sourceShort == g_pendingApsAck.destinationShort &&
-         ack.counter == g_pendingApsAck.counter &&
-         ack.clusterId == g_pendingApsAck.clusterId &&
-         ack.profileId == g_pendingApsAck.profileId &&
-         ack.destinationEndpoint == g_pendingApsAck.sourceEndpoint &&
-         ack.sourceEndpoint == g_pendingApsAck.destinationEndpoint;
+  PendingApsAck& pending = g_pendingApsAcks[slot];
+  memset(&pending, 0, sizeof(pending));
+  pending.active = true;
+  pending.destinationShort = destinationShort;
+  pending.counter = aps.counter;
+  pending.clusterId = aps.clusterId;
+  pending.profileId = aps.profileId;
+  pending.destinationEndpoint = aps.destinationEndpoint;
+  pending.sourceEndpoint = aps.sourceEndpoint;
+  pending.retriesRemaining = kApsAckRetryLimit;
+  pending.payloadLength = payloadLength;
+  if (payloadLength > 0U) {
+    memcpy(pending.payload, payload, payloadLength);
+  }
+  pending.deadlineMs = nowMs + kApsAckTimeoutMs;
 }
 
 void rememberRecentInboundAps(uint16_t sourceShort,
@@ -594,49 +711,52 @@ bool sendApsFrameWithCounter(uint16_t destinationShort,
       apsCounterValue, trackAck);
 }
 
-bool resendPendingApsFrame() {
-  if (!g_pendingApsAck.active) {
+bool resendPendingApsFrame(uint8_t slot) {
+  if (slot >= kPendingApsAckSlots || !g_pendingApsAcks[slot].active) {
     return false;
   }
+  PendingApsAck& pending = g_pendingApsAcks[slot];
   const bool sent = sendApsFrameWithCounter(
-      g_pendingApsAck.destinationShort, g_pendingApsAck.destinationEndpoint,
-      g_pendingApsAck.clusterId, g_pendingApsAck.profileId,
-      g_pendingApsAck.sourceEndpoint, g_pendingApsAck.payload,
-      g_pendingApsAck.payloadLength, g_pendingApsAck.counter, false);
+      pending.destinationShort, pending.destinationEndpoint,
+      pending.clusterId, pending.profileId, pending.sourceEndpoint,
+      pending.payload, pending.payloadLength, pending.counter, false);
   if (sent) {
-    g_pendingApsAck.deadlineMs = millis() + kApsAckTimeoutMs;
+    pending.deadlineMs = millis() + kApsAckTimeoutMs;
   }
   return sent;
 }
 
 void maybeExpirePendingApsAck(uint32_t nowMs) {
-  if (!g_pendingApsAck.active ||
-      static_cast<int32_t>(nowMs - g_pendingApsAck.deadlineMs) < 0) {
-    return;
-  }
-  if (g_pendingApsAck.retriesRemaining > 0U) {
-    --g_pendingApsAck.retriesRemaining;
-    const bool resent = resendPendingApsFrame();
-    Serial.print("aps_ack retry ctr=0x");
-    Serial.print(g_pendingApsAck.counter, HEX);
-    Serial.print(" cluster=0x");
-    Serial.print(g_pendingApsAck.clusterId, HEX);
-    Serial.print(" remaining=");
-    Serial.print(g_pendingApsAck.retriesRemaining);
-    Serial.print(" sent=");
-    Serial.print(resent ? "yes" : "no");
-    Serial.print("\r\n");
-    if (resent) {
-      return;
+  for (uint8_t i = 0U; i < kPendingApsAckSlots; ++i) {
+    PendingApsAck& pending = g_pendingApsAcks[i];
+    if (!pending.active ||
+        static_cast<int32_t>(nowMs - pending.deadlineMs) < 0) {
+      continue;
     }
-  }
+    if (pending.retriesRemaining > 0U) {
+      --pending.retriesRemaining;
+      const bool resent = resendPendingApsFrame(i);
+      Serial.print("aps_ack retry ctr=0x");
+      Serial.print(pending.counter, HEX);
+      Serial.print(" cluster=0x");
+      Serial.print(pending.clusterId, HEX);
+      Serial.print(" remaining=");
+      Serial.print(pending.retriesRemaining);
+      Serial.print(" sent=");
+      Serial.print(resent ? "yes" : "no");
+      Serial.print("\r\n");
+      if (resent) {
+        continue;
+      }
+    }
 
-  Serial.print("aps_ack miss ctr=0x");
-  Serial.print(g_pendingApsAck.counter, HEX);
-  Serial.print(" cluster=0x");
-  Serial.print(g_pendingApsAck.clusterId, HEX);
-  Serial.print("\r\n");
-  clearPendingApsAck();
+    Serial.print("aps_ack miss ctr=0x");
+    Serial.print(pending.counter, HEX);
+    Serial.print(" cluster=0x");
+    Serial.print(pending.clusterId, HEX);
+    Serial.print("\r\n");
+    clearPendingApsAckSlot(i);
+  }
 }
 
 bool sendApsAcknowledgement(uint16_t destinationShort,
@@ -1089,13 +1209,14 @@ void processIncomingFrame(const ZigbeeFrame& frame) {
   if (ZigbeeCodec::parseApsAcknowledgementFrame(nwk.payload, nwk.payloadLength,
                                                 &ack) &&
       ack.valid) {
-    if (matchesPendingApsAck(ack, nwk.sourceShort)) {
+    uint8_t ackSlot = 0U;
+    if (findPendingApsAckSlot(ack, nwk.sourceShort, &ackSlot)) {
       Serial.print("aps_ack rx ctr=0x");
       Serial.print(ack.counter, HEX);
       Serial.print(" cluster=0x");
       Serial.print(ack.clusterId, HEX);
       Serial.print("\r\n");
-      clearPendingApsAck();
+      clearPendingApsAckSlot(ackSlot);
     }
     return;
   }
@@ -1283,6 +1404,7 @@ void handleSerialCommands() {
   }
 }
 
+
 }  // namespace
 
 void setup() {
@@ -1302,6 +1424,9 @@ void setup() {
   Serial.print(" joined=");
   Serial.print(g_joined ? "yes" : "no");
   Serial.print("\r\n");
+  if (ok) {
+    printEnergyDetectSweep();
+  }
   Serial.print("serial commands: t=toggle r=report s=status j=rejoin c=clear\r\n");
 
   if (g_joined) {
@@ -1378,6 +1503,7 @@ void loop() {
   }
   maybeExpirePendingApsAck(now);
   maybeSendScheduledReports(now);
+  applyLedState();
 
   if ((now - g_lastStatusMs) >= 5000U) {
     g_lastStatusMs = now;
@@ -1398,3 +1524,26 @@ void loop() {
 
   delay(1);
 }
+
+namespace {
+
+void printEnergyDetectSweep() {
+  Serial.print("ed_scan");
+  for (uint8_t channel = 11U; channel <= 26U; ++channel) {
+    uint8_t ed = 0U;
+    if (!g_radio.setChannel(channel) || !g_radio.sampleEnergyDetect(&ed)) {
+      Serial.print(" ch");
+      Serial.print(channel);
+      Serial.print("=?");
+      continue;
+    }
+    Serial.print(" ch");
+    Serial.print(channel);
+    Serial.print('=');
+    Serial.print(ed);
+  }
+  Serial.print("\r\n");
+  g_radio.setChannel(g_channel);
+}
+
+}  // namespace

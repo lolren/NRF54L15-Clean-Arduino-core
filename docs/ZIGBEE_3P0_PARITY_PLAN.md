@@ -1,6 +1,6 @@
 # Zigbee 3.0 Parity Plan
 
-Last updated: 2026-03-09
+Last updated: 2026-03-12
 
 This is the repo-local parity plan for the first three remaining Zigbee 3.0 blockers. It follows the `gsd-plan-phase` and `gsd-execute-phase` workflow shape, but the repo does not currently contain a full GSD project scaffold such as `PROJECT.md` or `ROADMAP.md`, so the plan is tracked here instead of under `.planning/phases/`.
 
@@ -58,7 +58,7 @@ Verification:
 
 Objective: move from a single demo Transport Key exchange toward a real trust-center lifecycle with durable identity and key-management policy.
 
-Status: partially landed. Install-code-derived and ZigBeeAlliance09 link-key policy, persisted trust-center identity, encrypted Transport Key enforcement, retained-key rejoin gating, alternate network-key persistence, APS-secured Update Device and Switch Key handling with inbound APS anti-replay checks, trust-center source/state validation for `Update Device` and `Switch Key`, and bounded APS retransmission plus duplicate suppression on the clean coordinator/joinable demos now exist in-tree, but the behavior is still a demo trust-center lifecycle rather than full Zigbee 3.0 commissioning.
+Status: partially landed. Install-code-derived and ZigBeeAlliance09 link-key policy, persisted trust-center identity, encrypted Transport Key enforcement, retained-key rejoin gating, alternate network-key persistence, APS-secured Update Device and Switch Key handling with inbound APS anti-replay checks, trust-center source/state validation for `Update Device` and `Switch Key`, and small-slot bounded APS retransmission plus duplicate suppression on the clean coordinator/joinable demos now exist in-tree, but the behavior is still a demo trust-center lifecycle rather than full Zigbee 3.0 commissioning.
 
 Deliverables:
 
@@ -74,13 +74,14 @@ Verification:
 
 - Self-test vectors for install-code CRC and install-code-derived link-key generation.
 - Compile the coordinator demo, joinable HA examples, and codec self-test.
+  Use `scripts/zigbee_coordinator_compile_matrix.sh` and `scripts/zigbee_joinable_compile_matrix.sh`.
 - Manual two-board run: install-code join, retained-key rejoin, replay rejection, and secure trust-center command acceptance.
 
 ### Wave 3: Third-Party Coordinator Interoperability Prep
 
 Objective: remove in-tree coordinator assumptions from the device examples and define the adapter boundary for real external-coordinator work.
 
-Status: partially landed. The joinable HA examples already learn or pin trust-center identity by policy macro instead of hard-coding the in-tree coordinator, serial logs now surface key-state transitions plus commissioning failure state, configurable scan masks now exist for external-coordinator bring-up, the expected coordinator-facing packet flow is documented in `docs/ZIGBEE_EXTERNAL_COORDINATOR_FLOW.md`, and `scripts/zigbee_joinable_compile_matrix.sh` now verifies the three joinable HA examples under both default and stricter external-coordinator policy macros. Real external-coordinator validation is still missing.
+Status: partially landed. The joinable HA examples already learn or pin trust-center identity by policy macro instead of hard-coding the in-tree coordinator, the coordinator demo now also exposes its trust-center identity plus known-node install-code table through build-time macros instead of fixed sketch edits, serial logs now surface key-state transitions plus commissioning failure state, the coordinator demo can exercise Identify/Identify Query/Trigger Effect plus identify-time `Write Attributes`, `Write Attributes Undivided`, and extended-attribute-discovery flows against discovered HA nodes, the shared HA runtime now carries effect-specific identify state so the light/sensor examples can render distinct blink/breathe/channel-change patterns locally, shared `Write Attributes`, `Write Attributes Undivided`, and `Write Attributes No Response` handling now updates writable HA state such as `IdentifyTime` while returning explicit read-only status for known read-only attributes and keeping undivided writes atomic, extended attribute discovery now reports the actual read/write/report capabilities of the modeled HA attributes in-tree, the coordinator demo now walks a ZHA-like early interview through Node Descriptor, Power Descriptor, Active EP, Simple Descriptor, and richer Basic-cluster reads instead of skipping straight to endpoint discovery, and it now verifies reporting setup by reading the reporting configuration back after configure-reporting succeeds, configurable scan masks and commissioning timing windows now exist for external-coordinator bring-up, the expected coordinator-facing packet flow is documented in `docs/ZIGBEE_EXTERNAL_COORDINATOR_FLOW.md`, the first-attempt ZHA recipe is documented in `docs/ZIGBEE_HOME_ASSISTANT_BRINGUP.md`, `scripts/zigbee_joinable_compile_matrix.sh` now verifies the three joinable HA examples under default, pinned strict-external, and learned-trust-center install-code-only policy macros, and `scripts/zigbee_coordinator_compile_matrix.sh` now verifies the coordinator demo under default and stricter install-code-only policy overrides. Real external-coordinator validation is still missing.
 
 Deliverables:
 
@@ -92,8 +93,10 @@ Deliverables:
 
 Verification:
 
-- Confirm the joinable HA examples compile with stricter policy settings such as install-code-only mode.
+- Confirm the joinable HA examples compile with stricter policy settings such as pinned external-coordinator mode and learned-trust-center install-code-only mode.
   Use `scripts/zigbee_joinable_compile_matrix.sh`.
+- Confirm the coordinator demo compiles with overridden trust-center identity and sparse install-code policy tables without sketch edits.
+  Use `scripts/zigbee_coordinator_compile_matrix.sh`.
 - Confirm docs and feature matrix name the exact missing behavior for ZHA and Zigbee2MQTT interop.
 - Capture at least one packet-level expected-flow document for future external-coordinator bring-up.
 

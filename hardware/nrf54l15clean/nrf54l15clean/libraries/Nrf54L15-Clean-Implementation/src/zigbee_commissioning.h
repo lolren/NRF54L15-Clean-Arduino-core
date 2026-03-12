@@ -18,10 +18,16 @@ enum class ZigbeePreconfiguredKeyMode : uint8_t {
 struct ZigbeeCommissioningPolicy {
   uint32_t primaryChannelMask = 0x07FFF800UL;
   uint32_t secondaryChannelMask = 0U;
+  uint32_t activeScanWindowMs = 120UL;
   uint32_t joinRetryDelayMs = 2000UL;
   uint32_t secureRejoinRetryDelayMs = 2000UL;
+  uint32_t associationResponseTimeoutMs = 4000UL;
+  uint32_t associationPollListenMs = 120UL;
+  uint32_t associationPollRetryDelayMs = 40UL;
   uint32_t transportKeyTimeoutMs = 4000UL;
   uint32_t updateDeviceTimeoutMs = 4000UL;
+  uint32_t coordinatorRealignmentTimeoutMs = 400UL;
+  uint32_t nwkRejoinResponseTimeoutMs = 1500UL;
   uint32_t deviceAnnounceRetryDelayMs = 1000UL;
   uint32_t endDeviceTimeoutRetryDelayMs = 1500UL;
   uint32_t initialPollIntervalMs = 250UL;

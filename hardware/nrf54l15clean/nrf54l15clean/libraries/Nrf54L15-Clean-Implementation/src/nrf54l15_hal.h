@@ -727,6 +727,11 @@ class ZigbeeRadio {
 
   bool transmit(const uint8_t* psdu, uint8_t length, bool performCca = false,
                 uint32_t spinLimit = 1400000UL);
+  bool transmitThenReceive(const uint8_t* psdu, uint8_t length,
+                           ZigbeeFrame* frame,
+                           uint32_t listenWindowUs = 7000U,
+                           bool performCca = false,
+                           uint32_t spinLimit = 1400000UL);
   bool receive(ZigbeeFrame* frame, uint32_t listenWindowUs = 7000U,
                uint32_t spinLimit = 1400000UL);
   bool sampleEnergyDetect(uint8_t* outEdLevel, uint32_t spinLimit = 300000UL);

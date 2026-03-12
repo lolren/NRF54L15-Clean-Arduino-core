@@ -12,6 +12,10 @@ constexpr uint8_t kNwkProtocolVersion = 2U;
 
 constexpr uint8_t kZclCommandReadAttributes = 0x00U;
 constexpr uint8_t kZclCommandReadAttributesResponse = 0x01U;
+constexpr uint8_t kZclCommandWriteAttributes = 0x02U;
+constexpr uint8_t kZclCommandWriteAttributesUndivided = 0x03U;
+constexpr uint8_t kZclCommandWriteAttributesResponse = 0x04U;
+constexpr uint8_t kZclCommandWriteAttributesNoResponse = 0x05U;
 constexpr uint8_t kZclCommandConfigureReporting = 0x06U;
 constexpr uint8_t kZclCommandConfigureReportingResponse = 0x07U;
 constexpr uint8_t kZclCommandReadReportingConfiguration = 0x08U;
@@ -24,6 +28,8 @@ constexpr uint8_t kZclCommandDiscoverCommandsReceived = 0x11U;
 constexpr uint8_t kZclCommandDiscoverCommandsReceivedResponse = 0x12U;
 constexpr uint8_t kZclCommandDiscoverCommandsGenerated = 0x13U;
 constexpr uint8_t kZclCommandDiscoverCommandsGeneratedResponse = 0x14U;
+constexpr uint8_t kZclCommandDiscoverAttributesExtended = 0x15U;
+constexpr uint8_t kZclCommandDiscoverAttributesExtendedResponse = 0x16U;
 constexpr uint16_t kZclGlobalAttributeFeatureMap = 0xFFFCU;
 constexpr uint16_t kZclGlobalAttributeClusterRevision = 0xFFFDU;
 
@@ -32,9 +38,14 @@ constexpr uint8_t kZclStatusUnsupportedClusterCommand = 0x81U;
 constexpr uint8_t kZclStatusUnsupportedGeneralCommand = 0x82U;
 constexpr uint8_t kZclStatusInvalidField = 0x85U;
 constexpr uint8_t kZclStatusUnsupportedAttribute = 0x86U;
+constexpr uint8_t kZclStatusReadOnly = 0x88U;
 constexpr uint8_t kZclStatusInsufficientSpace = 0x89U;
 constexpr uint8_t kZclStatusNotFound = 0x8BU;
 constexpr uint8_t kZclStatusUnsupportedReporting = 0x8CU;
+
+constexpr uint8_t kZclAttributeAccessRead = 0x01U;
+constexpr uint8_t kZclAttributeAccessWrite = 0x02U;
+constexpr uint8_t kZclAttributeAccessReport = 0x04U;
 
 constexpr uint8_t kZdoStatusSuccess = 0x00U;
 constexpr uint8_t kZdoStatusDeviceNotFound = 0x81U;
@@ -53,6 +64,12 @@ constexpr uint8_t kOnOffCommandToggle = 0x02U;
 constexpr uint8_t kIdentifyCommandIdentify = 0x00U;
 constexpr uint8_t kIdentifyCommandIdentifyQuery = 0x01U;
 constexpr uint8_t kIdentifyCommandTriggerEffect = 0x40U;
+constexpr uint8_t kIdentifyEffectBlink = 0x00U;
+constexpr uint8_t kIdentifyEffectBreathe = 0x01U;
+constexpr uint8_t kIdentifyEffectOkay = 0x02U;
+constexpr uint8_t kIdentifyEffectChannelChange = 0x0BU;
+constexpr uint8_t kIdentifyEffectFinishEffect = 0xFEU;
+constexpr uint8_t kIdentifyEffectStopEffect = 0xFFU;
 constexpr uint8_t kGroupsCommandAddGroup = 0x00U;
 constexpr uint8_t kGroupsCommandViewGroup = 0x01U;
 constexpr uint8_t kGroupsCommandGetGroupMembership = 0x02U;
@@ -292,6 +309,35 @@ bool buildZdoAddressResponse(uint8_t transactionSequence, uint8_t status,
   return true;
 }
 
+bool appendMgmtBindEntry(const ZigbeeHomeAutomationConfig& config,
+                         const ZigbeeBindingEntry& entry, uint8_t* outPayload,
+                         uint8_t maxLength, uint8_t* ioOffset) {
+  if (outPayload == nullptr || ioOffset == nullptr || !entry.used) {
+    return false;
+  }
+
+  const uint8_t destinationMode =
+      static_cast<uint8_t>(entry.destinationAddressMode);
+  if (!appendLe64(outPayload, maxLength, ioOffset, config.ieeeAddress) ||
+      !appendBytes(outPayload, maxLength, ioOffset, &entry.sourceEndpoint, 1U) ||
+      !appendLe16(outPayload, maxLength, ioOffset, entry.clusterId) ||
+      !appendBytes(outPayload, maxLength, ioOffset, &destinationMode, 1U)) {
+    return false;
+  }
+
+  if (entry.destinationAddressMode == ZigbeeBindingAddressMode::kGroup) {
+    return appendLe16(outPayload, maxLength, ioOffset, entry.destinationGroup);
+  }
+
+  if (entry.destinationAddressMode == ZigbeeBindingAddressMode::kExtended) {
+    return appendLe64(outPayload, maxLength, ioOffset, entry.destinationIeee) &&
+           appendBytes(outPayload, maxLength, ioOffset,
+                       &entry.destinationEndpoint, 1U);
+  }
+
+  return false;
+}
+
 ZigbeeGroupEntry* findGroupEntry(ZigbeeGroupsState* groups, uint16_t groupId) {
   if (groups == nullptr || !groups->enabled) {
     return nullptr;
@@ -353,6 +399,47 @@ bool upsertGroup(ZigbeeGroupsState* groups, uint16_t groupId, const char* name,
   if (entry->nameLength > 0U && name != nullptr) {
     memcpy(entry->name, name, entry->nameLength);
   }
+  return true;
+}
+
+bool applyIdentifyTriggerEffect(ZigbeeIdentifyState* identify,
+                                uint32_t nowMs,
+                                uint32_t* identifyLastTickMs,
+                                uint8_t effectIdentifier) {
+  if (identify == nullptr || identifyLastTickMs == nullptr) {
+    return false;
+  }
+
+  uint16_t nextIdentifySeconds = 0U;
+  switch (effectIdentifier) {
+    case kIdentifyEffectBlink:
+      nextIdentifySeconds = 2U;
+      break;
+    case kIdentifyEffectBreathe:
+      nextIdentifySeconds = 15U;
+      break;
+    case kIdentifyEffectOkay:
+      nextIdentifySeconds = 2U;
+      break;
+    case kIdentifyEffectChannelChange:
+      nextIdentifySeconds = 8U;
+      break;
+    case kIdentifyEffectFinishEffect:
+      nextIdentifySeconds = (identify->identifyTimeSeconds > 0U) ? 1U : 0U;
+      break;
+    case kIdentifyEffectStopEffect:
+      nextIdentifySeconds = 0U;
+      break;
+    default:
+      return false;
+  }
+
+  identify->identifyTimeSeconds = nextIdentifySeconds;
+  identify->effectIdentifier =
+      (effectIdentifier == kIdentifyEffectStopEffect)
+          ? kZigbeeIdentifyEffectNone
+          : effectIdentifier;
+  *identifyLastTickMs = nowMs;
   return true;
 }
 
@@ -1008,6 +1095,45 @@ bool buildDiscoverAttributesResponseForRecords(
   response.disableDefaultResponse = true;
   response.transactionSequence = transactionSequence;
   response.commandId = kZclCommandDiscoverAttributesResponse;
+  return ZigbeeCodec::buildZclFrame(response, payload, payloadLength, outFrame,
+                                    outLength);
+}
+
+bool buildDiscoverAttributesExtendedResponseForRecords(
+    const ZigbeeDiscoveredExtendedAttributeRecord* records, uint8_t recordCount,
+    bool discoveryComplete, uint8_t transactionSequence, uint8_t* outFrame,
+    uint8_t* outLength) {
+  if (outFrame == nullptr || outLength == nullptr) {
+    return false;
+  }
+  if (recordCount > 0U && records == nullptr) {
+    return false;
+  }
+
+  uint8_t payload[127] = {0};
+  uint8_t payloadLength = 0U;
+  const uint8_t complete = discoveryComplete ? 1U : 0U;
+  if (!appendBytes(payload, sizeof(payload), &payloadLength, &complete, 1U)) {
+    return false;
+  }
+
+  for (uint8_t i = 0U; i < recordCount; ++i) {
+    const uint8_t dataType = static_cast<uint8_t>(records[i].dataType);
+    if (!appendLe16(payload, sizeof(payload), &payloadLength,
+                    records[i].attributeId) ||
+        !appendBytes(payload, sizeof(payload), &payloadLength, &dataType, 1U) ||
+        !appendBytes(payload, sizeof(payload), &payloadLength,
+                     &records[i].accessControl, 1U)) {
+      return false;
+    }
+  }
+
+  ZigbeeZclFrame response{};
+  response.frameType = ZigbeeZclFrameType::kGlobal;
+  response.directionToClient = true;
+  response.disableDefaultResponse = true;
+  response.transactionSequence = transactionSequence;
+  response.commandId = kZclCommandDiscoverAttributesExtendedResponse;
   return ZigbeeCodec::buildZclFrame(response, payload, payloadLength, outFrame,
                                     outLength);
 }
@@ -2655,6 +2781,131 @@ bool ZigbeeCodec::parseReadAttributesResponse(
   return true;
 }
 
+bool buildWriteAttributesRequestForCommand(
+    const ZigbeeWriteAttributeRecord* records, uint8_t recordCount,
+    uint8_t transactionSequence, uint8_t commandId, bool disableDefaultResponse,
+    uint8_t* outFrame, uint8_t* outLength) {
+  if (outFrame == nullptr || outLength == nullptr) {
+    return false;
+  }
+  if (recordCount == 0U || (recordCount > 0U && records == nullptr)) {
+    return false;
+  }
+
+  uint8_t payload[127] = {0U};
+  uint8_t payloadLength = 0U;
+  for (uint8_t i = 0U; i < recordCount; ++i) {
+    if (!appendLe16(payload, sizeof(payload), &payloadLength,
+                    records[i].attributeId) ||
+        !writeAttributeValue(payload, sizeof(payload), &payloadLength,
+                             records[i].value)) {
+      return false;
+    }
+  }
+
+  ZigbeeZclFrame request{};
+  request.frameType = ZigbeeZclFrameType::kGlobal;
+  request.disableDefaultResponse = disableDefaultResponse;
+  request.transactionSequence = transactionSequence;
+  request.commandId = commandId;
+  return ZigbeeCodec::buildZclFrame(request, payload, payloadLength, outFrame,
+                                    outLength);
+}
+
+bool ZigbeeCodec::buildWriteAttributesRequest(
+    const ZigbeeWriteAttributeRecord* records, uint8_t recordCount,
+    uint8_t transactionSequence, uint8_t* outFrame, uint8_t* outLength,
+    bool noResponse) {
+  return buildWriteAttributesRequestForCommand(
+      records, recordCount, transactionSequence,
+      noResponse ? kZclCommandWriteAttributesNoResponse
+                 : kZclCommandWriteAttributes,
+      noResponse, outFrame, outLength);
+}
+
+bool ZigbeeCodec::buildWriteAttributesUndividedRequest(
+    const ZigbeeWriteAttributeRecord* records, uint8_t recordCount,
+    uint8_t transactionSequence, uint8_t* outFrame, uint8_t* outLength) {
+  return buildWriteAttributesRequestForCommand(
+      records, recordCount, transactionSequence,
+      kZclCommandWriteAttributesUndivided, false, outFrame, outLength);
+}
+
+bool parseWriteAttributesRequest(const uint8_t* payload, uint8_t length,
+                                 ZigbeeWriteAttributeRecord* outRecords,
+                                 uint8_t maxRecords, uint8_t* outCount) {
+  if (outCount != nullptr) {
+    *outCount = 0U;
+  }
+  if (payload == nullptr || outRecords == nullptr || outCount == nullptr) {
+    return false;
+  }
+
+  uint8_t offset = 0U;
+  uint8_t count = 0U;
+  while (offset < length) {
+    if (count >= maxRecords || length < static_cast<uint8_t>(offset + 3U)) {
+      return false;
+    }
+
+    outRecords[count].attributeId = readLe16(&payload[offset]);
+    offset = static_cast<uint8_t>(offset + 2U);
+    const ZigbeeZclDataType dataType =
+        static_cast<ZigbeeZclDataType>(payload[offset++]);
+    if (!readAttributeValue(payload, length, &offset, dataType,
+                            &outRecords[count].value)) {
+      return false;
+    }
+    ++count;
+  }
+
+  if (count == 0U) {
+    return false;
+  }
+  *outCount = count;
+  return true;
+}
+
+bool ZigbeeCodec::parseWriteAttributesResponse(
+    const uint8_t* payload, uint8_t length,
+    ZigbeeWriteAttributeStatusRecord* outRecords, uint8_t maxRecords,
+    uint8_t* outCount) {
+  if (outCount != nullptr) {
+    *outCount = 0U;
+  }
+  if (payload == nullptr || outRecords == nullptr || outCount == nullptr) {
+    return false;
+  }
+
+  if (length == 1U) {
+    if (maxRecords == 0U) {
+      return false;
+    }
+    outRecords[0].status = payload[0];
+    outRecords[0].attributeId = 0U;
+    *outCount = 1U;
+    return payload[0] == kZclStatusSuccess;
+  }
+
+  if ((length == 0U) || ((length % 3U) != 0U)) {
+    return false;
+  }
+
+  const uint8_t count = static_cast<uint8_t>(length / 3U);
+  if (count > maxRecords) {
+    return false;
+  }
+
+  uint8_t offset = 0U;
+  for (uint8_t i = 0U; i < count; ++i) {
+    outRecords[i].status = payload[offset++];
+    outRecords[i].attributeId = readLe16(&payload[offset]);
+    offset = static_cast<uint8_t>(offset + 2U);
+  }
+  *outCount = count;
+  return true;
+}
+
 bool ZigbeeCodec::parseDiscoverAttributesRequest(const uint8_t* payload,
                                                  uint8_t length,
                                                  uint16_t* outStartAttributeId,
@@ -2696,6 +2947,25 @@ bool ZigbeeCodec::buildDiscoverAttributesRequest(uint16_t startAttributeId,
                                     outLength);
 }
 
+bool ZigbeeCodec::buildDiscoverAttributesExtendedRequest(
+    uint16_t startAttributeId, uint8_t maxAttributeIds,
+    uint8_t transactionSequence, uint8_t* outFrame, uint8_t* outLength) {
+  if (outFrame == nullptr || outLength == nullptr || maxAttributeIds == 0U) {
+    return false;
+  }
+
+  uint8_t payload[3] = {0U, 0U, maxAttributeIds};
+  writeLe16(payload, startAttributeId);
+
+  ZigbeeZclFrame request{};
+  request.frameType = ZigbeeZclFrameType::kGlobal;
+  request.disableDefaultResponse = true;
+  request.transactionSequence = transactionSequence;
+  request.commandId = kZclCommandDiscoverAttributesExtended;
+  return ZigbeeCodec::buildZclFrame(request, payload, sizeof(payload), outFrame,
+                                    outLength);
+}
+
 bool ZigbeeCodec::parseDiscoverAttributesResponse(
     const uint8_t* payload, uint8_t length, bool* outDiscoveryComplete,
     ZigbeeDiscoveredAttributeRecord* outRecords, uint8_t maxRecords,
@@ -2727,6 +2997,43 @@ bool ZigbeeCodec::parseDiscoverAttributesResponse(
     outRecords[i].attributeId = readLe16(&payload[offset]);
     offset = static_cast<uint8_t>(offset + 2U);
     outRecords[i].dataType = static_cast<ZigbeeZclDataType>(payload[offset++]);
+  }
+  *outCount = count;
+  return true;
+}
+
+bool ZigbeeCodec::parseDiscoverAttributesExtendedResponse(
+    const uint8_t* payload, uint8_t length, bool* outDiscoveryComplete,
+    ZigbeeDiscoveredExtendedAttributeRecord* outRecords, uint8_t maxRecords,
+    uint8_t* outCount) {
+  if (outDiscoveryComplete != nullptr) {
+    *outDiscoveryComplete = false;
+  }
+  if (outCount != nullptr) {
+    *outCount = 0U;
+  }
+  if (payload == nullptr || outDiscoveryComplete == nullptr ||
+      outRecords == nullptr || outCount == nullptr || length < 1U) {
+    return false;
+  }
+
+  const uint8_t recordBytes = static_cast<uint8_t>(length - 1U);
+  if ((recordBytes % 4U) != 0U) {
+    return false;
+  }
+
+  const uint8_t count = static_cast<uint8_t>(recordBytes / 4U);
+  if (count > maxRecords) {
+    return false;
+  }
+
+  *outDiscoveryComplete = payload[0] != 0U;
+  uint8_t offset = 1U;
+  for (uint8_t i = 0U; i < count; ++i) {
+    outRecords[i].attributeId = readLe16(&payload[offset]);
+    offset = static_cast<uint8_t>(offset + 2U);
+    outRecords[i].dataType = static_cast<ZigbeeZclDataType>(payload[offset++]);
+    outRecords[i].accessControl = payload[offset++];
   }
   *outCount = count;
   return true;
@@ -2920,6 +3227,51 @@ bool ZigbeeCodec::buildConfigureReportingRequest(
                                     outLength);
 }
 
+bool ZigbeeCodec::parseConfigureReportingResponse(
+    const uint8_t* payload, uint8_t length,
+    ZigbeeConfigureReportingStatusRecord* outRecords, uint8_t maxRecords,
+    uint8_t* outCount) {
+  if (outCount != nullptr) {
+    *outCount = 0U;
+  }
+  if (payload == nullptr || outRecords == nullptr || outCount == nullptr) {
+    return false;
+  }
+
+  if (length == 1U) {
+    if (maxRecords == 0U) {
+      return false;
+    }
+    outRecords[0].status = payload[0];
+    outRecords[0].direction = 0U;
+    outRecords[0].attributeId = 0U;
+    *outCount = 1U;
+    return payload[0] == kZclStatusSuccess;
+  }
+
+  if ((length == 0U) || ((length % 4U) != 0U)) {
+    return false;
+  }
+
+  const uint8_t count = static_cast<uint8_t>(length / 4U);
+  if (count > maxRecords) {
+    return false;
+  }
+
+  uint8_t offset = 0U;
+  for (uint8_t i = 0U; i < count; ++i) {
+    outRecords[i].status = payload[offset++];
+    outRecords[i].direction = payload[offset++];
+    outRecords[i].attributeId = readLe16(&payload[offset]);
+    offset = static_cast<uint8_t>(offset + 2U);
+    if (outRecords[i].direction > 0x01U) {
+      return false;
+    }
+  }
+  *outCount = count;
+  return true;
+}
+
 bool ZigbeeCodec::parseReadReportingConfigurationRequest(
     const uint8_t* payload, uint8_t length,
     ZigbeeReadReportingConfigurationRecord* outRecords, uint8_t maxRecords,
@@ -3104,11 +3456,75 @@ bool ZigbeeCodec::buildReadAttributesResponse(
                                      outFrame, outLength);
 }
 
+bool buildWriteAttributesResponseForRecords(
+    const ZigbeeWriteAttributeStatusRecord* records, uint8_t recordCount,
+    uint8_t transactionSequence, uint8_t* outFrame, uint8_t* outLength) {
+  if (outFrame == nullptr || outLength == nullptr) {
+    return false;
+  }
+  if (recordCount > 0U && records == nullptr) {
+    return false;
+  }
+
+  bool allSuccess = (recordCount > 0U);
+  for (uint8_t i = 0U; i < recordCount; ++i) {
+    if (records[i].status != kZclStatusSuccess) {
+      allSuccess = false;
+      break;
+    }
+  }
+
+  uint8_t payload[127] = {0U};
+  uint8_t payloadLength = 0U;
+  if (recordCount == 0U || allSuccess) {
+    payload[0] = kZclStatusSuccess;
+    payloadLength = 1U;
+  } else {
+    for (uint8_t i = 0U; i < recordCount; ++i) {
+      if (records[i].status == kZclStatusSuccess) {
+        continue;
+      }
+      if (!appendBytes(payload, sizeof(payload), &payloadLength,
+                       &records[i].status, 1U) ||
+          !appendLe16(payload, sizeof(payload), &payloadLength,
+                      records[i].attributeId)) {
+        return false;
+      }
+    }
+  }
+
+  ZigbeeZclFrame response{};
+  response.frameType = ZigbeeZclFrameType::kGlobal;
+  response.directionToClient = true;
+  response.disableDefaultResponse = true;
+  response.transactionSequence = transactionSequence;
+  response.commandId = kZclCommandWriteAttributesResponse;
+  return ZigbeeCodec::buildZclFrame(response, payload, payloadLength, outFrame,
+                                    outLength);
+}
+
+bool ZigbeeCodec::buildWriteAttributesResponse(
+    const ZigbeeWriteAttributeStatusRecord* records, uint8_t recordCount,
+    uint8_t transactionSequence, uint8_t* outFrame, uint8_t* outLength) {
+  return buildWriteAttributesResponseForRecords(records, recordCount,
+                                                transactionSequence, outFrame,
+                                                outLength);
+}
+
 bool ZigbeeCodec::buildDiscoverAttributesResponse(
     const ZigbeeDiscoveredAttributeRecord* records, uint8_t recordCount,
     bool discoveryComplete, uint8_t transactionSequence, uint8_t* outFrame,
     uint8_t* outLength) {
   return buildDiscoverAttributesResponseForRecords(
+      records, recordCount, discoveryComplete, transactionSequence, outFrame,
+      outLength);
+}
+
+bool ZigbeeCodec::buildDiscoverAttributesExtendedResponse(
+    const ZigbeeDiscoveredExtendedAttributeRecord* records,
+    uint8_t recordCount, bool discoveryComplete, uint8_t transactionSequence,
+    uint8_t* outFrame, uint8_t* outLength) {
+  return buildDiscoverAttributesExtendedResponseForRecords(
       records, recordCount, discoveryComplete, transactionSequence, outFrame,
       outLength);
 }
@@ -3488,6 +3904,73 @@ bool ZigbeeCodec::parseZdoAddressResponse(const uint8_t* payload, uint8_t length
   return true;
 }
 
+bool ZigbeeCodec::parseZdoNodeDescriptorResponse(
+    const uint8_t* payload, uint8_t length,
+    ZigbeeZdoNodeDescriptorResponseView* outView) {
+  if (outView != nullptr) {
+    memset(outView, 0, sizeof(*outView));
+  }
+  if (payload == nullptr || outView == nullptr || length < 4U) {
+    return false;
+  }
+
+  outView->transactionSequence = payload[0];
+  outView->status = payload[1];
+  outView->nwkAddressOfInterest = readLe16(&payload[2]);
+  if (outView->status != kZdoStatusSuccess) {
+    outView->valid = true;
+    return true;
+  }
+  if (length < 14U) {
+    return false;
+  }
+
+  outView->logicalType = static_cast<uint8_t>(payload[4] & 0x07U);
+  outView->frequencyBand = payload[5];
+  outView->macCapabilityFlags = payload[6];
+  outView->manufacturerCode = readLe16(&payload[7]);
+  outView->maxBufferSize = payload[9];
+  outView->maxIncomingTransferSize = readLe16(&payload[10]);
+  outView->serverMask = readLe16(&payload[12]);
+  if (length >= 17U) {
+    outView->maxOutgoingTransferSize = readLe16(&payload[14]);
+    outView->descriptorCapability = payload[16];
+  }
+  outView->valid = true;
+  return true;
+}
+
+bool ZigbeeCodec::parseZdoPowerDescriptorResponse(
+    const uint8_t* payload, uint8_t length,
+    ZigbeeZdoPowerDescriptorResponseView* outView) {
+  if (outView != nullptr) {
+    memset(outView, 0, sizeof(*outView));
+  }
+  if (payload == nullptr || outView == nullptr || length < 4U) {
+    return false;
+  }
+
+  outView->transactionSequence = payload[0];
+  outView->status = payload[1];
+  outView->nwkAddressOfInterest = readLe16(&payload[2]);
+  if (outView->status != kZdoStatusSuccess) {
+    outView->valid = true;
+    return true;
+  }
+  if (length < 6U) {
+    return false;
+  }
+
+  const uint8_t descriptor0 = payload[4];
+  const uint8_t descriptor1 = payload[5];
+  outView->availablePowerSources = static_cast<uint8_t>(descriptor0 & 0x0FU);
+  outView->currentPowerSource = static_cast<uint8_t>(descriptor1 & 0x0FU);
+  outView->currentPowerSourceLevel =
+      static_cast<uint8_t>((descriptor1 >> 4U) & 0x0FU);
+  outView->valid = true;
+  return true;
+}
+
 bool ZigbeeCodec::parseZdoActiveEndpointsResponse(
     const uint8_t* payload, uint8_t length,
     ZigbeeZdoActiveEndpointsResponseView* outView) {
@@ -3584,6 +4067,7 @@ ZigbeeHomeAutomationDevice::ZigbeeHomeAutomationDevice()
                                       kZigbeeClusterIdentify,
                                       kZigbeeClusterTemperatureMeasurement},
       temperatureSensorOutputClusters_{0U},
+      identifyLastTickMs_(0U),
       leaveRequested_(false),
       leaveRequestFlags_(0U) {}
 
@@ -3598,6 +4082,7 @@ bool ZigbeeHomeAutomationDevice::configureOnOffLight(
   memset(&config_, 0, sizeof(config_));
   memset(reporting_, 0, sizeof(reporting_));
   memset(reportingState_, 0, sizeof(reportingState_));
+  identifyLastTickMs_ = 0U;
   leaveRequested_ = false;
   leaveRequestFlags_ = 0U;
   config_.logicalType = ZigbeeLogicalType::kEndDevice;
@@ -3624,6 +4109,7 @@ bool ZigbeeHomeAutomationDevice::configureOnOffLight(
   config_.temperature.enabled = false;
   config_.identify.enabled = true;
   config_.identify.identifyTimeSeconds = 0U;
+  config_.identify.effectIdentifier = kZigbeeIdentifyEffectNone;
   config_.groups.enabled = true;
   config_.scenes.enabled = true;
   config_.scenes.currentGroupId = 0U;
@@ -3649,6 +4135,7 @@ bool ZigbeeHomeAutomationDevice::configureDimmableLight(
   memset(&config_, 0, sizeof(config_));
   memset(reporting_, 0, sizeof(reporting_));
   memset(reportingState_, 0, sizeof(reportingState_));
+  identifyLastTickMs_ = 0U;
   leaveRequested_ = false;
   leaveRequestFlags_ = 0U;
   config_.logicalType = ZigbeeLogicalType::kEndDevice;
@@ -3675,6 +4162,7 @@ bool ZigbeeHomeAutomationDevice::configureDimmableLight(
   config_.temperature.enabled = false;
   config_.identify.enabled = true;
   config_.identify.identifyTimeSeconds = 0U;
+  config_.identify.effectIdentifier = kZigbeeIdentifyEffectNone;
   config_.groups.enabled = true;
   config_.scenes.enabled = true;
   config_.scenes.currentGroupId = 0U;
@@ -3700,6 +4188,7 @@ bool ZigbeeHomeAutomationDevice::configureTemperatureSensor(
   memset(&config_, 0, sizeof(config_));
   memset(reporting_, 0, sizeof(reporting_));
   memset(reportingState_, 0, sizeof(reportingState_));
+  identifyLastTickMs_ = 0U;
   leaveRequested_ = false;
   leaveRequestFlags_ = 0U;
   config_.logicalType = ZigbeeLogicalType::kEndDevice;
@@ -3728,6 +4217,7 @@ bool ZigbeeHomeAutomationDevice::configureTemperatureSensor(
   config_.temperature.enabled = true;
   config_.identify.enabled = true;
   config_.identify.identifyTimeSeconds = 0U;
+  config_.identify.effectIdentifier = kZigbeeIdentifyEffectNone;
   config_.groups.enabled = false;
   config_.scenes.enabled = false;
   config_.temperature.measuredValueCentiDegrees = 2150;
@@ -3801,6 +4291,47 @@ bool ZigbeeHomeAutomationDevice::setLevel(uint8_t level) {
   }
   invalidateCurrentScene(&config_);
   return true;
+}
+
+void ZigbeeHomeAutomationDevice::updateIdentify(uint32_t nowMs) {
+  if (!config_.identify.enabled) {
+    return;
+  }
+  if (config_.identify.identifyTimeSeconds == 0U) {
+    config_.identify.effectIdentifier = kZigbeeIdentifyEffectNone;
+    identifyLastTickMs_ = nowMs;
+    return;
+  }
+
+  const uint32_t elapsedMs = nowMs - identifyLastTickMs_;
+  if (elapsedMs < 1000U) {
+    return;
+  }
+
+  const uint32_t elapsedSeconds = elapsedMs / 1000U;
+  if (elapsedSeconds >= config_.identify.identifyTimeSeconds) {
+    config_.identify.identifyTimeSeconds = 0U;
+    config_.identify.effectIdentifier = kZigbeeIdentifyEffectNone;
+    identifyLastTickMs_ = nowMs;
+    return;
+  }
+
+  config_.identify.identifyTimeSeconds = static_cast<uint16_t>(
+      config_.identify.identifyTimeSeconds - elapsedSeconds);
+  identifyLastTickMs_ = identifyLastTickMs_ + (elapsedSeconds * 1000UL);
+}
+
+bool ZigbeeHomeAutomationDevice::identifying() const {
+  return config_.identify.enabled &&
+         (config_.identify.identifyTimeSeconds > 0U);
+}
+
+uint16_t ZigbeeHomeAutomationDevice::identifyTimeSeconds() const {
+  return config_.identify.identifyTimeSeconds;
+}
+
+uint8_t ZigbeeHomeAutomationDevice::identifyEffect() const {
+  return config_.identify.effectIdentifier;
 }
 
 bool ZigbeeHomeAutomationDevice::onOff() const { return config_.onOff.on; }
@@ -3896,6 +4427,58 @@ bool ZigbeeHomeAutomationDevice::collectDiscoverAttributesForCluster(
   return true;
 }
 
+bool ZigbeeHomeAutomationDevice::collectDiscoverAttributesExtendedForCluster(
+    uint16_t clusterId, uint16_t startAttributeId, uint8_t maxAttributeIds,
+    ZigbeeDiscoveredExtendedAttributeRecord* outRecords, uint8_t maxRecords,
+    uint8_t* outCount, bool* outDiscoveryComplete) const {
+  if (outCount != nullptr) {
+    *outCount = 0U;
+  }
+  if (outDiscoveryComplete != nullptr) {
+    *outDiscoveryComplete = true;
+  }
+  if (outRecords == nullptr || outCount == nullptr ||
+      outDiscoveryComplete == nullptr || maxAttributeIds == 0U ||
+      maxRecords == 0U) {
+    return false;
+  }
+
+  const uint16_t* attributeIds = nullptr;
+  uint8_t attributeCount = 0U;
+  if (!attributeCatalogForCluster(clusterId, &attributeIds, &attributeCount) ||
+      attributeIds == nullptr || attributeCount == 0U) {
+    return true;
+  }
+
+  const uint8_t limit = (maxAttributeIds < maxRecords) ? maxAttributeIds
+                                                       : maxRecords;
+  uint8_t count = 0U;
+  for (uint8_t i = 0U; i < attributeCount; ++i) {
+    if (attributeIds[i] < startAttributeId) {
+      continue;
+    }
+
+    ZigbeeAttributeValue value{};
+    if (!makeAttributeValueForCluster(clusterId, attributeIds[i], &value)) {
+      continue;
+    }
+
+    if (count >= limit) {
+      *outDiscoveryComplete = false;
+      break;
+    }
+
+    outRecords[count].attributeId = attributeIds[i];
+    outRecords[count].dataType = value.type;
+    outRecords[count].accessControl =
+        discoverAttributeAccessControl(clusterId, attributeIds[i], value);
+    ++count;
+  }
+
+  *outCount = count;
+  return true;
+}
+
 bool ZigbeeHomeAutomationDevice::collectDiscoverCommandsForCluster(
     uint16_t clusterId, bool generated, uint8_t startCommandId,
     uint8_t maxCommandIds, uint8_t* outCommandIds, uint8_t maxRecords,
@@ -3937,6 +4520,18 @@ bool ZigbeeHomeAutomationDevice::collectDiscoverCommandsForCluster(
 
   *outCount = count;
   return true;
+}
+
+uint8_t ZigbeeHomeAutomationDevice::discoverAttributeAccessControl(
+    uint16_t clusterId, uint16_t attributeId,
+    const ZigbeeAttributeValue& value) const {
+  (void)value;
+  uint8_t accessControl = kZclAttributeAccessRead | kZclAttributeAccessReport;
+  if (validateWriteAttributeForCluster(clusterId, attributeId, value) ==
+      kZclStatusSuccess) {
+    accessControl |= kZclAttributeAccessWrite;
+  }
+  return accessControl;
 }
 
 bool ZigbeeHomeAutomationDevice::buildNodeDescriptorResponse(
@@ -4086,6 +4681,67 @@ bool ZigbeeHomeAutomationDevice::buildSimpleDescriptorResponse(
   return true;
 }
 
+bool ZigbeeHomeAutomationDevice::buildExtendedSimpleDescriptorResponse(
+    uint8_t transactionSequence, uint16_t requestNwkAddress, uint8_t endpoint,
+    uint8_t startIndex, uint8_t* outPayload, uint8_t* outLength) const {
+  if (outPayload == nullptr || outLength == nullptr) {
+    return false;
+  }
+
+  const ZigbeeSimpleDescriptor* descriptor = findEndpoint(endpoint);
+  if (descriptor == nullptr) {
+    uint8_t offset = 0U;
+    const uint8_t zero = 0U;
+    if (!appendBytes(outPayload, 127U, &offset, &transactionSequence, 1U) ||
+        !appendBytes(outPayload, 127U, &offset,
+                     reinterpret_cast<const uint8_t*>(&kZdoStatusNotSupported),
+                     1U) ||
+        !appendLe16(outPayload, 127U, &offset, requestNwkAddress) ||
+        !appendBytes(outPayload, 127U, &offset, &endpoint, 1U) ||
+        !appendBytes(outPayload, 127U, &offset, &zero, 1U) ||
+        !appendBytes(outPayload, 127U, &offset, &zero, 1U) ||
+        !appendBytes(outPayload, 127U, &offset, &startIndex, 1U)) {
+      return false;
+    }
+    *outLength = offset;
+    return true;
+  }
+
+  uint16_t clusters[16] = {0U};
+  uint8_t clusterCount = 0U;
+  for (uint8_t i = 0U; i < descriptor->inputClusterCount && clusterCount < 16U;
+       ++i) {
+    clusters[clusterCount++] = descriptor->inputClusters[i];
+  }
+  for (uint8_t i = 0U;
+       i < descriptor->outputClusterCount && clusterCount < 16U; ++i) {
+    clusters[clusterCount++] = descriptor->outputClusters[i];
+  }
+
+  uint8_t offset = 0U;
+  if (!appendBytes(outPayload, 127U, &offset, &transactionSequence, 1U) ||
+      !appendBytes(outPayload, 127U, &offset,
+                   reinterpret_cast<const uint8_t*>(&kZdoStatusSuccess), 1U) ||
+      !appendLe16(outPayload, 127U, &offset, requestNwkAddress) ||
+      !appendBytes(outPayload, 127U, &offset, &descriptor->endpoint, 1U) ||
+      !appendBytes(outPayload, 127U, &offset, &descriptor->inputClusterCount,
+                   1U) ||
+      !appendBytes(outPayload, 127U, &offset, &descriptor->outputClusterCount,
+                   1U) ||
+      !appendBytes(outPayload, 127U, &offset, &startIndex, 1U)) {
+    return false;
+  }
+
+  for (uint8_t i = startIndex; i < clusterCount; ++i) {
+    if (!appendLe16(outPayload, 127U, &offset, clusters[i])) {
+      break;
+    }
+  }
+
+  *outLength = offset;
+  return true;
+}
+
 bool ZigbeeHomeAutomationDevice::buildMatchDescriptorResponse(
     uint8_t transactionSequence, uint16_t requestNwkAddress,
     uint16_t profileId, const uint16_t* inputClusters,
@@ -4116,6 +4772,89 @@ bool ZigbeeHomeAutomationDevice::buildMatchDescriptorResponse(
     return false;
   }
 
+  *outLength = offset;
+  return true;
+}
+
+bool ZigbeeHomeAutomationDevice::buildExtendedActiveEndpointsResponse(
+    uint8_t transactionSequence, uint16_t requestNwkAddress,
+    uint8_t startIndex, uint8_t* outPayload, uint8_t* outLength) const {
+  if (outPayload == nullptr || outLength == nullptr) {
+    return false;
+  }
+
+  uint8_t offset = 0U;
+  const uint8_t count = descriptorCount(config_);
+  if (!appendBytes(outPayload, 127U, &offset, &transactionSequence, 1U) ||
+      !appendBytes(outPayload, 127U, &offset,
+                   reinterpret_cast<const uint8_t*>(&kZdoStatusSuccess), 1U) ||
+      !appendLe16(outPayload, 127U, &offset, requestNwkAddress) ||
+      !appendBytes(outPayload, 127U, &offset, &count, 1U) ||
+      !appendBytes(outPayload, 127U, &offset, &startIndex, 1U)) {
+    return false;
+  }
+
+  if (startIndex < count) {
+    for (uint8_t i = startIndex; i < count; ++i) {
+      const uint8_t endpoint = config_.endpointDescriptors[i].endpoint;
+      if (!appendBytes(outPayload, 127U, &offset, &endpoint, 1U)) {
+        break;
+      }
+    }
+  }
+
+  *outLength = offset;
+  return true;
+}
+
+bool ZigbeeHomeAutomationDevice::buildMgmtBindResponse(
+    uint8_t transactionSequence, uint8_t startIndex, uint8_t* outPayload,
+    uint8_t* outLength) const {
+  if (outPayload == nullptr || outLength == nullptr) {
+    return false;
+  }
+
+  const uint8_t totalEntries = bindingCount();
+  uint8_t offset = 0U;
+  uint8_t entryCount = 0U;
+
+  if (!appendBytes(outPayload, 127U, &offset, &transactionSequence, 1U) ||
+      !appendBytes(outPayload, 127U, &offset,
+                   reinterpret_cast<const uint8_t*>(&kZdoStatusSuccess), 1U) ||
+      !appendBytes(outPayload, 127U, &offset, &totalEntries, 1U) ||
+      !appendBytes(outPayload, 127U, &offset, &startIndex, 1U)) {
+    return false;
+  }
+
+  const uint8_t entryCountOffset = offset;
+  if (!appendBytes(outPayload, 127U, &offset, &entryCount, 1U)) {
+    return false;
+  }
+
+  if (startIndex < totalEntries) {
+    uint8_t currentIndex = 0U;
+    for (uint8_t i = 0U;
+         i < static_cast<uint8_t>(sizeof(config_.bindings) /
+                                  sizeof(config_.bindings[0]));
+         ++i) {
+      const ZigbeeBindingEntry& entry = config_.bindings[i];
+      if (!entry.used) {
+        continue;
+      }
+      if (currentIndex++ < startIndex) {
+        continue;
+      }
+
+      const uint8_t previousOffset = offset;
+      if (!appendMgmtBindEntry(config_, entry, outPayload, 127U, &offset)) {
+        offset = previousOffset;
+        break;
+      }
+      ++entryCount;
+    }
+  }
+
+  outPayload[entryCountOffset] = entryCount;
   *outLength = offset;
   return true;
 }
@@ -4308,6 +5047,45 @@ bool ZigbeeHomeAutomationDevice::makeAttributeValueForCluster(
   }
 
   return false;
+}
+
+uint8_t ZigbeeHomeAutomationDevice::validateWriteAttributeForCluster(
+    uint16_t clusterId, uint16_t attributeId,
+    const ZigbeeAttributeValue& value) const {
+  ZigbeeAttributeValue current{};
+  if (!makeAttributeValueForCluster(clusterId, attributeId, &current)) {
+    return kZclStatusUnsupportedAttribute;
+  }
+  if (current.type != value.type) {
+    return kZclStatusInvalidField;
+  }
+
+  if (clusterId == kZigbeeClusterIdentify && config_.identify.enabled &&
+      attributeId == 0x0000U) {
+    return kZclStatusSuccess;
+  }
+
+  return kZclStatusReadOnly;
+}
+
+uint8_t ZigbeeHomeAutomationDevice::writeAttributeForCluster(
+    uint16_t clusterId, uint16_t attributeId,
+    const ZigbeeAttributeValue& value) {
+  const uint8_t status =
+      validateWriteAttributeForCluster(clusterId, attributeId, value);
+  if (status != kZclStatusSuccess) {
+    return status;
+  }
+
+  if (clusterId == kZigbeeClusterIdentify && config_.identify.enabled &&
+      attributeId == 0x0000U) {
+    config_.identify.identifyTimeSeconds = value.data.u16;
+    config_.identify.effectIdentifier = kZigbeeIdentifyEffectNone;
+    identifyLastTickMs_ = millis();
+    return kZclStatusSuccess;
+  }
+
+  return kZclStatusUnsupportedAttribute;
 }
 
 bool ZigbeeHomeAutomationDevice::appendReadRecordForCluster(
@@ -4886,6 +5664,14 @@ bool ZigbeeHomeAutomationDevice::handleZdoRequest(
       return buildSimpleDescriptorResponse(transactionSequence,
                                            readLe16(&request[1]), request[3],
                                            outPayload, outLength);
+    case kZigbeeZdoExtendedSimpleDescriptorRequest:
+      if (requestLength < 5U) {
+        return false;
+      }
+      *outResponseClusterId = kZigbeeZdoExtendedSimpleDescriptorResponse;
+      return buildExtendedSimpleDescriptorResponse(
+          transactionSequence, readLe16(&request[1]), request[3], request[4],
+          outPayload, outLength);
     case kZigbeeZdoActiveEndpointsRequest:
       if (requestLength < 3U) {
         return false;
@@ -4894,6 +5680,15 @@ bool ZigbeeHomeAutomationDevice::handleZdoRequest(
       return buildActiveEndpointsResponse(transactionSequence,
                                           readLe16(&request[1]), outPayload,
                                           outLength);
+    case kZigbeeZdoExtendedActiveEndpointsRequest:
+      if (requestLength < 4U) {
+        return false;
+      }
+      *outResponseClusterId = kZigbeeZdoExtendedActiveEndpointsResponse;
+      return buildExtendedActiveEndpointsResponse(transactionSequence,
+                                                  readLe16(&request[1]),
+                                                  request[3], outPayload,
+                                                  outLength);
     case kZigbeeZdoMatchDescriptorRequest: {
       if (requestLength < 6U) {
         return false;
@@ -5002,6 +5797,14 @@ bool ZigbeeHomeAutomationDevice::handleZdoRequest(
                                                   : kZdoStatusNoEntry,
                                           outPayload, outLength);
     }
+    case kZigbeeZdoEndDeviceBindRequest:
+      if (requestLength < 2U) {
+        return false;
+      }
+      *outResponseClusterId = kZigbeeZdoEndDeviceBindResponse;
+      return buildSimpleZdoStatusResponse(transactionSequence,
+                                          kZdoStatusNotSupported, outPayload,
+                                          outLength);
     case kZigbeeZdoMgmtLeaveRequest: {
       uint8_t ignoredTransactionSequence = 0U;
       uint64_t deviceIeeeAddress = 0U;
@@ -5023,6 +5826,29 @@ bool ZigbeeHomeAutomationDevice::handleZdoRequest(
       return buildSimpleZdoStatusResponse(transactionSequence, kZdoStatusSuccess,
                                           outPayload, outLength);
     }
+    case kZigbeeZdoMgmtLqiRequest:
+      if (requestLength < 2U) {
+        return false;
+      }
+      *outResponseClusterId = kZigbeeZdoMgmtLqiResponse;
+      return buildSimpleZdoStatusResponse(transactionSequence,
+                                          kZdoStatusNotSupported, outPayload,
+                                          outLength);
+    case kZigbeeZdoMgmtRtgRequest:
+      if (requestLength < 2U) {
+        return false;
+      }
+      *outResponseClusterId = kZigbeeZdoMgmtRtgResponse;
+      return buildSimpleZdoStatusResponse(transactionSequence,
+                                          kZdoStatusNotSupported, outPayload,
+                                          outLength);
+    case kZigbeeZdoMgmtBindRequest:
+      if (requestLength < 2U) {
+        return false;
+      }
+      *outResponseClusterId = kZigbeeZdoMgmtBindResponse;
+      return buildMgmtBindResponse(transactionSequence, request[1], outPayload,
+                                   outLength);
     case kZigbeeZdoMgmtPermitJoinRequest:
       *outResponseClusterId = kZigbeeZdoMgmtPermitJoinResponse;
       return buildSimpleZdoStatusResponse(transactionSequence,
@@ -5045,13 +5871,17 @@ bool ZigbeeHomeAutomationDevice::handleZclRequest(
     return false;
   }
 
+  const uint32_t nowMs = millis();
+  updateIdentify(nowMs);
+
   ZigbeeZclFrame frame{};
   if (!ZigbeeCodec::parseZclFrame(request, requestLength, &frame) || !frame.valid) {
     return false;
   }
 
   if (frame.frameType == ZigbeeZclFrameType::kGlobal) {
-    if (frame.commandId == kZclCommandDiscoverAttributes) {
+    if (frame.commandId == kZclCommandDiscoverAttributes ||
+        frame.commandId == kZclCommandDiscoverAttributesExtended) {
       uint16_t startAttributeId = 0U;
       uint8_t maxAttributeIds = 0U;
       if (!ZigbeeCodec::parseDiscoverAttributesRequest(
@@ -5061,6 +5891,21 @@ bool ZigbeeHomeAutomationDevice::handleZclRequest(
         return ZigbeeCodec::buildDefaultResponse(
             frame.transactionSequence, true, frame.commandId,
             kZclStatusInvalidField, outFrame, outLength);
+      }
+
+      if (frame.commandId == kZclCommandDiscoverAttributesExtended) {
+        ZigbeeDiscoveredExtendedAttributeRecord records[16];
+        uint8_t recordCount = 0U;
+        bool discoveryComplete = true;
+        if (!collectDiscoverAttributesExtendedForCluster(
+                clusterId, startAttributeId, maxAttributeIds, records,
+                static_cast<uint8_t>(sizeof(records) / sizeof(records[0])),
+                &recordCount, &discoveryComplete)) {
+          return false;
+        }
+        return ZigbeeCodec::buildDiscoverAttributesExtendedResponse(
+            records, recordCount, discoveryComplete, frame.transactionSequence,
+            outFrame, outLength);
       }
 
       ZigbeeDiscoveredAttributeRecord records[16];
@@ -5137,6 +5982,56 @@ bool ZigbeeHomeAutomationDevice::handleZclRequest(
       }
       return ZigbeeCodec::buildReadAttributesResponse(
           records, attributeCount, frame.transactionSequence, outFrame,
+          outLength);
+    }
+
+    if (frame.commandId == kZclCommandWriteAttributes ||
+        frame.commandId == kZclCommandWriteAttributesUndivided ||
+        frame.commandId == kZclCommandWriteAttributesNoResponse) {
+      ZigbeeWriteAttributeRecord requested[16];
+      uint8_t requestedCount = 0U;
+      if (!parseWriteAttributesRequest(
+              frame.payload, frame.payloadLength, requested,
+              static_cast<uint8_t>(sizeof(requested) / sizeof(requested[0])),
+              &requestedCount)) {
+        return ZigbeeCodec::buildDefaultResponse(
+            frame.transactionSequence, true, frame.commandId,
+            kZclStatusInvalidField, outFrame, outLength);
+      }
+
+      ZigbeeWriteAttributeStatusRecord statuses[16];
+      bool allSuccess = true;
+      for (uint8_t i = 0U; i < requestedCount; ++i) {
+        statuses[i].attributeId = requested[i].attributeId;
+        statuses[i].status = validateWriteAttributeForCluster(
+            clusterId, requested[i].attributeId, requested[i].value);
+        if (statuses[i].status != kZclStatusSuccess) {
+          allSuccess = false;
+        }
+      }
+
+      if (frame.commandId == kZclCommandWriteAttributes ||
+          frame.commandId == kZclCommandWriteAttributesNoResponse ||
+          allSuccess) {
+        for (uint8_t i = 0U; i < requestedCount; ++i) {
+          if (statuses[i].status != kZclStatusSuccess) {
+            continue;
+          }
+          statuses[i].status = writeAttributeForCluster(
+              clusterId, requested[i].attributeId, requested[i].value);
+          if (statuses[i].status != kZclStatusSuccess) {
+            allSuccess = false;
+          }
+        }
+      }
+
+      if (frame.commandId == kZclCommandWriteAttributesNoResponse) {
+        *outLength = 0U;
+        return true;
+      }
+
+      return ZigbeeCodec::buildWriteAttributesResponse(
+          statuses, requestedCount, frame.transactionSequence, outFrame,
           outLength);
     }
 
@@ -5351,6 +6246,8 @@ bool ZigbeeHomeAutomationDevice::handleZclRequest(
             kZclStatusInvalidField, outFrame, outLength);
       }
       config_.identify.identifyTimeSeconds = readLe16(frame.payload);
+      config_.identify.effectIdentifier = kZigbeeIdentifyEffectNone;
+      identifyLastTickMs_ = nowMs;
       if (frame.disableDefaultResponse) {
         *outLength = 0U;
         return true;
@@ -5375,6 +6272,13 @@ bool ZigbeeHomeAutomationDevice::handleZclRequest(
     }
 
     if (frame.commandId == kIdentifyCommandTriggerEffect) {
+      if (frame.payloadLength < 2U ||
+          !applyIdentifyTriggerEffect(&config_.identify, nowMs,
+                                      &identifyLastTickMs_, frame.payload[0])) {
+        return ZigbeeCodec::buildDefaultResponse(
+            frame.transactionSequence, true, frame.commandId,
+            kZclStatusInvalidField, outFrame, outLength);
+      }
       if (frame.disableDefaultResponse) {
         *outLength = 0U;
         return true;

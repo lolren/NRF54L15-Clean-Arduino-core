@@ -18,6 +18,14 @@ constexpr uint16_t kZigbeeClusterLevelControl = 0x0008U;
 constexpr uint16_t kZigbeeClusterOtaUpgrade = 0x0019U;
 constexpr uint16_t kZigbeeClusterTemperatureMeasurement = 0x0402U;
 
+constexpr uint8_t kZigbeeIdentifyEffectBlink = 0x00U;
+constexpr uint8_t kZigbeeIdentifyEffectBreathe = 0x01U;
+constexpr uint8_t kZigbeeIdentifyEffectOkay = 0x02U;
+constexpr uint8_t kZigbeeIdentifyEffectChannelChange = 0x0BU;
+constexpr uint8_t kZigbeeIdentifyEffectFinishEffect = 0xFEU;
+constexpr uint8_t kZigbeeIdentifyEffectStopEffect = 0xFFU;
+constexpr uint8_t kZigbeeIdentifyEffectNone = 0xFFU;
+
 constexpr uint16_t kZigbeeZdoNetworkAddressRequest = 0x0000U;
 constexpr uint16_t kZigbeeZdoIeeeAddressRequest = 0x0001U;
 constexpr uint16_t kZigbeeZdoNodeDescriptorRequest = 0x0002U;
@@ -26,6 +34,12 @@ constexpr uint16_t kZigbeeZdoSimpleDescriptorRequest = 0x0004U;
 constexpr uint16_t kZigbeeZdoActiveEndpointsRequest = 0x0005U;
 constexpr uint16_t kZigbeeZdoMatchDescriptorRequest = 0x0006U;
 constexpr uint16_t kZigbeeZdoDeviceAnnounce = 0x0013U;
+constexpr uint16_t kZigbeeZdoExtendedSimpleDescriptorRequest = 0x001DU;
+constexpr uint16_t kZigbeeZdoExtendedActiveEndpointsRequest = 0x001EU;
+constexpr uint16_t kZigbeeZdoEndDeviceBindRequest = 0x0020U;
+constexpr uint16_t kZigbeeZdoMgmtLqiRequest = 0x0031U;
+constexpr uint16_t kZigbeeZdoMgmtRtgRequest = 0x0032U;
+constexpr uint16_t kZigbeeZdoMgmtBindRequest = 0x0033U;
 constexpr uint16_t kZigbeeZdoBindRequest = 0x0021U;
 constexpr uint16_t kZigbeeZdoUnbindRequest = 0x0022U;
 constexpr uint16_t kZigbeeZdoMgmtLeaveRequest = 0x0034U;
@@ -38,6 +52,12 @@ constexpr uint16_t kZigbeeZdoPowerDescriptorResponse = 0x8003U;
 constexpr uint16_t kZigbeeZdoSimpleDescriptorResponse = 0x8004U;
 constexpr uint16_t kZigbeeZdoActiveEndpointsResponse = 0x8005U;
 constexpr uint16_t kZigbeeZdoMatchDescriptorResponse = 0x8006U;
+constexpr uint16_t kZigbeeZdoExtendedSimpleDescriptorResponse = 0x801DU;
+constexpr uint16_t kZigbeeZdoExtendedActiveEndpointsResponse = 0x801EU;
+constexpr uint16_t kZigbeeZdoEndDeviceBindResponse = 0x8020U;
+constexpr uint16_t kZigbeeZdoMgmtLqiResponse = 0x8031U;
+constexpr uint16_t kZigbeeZdoMgmtRtgResponse = 0x8032U;
+constexpr uint16_t kZigbeeZdoMgmtBindResponse = 0x8033U;
 constexpr uint16_t kZigbeeZdoBindResponse = 0x8021U;
 constexpr uint16_t kZigbeeZdoUnbindResponse = 0x8022U;
 constexpr uint16_t kZigbeeZdoMgmtLeaveResponse = 0x8034U;
@@ -355,9 +375,25 @@ struct ZigbeeDiscoveredAttributeRecord {
   ZigbeeZclDataType dataType = ZigbeeZclDataType::kUint8;
 };
 
+struct ZigbeeDiscoveredExtendedAttributeRecord {
+  uint16_t attributeId = 0U;
+  ZigbeeZclDataType dataType = ZigbeeZclDataType::kUint8;
+  uint8_t accessControl = 0U;
+};
+
 struct ZigbeeAttributeReportRecord {
   uint16_t attributeId = 0U;
   ZigbeeAttributeValue value{};
+};
+
+struct ZigbeeWriteAttributeRecord {
+  uint16_t attributeId = 0U;
+  ZigbeeAttributeValue value{};
+};
+
+struct ZigbeeWriteAttributeStatusRecord {
+  uint8_t status = 0x86U;
+  uint16_t attributeId = 0U;
 };
 
 struct ZigbeeReportingConfiguration {
@@ -410,6 +446,32 @@ struct ZigbeeZdoAddressResponseView {
   uint8_t startIndex = 0U;
   uint8_t associatedDeviceListCount = 0U;
   uint16_t associatedDevices[8] = {0U};
+};
+
+struct ZigbeeZdoNodeDescriptorResponseView {
+  bool valid = false;
+  uint8_t transactionSequence = 0U;
+  uint8_t status = 0U;
+  uint16_t nwkAddressOfInterest = 0U;
+  uint8_t logicalType = 0U;
+  uint8_t frequencyBand = 0U;
+  uint8_t macCapabilityFlags = 0U;
+  uint16_t manufacturerCode = 0U;
+  uint8_t maxBufferSize = 0U;
+  uint16_t maxIncomingTransferSize = 0U;
+  uint16_t serverMask = 0U;
+  uint16_t maxOutgoingTransferSize = 0U;
+  uint8_t descriptorCapability = 0U;
+};
+
+struct ZigbeeZdoPowerDescriptorResponseView {
+  bool valid = false;
+  uint8_t transactionSequence = 0U;
+  uint8_t status = 0U;
+  uint16_t nwkAddressOfInterest = 0U;
+  uint8_t availablePowerSources = 0U;
+  uint8_t currentPowerSource = 0U;
+  uint8_t currentPowerSourceLevel = 0U;
 };
 
 struct ZigbeeZdoActiveEndpointsResponseView {
@@ -480,6 +542,7 @@ struct ZigbeeOnOffState {
 struct ZigbeeIdentifyState {
   bool enabled = false;
   uint16_t identifyTimeSeconds = 0U;
+  uint8_t effectIdentifier = kZigbeeIdentifyEffectNone;
 };
 
 struct ZigbeeLevelControlState {
@@ -701,6 +764,17 @@ class ZigbeeCodec {
       const uint8_t* payload, uint8_t length,
       ZigbeeReadAttributeRecord* outRecords, uint8_t maxRecords,
       uint8_t* outCount);
+  static bool buildWriteAttributesRequest(
+      const ZigbeeWriteAttributeRecord* records, uint8_t recordCount,
+      uint8_t transactionSequence, uint8_t* outFrame, uint8_t* outLength,
+      bool noResponse = false);
+  static bool buildWriteAttributesUndividedRequest(
+      const ZigbeeWriteAttributeRecord* records, uint8_t recordCount,
+      uint8_t transactionSequence, uint8_t* outFrame, uint8_t* outLength);
+  static bool parseWriteAttributesResponse(
+      const uint8_t* payload, uint8_t length,
+      ZigbeeWriteAttributeStatusRecord* outRecords, uint8_t maxRecords,
+      uint8_t* outCount);
   static bool parseDiscoverAttributesRequest(const uint8_t* payload,
                                              uint8_t length,
                                              uint16_t* outStartAttributeId,
@@ -710,9 +784,18 @@ class ZigbeeCodec {
                                              uint8_t transactionSequence,
                                              uint8_t* outFrame,
                                              uint8_t* outLength);
+  static bool buildDiscoverAttributesExtendedRequest(uint16_t startAttributeId,
+                                                     uint8_t maxAttributeIds,
+                                                     uint8_t transactionSequence,
+                                                     uint8_t* outFrame,
+                                                     uint8_t* outLength);
   static bool parseDiscoverAttributesResponse(
       const uint8_t* payload, uint8_t length, bool* outDiscoveryComplete,
       ZigbeeDiscoveredAttributeRecord* outRecords, uint8_t maxRecords,
+      uint8_t* outCount);
+  static bool parseDiscoverAttributesExtendedResponse(
+      const uint8_t* payload, uint8_t length, bool* outDiscoveryComplete,
+      ZigbeeDiscoveredExtendedAttributeRecord* outRecords, uint8_t maxRecords,
       uint8_t* outCount);
   static bool parseDiscoverCommandsRequest(const uint8_t* payload,
                                            uint8_t length,
@@ -738,6 +821,10 @@ class ZigbeeCodec {
       const ZigbeeReportingConfiguration* configurations,
       uint8_t configurationCount, uint8_t transactionSequence,
       uint8_t* outFrame, uint8_t* outLength);
+  static bool parseConfigureReportingResponse(
+      const uint8_t* payload, uint8_t length,
+      ZigbeeConfigureReportingStatusRecord* outRecords, uint8_t maxRecords,
+      uint8_t* outCount);
   static bool parseReadReportingConfigurationRequest(
       const uint8_t* payload, uint8_t length,
       ZigbeeReadReportingConfigurationRecord* outRecords, uint8_t maxRecords,
@@ -755,10 +842,17 @@ class ZigbeeCodec {
   static bool buildReadAttributesResponse(
       const ZigbeeReadAttributeRecord* records, uint8_t recordCount,
       uint8_t transactionSequence, uint8_t* outFrame, uint8_t* outLength);
+  static bool buildWriteAttributesResponse(
+      const ZigbeeWriteAttributeStatusRecord* records, uint8_t recordCount,
+      uint8_t transactionSequence, uint8_t* outFrame, uint8_t* outLength);
   static bool buildDiscoverAttributesResponse(
       const ZigbeeDiscoveredAttributeRecord* records, uint8_t recordCount,
       bool discoveryComplete, uint8_t transactionSequence, uint8_t* outFrame,
       uint8_t* outLength);
+  static bool buildDiscoverAttributesExtendedResponse(
+      const ZigbeeDiscoveredExtendedAttributeRecord* records,
+      uint8_t recordCount, bool discoveryComplete, uint8_t transactionSequence,
+      uint8_t* outFrame, uint8_t* outLength);
   static bool buildDiscoverCommandsReceivedResponse(
       const uint8_t* commandIds, uint8_t commandCount, bool discoveryComplete,
       uint8_t transactionSequence, uint8_t* outFrame, uint8_t* outLength);
@@ -853,6 +947,12 @@ class ZigbeeCodec {
                                      uint8_t* outStatus);
   static bool parseZdoAddressResponse(const uint8_t* payload, uint8_t length,
                                       ZigbeeZdoAddressResponseView* outView);
+  static bool parseZdoNodeDescriptorResponse(
+      const uint8_t* payload, uint8_t length,
+      ZigbeeZdoNodeDescriptorResponseView* outView);
+  static bool parseZdoPowerDescriptorResponse(
+      const uint8_t* payload, uint8_t length,
+      ZigbeeZdoPowerDescriptorResponseView* outView);
   static bool parseZdoActiveEndpointsResponse(
       const uint8_t* payload, uint8_t length,
       ZigbeeZdoActiveEndpointsResponseView* outView);
@@ -886,6 +986,10 @@ class ZigbeeHomeAutomationDevice {
                            uint16_t toleranceCentiDegrees);
   bool setOnOff(bool on);
   bool setLevel(uint8_t level);
+  void updateIdentify(uint32_t nowMs);
+  bool identifying() const;
+  uint16_t identifyTimeSeconds() const;
+  uint8_t identifyEffect() const;
   bool onOff() const;
   uint8_t level() const;
   const ZigbeeHomeAutomationConfig& config() const;
@@ -953,6 +1057,12 @@ class ZigbeeHomeAutomationDevice {
                                      uint16_t requestNwkAddress,
                                      uint8_t endpoint, uint8_t* outPayload,
                                      uint8_t* outLength) const;
+  bool buildExtendedSimpleDescriptorResponse(uint8_t transactionSequence,
+                                             uint16_t requestNwkAddress,
+                                             uint8_t endpoint,
+                                             uint8_t startIndex,
+                                             uint8_t* outPayload,
+                                             uint8_t* outLength) const;
   bool buildMatchDescriptorResponse(uint8_t transactionSequence,
                                     uint16_t requestNwkAddress,
                                     uint16_t profileId,
@@ -962,9 +1072,20 @@ class ZigbeeHomeAutomationDevice {
                                     uint8_t outputClusterCount,
                                     uint8_t* outPayload,
                                     uint8_t* outLength) const;
+  bool buildExtendedActiveEndpointsResponse(uint8_t transactionSequence,
+                                            uint16_t requestNwkAddress,
+                                            uint8_t startIndex,
+                                            uint8_t* outPayload,
+                                            uint8_t* outLength) const;
+  bool buildMgmtBindResponse(uint8_t transactionSequence, uint8_t startIndex,
+                             uint8_t* outPayload, uint8_t* outLength) const;
   bool collectDiscoverAttributesForCluster(
       uint16_t clusterId, uint16_t startAttributeId, uint8_t maxAttributeIds,
       ZigbeeDiscoveredAttributeRecord* outRecords, uint8_t maxRecords,
+      uint8_t* outCount, bool* outDiscoveryComplete) const;
+  bool collectDiscoverAttributesExtendedForCluster(
+      uint16_t clusterId, uint16_t startAttributeId, uint8_t maxAttributeIds,
+      ZigbeeDiscoveredExtendedAttributeRecord* outRecords, uint8_t maxRecords,
       uint8_t* outCount, bool* outDiscoveryComplete) const;
   bool collectDiscoverCommandsForCluster(uint16_t clusterId, bool generated,
                                          uint8_t startCommandId,
@@ -973,11 +1094,19 @@ class ZigbeeHomeAutomationDevice {
                                          uint8_t maxRecords,
                                          uint8_t* outCount,
                                          bool* outDiscoveryComplete) const;
+  uint8_t discoverAttributeAccessControl(
+      uint16_t clusterId, uint16_t attributeId,
+      const ZigbeeAttributeValue& value) const;
   bool appendReadRecordForCluster(uint16_t clusterId, uint16_t attributeId,
                                   ZigbeeReadAttributeRecord* outRecord) const;
   bool appendReadReportingRecordForCluster(
       uint16_t clusterId, uint8_t direction, uint16_t attributeId,
       ZigbeeReadReportingConfigurationResponseRecord* outRecord) const;
+  uint8_t validateWriteAttributeForCluster(
+      uint16_t clusterId, uint16_t attributeId,
+      const ZigbeeAttributeValue& value) const;
+  uint8_t writeAttributeForCluster(uint16_t clusterId, uint16_t attributeId,
+                                   const ZigbeeAttributeValue& value);
   bool makeAttributeValueForCluster(uint16_t clusterId, uint16_t attributeId,
                                     ZigbeeAttributeValue* outValue) const;
   void resetReportingState(uint8_t index);
@@ -1006,6 +1135,7 @@ class ZigbeeHomeAutomationDevice {
   uint16_t temperatureSensorOutputClusters_[1];
   ZigbeeReportingConfiguration reporting_[8];
   ZigbeeReportingRuntimeState reportingState_[8];
+  uint32_t identifyLastTickMs_ = 0U;
   bool leaveRequested_ = false;
   uint8_t leaveRequestFlags_ = 0U;
 };

@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PLATFORM_DIR="${ROOT_DIR}/hardware/nrf54l15clean/nrf54l15clean"
-EXAMPLE_ROOT="${PLATFORM_DIR}/libraries/Nrf54L15-Clean-Implementation/examples/Zigbee"
+EXAMPLE_SKETCH="${PLATFORM_DIR}/libraries/Nrf54L15-Clean-Implementation/examples/Zigbee/ZigbeeHaCoordinatorJoinDemo/ZigbeeHaCoordinatorJoinDemo.ino"
 FQBN_DEFAULT="localnrf54l15clean:nrf54l15clean:xiao_nrf54l15"
 
 FQBN="${FQBN_DEFAULT}"
@@ -15,11 +15,11 @@ POLICIES=()
 usage() {
   cat <<'USAGE'
 Usage:
-  scripts/zigbee_joinable_compile_matrix.sh [options]
+  scripts/zigbee_coordinator_compile_matrix.sh [options]
 
 Options:
   --fqbn <fqbn>       Board FQBN (default: localnrf54l15clean:nrf54l15clean:xiao_nrf54l15)
-  --outdir <path>     Output directory (default: measurements/zigbee_joinable_compile_matrix_<timestamp>)
+  --outdir <path>     Output directory (default: measurements/zigbee_coordinator_compile_matrix_<timestamp>)
   --policy <name>     Compile only the named policy (repeatable)
   --keep-temp         Preserve the temporary sketchbook/config folder for inspection
   --help              Show this help
@@ -61,13 +61,18 @@ if [[ ! -d "${PLATFORM_DIR}" ]]; then
   exit 1
 fi
 
+if [[ ! -f "${EXAMPLE_SKETCH}" ]]; then
+  echo "Coordinator example sketch not found: ${EXAMPLE_SKETCH}" >&2
+  exit 1
+fi
+
 if ! command -v arduino-cli >/dev/null 2>&1; then
   echo "arduino-cli is required but was not found in PATH." >&2
   exit 1
 fi
 
 if [[ -z "${OUTDIR}" ]]; then
-  OUTDIR="${ROOT_DIR}/measurements/zigbee_joinable_compile_matrix_$(date +%Y%m%d_%H%M%S)"
+  OUTDIR="${ROOT_DIR}/measurements/zigbee_coordinator_compile_matrix_$(date +%Y%m%d_%H%M%S)"
 fi
 mkdir -p "${OUTDIR}"
 
@@ -86,40 +91,19 @@ mkdir -p "${LOCAL_VENDOR_DIR}"
 ln -s "${PLATFORM_DIR}" "${LOCAL_VENDOR_DIR}/nrf54l15clean"
 printf 'directories:\n  user: %s\n' "${SKETCHBOOK_DIR}" >"${CLI_CONFIG}"
 
-EXAMPLES=(
-  "ZigbeeHaOnOffLightJoinable"
-  "ZigbeeHaDimmableLightJoinable"
-  "ZigbeeHaTemperatureSensorJoinable"
-)
-
 DEFAULT_POLICIES=(
   "default"
-  "strict_external"
-  "install_code_only_learned_tc"
+  "strict_install_code_only"
 )
 
-strict_external_flags() {
+strict_install_code_only_flags() {
   printf '%s' \
-    '-DNRF54L15_CLEAN_ZIGBEE_PRIMARY_CHANNEL_MASK=0x00000800UL '\
-    '-DNRF54L15_CLEAN_ZIGBEE_SECONDARY_CHANNEL_MASK=0x00001000UL '\
-    '-DNRF54L15_CLEAN_ZIGBEE_USE_INSTALL_CODE=1 '\
     '-DNRF54L15_CLEAN_ZIGBEE_ALLOW_WELL_KNOWN_LINK_KEY=0 '\
-    '-DNRF54L15_CLEAN_ZIGBEE_REQUIRE_ENCRYPTED_TRANSPORT_KEY=1 '\
-    '-DNRF54L15_CLEAN_ZIGBEE_ALLOW_DEMO_PLAINTEXT_TC_CMDS=0 '\
-    '-DNRF54L15_CLEAN_ZIGBEE_TRUST_CENTER_IEEE=0x00124B0001AA5501ULL '\
-    '-DNRF54L15_CLEAN_ZIGBEE_PREFERRED_EXTENDED_PAN_ID=0x1122334455667788ULL'
-}
-
-install_code_only_learned_tc_flags() {
-  printf '%s' \
-    '-DNRF54L15_CLEAN_ZIGBEE_PRIMARY_CHANNEL_MASK=0x00000800UL '\
-    '-DNRF54L15_CLEAN_ZIGBEE_SECONDARY_CHANNEL_MASK=0x00001000UL '\
-    '-DNRF54L15_CLEAN_ZIGBEE_USE_INSTALL_CODE=1 '\
-    '-DNRF54L15_CLEAN_ZIGBEE_ALLOW_WELL_KNOWN_LINK_KEY=0 '\
-    '-DNRF54L15_CLEAN_ZIGBEE_REQUIRE_ENCRYPTED_TRANSPORT_KEY=1 '\
-    '-DNRF54L15_CLEAN_ZIGBEE_ALLOW_DEMO_PLAINTEXT_TC_CMDS=0 '\
-    '-DNRF54L15_CLEAN_ZIGBEE_TRUST_CENTER_IEEE=0ULL '\
-    '-DNRF54L15_CLEAN_ZIGBEE_PREFERRED_EXTENDED_PAN_ID=0ULL'
+    '-DNRF54L15_CLEAN_ZIGBEE_COORDINATOR_IEEE=0x00124B0001AA5501ULL '\
+    '-DNRF54L15_CLEAN_ZIGBEE_EXTENDED_PAN_ID=0x1122334455667788ULL '\
+    '-DNRF54L15_CLEAN_ZIGBEE_ONOFF_LIGHT_IEEE=0x00124B0001AA1001ULL '\
+    '-DNRF54L15_CLEAN_ZIGBEE_DIMMABLE_LIGHT_IEEE=0ULL '\
+    '-DNRF54L15_CLEAN_ZIGBEE_TEMPERATURE_SENSOR_IEEE=0ULL'
 }
 
 policy_flags() {
@@ -127,11 +111,8 @@ policy_flags() {
     default)
       return 0
       ;;
-    strict_external)
-      strict_external_flags
-      ;;
-    install_code_only_learned_tc)
-      install_code_only_learned_tc_flags
+    strict_install_code_only)
+      strict_install_code_only_flags
       ;;
     *)
       echo "Unknown policy: $1" >&2
@@ -146,7 +127,7 @@ fi
 
 RESULTS_CSV="${OUTDIR}/results.csv"
 {
-  echo "example,policy,compile,log"
+  echo "policy,compile,log"
 } > "${RESULTS_CSV}"
 
 log() {
@@ -154,19 +135,17 @@ log() {
 }
 
 run_compile() {
-  local example="$1"
-  local policy="$2"
+  local policy="$1"
   local flags
-  local sketch="${EXAMPLE_ROOT}/${example}/${example}.ino"
-  local logfile="${OUTDIR}/${example}.${policy}.compile.log"
-  local build_dir="${TEMP_DIR}/build/${example}.${policy}"
+  local logfile="${OUTDIR}/${policy}.compile.log"
+  local build_dir="${TEMP_DIR}/build/${policy}"
   local -a cmd=(
     arduino-cli
     compile
     --config-file "${CLI_CONFIG}"
     --build-path "${build_dir}"
     --fqbn "${FQBN}"
-    "${sketch}"
+    "${EXAMPLE_SKETCH}"
   )
 
   flags="$(policy_flags "${policy}")"
@@ -174,35 +153,26 @@ run_compile() {
     cmd+=(--build-property "build.extra_flags=${flags}")
   fi
 
-  log "Compiling ${example} (${policy})"
+  log "Compiling ZigbeeHaCoordinatorJoinDemo (${policy})"
   if "${cmd[@]}" >"${logfile}" 2>&1; then
-    echo "${example},${policy},pass,${logfile}" >>"${RESULTS_CSV}"
-    log "PASS ${example} (${policy})"
+    echo "${policy},pass,${logfile}" >>"${RESULTS_CSV}"
+    log "PASS ZigbeeHaCoordinatorJoinDemo (${policy})"
   else
-    echo "${example},${policy},fail,${logfile}" >>"${RESULTS_CSV}"
-    log "FAIL ${example} (${policy})"
+    echo "${policy},fail,${logfile}" >>"${RESULTS_CSV}"
+    log "FAIL ZigbeeHaCoordinatorJoinDemo (${policy})"
     return 1
   fi
 }
-
-for example in "${EXAMPLES[@]}"; do
-  if [[ ! -f "${EXAMPLE_ROOT}/${example}/${example}.ino" ]]; then
-    echo "Example sketch not found: ${EXAMPLE_ROOT}/${example}/${example}.ino" >&2
-    exit 1
-  fi
-done
 
 log "Using FQBN: ${FQBN}"
 log "Using temporary arduino-cli config: ${CLI_CONFIG}"
 log "Writing logs to: ${OUTDIR}"
 
 for policy in "${POLICIES[@]}"; do
-  for example in "${EXAMPLES[@]}"; do
-    run_compile "${example}" "${policy}"
-  done
+  run_compile "${policy}"
 done
 
-log "All Zigbee joinable compile-matrix cases passed."
+log "All Zigbee coordinator compile-matrix cases passed."
 printf '\nResults:\n'
 if command -v column >/dev/null 2>&1; then
   column -s, -t "${RESULTS_CSV}"

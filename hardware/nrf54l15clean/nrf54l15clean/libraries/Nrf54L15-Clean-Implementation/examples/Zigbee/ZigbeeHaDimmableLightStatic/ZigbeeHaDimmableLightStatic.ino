@@ -130,15 +130,54 @@ static void restoreState() {
   }
 }
 
-static void applyLedState() {
-  uint16_t dutyPermille = 0U;
-  if (g_device.onOff()) {
-    const uint16_t level = g_device.level();
-    dutyPermille =
-        static_cast<uint16_t>((static_cast<uint32_t>(level) * 1000UL) / 0xFEUL);
-    if (dutyPermille == 0U && level > 0U) {
-      dutyPermille = 1U;
+static uint16_t levelToDutyPermille(uint16_t level) {
+  uint16_t dutyPermille =
+      static_cast<uint16_t>((static_cast<uint32_t>(level) * 1000UL) / 0xFEUL);
+  if (dutyPermille == 0U && level > 0U) {
+    dutyPermille = 1U;
+  }
+  return dutyPermille;
+}
+
+static uint16_t identifyDutyPermille(uint32_t nowMs, uint8_t effectIdentifier,
+                                     uint16_t baseLevel) {
+  if (baseLevel == 0U) {
+    baseLevel = 0x80U;
+  }
+  const uint16_t baseDutyPermille = levelToDutyPermille(baseLevel);
+
+  switch (effectIdentifier) {
+    case kZigbeeIdentifyEffectBlink:
+    case kZigbeeIdentifyEffectOkay:
+      return (((nowMs / 150U) & 0x01UL) == 0U) ? baseDutyPermille : 0U;
+    case kZigbeeIdentifyEffectBreathe: {
+      const uint32_t phaseMs = nowMs % 1600UL;
+      const uint32_t ramp = (phaseMs < 800UL) ? phaseMs : (1600UL - phaseMs);
+      uint16_t dutyPermille = static_cast<uint16_t>(
+          (static_cast<uint32_t>(baseDutyPermille) * ramp) / 800UL);
+      if (dutyPermille == 0U && baseDutyPermille > 0U) {
+        dutyPermille = 1U;
+      }
+      return dutyPermille;
     }
+    case kZigbeeIdentifyEffectChannelChange:
+      return (((nowMs / 75U) & 0x01UL) == 0U) ? baseDutyPermille : 0U;
+    case kZigbeeIdentifyEffectFinishEffect:
+      return baseDutyPermille;
+    default:
+      return (((nowMs / 250U) & 0x01UL) == 0U) ? baseDutyPermille : 0U;
+  }
+}
+
+static void applyLedState() {
+  const uint32_t nowMs = millis();
+  g_device.updateIdentify(nowMs);
+  uint16_t dutyPermille = 0U;
+  if (g_device.identifying()) {
+    dutyPermille = identifyDutyPermille(nowMs, g_device.identifyEffect(),
+                                        g_device.level());
+  } else if (g_device.onOff()) {
+    dutyPermille = levelToDutyPermille(g_device.level());
   }
 
   if (g_pwmReady) {
@@ -488,6 +527,7 @@ void loop() {
 
   const uint32_t now = millis();
   maybeSendScheduledReports(now);
+  applyLedState();
 
   if ((now - g_lastStatusMs) >= 5000U) {
     g_lastStatusMs = now;

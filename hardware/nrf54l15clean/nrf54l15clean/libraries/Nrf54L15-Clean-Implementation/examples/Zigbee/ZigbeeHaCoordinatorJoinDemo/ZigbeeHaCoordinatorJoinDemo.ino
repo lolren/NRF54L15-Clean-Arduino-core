@@ -22,6 +22,44 @@
 #define NRF54L15_CLEAN_ZIGBEE_ALLOW_WELL_KNOWN_LINK_KEY 1
 #endif
 
+#ifndef NRF54L15_CLEAN_ZIGBEE_COORDINATOR_IEEE
+#define NRF54L15_CLEAN_ZIGBEE_COORDINATOR_IEEE 0x00124B000054A11FULL
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_EXTENDED_PAN_ID
+#define NRF54L15_CLEAN_ZIGBEE_EXTENDED_PAN_ID 0x00124B000054C0DEULL
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_ONOFF_LIGHT_IEEE
+#define NRF54L15_CLEAN_ZIGBEE_ONOFF_LIGHT_IEEE 0x00124B0001AC1001ULL
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_ONOFF_LIGHT_INSTALL_CODE_BYTES
+#define NRF54L15_CLEAN_ZIGBEE_ONOFF_LIGHT_INSTALL_CODE_BYTES                    \
+  0x10U, 0xACU, 0x01U, 0x01U, 0x24U, 0x4BU, 0x00U, 0xA1U, 0xB2U, 0xC3U, 0xD4U, \
+      0xE5U, 0xF6U, 0x07U, 0x18U, 0x29U, 0x43U, 0x6AU
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_DIMMABLE_LIGHT_IEEE
+#define NRF54L15_CLEAN_ZIGBEE_DIMMABLE_LIGHT_IEEE 0x00124B0001AC1002ULL
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_DIMMABLE_LIGHT_INSTALL_CODE_BYTES
+#define NRF54L15_CLEAN_ZIGBEE_DIMMABLE_LIGHT_INSTALL_CODE_BYTES                 \
+  0x10U, 0xACU, 0x02U, 0x01U, 0x24U, 0x4BU, 0x00U, 0xAAU, 0xBBU, 0xCCU, 0xDDU, \
+      0xEEU, 0xFFU, 0x11U, 0x22U, 0x33U, 0xFEU, 0xC9U
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_TEMPERATURE_SENSOR_IEEE
+#define NRF54L15_CLEAN_ZIGBEE_TEMPERATURE_SENSOR_IEEE 0x00124B0001AC2001ULL
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_TEMPERATURE_SENSOR_INSTALL_CODE_BYTES
+#define NRF54L15_CLEAN_ZIGBEE_TEMPERATURE_SENSOR_INSTALL_CODE_BYTES             \
+  0x10U, 0xACU, 0x03U, 0x01U, 0x24U, 0x4BU, 0x00U, 0xCAU, 0xFEU, 0xBAU, 0xBEU, \
+      0x10U, 0x21U, 0x32U, 0x43U, 0x54U, 0xDCU, 0xB9U
+#endif
+
 #ifndef NRF54L15_CLEAN_ZIGBEE_REQUIRE_UNIQUE_LINK_KEY_FOR_REJOIN
 #define NRF54L15_CLEAN_ZIGBEE_REQUIRE_UNIQUE_LINK_KEY_FOR_REJOIN 1
 #endif
@@ -49,8 +87,10 @@ static constexpr uint16_t kPanId =
     static_cast<uint16_t>(NRF54L15_CLEAN_ZIGBEE_PAN_ID);
 static constexpr uint16_t kCoordinatorShort = 0x0000U;
 static constexpr uint8_t kCoordinatorEndpoint = 1U;
-static constexpr uint64_t kCoordinatorIeee = 0x00124B000054A11FULL;
-static constexpr uint64_t kExtendedPanId = 0x00124B000054C0DEULL;
+static constexpr uint64_t kCoordinatorIeee =
+    static_cast<uint64_t>(NRF54L15_CLEAN_ZIGBEE_COORDINATOR_IEEE);
+static constexpr uint64_t kExtendedPanId =
+    static_cast<uint64_t>(NRF54L15_CLEAN_ZIGBEE_EXTENDED_PAN_ID);
 static uint8_t g_activeNetworkKeySequence = 0x01U;
 static uint8_t g_activeNetworkKey[16] = {0xA1U, 0xB2U, 0xC3U, 0xD4U,
                                          0xE5U, 0xF6U, 0x07U, 0x18U,
@@ -61,34 +101,51 @@ static uint8_t g_alternateNetworkKey[16] = {0U};
 static bool g_haveAlternateNetworkKey = false;
 static constexpr uint8_t kMaxNodes = 8U;
 static constexpr uint8_t kPendingPayloadMax = 96U;
+static constexpr uint8_t kZclCommandWriteAttributesResponse = 0x04U;
 static constexpr uint8_t kZclCommandConfigureReportingResponse = 0x07U;
+static constexpr uint8_t kZclCommandReadReportingConfigurationResponse = 0x09U;
 static constexpr uint8_t kZclCommandReportAttributes = 0x0AU;
 static constexpr uint8_t kZclCommandDefaultResponse = 0x0BU;
+static constexpr uint8_t kZclCommandDiscoverAttributesExtendedResponse = 0x16U;
 static constexpr uint8_t kOnOffCommandOff = 0x00U;
 static constexpr uint8_t kOnOffCommandOn = 0x01U;
 static constexpr uint8_t kOnOffCommandToggle = 0x02U;
+static constexpr uint8_t kIdentifyCommandIdentify = 0x00U;
+static constexpr uint8_t kIdentifyCommandIdentifyQuery = 0x01U;
+static constexpr uint8_t kIdentifyCommandTriggerEffect = 0x40U;
+static constexpr uint8_t kIdentifyEffectBlink = 0x00U;
+static constexpr uint8_t kIdentifyEffectBreathe = 0x01U;
+static constexpr uint8_t kIdentifyEffectChannelChange = 0x0BU;
+static constexpr uint8_t kIdentifyEffectStopEffect = 0xFFU;
 static constexpr uint8_t kGroupsCommandAddGroup = 0x00U;
 static constexpr uint8_t kLevelControlCommandMoveToLevelWithOnOff = 0x04U;
 static constexpr uint8_t kLevelControlCommandStepWithOnOff = 0x06U;
 static constexpr uint16_t kDemoGroupId = 0x1001U;
 static constexpr uint32_t kPermitJoinWindowMs = 120000UL;
-static const uint8_t kOnOffLightInstallCode[18] = {
-    0x10U, 0xACU, 0x01U, 0x01U, 0x24U, 0x4BU, 0x00U, 0xA1U, 0xB2U,
-    0xC3U, 0xD4U, 0xE5U, 0xF6U, 0x07U, 0x18U, 0x29U, 0x43U, 0x6AU};
-static const uint8_t kDimmableLightInstallCode[18] = {
-    0x10U, 0xACU, 0x02U, 0x01U, 0x24U, 0x4BU, 0x00U, 0xAAU, 0xBBU,
-    0xCCU, 0xDDU, 0xEEU, 0xFFU, 0x11U, 0x22U, 0x33U, 0xFEU, 0xC9U};
-static const uint8_t kTempSensorInstallCode[18] = {
-    0x10U, 0xACU, 0x03U, 0x01U, 0x24U, 0x4BU, 0x00U, 0xCAU, 0xFEU,
-    0xBAU, 0xBEU, 0x10U, 0x21U, 0x32U, 0x43U, 0x54U, 0xDCU, 0xB9U};
+
+struct PreconfiguredNodePolicy {
+  uint64_t ieeeAddress;
+  uint8_t installCode[18];
+};
+
+static const PreconfiguredNodePolicy kPreconfiguredNodePolicies[] = {
+    {static_cast<uint64_t>(NRF54L15_CLEAN_ZIGBEE_ONOFF_LIGHT_IEEE),
+     {NRF54L15_CLEAN_ZIGBEE_ONOFF_LIGHT_INSTALL_CODE_BYTES}},
+    {static_cast<uint64_t>(NRF54L15_CLEAN_ZIGBEE_DIMMABLE_LIGHT_IEEE),
+     {NRF54L15_CLEAN_ZIGBEE_DIMMABLE_LIGHT_INSTALL_CODE_BYTES}},
+    {static_cast<uint64_t>(NRF54L15_CLEAN_ZIGBEE_TEMPERATURE_SENSOR_IEEE),
+     {NRF54L15_CLEAN_ZIGBEE_TEMPERATURE_SENSOR_INSTALL_CODE_BYTES}},
+};
 
 enum class NodeStage : uint8_t {
   kIdle = 0U,
-  kAwaitingActiveEndpoints = 1U,
-  kAwaitingSimpleDescriptor = 2U,
-  kAwaitingBasicRead = 3U,
-  kAwaitingReporting = 4U,
-  kReady = 5U,
+  kAwaitingNodeDescriptor = 1U,
+  kAwaitingPowerDescriptor = 2U,
+  kAwaitingActiveEndpoints = 3U,
+  kAwaitingSimpleDescriptor = 4U,
+  kAwaitingBasicRead = 5U,
+  kAwaitingReporting = 6U,
+  kReady = 7U,
 };
 
 enum class TrustCenterNodeState : uint8_t {
@@ -111,6 +168,18 @@ struct PendingApsFrame {
   uint8_t payload[kPendingPayloadMax] = {0U};
 };
 
+struct PendingApsAck {
+  bool active = false;
+  uint8_t counter = 0U;
+  uint16_t clusterId = 0U;
+  uint16_t profileId = 0U;
+  uint8_t destinationEndpoint = 0U;
+  uint8_t sourceEndpoint = 0U;
+  uint8_t retriesRemaining = 0U;
+  uint32_t deadlineMs = 0U;
+  PendingApsFrame frame{};
+};
+
 struct RecentInboundAps {
   bool valid = false;
   uint8_t counter = 0U;
@@ -121,6 +190,9 @@ struct RecentInboundAps {
   uint8_t deliveryMode = 0U;
   uint32_t expiresMs = 0U;
 };
+
+static constexpr uint8_t kPendingApsAckSlots = 3U;
+static constexpr size_t kNodeTextMax = 33U;
 
 struct NodeEntry {
   bool used = false;
@@ -138,18 +210,31 @@ struct NodeEntry {
   bool pendingAssociationResponse = false;
   uint16_t pendingAssignedShort = 0U;
   uint8_t pendingAssociationStatus = 0U;
-  bool pendingApsAck = false;
-  uint8_t pendingApsAckCounter = 0U;
-  uint16_t pendingApsAckClusterId = 0U;
-  uint16_t pendingApsAckProfileId = 0U;
-  uint8_t pendingApsAckDestinationEndpoint = 0U;
-  uint8_t pendingApsAckSourceEndpoint = 0U;
-  uint8_t pendingApsAckRetriesRemaining = 0U;
-  uint32_t pendingApsAckDeadlineMs = 0U;
   PendingApsFrame pending{};
-  PendingApsFrame inFlight{};
+  PendingApsAck pendingApsAcks[kPendingApsAckSlots]{};
   RecentInboundAps recentInboundAps{};
   bool announced = false;
+  bool haveNodeDescriptor = false;
+  uint8_t logicalType = 0U;
+  uint8_t macCapabilityFlags = 0U;
+  uint16_t manufacturerCode = 0U;
+  bool havePowerDescriptor = false;
+  uint8_t availablePowerSources = 0U;
+  uint8_t currentPowerSource = 0U;
+  uint8_t currentPowerSourceLevel = 0U;
+  bool haveBasicZclVersion = false;
+  uint8_t basicZclVersion = 0U;
+  bool haveBasicApplicationVersion = false;
+  uint8_t basicApplicationVersion = 0U;
+  bool haveBasicStackVersion = false;
+  uint8_t basicStackVersion = 0U;
+  bool haveBasicHwVersion = false;
+  uint8_t basicHwVersion = 0U;
+  bool haveBasicPowerSource = false;
+  uint8_t basicPowerSource = 0U;
+  char basicManufacturerName[kNodeTextMax] = {0};
+  char basicModelIdentifier[kNodeTextMax] = {0};
+  char basicSwBuildId[kNodeTextMax] = {0};
   uint8_t endpoint = 0U;
   uint16_t profileId = 0U;
   uint16_t deviceId = 0U;
@@ -158,6 +243,8 @@ struct NodeEntry {
   bool supportsIdentify = false;
   bool supportsTemperature = false;
   bool supportsPowerConfiguration = false;
+  bool haveIdentifyTime = false;
+  uint16_t identifyTimeSeconds = 0U;
   bool basicRead = false;
   bool onOffBindingConfigured = false;
   bool levelBindingConfigured = false;
@@ -167,12 +254,22 @@ struct NodeEntry {
   bool levelReportingConfigured = false;
   bool temperatureReportingConfigured = false;
   bool powerReportingConfigured = false;
+  bool onOffReportingVerified = false;
+  bool levelReportingVerified = false;
+  bool temperatureReportingVerified = false;
+  bool powerReportingVerified = false;
   bool awaitingBindResponse = false;
   uint16_t awaitingClusterId = 0U;
   bool haveOnOffState = false;
   bool onOffState = false;
   bool haveLevelState = false;
   uint8_t levelState = 0U;
+  bool haveTemperatureState = false;
+  int16_t temperatureCentiDegrees = 0;
+  bool haveBatteryVoltage = false;
+  uint8_t batteryVoltageDecivolts = 0U;
+  bool haveBatteryPercentage = false;
+  uint8_t batteryPercentageRemainingHalf = 0U;
   bool demoGroupConfigured = false;
   uint8_t endDeviceTimeoutIndex = 0U;
   uint8_t endDeviceConfiguration = 0U;
@@ -245,14 +342,16 @@ uint16_t allocateShortAddress() {
 }
 
 const uint8_t* findInstallCodeForNode(uint64_t ieeeAddress) {
-  if (ieeeAddress == 0x00124B0001AC1001ULL) {
-    return kOnOffLightInstallCode;
-  }
-  if (ieeeAddress == 0x00124B0001AC1002ULL) {
-    return kDimmableLightInstallCode;
-  }
-  if (ieeeAddress == 0x00124B0001AC2001ULL) {
-    return kTempSensorInstallCode;
+  for (uint8_t i = 0U;
+       i < static_cast<uint8_t>(sizeof(kPreconfiguredNodePolicies) /
+                                sizeof(kPreconfiguredNodePolicies[0]));
+       ++i) {
+    if (kPreconfiguredNodePolicies[i].ieeeAddress == 0U) {
+      continue;
+    }
+    if (kPreconfiguredNodePolicies[i].ieeeAddress == ieeeAddress) {
+      return kPreconfiguredNodePolicies[i].installCode;
+    }
   }
   return nullptr;
 }
@@ -460,16 +559,101 @@ void clearPendingApsAck(NodeEntry* node) {
   if (node == nullptr) {
     return;
   }
-  node->pendingApsAck = false;
-  node->pendingApsAckCounter = 0U;
-  node->pendingApsAckClusterId = 0U;
-  node->pendingApsAckProfileId = 0U;
-  node->pendingApsAckDestinationEndpoint = 0U;
-  node->pendingApsAckSourceEndpoint = 0U;
-  node->pendingApsAckRetriesRemaining = 0U;
-  node->pendingApsAckDeadlineMs = 0U;
-  node->inFlight.used = false;
-  node->inFlight.payloadLength = 0U;
+  memset(node->pendingApsAcks, 0, sizeof(node->pendingApsAcks));
+}
+
+void clearPendingApsAckSlot(NodeEntry* node, uint8_t slot) {
+  if (node == nullptr || slot >= kPendingApsAckSlots) {
+    return;
+  }
+  memset(&node->pendingApsAcks[slot], 0, sizeof(node->pendingApsAcks[slot]));
+}
+
+bool nodeHasPendingApsAck(const NodeEntry& node) {
+  for (uint8_t i = 0U; i < kPendingApsAckSlots; ++i) {
+    if (node.pendingApsAcks[i].active) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool matchesPendingApsAck(const PendingApsAck& pending,
+                          const ZigbeeApsAcknowledgementFrame& ack) {
+  return pending.active && ack.valid && !ack.ackFormatCommand &&
+         ack.counter == pending.counter &&
+         ack.clusterId == pending.clusterId &&
+         ack.profileId == pending.profileId &&
+         ack.destinationEndpoint == pending.sourceEndpoint &&
+         ack.sourceEndpoint == pending.destinationEndpoint;
+}
+
+bool findPendingApsAckSlot(const NodeEntry& node,
+                           const ZigbeeApsAcknowledgementFrame& ack,
+                           uint8_t* outSlot) {
+  if (outSlot == nullptr) {
+    return false;
+  }
+
+  for (uint8_t i = 0U; i < kPendingApsAckSlots; ++i) {
+    if (matchesPendingApsAck(node.pendingApsAcks[i], ack)) {
+      *outSlot = i;
+      return true;
+    }
+  }
+  return false;
+}
+
+bool pendingApsAckSlotAvailable(const NodeEntry& node, uint32_t nowMs) {
+  for (uint8_t i = 0U; i < kPendingApsAckSlots; ++i) {
+    if (!node.pendingApsAcks[i].active ||
+        static_cast<int32_t>(nowMs - node.pendingApsAcks[i].deadlineMs) >= 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool resendPendingApsFrame(NodeEntry* node, uint8_t slot);
+
+bool allocatePendingApsAckSlot(NodeEntry* node,
+                               const ZigbeeApsDataFrame& aps,
+                               uint8_t* outSlot) {
+  if (node == nullptr || outSlot == nullptr) {
+    return false;
+  }
+
+  const uint32_t nowMs = millis();
+  uint8_t oldestActiveSlot = 0U;
+  bool haveOldestActiveSlot = false;
+  for (uint8_t i = 0U; i < kPendingApsAckSlots; ++i) {
+    PendingApsAck& pending = node->pendingApsAcks[i];
+    if (pending.active && pending.counter == aps.counter &&
+        pending.clusterId == aps.clusterId &&
+        pending.profileId == aps.profileId &&
+        pending.destinationEndpoint == aps.destinationEndpoint &&
+        pending.sourceEndpoint == aps.sourceEndpoint) {
+      *outSlot = i;
+      return true;
+    }
+    if (!pending.active ||
+        static_cast<int32_t>(nowMs - pending.deadlineMs) >= 0) {
+      *outSlot = i;
+      return true;
+    }
+    if (!haveOldestActiveSlot ||
+        static_cast<int32_t>(pending.deadlineMs -
+                             node->pendingApsAcks[oldestActiveSlot].deadlineMs) < 0) {
+      oldestActiveSlot = i;
+      haveOldestActiveSlot = true;
+    }
+  }
+
+  if (haveOldestActiveSlot) {
+    *outSlot = oldestActiveSlot;
+    return true;
+  }
+  return false;
 }
 
 void clearRecentInboundAps(NodeEntry* node) {
@@ -502,41 +686,38 @@ void prepareNodeForRetainedRejoin(NodeEntry* node) {
 
 void rememberPendingApsAck(NodeEntry* node, const ZigbeeApsDataFrame& aps,
                            const uint8_t* payload, uint8_t payloadLength) {
+  uint8_t slot = 0U;
   if (node == nullptr || aps.deliveryMode != kZigbeeApsDeliveryUnicast ||
-      !aps.ackRequested || payloadLength > sizeof(node->inFlight.payload) ||
+      !aps.ackRequested ||
+      payloadLength > sizeof(node->pendingApsAcks[0].frame.payload) ||
       (payloadLength > 0U && payload == nullptr)) {
-    clearPendingApsAck(node);
     return;
   }
-  node->pendingApsAck = true;
-  node->pendingApsAckCounter = aps.counter;
-  node->pendingApsAckClusterId = aps.clusterId;
-  node->pendingApsAckProfileId = aps.profileId;
-  node->pendingApsAckDestinationEndpoint = aps.destinationEndpoint;
-  node->pendingApsAckSourceEndpoint = aps.sourceEndpoint;
-  node->pendingApsAckRetriesRemaining = kApsAckRetryLimit;
-  node->pendingApsAckDeadlineMs = millis() + kApsAckTimeoutMs;
-  node->inFlight.used = true;
-  node->inFlight.deliveryMode = aps.deliveryMode;
-  node->inFlight.destinationGroup = aps.destinationGroup;
-  node->inFlight.clusterId = aps.clusterId;
-  node->inFlight.profileId = aps.profileId;
-  node->inFlight.destinationEndpoint = aps.destinationEndpoint;
-  node->inFlight.sourceEndpoint = aps.sourceEndpoint;
-  node->inFlight.payloadLength = payloadLength;
-  if (payloadLength > 0U) {
-    memcpy(node->inFlight.payload, payload, payloadLength);
+  if (!allocatePendingApsAckSlot(node, aps, &slot)) {
+    return;
   }
-}
 
-bool matchesPendingApsAck(const NodeEntry& node,
-                          const ZigbeeApsAcknowledgementFrame& ack) {
-  return node.pendingApsAck && ack.valid && !ack.ackFormatCommand &&
-         ack.counter == node.pendingApsAckCounter &&
-         ack.clusterId == node.pendingApsAckClusterId &&
-         ack.profileId == node.pendingApsAckProfileId &&
-         ack.destinationEndpoint == node.pendingApsAckSourceEndpoint &&
-         ack.sourceEndpoint == node.pendingApsAckDestinationEndpoint;
+  PendingApsAck& pending = node->pendingApsAcks[slot];
+  memset(&pending, 0, sizeof(pending));
+  pending.active = true;
+  pending.counter = aps.counter;
+  pending.clusterId = aps.clusterId;
+  pending.profileId = aps.profileId;
+  pending.destinationEndpoint = aps.destinationEndpoint;
+  pending.sourceEndpoint = aps.sourceEndpoint;
+  pending.retriesRemaining = kApsAckRetryLimit;
+  pending.deadlineMs = millis() + kApsAckTimeoutMs;
+  pending.frame.used = true;
+  pending.frame.deliveryMode = aps.deliveryMode;
+  pending.frame.destinationGroup = aps.destinationGroup;
+  pending.frame.clusterId = aps.clusterId;
+  pending.frame.profileId = aps.profileId;
+  pending.frame.destinationEndpoint = aps.destinationEndpoint;
+  pending.frame.sourceEndpoint = aps.sourceEndpoint;
+  pending.frame.payloadLength = payloadLength;
+  if (payloadLength > 0U) {
+    memcpy(pending.frame.payload, payload, payloadLength);
+  }
 }
 
 void rememberRecentInboundAps(NodeEntry* node, const ZigbeeApsDataFrame& aps) {
@@ -623,38 +804,40 @@ bool sendNwkCommand(NodeEntry* node, const uint8_t* payload,
 }
 
 void maybeExpirePendingApsAck(NodeEntry* node, uint32_t nowMs) {
-  if (node == nullptr || !node->pendingApsAck ||
-      static_cast<int32_t>(nowMs - node->pendingApsAckDeadlineMs) < 0) {
+  if (node == nullptr) {
     return;
   }
-  if (node->pendingApsAckRetriesRemaining > 0U && node->inFlight.used) {
-    --node->pendingApsAckRetriesRemaining;
-    const bool resent = sendApsFrameExtendedWithCounter(
-        node->shortAddress, node->inFlight.deliveryMode,
-        node->inFlight.destinationGroup, node->inFlight.destinationEndpoint,
-        node->inFlight.clusterId, node->inFlight.profileId,
-        node->inFlight.sourceEndpoint, node->inFlight.payload,
-        node->inFlight.payloadLength, node->pendingApsAckCounter, false);
-    if (resent) {
-      node->pendingApsAckDeadlineMs = millis() + kApsAckTimeoutMs;
-      Serial.print("aps_ack retry short=0x");
-      Serial.print(node->shortAddress, HEX);
-      Serial.print(" ctr=0x");
-      Serial.print(node->pendingApsAckCounter, HEX);
-      Serial.print(" remaining=");
-      Serial.print(node->pendingApsAckRetriesRemaining);
-      Serial.print("\r\n");
-      return;
+
+  for (uint8_t i = 0U; i < kPendingApsAckSlots; ++i) {
+    PendingApsAck& pending = node->pendingApsAcks[i];
+    if (!pending.active ||
+        static_cast<int32_t>(nowMs - pending.deadlineMs) < 0) {
+      continue;
     }
+    if (pending.retriesRemaining > 0U && pending.frame.used) {
+      --pending.retriesRemaining;
+      const bool resent = resendPendingApsFrame(node, i);
+      if (resent) {
+        Serial.print("aps_ack retry short=0x");
+        Serial.print(node->shortAddress, HEX);
+        Serial.print(" ctr=0x");
+        Serial.print(pending.counter, HEX);
+        Serial.print(" remaining=");
+        Serial.print(pending.retriesRemaining);
+        Serial.print("\r\n");
+        continue;
+      }
+    }
+
+    Serial.print("aps_ack miss short=0x");
+    Serial.print(node->shortAddress, HEX);
+    Serial.print(" ctr=0x");
+    Serial.print(pending.counter, HEX);
+    Serial.print(" cluster=0x");
+    Serial.print(pending.clusterId, HEX);
+    Serial.print("\r\n");
+    clearPendingApsAckSlot(node, i);
   }
-  Serial.print("aps_ack miss short=0x");
-  Serial.print(node->shortAddress, HEX);
-  Serial.print(" ctr=0x");
-  Serial.print(node->pendingApsAckCounter, HEX);
-  Serial.print(" cluster=0x");
-  Serial.print(node->pendingApsAckClusterId, HEX);
-  Serial.print("\r\n");
-  clearPendingApsAck(node);
 }
 
 bool sendApsFrameExtendedWithCounter(uint16_t destinationShort,
@@ -667,6 +850,10 @@ bool sendApsFrameExtendedWithCounter(uint16_t destinationShort,
                                      uint8_t payloadLength, uint8_t apsCounter,
                                      bool trackAck) {
   NodeEntry* node = findNodeByShort(destinationShort);
+  if (trackAck && deliveryMode == kZigbeeApsDeliveryUnicast &&
+      (node == nullptr || !pendingApsAckSlotAvailable(*node, millis()))) {
+    return false;
+  }
   const uint8_t keySequence =
       (node != nullptr && node->currentNetworkKeySequence != 0U)
           ? node->currentNetworkKeySequence
@@ -731,6 +918,28 @@ bool sendApsFrameExtendedWithCounter(uint16_t destinationShort,
   const bool sent = sendPsdu(psdu, psduLength);
   if (sent && trackAck) {
     rememberPendingApsAck(node, aps, payload, payloadLength);
+  }
+  return sent;
+}
+
+bool resendPendingApsFrame(NodeEntry* node, uint8_t slot) {
+  if (node == nullptr || slot >= kPendingApsAckSlots) {
+    return false;
+  }
+
+  PendingApsAck& pending = node->pendingApsAcks[slot];
+  if (!pending.active || !pending.frame.used) {
+    return false;
+  }
+
+  const bool sent = sendApsFrameExtendedWithCounter(
+      node->shortAddress, pending.frame.deliveryMode,
+      pending.frame.destinationGroup, pending.frame.destinationEndpoint,
+      pending.frame.clusterId, pending.frame.profileId,
+      pending.frame.sourceEndpoint, pending.frame.payload,
+      pending.frame.payloadLength, pending.counter, false);
+  if (sent) {
+    pending.deadlineMs = millis() + kApsAckTimeoutMs;
   }
   return sent;
 }
@@ -1197,6 +1406,10 @@ bool sendPendingApsFrame(NodeEntry* node) {
   if (!node->pending.used) {
     return false;
   }
+  if (node->pending.deliveryMode == kZigbeeApsDeliveryUnicast &&
+      !pendingApsAckSlotAvailable(*node, millis())) {
+    return false;
+  }
 
   const bool sent =
       sendApsFrameExtended(node->shortAddress, node->pending.deliveryMode,
@@ -1232,6 +1445,46 @@ bool queueActiveEndpointsRequest(NodeEntry* node) {
   return queued;
 }
 
+bool queueNodeDescriptorRequest(NodeEntry* node) {
+  if (node == nullptr || node->shortAddress == 0U) {
+    return false;
+  }
+  uint8_t payload[8] = {0U};
+  uint8_t payloadLength = 0U;
+  if (!ZigbeeCodec::buildZdoNodeDescriptorRequest(g_zdoSequence++,
+                                                  node->shortAddress, payload,
+                                                  &payloadLength)) {
+    return false;
+  }
+  const bool queued =
+      queuePendingApsFrame(node, kZigbeeZdoNodeDescriptorRequest,
+                           kZigbeeProfileZdo, 0U, 0U, payload, payloadLength);
+  if (queued) {
+    node->stage = NodeStage::kAwaitingNodeDescriptor;
+  }
+  return queued;
+}
+
+bool queuePowerDescriptorRequest(NodeEntry* node) {
+  if (node == nullptr || node->shortAddress == 0U) {
+    return false;
+  }
+  uint8_t payload[8] = {0U};
+  uint8_t payloadLength = 0U;
+  if (!ZigbeeCodec::buildZdoPowerDescriptorRequest(g_zdoSequence++,
+                                                   node->shortAddress, payload,
+                                                   &payloadLength)) {
+    return false;
+  }
+  const bool queued =
+      queuePendingApsFrame(node, kZigbeeZdoPowerDescriptorRequest,
+                           kZigbeeProfileZdo, 0U, 0U, payload, payloadLength);
+  if (queued) {
+    node->stage = NodeStage::kAwaitingPowerDescriptor;
+  }
+  return queued;
+}
+
 bool queueSimpleDescriptorRequest(NodeEntry* node, uint8_t endpoint) {
   if (node == nullptr || endpoint == 0U) {
     return false;
@@ -1256,7 +1509,8 @@ bool queueBasicReadRequest(NodeEntry* node) {
   if (node == nullptr || node->endpoint == 0U) {
     return false;
   }
-  const uint16_t attributes[] = {0x0004U, 0x0005U, 0x0007U};
+  const uint16_t attributes[] = {0x0000U, 0x0001U, 0x0002U, 0x0003U, 0x0004U,
+                                 0x0005U, 0x0007U, 0x4000U, 0xFFFCU, 0xFFFDU};
   uint8_t payload[127] = {0U};
   uint8_t payloadLength = 0U;
   if (!ZigbeeCodec::buildReadAttributesRequest(
@@ -1456,6 +1710,97 @@ bool queuePowerConfigureReporting(NodeEntry* node) {
   return queued;
 }
 
+bool queueReadReportingConfiguration(NodeEntry* node, uint16_t clusterId) {
+  if (node == nullptr || node->endpoint == 0U) {
+    return false;
+  }
+
+  ZigbeeReadReportingConfigurationRecord records[2];
+  memset(records, 0, sizeof(records));
+  uint8_t recordCount = 0U;
+  switch (clusterId) {
+    case kZigbeeClusterOnOff:
+    case kZigbeeClusterLevelControl:
+    case kZigbeeClusterTemperatureMeasurement:
+      records[0].direction = 0U;
+      records[0].attributeId = 0x0000U;
+      recordCount = 1U;
+      break;
+    case kZigbeeClusterPowerConfiguration:
+      records[0].direction = 0U;
+      records[0].attributeId = 0x0020U;
+      records[1].direction = 0U;
+      records[1].attributeId = 0x0021U;
+      recordCount = 2U;
+      break;
+    default:
+      return false;
+  }
+
+  uint8_t payload[127] = {0U};
+  uint8_t payloadLength = 0U;
+  if (!ZigbeeCodec::buildReadReportingConfigurationRequest(
+          records, recordCount, g_zclSequence++, payload, &payloadLength)) {
+    return false;
+  }
+  const bool queued =
+      queuePendingApsFrame(node, clusterId, kZigbeeProfileHomeAutomation,
+                           node->endpoint, kCoordinatorEndpoint, payload,
+                           payloadLength);
+  if (queued) {
+    node->awaitingClusterId = clusterId;
+    node->stage = NodeStage::kAwaitingReporting;
+  }
+  return queued;
+}
+
+bool reportingConfigurationMatches(
+    uint16_t clusterId,
+    const ZigbeeReadReportingConfigurationResponseRecord* records,
+    uint8_t recordCount) {
+  if (records == nullptr) {
+    return false;
+  }
+
+  switch (clusterId) {
+    case kZigbeeClusterOnOff:
+      return recordCount == 1U && records[0].status == 0x00U &&
+             records[0].direction == 0U && records[0].attributeId == 0x0000U &&
+             records[0].dataType == ZigbeeZclDataType::kBoolean &&
+             records[0].minimumIntervalSeconds == 0U &&
+             records[0].maximumIntervalSeconds == 60U &&
+             records[0].reportableChange == 0U;
+    case kZigbeeClusterLevelControl:
+      return recordCount == 1U && records[0].status == 0x00U &&
+             records[0].direction == 0U && records[0].attributeId == 0x0000U &&
+             records[0].dataType == ZigbeeZclDataType::kUint8 &&
+             records[0].minimumIntervalSeconds == 0U &&
+             records[0].maximumIntervalSeconds == 60U &&
+             records[0].reportableChange == 16U;
+    case kZigbeeClusterTemperatureMeasurement:
+      return recordCount == 1U && records[0].status == 0x00U &&
+             records[0].direction == 0U && records[0].attributeId == 0x0000U &&
+             records[0].dataType == ZigbeeZclDataType::kInt16 &&
+             records[0].minimumIntervalSeconds == 5U &&
+             records[0].maximumIntervalSeconds == 60U &&
+             records[0].reportableChange == 25U;
+    case kZigbeeClusterPowerConfiguration:
+      return recordCount == 2U && records[0].status == 0x00U &&
+             records[0].direction == 0U && records[0].attributeId == 0x0020U &&
+             records[0].dataType == ZigbeeZclDataType::kUint8 &&
+             records[0].minimumIntervalSeconds == 30U &&
+             records[0].maximumIntervalSeconds == 300U &&
+             records[0].reportableChange == 1U && records[1].status == 0x00U &&
+             records[1].direction == 0U && records[1].attributeId == 0x0021U &&
+             records[1].dataType == ZigbeeZclDataType::kUint8 &&
+             records[1].minimumIntervalSeconds == 30U &&
+             records[1].maximumIntervalSeconds == 300U &&
+             records[1].reportableChange == 2U;
+    default:
+      return false;
+  }
+}
+
 bool queueOnOffCommand(NodeEntry* node, uint8_t commandId) {
   if (node == nullptr || node->endpoint == 0U || !node->supportsOnOff) {
     return false;
@@ -1520,6 +1865,151 @@ bool queueLevelStep(NodeEntry* node, bool increase, uint8_t stepSize) {
   }
 
   return queuePendingApsFrame(node, kZigbeeClusterLevelControl,
+                              kZigbeeProfileHomeAutomation, node->endpoint,
+                              kCoordinatorEndpoint, payload, payloadLength);
+}
+
+bool queueIdentifyCommand(NodeEntry* node, uint16_t identifyTimeSeconds) {
+  if (node == nullptr || node->endpoint == 0U || !node->supportsIdentify) {
+    return false;
+  }
+
+  const uint8_t commandPayload[] = {
+      static_cast<uint8_t>(identifyTimeSeconds & 0xFFU),
+      static_cast<uint8_t>((identifyTimeSeconds >> 8U) & 0xFFU)};
+  uint8_t payload[127] = {0U};
+  uint8_t payloadLength = 0U;
+  ZigbeeZclFrame frame{};
+  frame.frameType = ZigbeeZclFrameType::kClusterSpecific;
+  frame.disableDefaultResponse = false;
+  frame.transactionSequence = g_zclSequence++;
+  frame.commandId = kIdentifyCommandIdentify;
+  if (!ZigbeeCodec::buildZclFrame(frame, commandPayload,
+                                  static_cast<uint8_t>(sizeof(commandPayload)),
+                                  payload, &payloadLength)) {
+    return false;
+  }
+
+  return queuePendingApsFrame(node, kZigbeeClusterIdentify,
+                              kZigbeeProfileHomeAutomation, node->endpoint,
+                              kCoordinatorEndpoint, payload, payloadLength);
+}
+
+bool queueIdentifyDiscoverAttributesExtended(NodeEntry* node) {
+  if (node == nullptr || node->endpoint == 0U || !node->supportsIdentify) {
+    return false;
+  }
+
+  uint8_t payload[127] = {0U};
+  uint8_t payloadLength = 0U;
+  if (!ZigbeeCodec::buildDiscoverAttributesExtendedRequest(
+          0x0000U, 8U, g_zclSequence++, payload, &payloadLength)) {
+    return false;
+  }
+
+  return queuePendingApsFrame(node, kZigbeeClusterIdentify,
+                              kZigbeeProfileHomeAutomation, node->endpoint,
+                              kCoordinatorEndpoint, payload, payloadLength);
+}
+
+bool queueIdentifyWriteAttribute(NodeEntry* node, uint16_t identifyTimeSeconds,
+                                 bool noResponse) {
+  if (node == nullptr || node->endpoint == 0U || !node->supportsIdentify) {
+    return false;
+  }
+
+  ZigbeeWriteAttributeRecord record{};
+  record.attributeId = 0x0000U;
+  record.value.type = ZigbeeZclDataType::kUint16;
+  record.value.data.u16 = identifyTimeSeconds;
+
+  uint8_t payload[127] = {0U};
+  uint8_t payloadLength = 0U;
+  if (!ZigbeeCodec::buildWriteAttributesRequest(&record, 1U, g_zclSequence++,
+                                                payload, &payloadLength,
+                                                noResponse)) {
+    return false;
+  }
+
+  return queuePendingApsFrame(node, kZigbeeClusterIdentify,
+                              kZigbeeProfileHomeAutomation, node->endpoint,
+                              kCoordinatorEndpoint, payload, payloadLength);
+}
+
+bool queueIdentifyWriteAttributeUndivided(NodeEntry* node,
+                                          uint16_t identifyTimeSeconds,
+                                          bool injectReadOnlyFailure) {
+  if (node == nullptr || node->endpoint == 0U || !node->supportsIdentify) {
+    return false;
+  }
+
+  ZigbeeWriteAttributeRecord records[2];
+  memset(records, 0, sizeof(records));
+  records[0].attributeId = 0x0000U;
+  records[0].value.type = ZigbeeZclDataType::kUint16;
+  records[0].value.data.u16 = identifyTimeSeconds;
+
+  uint8_t recordCount = 1U;
+  if (injectReadOnlyFailure) {
+    records[1].attributeId = 0xFFFCU;
+    records[1].value.type = ZigbeeZclDataType::kBitmap32;
+    records[1].value.data.u32 = 0U;
+    recordCount = 2U;
+  }
+
+  uint8_t payload[127] = {0U};
+  uint8_t payloadLength = 0U;
+  if (!ZigbeeCodec::buildWriteAttributesUndividedRequest(
+          records, recordCount, g_zclSequence++, payload, &payloadLength)) {
+    return false;
+  }
+
+  return queuePendingApsFrame(node, kZigbeeClusterIdentify,
+                              kZigbeeProfileHomeAutomation, node->endpoint,
+                              kCoordinatorEndpoint, payload, payloadLength);
+}
+
+bool queueIdentifyQuery(NodeEntry* node) {
+  if (node == nullptr || node->endpoint == 0U || !node->supportsIdentify) {
+    return false;
+  }
+
+  uint8_t payload[127] = {0U};
+  uint8_t payloadLength = 0U;
+  ZigbeeZclFrame frame{};
+  frame.frameType = ZigbeeZclFrameType::kClusterSpecific;
+  frame.disableDefaultResponse = false;
+  frame.transactionSequence = g_zclSequence++;
+  frame.commandId = kIdentifyCommandIdentifyQuery;
+  if (!ZigbeeCodec::buildZclFrame(frame, nullptr, 0U, payload, &payloadLength)) {
+    return false;
+  }
+
+  return queuePendingApsFrame(node, kZigbeeClusterIdentify,
+                              kZigbeeProfileHomeAutomation, node->endpoint,
+                              kCoordinatorEndpoint, payload, payloadLength);
+}
+
+bool queueTriggerEffect(NodeEntry* node, uint8_t effectIdentifier) {
+  if (node == nullptr || node->endpoint == 0U || !node->supportsIdentify) {
+    return false;
+  }
+
+  const uint8_t commandPayload[] = {effectIdentifier, 0x00U};
+  uint8_t payload[127] = {0U};
+  uint8_t payloadLength = 0U;
+  ZigbeeZclFrame frame{};
+  frame.frameType = ZigbeeZclFrameType::kClusterSpecific;
+  frame.disableDefaultResponse = false;
+  frame.transactionSequence = g_zclSequence++;
+  frame.commandId = kIdentifyCommandTriggerEffect;
+  if (!ZigbeeCodec::buildZclFrame(frame, commandPayload,
+                                  static_cast<uint8_t>(sizeof(commandPayload)),
+                                  payload, &payloadLength)) {
+    return false;
+  }
+
+  return queuePendingApsFrame(node, kZigbeeClusterIdentify,
                               kZigbeeProfileHomeAutomation, node->endpoint,
                               kCoordinatorEndpoint, payload, payloadLength);
 }
@@ -1702,6 +2192,16 @@ NodeEntry* firstLevelNode() {
   return nullptr;
 }
 
+NodeEntry* firstIdentifyNode() {
+  for (uint8_t i = 0U; i < kMaxNodes; ++i) {
+    if (g_nodes[i].used && g_nodes[i].shortAddress != 0U &&
+        g_nodes[i].supportsIdentify && g_nodes[i].endpoint != 0U) {
+      return &g_nodes[i];
+    }
+  }
+  return nullptr;
+}
+
 NodeEntry* firstJoinedNode() {
   for (uint8_t i = 0U; i < kMaxNodes; ++i) {
     if (g_nodes[i].used && g_nodes[i].shortAddress != 0U) {
@@ -1711,11 +2211,132 @@ NodeEntry* firstJoinedNode() {
   return nullptr;
 }
 
+void clearNodeInterviewState(NodeEntry* node) {
+  if (node == nullptr) {
+    return;
+  }
+  node->haveNodeDescriptor = false;
+  node->logicalType = 0U;
+  node->macCapabilityFlags = 0U;
+  node->manufacturerCode = 0U;
+  node->havePowerDescriptor = false;
+  node->availablePowerSources = 0U;
+  node->currentPowerSource = 0U;
+  node->currentPowerSourceLevel = 0U;
+  node->haveBasicZclVersion = false;
+  node->basicZclVersion = 0U;
+  node->haveBasicApplicationVersion = false;
+  node->basicApplicationVersion = 0U;
+  node->haveBasicStackVersion = false;
+  node->basicStackVersion = 0U;
+  node->haveBasicHwVersion = false;
+  node->basicHwVersion = 0U;
+  node->haveBasicPowerSource = false;
+  node->basicPowerSource = 0U;
+  node->basicManufacturerName[0] = '\0';
+  node->basicModelIdentifier[0] = '\0';
+  node->basicSwBuildId[0] = '\0';
+  node->haveOnOffState = false;
+  node->onOffState = false;
+  node->haveLevelState = false;
+  node->levelState = 0U;
+  node->haveTemperatureState = false;
+  node->temperatureCentiDegrees = 0;
+  node->haveBatteryVoltage = false;
+  node->batteryVoltageDecivolts = 0U;
+  node->haveBatteryPercentage = false;
+  node->batteryPercentageRemainingHalf = 0U;
+  node->haveIdentifyTime = false;
+  node->identifyTimeSeconds = 0U;
+}
+
+void copyNodeString(char* destination, size_t destinationSize,
+                    const ZigbeeAttributeValue& value) {
+  if (destination == nullptr || destinationSize == 0U) {
+    return;
+  }
+  destination[0] = '\0';
+  if (value.type != ZigbeeZclDataType::kCharString ||
+      value.stringValue == nullptr) {
+    return;
+  }
+
+  size_t copyLength = value.stringLength;
+  if (copyLength >= destinationSize) {
+    copyLength = destinationSize - 1U;
+  }
+  memcpy(destination, value.stringValue, copyLength);
+  destination[copyLength] = '\0';
+}
+
+void printCentiDegrees(int16_t centiDegrees) {
+  if (centiDegrees < 0) {
+    Serial.print("-");
+    centiDegrees = static_cast<int16_t>(-centiDegrees);
+  }
+  Serial.print(centiDegrees / 100);
+  Serial.print(".");
+  const uint8_t fraction = static_cast<uint8_t>(centiDegrees % 100);
+  if (fraction < 10U) {
+    Serial.print("0");
+  }
+  Serial.print(fraction);
+}
+
 void updateNodeAttributeState(NodeEntry* node, uint16_t clusterId,
                               const ZigbeeAttributeValue& value,
                               uint16_t attributeId) {
   if (node == nullptr) {
     return;
+  }
+
+  if (clusterId == kZigbeeClusterBasic) {
+    switch (attributeId) {
+      case 0x0000U:
+        if (value.type == ZigbeeZclDataType::kUint8) {
+          node->haveBasicZclVersion = true;
+          node->basicZclVersion = value.data.u8;
+        }
+        return;
+      case 0x0001U:
+        if (value.type == ZigbeeZclDataType::kUint8) {
+          node->haveBasicApplicationVersion = true;
+          node->basicApplicationVersion = value.data.u8;
+        }
+        return;
+      case 0x0002U:
+        if (value.type == ZigbeeZclDataType::kUint8) {
+          node->haveBasicStackVersion = true;
+          node->basicStackVersion = value.data.u8;
+        }
+        return;
+      case 0x0003U:
+        if (value.type == ZigbeeZclDataType::kUint8) {
+          node->haveBasicHwVersion = true;
+          node->basicHwVersion = value.data.u8;
+        }
+        return;
+      case 0x0004U:
+        copyNodeString(node->basicManufacturerName,
+                       sizeof(node->basicManufacturerName), value);
+        return;
+      case 0x0005U:
+        copyNodeString(node->basicModelIdentifier,
+                       sizeof(node->basicModelIdentifier), value);
+        return;
+      case 0x0007U:
+        if (value.type == ZigbeeZclDataType::kUint8) {
+          node->haveBasicPowerSource = true;
+          node->basicPowerSource = value.data.u8;
+        }
+        return;
+      case 0x4000U:
+        copyNodeString(node->basicSwBuildId, sizeof(node->basicSwBuildId),
+                       value);
+        return;
+      default:
+        break;
+    }
   }
 
   if (clusterId == kZigbeeClusterOnOff && attributeId == 0x0000U &&
@@ -1729,6 +2350,34 @@ void updateNodeAttributeState(NodeEntry* node, uint16_t clusterId,
       value.type == ZigbeeZclDataType::kUint8) {
     node->haveLevelState = true;
     node->levelState = value.data.u8;
+    return;
+  }
+
+  if (clusterId == kZigbeeClusterTemperatureMeasurement &&
+      attributeId == 0x0000U && value.type == ZigbeeZclDataType::kInt16) {
+    node->haveTemperatureState = true;
+    node->temperatureCentiDegrees = value.data.i16;
+    return;
+  }
+
+  if (clusterId == kZigbeeClusterPowerConfiguration &&
+      attributeId == 0x0020U && value.type == ZigbeeZclDataType::kUint8) {
+    node->haveBatteryVoltage = true;
+    node->batteryVoltageDecivolts = value.data.u8;
+    return;
+  }
+
+  if (clusterId == kZigbeeClusterPowerConfiguration &&
+      attributeId == 0x0021U && value.type == ZigbeeZclDataType::kUint8) {
+    node->haveBatteryPercentage = true;
+    node->batteryPercentageRemainingHalf = value.data.u8;
+    return;
+  }
+
+  if (clusterId == kZigbeeClusterIdentify && attributeId == 0x0000U &&
+      value.type == ZigbeeZclDataType::kUint16) {
+    node->haveIdentifyTime = true;
+    node->identifyTimeSeconds = value.data.u16;
   }
 }
 
@@ -1841,8 +2490,50 @@ void listNodes() {
     Serial.print(g_nodes[i].supportsOnOff ? "yes" : "no");
     Serial.print(" level=");
     Serial.print(g_nodes[i].supportsLevelControl ? "yes" : "no");
+    Serial.print(" identify=");
+    if (g_nodes[i].supportsIdentify) {
+      if (g_nodes[i].haveIdentifyTime) {
+        Serial.print(g_nodes[i].identifyTimeSeconds);
+      } else {
+        Serial.print("?");
+      }
+    } else {
+      Serial.print("no");
+    }
     Serial.print(" temp=");
-    Serial.print(g_nodes[i].supportsTemperature ? "yes" : "no");
+    if (g_nodes[i].supportsTemperature) {
+      if (g_nodes[i].haveTemperatureState) {
+        printCentiDegrees(g_nodes[i].temperatureCentiDegrees);
+        Serial.print("C");
+      } else {
+        Serial.print("?");
+      }
+    } else {
+      Serial.print("no");
+    }
+    Serial.print(" batt=");
+    if (g_nodes[i].haveBatteryVoltage || g_nodes[i].haveBatteryPercentage) {
+      if (g_nodes[i].haveBatteryVoltage) {
+        Serial.print(g_nodes[i].batteryVoltageDecivolts / 10);
+        Serial.print(".");
+        Serial.print(g_nodes[i].batteryVoltageDecivolts % 10);
+        Serial.print("V");
+      } else {
+        Serial.print("?");
+      }
+      Serial.print("/");
+      if (g_nodes[i].haveBatteryPercentage) {
+        Serial.print(g_nodes[i].batteryPercentageRemainingHalf / 2);
+        if ((g_nodes[i].batteryPercentageRemainingHalf & 0x01U) != 0U) {
+          Serial.print(".5");
+        }
+        Serial.print("%");
+      } else {
+        Serial.print("?");
+      }
+    } else {
+      Serial.print("?");
+    }
     Serial.print(" group=");
     Serial.print(g_nodes[i].demoGroupConfigured ? "0x1001" : "no");
     Serial.print(" lk=");
@@ -1866,9 +2557,23 @@ void listNodes() {
                   g_nodes[i].pendingAssociationResponse ||
                   g_nodes[i].pendingTransportKey ||
                   g_nodes[i].pendingSwitchKey ||
-                  g_nodes[i].pendingSecureRejoin)
+                  g_nodes[i].pendingSecureRejoin ||
+                  nodeHasPendingApsAck(g_nodes[i]))
                      ? "yes"
                      : "no");
+    Serial.print(" rptv=");
+    if (g_nodes[i].supportsOnOff) {
+      Serial.print(g_nodes[i].onOffReportingVerified ? "O" : "o");
+    }
+    if (g_nodes[i].supportsLevelControl) {
+      Serial.print(g_nodes[i].levelReportingVerified ? "L" : "l");
+    }
+    if (g_nodes[i].supportsTemperature) {
+      Serial.print(g_nodes[i].temperatureReportingVerified ? "T" : "t");
+    }
+    if (g_nodes[i].supportsPowerConfiguration) {
+      Serial.print(g_nodes[i].powerReportingVerified ? "P" : "p");
+    }
     Serial.print(" state=");
     if (g_nodes[i].haveOnOffState) {
       Serial.print(g_nodes[i].onOffState ? "ON" : "OFF");
@@ -1878,10 +2583,29 @@ void listNodes() {
     if (g_nodes[i].supportsLevelControl) {
       Serial.print(" lvl=");
       if (g_nodes[i].haveLevelState) {
-        Serial.print(g_nodes[i].levelState);
+      Serial.print(g_nodes[i].levelState);
       } else {
         Serial.print("?");
       }
+    }
+    if (g_nodes[i].basicManufacturerName[0] != '\0' ||
+        g_nodes[i].basicModelIdentifier[0] != '\0') {
+      Serial.print(" basic=");
+      Serial.print(g_nodes[i].basicManufacturerName[0] != '\0'
+                       ? g_nodes[i].basicManufacturerName
+                       : "?");
+      Serial.print("/");
+      Serial.print(g_nodes[i].basicModelIdentifier[0] != '\0'
+                       ? g_nodes[i].basicModelIdentifier
+                       : "?");
+    }
+    if (g_nodes[i].basicSwBuildId[0] != '\0') {
+      Serial.print(" sw=");
+      Serial.print(g_nodes[i].basicSwBuildId);
+    }
+    if (g_nodes[i].haveBasicPowerSource) {
+      Serial.print(" psrc=0x");
+      Serial.print(g_nodes[i].basicPowerSource, HEX);
     }
     Serial.print("\r\n");
   }
@@ -1915,6 +2639,31 @@ void handleAssociationRequest(const ZigbeeMacAssociationRequestView& request,
   node->pendingSwitchKey = false;
   clearPendingApsAck(node);
   clearRecentInboundAps(node);
+  clearNodeInterviewState(node);
+  node->endpoint = 0U;
+  node->profileId = 0U;
+  node->deviceId = 0U;
+  node->supportsOnOff = false;
+  node->supportsLevelControl = false;
+  node->supportsIdentify = false;
+  node->supportsTemperature = false;
+  node->supportsPowerConfiguration = false;
+  node->basicRead = false;
+  node->onOffBindingConfigured = false;
+  node->levelBindingConfigured = false;
+  node->temperatureBindingConfigured = false;
+  node->powerBindingConfigured = false;
+  node->onOffReportingConfigured = false;
+  node->levelReportingConfigured = false;
+  node->temperatureReportingConfigured = false;
+  node->powerReportingConfigured = false;
+  node->onOffReportingVerified = false;
+  node->levelReportingVerified = false;
+  node->temperatureReportingVerified = false;
+  node->powerReportingVerified = false;
+  node->awaitingBindResponse = false;
+  node->awaitingClusterId = 0U;
+  node->demoGroupConfigured = false;
   node->trustCenterState = TrustCenterNodeState::kIdle;
   if (node->shortAddress == 0U) {
     node->pendingAssignedShort = allocateShortAddress();
@@ -1973,12 +2722,18 @@ void handleDataRequest(const ZigbeeMacFrame& frame) {
 
   if (node->pending.used || node->pendingTransportKey ||
       node->pendingSecureRejoin || node->pendingSwitchKey) {
-    const bool sent = sendPendingApsFrame(node);
-    Serial.print("poll_deliver ");
-    Serial.print(sent ? "OK" : "FAIL");
-    Serial.print(" dst=0x");
-    Serial.print(node->shortAddress, HEX);
-    Serial.print("\r\n");
+    const bool readyForSend =
+        !node->pending.used ||
+        node->pending.deliveryMode != kZigbeeApsDeliveryUnicast ||
+        pendingApsAckSlotAvailable(*node, millis());
+    if (readyForSend) {
+      const bool sent = sendPendingApsFrame(node);
+      Serial.print("poll_deliver ");
+      Serial.print(sent ? "OK" : "FAIL");
+      Serial.print(" dst=0x");
+      Serial.print(node->shortAddress, HEX);
+      Serial.print("\r\n");
+    }
   }
 }
 
@@ -2107,9 +2862,63 @@ void handleZdoFrame(NodeEntry* node, const ZigbeeApsDataFrame& aps) {
     Serial.print(static_cast<uint32_t>(node->ieeeAddress >> 32U), HEX);
     Serial.print(static_cast<uint32_t>(node->ieeeAddress & 0xFFFFFFFFUL), HEX);
     Serial.print("\r\n");
-    if (node->endpoint == 0U) {
+    if (!node->haveNodeDescriptor) {
+      (void)queueNodeDescriptorRequest(node);
+    } else if (!node->havePowerDescriptor) {
+      (void)queuePowerDescriptorRequest(node);
+    } else if (node->endpoint == 0U) {
       (void)queueActiveEndpointsRequest(node);
     }
+    return;
+  }
+
+  if (aps.clusterId == kZigbeeZdoNodeDescriptorResponse) {
+    ZigbeeZdoNodeDescriptorResponseView view{};
+    if (!ZigbeeCodec::parseZdoNodeDescriptorResponse(
+            aps.payload, aps.payloadLength, &view) ||
+        !view.valid || view.status != 0x00U) {
+      return;
+    }
+
+    node->haveNodeDescriptor = true;
+    node->logicalType = view.logicalType;
+    node->macCapabilityFlags = view.macCapabilityFlags;
+    node->manufacturerCode = view.manufacturerCode;
+    Serial.print("node_desc short=0x");
+    Serial.print(node->shortAddress, HEX);
+    Serial.print(" logical_type=0x");
+    Serial.print(node->logicalType, HEX);
+    Serial.print(" mac_cap=0x");
+    Serial.print(node->macCapabilityFlags, HEX);
+    Serial.print(" mfg=0x");
+    Serial.print(node->manufacturerCode, HEX);
+    Serial.print("\r\n");
+    (void)queuePowerDescriptorRequest(node);
+    return;
+  }
+
+  if (aps.clusterId == kZigbeeZdoPowerDescriptorResponse) {
+    ZigbeeZdoPowerDescriptorResponseView view{};
+    if (!ZigbeeCodec::parseZdoPowerDescriptorResponse(
+            aps.payload, aps.payloadLength, &view) ||
+        !view.valid || view.status != 0x00U) {
+      return;
+    }
+
+    node->havePowerDescriptor = true;
+    node->availablePowerSources = view.availablePowerSources;
+    node->currentPowerSource = view.currentPowerSource;
+    node->currentPowerSourceLevel = view.currentPowerSourceLevel;
+    Serial.print("power_desc short=0x");
+    Serial.print(node->shortAddress, HEX);
+    Serial.print(" avail=0x");
+    Serial.print(node->availablePowerSources, HEX);
+    Serial.print(" current=0x");
+    Serial.print(node->currentPowerSource, HEX);
+    Serial.print(" level=0x");
+    Serial.print(node->currentPowerSourceLevel, HEX);
+    Serial.print("\r\n");
+    (void)queueActiveEndpointsRequest(node);
     return;
   }
 
@@ -2208,6 +3017,8 @@ void handleZdoFrame(NodeEntry* node, const ZigbeeApsDataFrame& aps) {
     node->supportsIdentify = false;
     node->supportsTemperature = false;
     node->supportsPowerConfiguration = false;
+    node->haveIdentifyTime = false;
+    node->identifyTimeSeconds = 0U;
     node->onOffBindingConfigured = false;
     node->levelBindingConfigured = false;
     node->temperatureBindingConfigured = false;
@@ -2216,6 +3027,10 @@ void handleZdoFrame(NodeEntry* node, const ZigbeeApsDataFrame& aps) {
     node->levelReportingConfigured = false;
     node->temperatureReportingConfigured = false;
     node->powerReportingConfigured = false;
+    node->onOffReportingVerified = false;
+    node->levelReportingVerified = false;
+    node->temperatureReportingVerified = false;
+    node->powerReportingVerified = false;
     node->awaitingBindResponse = false;
     node->awaitingClusterId = 0U;
     node->demoGroupConfigured = false;
@@ -2243,6 +3058,8 @@ void handleZdoFrame(NodeEntry* node, const ZigbeeApsDataFrame& aps) {
     Serial.print(node->deviceId, HEX);
     Serial.print(" onoff=");
     Serial.print(node->supportsOnOff ? "yes" : "no");
+    Serial.print(" identify=");
+    Serial.print(node->supportsIdentify ? "yes" : "no");
     Serial.print(" level=");
     Serial.print(node->supportsLevelControl ? "yes" : "no");
     Serial.print(" temp=");
@@ -2307,12 +3124,97 @@ void handleHaFrame(NodeEntry* node, const ZigbeeApsDataFrame& aps) {
   }
 
   if (zcl.frameType == ZigbeeZclFrameType::kGlobal &&
+      zcl.commandId == kZclCommandWriteAttributesResponse) {
+    ZigbeeWriteAttributeStatusRecord records[8];
+    uint8_t recordCount = 0U;
+    if (!ZigbeeCodec::parseWriteAttributesResponse(
+            zcl.payload, zcl.payloadLength, records,
+            static_cast<uint8_t>(sizeof(records) / sizeof(records[0])),
+            &recordCount)) {
+      return;
+    }
+
+    Serial.print("write_attr_rsp short=0x");
+    Serial.print(node->shortAddress, HEX);
+    Serial.print(" cluster=0x");
+    Serial.print(aps.clusterId, HEX);
+    for (uint8_t i = 0U; i < recordCount; ++i) {
+      Serial.print(" status=0x");
+      Serial.print(records[i].status, HEX);
+      if (records[i].attributeId != 0U || records[i].status != 0x00U) {
+        Serial.print(" attr=0x");
+        Serial.print(records[i].attributeId, HEX);
+      }
+    }
+    Serial.print("\r\n");
+    return;
+  }
+
+  if (zcl.frameType == ZigbeeZclFrameType::kGlobal &&
+      zcl.commandId == kZclCommandDiscoverAttributesExtendedResponse) {
+    ZigbeeDiscoveredExtendedAttributeRecord records[8];
+    uint8_t recordCount = 0U;
+    bool discoveryComplete = false;
+    if (!ZigbeeCodec::parseDiscoverAttributesExtendedResponse(
+            zcl.payload, zcl.payloadLength, &discoveryComplete, records,
+            static_cast<uint8_t>(sizeof(records) / sizeof(records[0])),
+            &recordCount)) {
+      return;
+    }
+
+    Serial.print("discover_attr_ext_rsp short=0x");
+    Serial.print(node->shortAddress, HEX);
+    Serial.print(" cluster=0x");
+    Serial.print(aps.clusterId, HEX);
+    Serial.print(" complete=");
+    Serial.print(discoveryComplete ? "yes" : "no");
+    for (uint8_t i = 0U; i < recordCount; ++i) {
+      Serial.print(" attr=0x");
+      Serial.print(records[i].attributeId, HEX);
+      Serial.print(" type=0x");
+      Serial.print(static_cast<uint8_t>(records[i].dataType), HEX);
+      Serial.print(" access=0x");
+      Serial.print(records[i].accessControl, HEX);
+    }
+    Serial.print("\r\n");
+    return;
+  }
+
+  if (zcl.frameType == ZigbeeZclFrameType::kGlobal &&
       zcl.commandId == kZclCommandConfigureReportingResponse) {
+    ZigbeeConfigureReportingStatusRecord records[8];
+    uint8_t recordCount = 0U;
+    if (!ZigbeeCodec::parseConfigureReportingResponse(
+            zcl.payload, zcl.payloadLength, records,
+            static_cast<uint8_t>(sizeof(records) / sizeof(records[0])),
+            &recordCount)) {
+      return;
+    }
+
+    bool success = false;
+    if (recordCount == 1U && records[0].status == 0x00U &&
+        records[0].attributeId == 0U) {
+      success = true;
+    }
     Serial.print("cfg_reporting_rsp short=0x");
     Serial.print(node->shortAddress, HEX);
     Serial.print(" cluster=0x");
     Serial.print(aps.clusterId, HEX);
+    Serial.print(" status=");
+    Serial.print(success ? "OK" : "FAIL");
+    for (uint8_t i = 0U; !success && i < recordCount; ++i) {
+      Serial.print(" attr=0x");
+      Serial.print(records[i].attributeId, HEX);
+      Serial.print(" dir=");
+      Serial.print(records[i].direction);
+      Serial.print(" code=0x");
+      Serial.print(records[i].status, HEX);
+    }
     Serial.print("\r\n");
+    if (!success) {
+      node->stage = NodeStage::kReady;
+      return;
+    }
     if (aps.clusterId == kZigbeeClusterOnOff) {
       node->onOffReportingConfigured = true;
     } else if (aps.clusterId == kZigbeeClusterLevelControl) {
@@ -2322,10 +3224,73 @@ void handleHaFrame(NodeEntry* node, const ZigbeeApsDataFrame& aps) {
     } else if (aps.clusterId == kZigbeeClusterPowerConfiguration) {
       node->powerReportingConfigured = true;
     }
+    if (queueReadReportingConfiguration(node, aps.clusterId)) {
+      return;
+    }
     if (queueNextReportingStep(node)) {
       return;
     }
     node->stage = NodeStage::kReady;
+    return;
+  }
+
+  if (zcl.frameType == ZigbeeZclFrameType::kGlobal &&
+      zcl.commandId == kZclCommandReadReportingConfigurationResponse) {
+    ZigbeeReadReportingConfigurationResponseRecord records[8];
+    uint8_t recordCount = 0U;
+    if (!ZigbeeCodec::parseReadReportingConfigurationResponse(
+            zcl.payload, zcl.payloadLength, records,
+            static_cast<uint8_t>(sizeof(records) / sizeof(records[0])),
+            &recordCount)) {
+      return;
+    }
+
+    const bool verified =
+        reportingConfigurationMatches(aps.clusterId, records, recordCount);
+    Serial.print("read_reporting_rsp short=0x");
+    Serial.print(node->shortAddress, HEX);
+    Serial.print(" cluster=0x");
+    Serial.print(aps.clusterId, HEX);
+    Serial.print(" verify=");
+    Serial.print(verified ? "OK" : "FAIL");
+    for (uint8_t i = 0U; i < recordCount; ++i) {
+      Serial.print(" attr=0x");
+      Serial.print(records[i].attributeId, HEX);
+      Serial.print(" status=0x");
+      Serial.print(records[i].status, HEX);
+    }
+    Serial.print("\r\n");
+
+    if (aps.clusterId == kZigbeeClusterOnOff) {
+      node->onOffReportingVerified = verified;
+    } else if (aps.clusterId == kZigbeeClusterLevelControl) {
+      node->levelReportingVerified = verified;
+    } else if (aps.clusterId == kZigbeeClusterTemperatureMeasurement) {
+      node->temperatureReportingVerified = verified;
+    } else if (aps.clusterId == kZigbeeClusterPowerConfiguration) {
+      node->powerReportingVerified = verified;
+    }
+    if (queueNextReportingStep(node)) {
+      return;
+    }
+    node->stage = NodeStage::kReady;
+    return;
+  }
+
+  if (aps.clusterId == kZigbeeClusterIdentify &&
+      zcl.frameType == ZigbeeZclFrameType::kClusterSpecific &&
+      zcl.commandId == kIdentifyCommandIdentify) {
+    node->haveIdentifyTime = true;
+    node->identifyTimeSeconds =
+        (zcl.payloadLength >= 2U)
+            ? static_cast<uint16_t>(zcl.payload[0]) |
+                  (static_cast<uint16_t>(zcl.payload[1]) << 8U)
+            : 0U;
+    Serial.print("identify_query_rsp short=0x");
+    Serial.print(node->shortAddress, HEX);
+    Serial.print(" timeout_s=");
+    Serial.print(node->identifyTimeSeconds);
+    Serial.print("\r\n");
     return;
   }
 
@@ -2493,7 +3458,8 @@ void processIncomingFrame(const ZigbeeFrame& frame) {
   if (ZigbeeCodec::parseApsAcknowledgementFrame(nwk.payload, nwk.payloadLength,
                                                 &ack) &&
       ack.valid) {
-    if (matchesPendingApsAck(*node, ack)) {
+    uint8_t ackSlot = 0U;
+    if (findPendingApsAckSlot(*node, ack, &ackSlot)) {
       Serial.print("aps_ack short=0x");
       Serial.print(node->shortAddress, HEX);
       Serial.print(" ctr=0x");
@@ -2501,7 +3467,7 @@ void processIncomingFrame(const ZigbeeFrame& frame) {
       Serial.print(" cluster=0x");
       Serial.print(ack.clusterId, HEX);
       Serial.print("\r\n");
-      clearPendingApsAck(node);
+      clearPendingApsAckSlot(node, ackSlot);
     }
     return;
   }
@@ -2569,6 +3535,72 @@ void handleSerialCommands() {
       const bool queued = (node != nullptr) && queueActiveEndpointsRequest(node);
       Serial.print("discover ");
       Serial.print(queued ? "OK" : "FAIL");
+      Serial.print("\r\n");
+    } else if (ch == 'i' || ch == 'e' || ch == 'u' || ch == 'j' || ch == 'w' ||
+               ch == 'W' || ch == 's' || ch == 'S' || ch == 'I' ||
+               ch == 'R' || ch == 'C') {
+      NodeEntry* node = firstIdentifyNode();
+      bool queued = false;
+      if (ch == 'i') {
+        queued = (node != nullptr) && queueIdentifyCommand(node, 5U);
+        Serial.print("queue_identify ");
+        Serial.print(queued ? "OK" : "FAIL");
+        Serial.print(" timeout_s=5");
+      } else if (ch == 'e') {
+        queued =
+            (node != nullptr) && queueIdentifyDiscoverAttributesExtended(node);
+        Serial.print("queue_identify_discover_attr_ext ");
+        Serial.print(queued ? "OK" : "FAIL");
+      } else if (ch == 'u') {
+        queued =
+            (node != nullptr) && queueIdentifyWriteAttributeUndivided(node, 5U, false);
+        Serial.print("queue_identify_write_undivided ");
+        Serial.print(queued ? "OK" : "FAIL");
+        Serial.print(" timeout_s=5");
+      } else if (ch == 'j') {
+        queued =
+            (node != nullptr) && queueIdentifyWriteAttributeUndivided(node, 5U, true);
+        Serial.print("queue_identify_write_undivided_fail ");
+        Serial.print(queued ? "OK" : "FAIL");
+        Serial.print(" timeout_s=5 attr=0xFFFC");
+      } else if (ch == 'w') {
+        queued = (node != nullptr) && queueIdentifyWriteAttribute(node, 5U, false);
+        Serial.print("queue_identify_write ");
+        Serial.print(queued ? "OK" : "FAIL");
+        Serial.print(" timeout_s=5");
+      } else if (ch == 'W') {
+        queued = (node != nullptr) && queueIdentifyWriteAttribute(node, 5U, true);
+        Serial.print("queue_identify_write_no_rsp ");
+        Serial.print(queued ? "OK" : "FAIL");
+        Serial.print(" timeout_s=5");
+      } else if (ch == 's') {
+        queued = (node != nullptr) && queueIdentifyQuery(node);
+        Serial.print("queue_identify_query ");
+        Serial.print(queued ? "OK" : "FAIL");
+      } else if (ch == 'S') {
+        queued =
+            (node != nullptr) && queueTriggerEffect(node, kIdentifyEffectStopEffect);
+        Serial.print("queue_trigger_effect ");
+        Serial.print(queued ? "OK" : "FAIL");
+        Serial.print(" effect=stop");
+      } else if (ch == 'I') {
+        queued = (node != nullptr) && queueTriggerEffect(node, kIdentifyEffectBlink);
+        Serial.print("queue_trigger_effect ");
+        Serial.print(queued ? "OK" : "FAIL");
+        Serial.print(" effect=blink");
+      } else if (ch == 'R') {
+        queued =
+            (node != nullptr) && queueTriggerEffect(node, kIdentifyEffectBreathe);
+        Serial.print("queue_trigger_effect ");
+        Serial.print(queued ? "OK" : "FAIL");
+        Serial.print(" effect=breathe");
+      } else {
+        queued = (node != nullptr) &&
+                 queueTriggerEffect(node, kIdentifyEffectChannelChange);
+        Serial.print("queue_trigger_effect ");
+        Serial.print(queued ? "OK" : "FAIL");
+        Serial.print(" effect=channel_change");
+      }
       Serial.print("\r\n");
     } else if (ch == 'v' || ch == 'V') {
       NodeEntry* node = firstJoinedNode();
@@ -2683,7 +3715,7 @@ void setup() {
   Serial.print(" nwk_seq=");
   Serial.print(g_activeNetworkKeySequence);
   Serial.print("\r\n");
-  Serial.print("serial commands: b=beacon l=list p=permit_join x=close_join d=discover v=leave V=leave_rejoin k=key_update t=toggle o=on f=off U=brighter D=dimmer M=mid g=enroll_group O/F/T=group on/off/toggle +/-/m=group level\r\n");
+  Serial.print("serial commands: b=beacon l=list p=permit_join x=close_join d=discover i=identify_5s e=identify_discover_attr_ext u=write_identify_5s_undivided j=write_identify_5s_undivided_fail w=write_identify_5s W=write_identify_5s_no_rsp s=identify_query S=identify_stop I=effect_blink R=effect_breathe C=effect_channel v=leave V=leave_rejoin k=key_update t=toggle o=on f=off U=brighter D=dimmer M=mid g=enroll_group O/F/T=group on/off/toggle +/-/m=group level\r\n");
   g_permitJoinEnabled = true;
   g_permitJoinDeadlineMs = millis() + kPermitJoinWindowMs;
 }
@@ -2722,7 +3754,7 @@ void loop() {
       if (g_nodes[i].pending.used || g_nodes[i].pendingAssociationResponse ||
           g_nodes[i].pendingTransportKey || g_nodes[i].pendingSecureRejoin ||
           g_nodes[i].pendingSwitchKey ||
-          g_nodes[i].pendingApsAck) {
+          nodeHasPendingApsAck(g_nodes[i])) {
         ++pending;
       }
     }

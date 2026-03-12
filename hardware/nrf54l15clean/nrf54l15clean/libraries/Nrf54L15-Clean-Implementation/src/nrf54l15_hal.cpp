@@ -5,6 +5,10 @@
 #include <cmsis.h>
 #include "variant.h"
 
+#ifndef NRF54L15_CLEAN_ZIGBEE_SCAN_TRACE
+#define NRF54L15_CLEAN_ZIGBEE_SCAN_TRACE 0
+#endif
+
 extern "C" void nrf54l15_core_prepare_system_off(void) __attribute__((weak));
 extern "C" void nrf54l15_core_disable_system_off_retention(void)
     __attribute__((weak));
@@ -4936,6 +4940,148 @@ bool ZigbeeRadio::transmit(const uint8_t* psdu, uint8_t length, bool performCca,
   return endSeen && disabled && acknowledged;
 }
 
+bool ZigbeeRadio::transmitThenReceive(const uint8_t* psdu, uint8_t length,
+                                      ZigbeeFrame* frame,
+                                      uint32_t listenWindowUs,
+                                      bool performCca, uint32_t spinLimit) {
+  if (!initialized_ || radio_ == nullptr || psdu == nullptr || frame == nullptr) {
+    return false;
+  }
+  if (length == 0U || length > 127U) {
+    return false;
+  }
+
+  if (performCca && !performCcaCheck(spinLimit / 2U + 1U)) {
+    return false;
+  }
+
+  memset(rxPacket_, 0, sizeof(rxPacket_));
+  rxPacket_[0] = length;
+  memcpy(&rxPacket_[1], psdu, length);
+
+  clearRadioCoreEvents(radio_);
+  radio_->EVENTS_FRAMESTART = 0U;
+  radio_->PACKETPTR = reinterpret_cast<uint32_t>(rxPacket_);
+  radio_->SHORTS =
+      ((RADIO_SHORTS_TXREADY_START_Enabled << RADIO_SHORTS_TXREADY_START_Pos) &
+       RADIO_SHORTS_TXREADY_START_Msk) |
+      ((RADIO_SHORTS_PHYEND_DISABLE_Enabled << RADIO_SHORTS_PHYEND_DISABLE_Pos) &
+       RADIO_SHORTS_PHYEND_DISABLE_Msk) |
+      ((RADIO_SHORTS_DISABLED_RXEN_Enabled << RADIO_SHORTS_DISABLED_RXEN_Pos) &
+       RADIO_SHORTS_DISABLED_RXEN_Msk) |
+      ((RADIO_SHORTS_RXREADY_START_Enabled << RADIO_SHORTS_RXREADY_START_Pos) &
+       RADIO_SHORTS_RXREADY_START_Msk) |
+      ((RADIO_SHORTS_ADDRESS_RSSISTART_Enabled
+        << RADIO_SHORTS_ADDRESS_RSSISTART_Pos) &
+       RADIO_SHORTS_ADDRESS_RSSISTART_Msk);
+
+  radio_->TASKS_TXEN = RADIO_TASKS_TXEN_TASKS_TXEN_Trigger;
+  const bool txEndSeen = waitRadioEndBudgeted(radio_, 12000U, spinLimit);
+  if (!txEndSeen) {
+    radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
+    waitRadioDisabledBudgeted(radio_, 3000U, spinLimit);
+    radio_->SHORTS = 0U;
+    clearRadioCoreEvents(radio_);
+    return false;
+  }
+
+  bool txDisabled = waitRadioDisabledBudgeted(radio_, 3000U, spinLimit);
+  if (!txDisabled) {
+    radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
+    txDisabled = waitRadioDisabledBudgeted(radio_, 3000U, spinLimit);
+  }
+  if (!txDisabled) {
+    radio_->SHORTS = 0U;
+    clearRadioCoreEvents(radio_);
+    return false;
+  }
+
+  radio_->EVENTS_DISABLED = 0U;
+  radio_->EVENTS_END = 0U;
+  radio_->EVENTS_PHYEND = 0U;
+  radio_->EVENTS_CRCOK = 0U;
+  radio_->EVENTS_CRCERROR = 0U;
+  radio_->SHORTS =
+      ((RADIO_SHORTS_RXREADY_START_Enabled << RADIO_SHORTS_RXREADY_START_Pos) &
+       RADIO_SHORTS_RXREADY_START_Msk) |
+      ((RADIO_SHORTS_ADDRESS_RSSISTART_Enabled
+        << RADIO_SHORTS_ADDRESS_RSSISTART_Pos) &
+       RADIO_SHORTS_ADDRESS_RSSISTART_Msk) |
+      ((RADIO_SHORTS_PHYEND_DISABLE_Enabled << RADIO_SHORTS_PHYEND_DISABLE_Pos) &
+       RADIO_SHORTS_PHYEND_DISABLE_Msk);
+
+  const uint32_t state =
+      (radio_->STATE & RADIO_STATE_STATE_Msk) >> RADIO_STATE_STATE_Pos;
+  if (state == RADIO_STATE_STATE_Disabled) {
+    radio_->TASKS_RXEN = RADIO_TASKS_RXEN_TASKS_RXEN_Trigger;
+  }
+
+  const bool rxDone =
+      waitRadioRxDoneBudgeted(radio_, listenWindowUs, spinLimit);
+  const int8_t rssiDbm = radioRssiDbm(radio_);
+
+  radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
+  bool disabled = waitRadioDisabledBudgeted(radio_, 3000U, spinLimit);
+  if (!disabled) {
+    radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
+    disabled = waitRadioDisabledBudgeted(radio_, 3000U, spinLimit);
+  }
+  radio_->SHORTS = 0U;
+  if (!disabled || !rxDone) {
+    clearRadioCoreEvents(radio_);
+    return false;
+  }
+
+  const uint32_t crcStatus =
+      (radio_->CRCSTATUS & RADIO_CRCSTATUS_CRCSTATUS_Msk) >>
+      RADIO_CRCSTATUS_CRCSTATUS_Pos;
+  const bool crcOkEvent = (radio_->EVENTS_CRCOK != 0U);
+  const bool crcOk =
+      crcOkEvent || (crcStatus == RADIO_CRCSTATUS_CRCSTATUS_CRCOk);
+  if (!crcOk) {
+#if NRF54L15_CLEAN_ZIGBEE_SCAN_TRACE
+    Serial.print("txrx crc_fail ch=");
+    Serial.print(channel_);
+    Serial.print(" len=");
+    Serial.print(rxPacket_[0]);
+    Serial.print(" rssi=");
+    Serial.print(rssiDbm);
+    Serial.print("\r\n");
+#endif
+    clearRadioCoreEvents(radio_);
+    return false;
+  }
+
+  const uint8_t rxLength = rxPacket_[0];
+  if (rxLength == 0U || rxLength > 127U) {
+#if NRF54L15_CLEAN_ZIGBEE_SCAN_TRACE
+    Serial.print("txrx len_fail ch=");
+    Serial.print(channel_);
+    Serial.print(" len=");
+    Serial.print(rxLength);
+    Serial.print(" rssi=");
+    Serial.print(rssiDbm);
+    Serial.print("\r\n");
+#endif
+    clearRadioCoreEvents(radio_);
+    return false;
+  }
+
+  uint8_t acknowledgementSequence = 0U;
+  const bool sendAcknowledgement = frameRequestsMacAcknowledgement(
+      &rxPacket_[1], rxLength, &acknowledgementSequence);
+
+  frame->channel = channel_;
+  frame->rssiDbm = rssiDbm;
+  frame->length = rxLength;
+  memcpy(frame->psdu, &rxPacket_[1], rxLength);
+  if (sendAcknowledgement) {
+    (void)sendMacAcknowledgement(acknowledgementSequence, false, spinLimit);
+  }
+  clearRadioCoreEvents(radio_);
+  return true;
+}
+
 bool ZigbeeRadio::receive(ZigbeeFrame* frame, uint32_t listenWindowUs,
                           uint32_t spinLimit) {
   if (!initialized_ || radio_ == nullptr || frame == nullptr) {
@@ -4972,12 +5118,30 @@ bool ZigbeeRadio::receive(ZigbeeFrame* frame, uint32_t listenWindowUs,
   const bool crcOkEvent = (radio_->EVENTS_CRCOK != 0U);
   const bool crcOk = crcOkEvent || (crcStatus == RADIO_CRCSTATUS_CRCSTATUS_CRCOk);
   if (!crcOk) {
+#if NRF54L15_CLEAN_ZIGBEE_SCAN_TRACE
+    Serial.print("rx crc_fail ch=");
+    Serial.print(channel_);
+    Serial.print(" len=");
+    Serial.print(rxPacket_[0]);
+    Serial.print(" rssi=");
+    Serial.print(rssiDbm);
+    Serial.print("\r\n");
+#endif
     clearRadioCoreEvents(radio_);
     return false;
   }
 
   const uint8_t length = rxPacket_[0];
   if (length == 0U || length > 127U) {
+#if NRF54L15_CLEAN_ZIGBEE_SCAN_TRACE
+    Serial.print("rx len_fail ch=");
+    Serial.print(channel_);
+    Serial.print(" len=");
+    Serial.print(length);
+    Serial.print(" rssi=");
+    Serial.print(rssiDbm);
+    Serial.print("\r\n");
+#endif
     clearRadioCoreEvents(radio_);
     return false;
   }

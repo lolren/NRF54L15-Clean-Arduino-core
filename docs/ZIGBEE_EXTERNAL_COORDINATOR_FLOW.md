@@ -1,6 +1,6 @@
 # Zigbee External Coordinator Flow
 
-Last updated: 2026-03-09
+Last updated: 2026-03-12
 
 This document captures the packet-level behavior the clean joinable HA examples now expect from a future third-party coordinator bring-up. It is not a claim that ZHA or Zigbee2MQTT interoperability already works.
 
@@ -22,7 +22,7 @@ Expected sequence:
 2. End device performs active scan and ranks beacon candidates through `zigbee_commissioning`.
 3. End device sends MAC association request and polls for MAC association response.
 4. Coordinator allocates a short address and returns the association response on the next poll.
-5. Coordinator delivers APS `Transport Key` with the network key from the expected coordinator short address and trust-center source while the end device is still in the transport-key wait state.
+5. Coordinator or the current parent relay delivers APS `Transport Key` with the network key while the end device is still in the transport-key wait state, and the APS security context identifies the expected trust center.
 6. The `Transport Key` is expected to be APS encrypted by default.
 7. The end device accepts either:
    - an install-code-derived preconfigured link key
@@ -40,7 +40,7 @@ Expected sequence:
 3. If that misses, the device sends a NWK-secured `Rejoin Request` to the retained parent before giving up on the retained channel.
 4. If that still misses, the device performs the retained-network scan across the configured primary and secondary masks, retries orphan recovery and NWK rejoin on the best retained-network candidate it finds, and only then falls back to reassociation.
 5. Coordinator recognizes the node as known and either answers with coordinator realignment, returns a NWK-secured `Rejoin Response`, or accepts the reassociation.
-6. Coordinator delivers APS-secured `Update Device` from the expected trust-center source.
+6. Coordinator or the current parent relay delivers APS-secured `Update Device` from the expected trust-center source.
 7. End device accepts `Update Device` only while it is in the secure-rejoin wait state, restores joined state, re-emits `Device Announce`, and resumes secured polling and reporting.
 
 Current clean examples require retained key material before they will attempt secure rejoin. This is still not BDB rejoin.
@@ -75,6 +75,12 @@ Relevant compile-time knobs already present in the joinable examples:
 
 - `NRF54L15_CLEAN_ZIGBEE_PRIMARY_CHANNEL_MASK`
 - `NRF54L15_CLEAN_ZIGBEE_SECONDARY_CHANNEL_MASK`
+- `NRF54L15_CLEAN_ZIGBEE_ACTIVE_SCAN_WINDOW_MS`
+- `NRF54L15_CLEAN_ZIGBEE_ASSOCIATION_RESPONSE_TIMEOUT_MS`
+- `NRF54L15_CLEAN_ZIGBEE_ASSOCIATION_POLL_LISTEN_MS`
+- `NRF54L15_CLEAN_ZIGBEE_ASSOCIATION_POLL_RETRY_DELAY_MS`
+- `NRF54L15_CLEAN_ZIGBEE_COORDINATOR_REALIGNMENT_TIMEOUT_MS`
+- `NRF54L15_CLEAN_ZIGBEE_NWK_REJOIN_RESPONSE_TIMEOUT_MS`
 - `NRF54L15_CLEAN_ZIGBEE_PREFERRED_EXTENDED_PAN_ID`
 - `NRF54L15_CLEAN_ZIGBEE_USE_INSTALL_CODE`
 - `NRF54L15_CLEAN_ZIGBEE_ALLOW_WELL_KNOWN_LINK_KEY`
@@ -88,6 +94,7 @@ Relevant compile-time knobs already present in the joinable examples:
 Behavior:
 
 - Primary and secondary scan masks can be narrowed for external-coordinator bring-up instead of hard-coding a full-channel demo scan, and the current device-side steering path now exhausts the primary set before it falls back to the secondary set.
+- Active-scan, association-response, coordinator-realignment, and NWK-rejoin wait windows are now explicit policy knobs on the shared commissioning engine instead of fixed demo-only constants, so the joinable examples can be stretched for slower third-party coordinators without patching `zigbee_commissioning.cpp`.
 - Manual or sketch-driven commissioning restart now routes through a shared request path that picks secure rejoin when retained key state allows it and falls back directly to fresh network steering otherwise, instead of forcing a synthetic secure-rejoin failure first.
 - Fresh startup steering is now requested explicitly by the examples after restore when there is no retained secure-rejoin path, instead of being treated as an automatic side effect of any restored non-joined state.
 - Preferred extended PAN, coordinator short, local short/IEEE identity, and install code can now be overridden at build time instead of editing the sketches.
@@ -95,7 +102,7 @@ Behavior:
 - Well-known link-key fallback is optional.
 - Encrypted `Transport Key` is required by default.
 - Secure rejoin depends on retained key material and link-key provenance.
-- `Transport Key`, `Update Device`, and `Switch Key` are only accepted from the expected trust-center source, only in the right device lifecycle state, and encrypted by default.
+- `Transport Key`, `Update Device`, and `Switch Key` are only accepted from the expected trust-center source, only in the right device lifecycle state, and encrypted by default. When APS security proves the trust-center IEEE, the joinable examples now allow the current parent to relay those commands instead of requiring the NWK source short to match the coordinator short.
 - Rejected trust-center commands now surface immediately in the end-device commissioning failure state and serial logs instead of only degenerating into a later timeout.
 
 ## What An External Coordinator Must Match
@@ -103,17 +110,20 @@ Behavior:
 Minimum behavioral match for future ZHA/Zigbee2MQTT interop work:
 
 - Beacon and association timing that the current MAC polling path can interoperate with.
-- APS-encrypted `Transport Key` delivery with the expected preconfigured link key.
+- APS-encrypted `Transport Key` delivery with the expected preconfigured link key, either directly from the trust center or relayed by the current parent.
 - MAC orphan-recovery behavior that can interoperate with an end device expecting orphan notification plus coordinator realignment before reassociation fallback.
 - NWK-secured `Rejoin Request` / `Rejoin Response` handling on retained-key rejoin paths.
-- APS-secured `Update Device` for retained-key rejoin handling, sourced from the coordinator short address and expected trust-center IEEE.
-- APS-secured `Switch Key` if network-key update is attempted, again sourced from the expected trust center.
+- APS-secured `Update Device` for retained-key rejoin handling, sourced from the expected trust-center IEEE and allowed to arrive through the current parent relay.
+- APS-secured `Switch Key` if network-key update is attempted, again sourced from the expected trust center and allowed to arrive through the current parent relay.
 - NWK `End Device Timeout Request` / `Response` handling after a join or secure rejoin completes.
-- Home Automation descriptor discovery, reporting configuration, and standard ZDO responses.
+- Home Automation interview behavior through Node Descriptor, Power Descriptor, Active EP, Simple Descriptor, richer Basic-cluster reads, reporting configuration with sane readback, and standard ZDO responses.
+- Reasonable behavior when a controller probes management surfaces after join: `Mgmt_Bind` should answer from the current binding table, and unsupported management scans should fail explicitly instead of vanishing.
 
 ## What Still Blocks Real Interop
 
 - Real BDB steering, startup, and rejoin behavior.
 - Trust-center key-update lifecycle validation against a third-party coordinator.
-- Validation of the new bounded APS retransmission, duplicate-suppression, and best-effort MAC ACK policy against real third-party coordinators.
+- Validation of the new small-slot APS retransmission, duplicate-suppression, and best-effort MAC ACK policy against real third-party coordinators.
 - Packet-capture validation against ZHA or Zigbee2MQTT on real hardware.
+
+For the concrete first-attempt settings to use against Home Assistant/ZHA, see `docs/ZIGBEE_HOME_ASSISTANT_BRINGUP.md`.

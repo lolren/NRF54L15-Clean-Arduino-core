@@ -925,6 +925,17 @@ static bool testCommissioningStateMachine() {
   ok = ok && ZigbeeSecurity::buildSecuredApsTransportKeyCommand(
                    transportKey, apsSecurity, installCodeKey, 0x2AU,
                    transportFrame, &transportFrameLength);
+  ZigbeeTransportKeyInstallResult routedInstall{};
+  ZigbeeEndDeviceCommonState routedTransportState = state;
+  routedTransportState.parentShort = 0x1111U;
+  ok = ok && ZigbeeCommissioning::acceptTransportKeyCommand(
+                     routedTransportState, kLocalIeee, 0x1111U, 0U, false,
+                     transportFrame, transportFrameLength, installCodeKey, true,
+                     &routedInstall) &&
+       routedInstall.valid &&
+       !ZigbeeCommissioning::acceptTransportKeyCommand(
+           routedTransportState, kLocalIeee, 0x2222U, 0U, false, transportFrame,
+           transportFrameLength, installCodeKey, true, &install);
   ok = ok && ZigbeeCommissioning::acceptTransportKeyCommand(
                      state, kLocalIeee, 0x0000U, 0U, false, transportFrame,
                      transportFrameLength, installCodeKey, true, &install) &&
@@ -1034,13 +1045,20 @@ static bool testCommissioningStateMachine() {
                    &switchFrameLength);
   ZigbeeSwitchKeyAcceptance acceptedSwitch{};
   ZigbeeSwitchKeyAcceptance rejectedSwitch{};
+  ZigbeeSwitchKeyAcceptance routedAcceptedSwitch{};
   ZigbeeEndDeviceCommonState wrongSwitchState = state;
   wrongSwitchState.rejoinPending = true;
   wrongSwitchState.state = ZigbeeCommissioningState::kWaitingUpdateDevice;
+  ZigbeeEndDeviceCommonState routedSwitchState = state;
+  routedSwitchState.parentShort = 0x1111U;
   ok = ok && ZigbeeCommissioning::acceptSwitchKeyCommand(
                      state, 0x0000U, kTrustCenterIeee, true, false, switchFrame,
                      switchFrameLength, installCodeKey, true,
                      &acceptedSwitch) &&
+       ZigbeeCommissioning::acceptSwitchKeyCommand(
+           routedSwitchState, 0x1111U, kTrustCenterIeee, true, false,
+           switchFrame, switchFrameLength, installCodeKey, true,
+           &routedAcceptedSwitch) &&
        !ZigbeeCommissioning::acceptSwitchKeyCommand(
            wrongSwitchState, 0x0000U, kTrustCenterIeee, true, false,
            switchFrame, switchFrameLength, installCodeKey, true,
@@ -1129,14 +1147,21 @@ static bool testCommissioningStateMachine() {
 
   ZigbeeUpdateDeviceAcceptance acceptedUpdate{};
   ZigbeeUpdateDeviceAcceptance rejectedUpdate{};
+  ZigbeeUpdateDeviceAcceptance routedAcceptedUpdate{};
   ZigbeeEndDeviceCommonState wrongUpdateState = state;
   wrongUpdateState.state = ZigbeeCommissioningState::kJoined;
   wrongUpdateState.rejoinPending = false;
   state.state = ZigbeeCommissioningState::kWaitingUpdateDevice;
+  ZigbeeEndDeviceCommonState routedUpdateState = state;
+  routedUpdateState.parentShort = 0x1111U;
   ok = ok && ZigbeeCommissioning::acceptUpdateDeviceCommand(
                      state, kLocalIeee, 0x0000U, kTrustCenterIeee, true, false,
                      updateFrame, updateFrameLength, installCodeKey, true,
                      &acceptedUpdate) &&
+       ZigbeeCommissioning::acceptUpdateDeviceCommand(
+           routedUpdateState, kLocalIeee, 0x1111U, kTrustCenterIeee, true,
+           false, updateFrame, updateFrameLength, installCodeKey, true,
+           &routedAcceptedUpdate) &&
        !ZigbeeCommissioning::acceptUpdateDeviceCommand(
            wrongUpdateState, kLocalIeee, 0x0000U, kTrustCenterIeee, true,
            false, updateFrame, updateFrameLength, installCodeKey, true,
@@ -1443,7 +1468,109 @@ static bool testZdoAddressAndManagementFlow() {
        flags == kZigbeeMgmtLeaveFlagRejoin && !device.leaveRequested() &&
        !device.leaveRequestWantsRejoin() && !device.consumeLeaveRequest();
 
-  reportResult("ZDO Address+Mgmt", ok, "addr_req+leave+permit_join");
+  payloadLength = 0U;
+  ok = ok && ZigbeeCodec::buildZdoBindRequest(
+                   0x59U, 0x00124B0001ABCDEFULL, 0x01U, kZigbeeClusterOnOff,
+                   ZigbeeBindingAddressMode::kExtended, 0U,
+                   0x00124B000054A11FULL, 0x02U, payload, &payloadLength) &&
+       device.handleZdoRequest(kZigbeeZdoBindRequest, payload, payloadLength,
+                               &responseClusterId, response,
+                               &responseLength) &&
+       responseClusterId == kZigbeeZdoBindResponse &&
+       ZigbeeCodec::parseZdoStatusResponse(response, responseLength,
+                                           &transactionSequence, &flags) &&
+       transactionSequence == 0x59U && flags == 0x00U;
+
+  payloadLength = 0U;
+  ok = ok && ZigbeeCodec::buildZdoBindRequest(
+                   0x5AU, 0x00124B0001ABCDEFULL, 0x01U, kZigbeeClusterOnOff,
+                   ZigbeeBindingAddressMode::kGroup, 0x1001U, 0U, 0U, payload,
+                   &payloadLength) &&
+       device.handleZdoRequest(kZigbeeZdoBindRequest, payload, payloadLength,
+                               &responseClusterId, response,
+                               &responseLength) &&
+       responseClusterId == kZigbeeZdoBindResponse &&
+       ZigbeeCodec::parseZdoStatusResponse(response, responseLength,
+                                           &transactionSequence, &flags) &&
+       transactionSequence == 0x5AU && flags == 0x00U;
+
+  const uint8_t mgmtBindReq0[] = {0x5BU, 0x00U};
+  responseLength = 0U;
+  ok = ok && device.handleZdoRequest(kZigbeeZdoMgmtBindRequest, mgmtBindReq0,
+                                     sizeof(mgmtBindReq0),
+                                     &responseClusterId, response,
+                                     &responseLength) &&
+       responseClusterId == kZigbeeZdoMgmtBindResponse &&
+       responseLength == 40U &&
+       response[0] == 0x5BU && response[1] == 0x00U &&
+       response[2] == 0x02U && response[3] == 0x00U &&
+       response[4] == 0x02U &&
+       response[5] == 0xEFU && response[6] == 0xCDU &&
+       response[7] == 0xABU && response[8] == 0x01U &&
+       response[9] == 0x00U && response[10] == 0x4BU &&
+       response[11] == 0x12U && response[12] == 0x00U &&
+       response[13] == 0x01U &&
+       response[14] == 0x06U && response[15] == 0x00U &&
+       response[16] ==
+           static_cast<uint8_t>(ZigbeeBindingAddressMode::kExtended) &&
+       response[17] == 0x1FU && response[18] == 0xA1U &&
+       response[19] == 0x54U && response[20] == 0x00U &&
+       response[21] == 0x00U && response[22] == 0x4BU &&
+       response[23] == 0x12U && response[24] == 0x00U &&
+       response[25] == 0x02U &&
+       response[26] == 0xEFU && response[27] == 0xCDU &&
+       response[28] == 0xABU && response[29] == 0x01U &&
+       response[30] == 0x00U && response[31] == 0x4BU &&
+       response[32] == 0x12U && response[33] == 0x00U &&
+       response[34] == 0x01U &&
+       response[35] == 0x06U && response[36] == 0x00U &&
+       response[37] ==
+           static_cast<uint8_t>(ZigbeeBindingAddressMode::kGroup) &&
+       response[38] == 0x01U && response[39] == 0x10U;
+
+  const uint8_t mgmtBindReq1[] = {0x5CU, 0x01U};
+  responseLength = 0U;
+  ok = ok && device.handleZdoRequest(kZigbeeZdoMgmtBindRequest, mgmtBindReq1,
+                                     sizeof(mgmtBindReq1),
+                                     &responseClusterId, response,
+                                     &responseLength) &&
+       responseClusterId == kZigbeeZdoMgmtBindResponse &&
+       responseLength == 19U &&
+       response[0] == 0x5CU && response[1] == 0x00U &&
+       response[2] == 0x02U && response[3] == 0x01U &&
+       response[4] == 0x01U &&
+       response[5] == 0xEFU && response[6] == 0xCDU &&
+       response[7] == 0xABU && response[8] == 0x01U &&
+       response[9] == 0x00U && response[10] == 0x4BU &&
+       response[11] == 0x12U && response[12] == 0x00U &&
+       response[13] == 0x01U &&
+       response[14] == 0x06U && response[15] == 0x00U &&
+       response[16] ==
+           static_cast<uint8_t>(ZigbeeBindingAddressMode::kGroup) &&
+       response[17] == 0x01U && response[18] == 0x10U;
+
+  const uint8_t mgmtLqiReq[] = {0x5DU, 0x00U};
+  responseLength = 0U;
+  ok = ok && device.handleZdoRequest(kZigbeeZdoMgmtLqiRequest, mgmtLqiReq,
+                                     sizeof(mgmtLqiReq), &responseClusterId,
+                                     response, &responseLength) &&
+       responseClusterId == kZigbeeZdoMgmtLqiResponse &&
+       ZigbeeCodec::parseZdoStatusResponse(response, responseLength,
+                                           &transactionSequence, &flags) &&
+       transactionSequence == 0x5DU && flags == 0x84U;
+
+  const uint8_t mgmtRtgReq[] = {0x5EU, 0x00U};
+  responseLength = 0U;
+  ok = ok && device.handleZdoRequest(kZigbeeZdoMgmtRtgRequest, mgmtRtgReq,
+                                     sizeof(mgmtRtgReq), &responseClusterId,
+                                     response, &responseLength) &&
+       responseClusterId == kZigbeeZdoMgmtRtgResponse &&
+       ZigbeeCodec::parseZdoStatusResponse(response, responseLength,
+                                           &transactionSequence, &flags) &&
+       transactionSequence == 0x5EU && flags == 0x84U;
+
+  reportResult("ZDO Address+Mgmt", ok,
+               "addr_req+leave+permit_join+mgmt_bind+mgmt_lqi_rtg");
   return ok;
 }
 
@@ -1459,35 +1586,155 @@ static bool testZdoDescriptors() {
       device.configureOnOffLight(1U, 0x00124B0001ABCDEFULL, 0x1234U, 0x1A2BU,
                                  basic, 0x0000U);
 
-  uint8_t request[8] = {0x44U, 0x34U, 0x12U};
   uint16_t responseClusterId = 0U;
   uint8_t payload[127] = {0};
   uint8_t payloadLength = 0U;
+  bool ok = configured;
 
-  bool ok = configured &&
-            device.handleZdoRequest(kZigbeeZdoActiveEndpointsRequest, request, 3U,
-                                    &responseClusterId, payload, &payloadLength) &&
-            responseClusterId == kZigbeeZdoActiveEndpointsResponse &&
-            payloadLength == 5U &&
-            payload[0] == 0x44U &&
-            payload[1] == 0x00U &&
-            payload[2] == 0x34U &&
-            payload[3] == 0x12U &&
-            payload[4] == 0x01U;
+  uint8_t request[8] = {0};
+  ok = ok &&
+       ZigbeeCodec::buildZdoNodeDescriptorRequest(0x43U, 0x1234U, request,
+                                                  &payloadLength) &&
+       payloadLength == 3U;
+  payloadLength = 0U;
+  responseClusterId = 0U;
+  ZigbeeZdoNodeDescriptorResponseView nodeView{};
+  ok = ok &&
+       device.handleZdoRequest(kZigbeeZdoNodeDescriptorRequest, request, 3U,
+                               &responseClusterId, payload, &payloadLength) &&
+       responseClusterId == kZigbeeZdoNodeDescriptorResponse &&
+       ZigbeeCodec::parseZdoNodeDescriptorResponse(payload, payloadLength,
+                                                   &nodeView) &&
+       nodeView.valid && nodeView.status == 0x00U &&
+       nodeView.transactionSequence == 0x43U &&
+       nodeView.nwkAddressOfInterest == 0x1234U &&
+       nodeView.logicalType ==
+           static_cast<uint8_t>(ZigbeeLogicalType::kEndDevice) &&
+       nodeView.manufacturerCode == 0x0000U &&
+       nodeView.maxBufferSize == 0x52U &&
+       nodeView.maxIncomingTransferSize == 82U &&
+       nodeView.maxOutgoingTransferSize == 82U;
 
-  uint8_t simpleRequest[8] = {0x45U, 0x34U, 0x12U, 0x01U};
+  ok = ok &&
+       ZigbeeCodec::buildZdoPowerDescriptorRequest(0x44U, 0x1234U, request,
+                                                   &payloadLength) &&
+       payloadLength == 3U;
+  payloadLength = 0U;
+  responseClusterId = 0U;
+  ZigbeeZdoPowerDescriptorResponseView powerView{};
+  ok = ok &&
+       device.handleZdoRequest(kZigbeeZdoPowerDescriptorRequest, request, 3U,
+                               &responseClusterId, payload, &payloadLength) &&
+       responseClusterId == kZigbeeZdoPowerDescriptorResponse &&
+       ZigbeeCodec::parseZdoPowerDescriptorResponse(payload, payloadLength,
+                                                    &powerView) &&
+       powerView.valid && powerView.status == 0x00U &&
+       powerView.transactionSequence == 0x44U &&
+       powerView.nwkAddressOfInterest == 0x1234U &&
+       powerView.availablePowerSources == 0x04U &&
+       powerView.currentPowerSource == 0x04U &&
+       powerView.currentPowerSourceLevel == 0x0FU;
+
+  ok = ok &&
+       ZigbeeCodec::buildZdoActiveEndpointsRequest(0x45U, 0x1234U, request,
+                                                   &payloadLength) &&
+       payloadLength == 3U;
+  payloadLength = 0U;
+  responseClusterId = 0U;
+  ZigbeeZdoActiveEndpointsResponseView activeView{};
+  ok = ok &&
+       device.handleZdoRequest(kZigbeeZdoActiveEndpointsRequest, request, 3U,
+                               &responseClusterId, payload, &payloadLength) &&
+       responseClusterId == kZigbeeZdoActiveEndpointsResponse &&
+       ZigbeeCodec::parseZdoActiveEndpointsResponse(payload, payloadLength,
+                                                    &activeView) &&
+       activeView.valid && activeView.status == 0x00U &&
+       activeView.transactionSequence == 0x45U &&
+       activeView.nwkAddressOfInterest == 0x1234U &&
+       activeView.endpointCount == 0x01U &&
+       activeView.endpoints[0] == 0x01U;
+
+  uint8_t simpleRequest[8] = {0x46U, 0x34U, 0x12U, 0x01U};
+  payloadLength = 0U;
+  responseClusterId = 0U;
+  ZigbeeZdoSimpleDescriptorResponseView simpleView{};
+  ok = ok &&
+       device.handleZdoRequest(kZigbeeZdoSimpleDescriptorRequest, simpleRequest,
+                               4U, &responseClusterId, payload, &payloadLength) &&
+       responseClusterId == kZigbeeZdoSimpleDescriptorResponse &&
+       ZigbeeCodec::parseZdoSimpleDescriptorResponse(payload, payloadLength,
+                                                     &simpleView) &&
+       simpleView.valid && simpleView.status == 0x00U &&
+       simpleView.transactionSequence == 0x46U &&
+       simpleView.nwkAddressOfInterest == 0x1234U &&
+       simpleView.endpoint == 0x01U &&
+       simpleView.profileId == kZigbeeProfileHomeAutomation &&
+       simpleView.deviceId == kZigbeeDeviceIdOnOffLight &&
+       simpleView.inputClusterCount == 0x05U &&
+       simpleView.inputClusters[0] == kZigbeeClusterBasic &&
+       simpleView.inputClusters[4] == kZigbeeClusterOnOff;
+
+  uint8_t extendedActiveRequest[8] = {0x47U, 0x34U, 0x12U, 0x00U};
   payloadLength = 0U;
   responseClusterId = 0U;
   ok = ok &&
-       device.handleZdoRequest(kZigbeeZdoSimpleDescriptorRequest, simpleRequest, 4U,
-                               &responseClusterId, payload, &payloadLength) &&
-       responseClusterId == kZigbeeZdoSimpleDescriptorResponse &&
-       payload[0] == 0x45U &&
+       device.handleZdoRequest(kZigbeeZdoExtendedActiveEndpointsRequest,
+                               extendedActiveRequest, 4U, &responseClusterId,
+                               payload, &payloadLength) &&
+       responseClusterId == kZigbeeZdoExtendedActiveEndpointsResponse &&
+       payloadLength == 7U &&
+       payload[0] == 0x47U &&
        payload[1] == 0x00U &&
+       payload[2] == 0x34U &&
        payload[3] == 0x12U &&
-       payload[4] >= 8U;
+       payload[4] == 0x01U &&
+       payload[5] == 0x00U &&
+       payload[6] == 0x01U;
 
-  reportResult("ZDO Descriptors", ok, "active_ep+simple_desc");
+  uint8_t extendedSimpleRequest[8] = {0x48U, 0x34U, 0x12U, 0x01U, 0x00U};
+  payloadLength = 0U;
+  responseClusterId = 0U;
+  ok = ok &&
+       device.handleZdoRequest(kZigbeeZdoExtendedSimpleDescriptorRequest,
+                               extendedSimpleRequest, 5U, &responseClusterId,
+                               payload, &payloadLength) &&
+       responseClusterId == kZigbeeZdoExtendedSimpleDescriptorResponse &&
+       payloadLength == 18U &&
+       payload[0] == 0x48U &&
+       payload[1] == 0x00U &&
+       payload[2] == 0x34U &&
+       payload[3] == 0x12U &&
+       payload[4] == 0x01U &&
+       payload[5] == 0x05U &&
+       payload[6] == 0x00U &&
+       payload[7] == 0x00U &&
+       payload[8] == 0x00U &&
+       payload[9] == 0x00U &&
+       payload[10] == 0x03U &&
+       payload[11] == 0x00U &&
+       payload[12] == 0x04U &&
+       payload[13] == 0x00U &&
+       payload[14] == 0x05U &&
+       payload[15] == 0x00U &&
+       payload[16] == 0x06U &&
+       payload[17] == 0x00U;
+
+  uint8_t endDeviceBindRequest[8] = {0x49U, 0x34U};
+  payloadLength = 0U;
+  responseClusterId = 0U;
+  uint8_t transactionSequence = 0U;
+  uint8_t status = 0xFFU;
+  ok = ok &&
+       device.handleZdoRequest(kZigbeeZdoEndDeviceBindRequest,
+                               endDeviceBindRequest, 2U, &responseClusterId,
+                               payload, &payloadLength) &&
+       responseClusterId == kZigbeeZdoEndDeviceBindResponse &&
+       ZigbeeCodec::parseZdoStatusResponse(payload, payloadLength,
+                                           &transactionSequence, &status) &&
+       transactionSequence == 0x49U && status == 0x84U;
+
+  reportResult("ZDO Descriptors", ok,
+               "node_desc+power_desc+active_ep+simple_desc+extended_desc+end_device_bind");
   return ok;
 }
 
@@ -1562,6 +1809,36 @@ static bool testOnOffLightResponses() {
        discovered[3].attributeId == 0xFFFDU &&
        discovered[3].dataType == ZigbeeZclDataType::kUint16;
 
+  const uint8_t discoverIdentifyExtendedReq[] = {0x00U, 0x35U, 0x15U,
+                                                 0x00U, 0x00U, 0x04U};
+  ZigbeeDiscoveredExtendedAttributeRecord discoveredExtended[4];
+  uint8_t discoveredExtendedCount = 0U;
+  responseLength = 0U;
+  discoveryComplete = false;
+  ok = ok &&
+       device.handleZclRequest(kZigbeeClusterIdentify, discoverIdentifyExtendedReq,
+                               sizeof(discoverIdentifyExtendedReq), response,
+                               &responseLength) &&
+       ZigbeeCodec::parseZclFrame(response, responseLength, &parsed) &&
+       parsed.valid && parsed.commandId == 0x16U &&
+       parsed.transactionSequence == 0x35U &&
+       ZigbeeCodec::parseDiscoverAttributesExtendedResponse(
+           parsed.payload, parsed.payloadLength, &discoveryComplete,
+           discoveredExtended,
+           static_cast<uint8_t>(sizeof(discoveredExtended) /
+                                sizeof(discoveredExtended[0])),
+           &discoveredExtendedCount) &&
+       discoveryComplete && discoveredExtendedCount == 3U &&
+       discoveredExtended[0].attributeId == 0x0000U &&
+       discoveredExtended[0].dataType == ZigbeeZclDataType::kUint16 &&
+       discoveredExtended[0].accessControl == 0x07U &&
+       discoveredExtended[1].attributeId == 0xFFFCU &&
+       discoveredExtended[1].dataType == ZigbeeZclDataType::kBitmap32 &&
+       discoveredExtended[1].accessControl == 0x05U &&
+       discoveredExtended[2].attributeId == 0xFFFDU &&
+       discoveredExtended[2].dataType == ZigbeeZclDataType::kUint16 &&
+       discoveredExtended[2].accessControl == 0x05U;
+
   uint8_t discoverCommandsReq[127] = {0};
   uint8_t discoverCommandsReqLength = 0U;
   uint8_t discoveredCommands[4] = {0U};
@@ -1571,13 +1848,13 @@ static bool testOnOffLightResponses() {
   discoveryComplete = false;
   ok = ok &&
        ZigbeeCodec::buildDiscoverCommandsReceivedRequest(
-           0x00U, 3U, 0x35U, discoverCommandsReq, &discoverCommandsReqLength) &&
+           0x00U, 3U, 0x36U, discoverCommandsReq, &discoverCommandsReqLength) &&
        device.handleZclRequest(kZigbeeClusterOnOff, discoverCommandsReq,
                                discoverCommandsReqLength, response,
                                &responseLength) &&
        ZigbeeCodec::parseZclFrame(response, responseLength, &parsed) &&
        parsed.valid && parsed.commandId == 0x12U &&
-       parsed.transactionSequence == 0x35U &&
+       parsed.transactionSequence == 0x36U &&
        ZigbeeCodec::parseDiscoverCommandsResponse(
            parsed.payload, parsed.payloadLength, &discoveryComplete,
            discoveredCommands,
@@ -1593,13 +1870,13 @@ static bool testOnOffLightResponses() {
   memset(discoveredCommands, 0, sizeof(discoveredCommands));
   ok = ok &&
        ZigbeeCodec::buildDiscoverCommandsGeneratedRequest(
-           0x00U, 3U, 0x36U, discoverCommandsReq, &discoverCommandsReqLength) &&
+           0x00U, 3U, 0x37U, discoverCommandsReq, &discoverCommandsReqLength) &&
        device.handleZclRequest(kZigbeeClusterGroups, discoverCommandsReq,
                                discoverCommandsReqLength, response,
                                &responseLength) &&
        ZigbeeCodec::parseZclFrame(response, responseLength, &parsed) &&
        parsed.valid && parsed.commandId == 0x14U &&
-       parsed.transactionSequence == 0x36U &&
+       parsed.transactionSequence == 0x37U &&
        ZigbeeCodec::parseDiscoverCommandsResponse(
            parsed.payload, parsed.payloadLength, &discoveryComplete,
            discoveredCommands,
@@ -1615,13 +1892,13 @@ static bool testOnOffLightResponses() {
   memset(discoveredCommands, 0, sizeof(discoveredCommands));
   ok = ok &&
        ZigbeeCodec::buildDiscoverCommandsGeneratedRequest(
-           0x03U, 3U, 0x37U, discoverCommandsReq, &discoverCommandsReqLength) &&
+           0x03U, 3U, 0x38U, discoverCommandsReq, &discoverCommandsReqLength) &&
        device.handleZclRequest(kZigbeeClusterGroups, discoverCommandsReq,
                                discoverCommandsReqLength, response,
                                &responseLength) &&
        ZigbeeCodec::parseZclFrame(response, responseLength, &parsed) &&
        parsed.valid && parsed.commandId == 0x14U &&
-       parsed.transactionSequence == 0x37U &&
+       parsed.transactionSequence == 0x38U &&
        ZigbeeCodec::parseDiscoverCommandsResponse(
            parsed.payload, parsed.payloadLength, &discoveryComplete,
            discoveredCommands,
@@ -1652,13 +1929,13 @@ static bool testOnOffLightResponses() {
                             kClusterRevisionTag,
                             sizeof(kClusterRevisionTag));
 
-  const uint8_t onReq[] = {0x01U, 0x38U, 0x01U};
+  const uint8_t onReq[] = {0x01U, 0x39U, 0x01U};
   responseLength = 0U;
   ok = ok && device.handleZclRequest(kZigbeeClusterOnOff, onReq, sizeof(onReq),
                                      response, &responseLength) &&
        device.onOff();
 
-  const uint8_t readOnOffReq[] = {0x00U, 0x39U, 0x00U, 0x00U};
+  const uint8_t readOnOffReq[] = {0x00U, 0x3AU, 0x00U, 0x00U};
   responseLength = 0U;
   ok = ok && device.handleZclRequest(kZigbeeClusterOnOff, readOnOffReq,
                                      sizeof(readOnOffReq), response,
@@ -1669,7 +1946,7 @@ static bool testOnOffLightResponses() {
   ok = ok && containsByteSequence(parsed.payload, parsed.payloadLength,
                                   kOnValue, sizeof(kOnValue));
 
-  reportResult("HA Light", ok, "discover+discover_cmds+basic_read+onoff");
+  reportResult("HA Light", ok, "discover+discover_ext+discover_cmds+basic_read+onoff");
   return ok;
 }
 
@@ -1793,7 +2070,122 @@ static bool testIdentifyGroupsScenesFlow() {
                                   kIdentifyTimeValue,
                                   sizeof(kIdentifyTimeValue));
 
-  const uint8_t addGroupReq[] = {0x01U, 0x53U, 0x00U, 0x22U, 0x22U, 0x05U,
+  const uint8_t writeIdentifyReq[] = {0x00U, 0x53U, 0x02U, 0x00U,
+                                      0x00U, 0x21U, 0x05U, 0x00U};
+  responseLength = 0U;
+  ok = ok &&
+       device.handleZclRequest(kZigbeeClusterIdentify, writeIdentifyReq,
+                               sizeof(writeIdentifyReq), response,
+                               &responseLength) &&
+       ZigbeeCodec::parseZclFrame(response, responseLength, &parsed) &&
+       parsed.valid && parsed.commandId == 0x04U &&
+       parsed.payloadLength == 1U && parsed.payload[0] == 0x00U &&
+       device.identifyTimeSeconds() == 5U &&
+       device.identifyEffect() == kZigbeeIdentifyEffectNone;
+
+  responseLength = 0U;
+  ok = ok &&
+       device.handleZclRequest(kZigbeeClusterIdentify, readIdentifyReq,
+                               sizeof(readIdentifyReq), response,
+                               &responseLength) &&
+       ZigbeeCodec::parseZclFrame(response, responseLength, &parsed) &&
+       parsed.valid && parsed.commandId == 0x01U;
+  static const uint8_t kIdentifyTimeWrittenValue[] = {
+      0x00U, 0x00U, 0x00U, 0x21U, 0x05U, 0x00U};
+  ok = ok && containsByteSequence(parsed.payload, parsed.payloadLength,
+                                  kIdentifyTimeWrittenValue,
+                                  sizeof(kIdentifyTimeWrittenValue));
+
+  ZigbeeWriteAttributeRecord writeIdentifyRecord{};
+  writeIdentifyRecord.attributeId = 0x0000U;
+  writeIdentifyRecord.value.type = ZigbeeZclDataType::kUint16;
+  writeIdentifyRecord.value.data.u16 = 4U;
+  uint8_t writeFrame[127] = {0U};
+  uint8_t writeFrameLength = 0U;
+  ZigbeeWriteAttributeStatusRecord writeStatuses[4];
+  uint8_t writeStatusCount = 0U;
+  responseLength = 0U;
+  ok = ok && ZigbeeCodec::buildWriteAttributesRequest(
+                   &writeIdentifyRecord, 1U, 0x54U, writeFrame,
+                   &writeFrameLength) &&
+       device.handleZclRequest(kZigbeeClusterIdentify, writeFrame,
+                               writeFrameLength, response, &responseLength) &&
+       ZigbeeCodec::parseZclFrame(response, responseLength, &parsed) &&
+       parsed.valid && parsed.commandId == 0x04U &&
+       ZigbeeCodec::parseWriteAttributesResponse(
+           parsed.payload, parsed.payloadLength, writeStatuses,
+           static_cast<uint8_t>(sizeof(writeStatuses) / sizeof(writeStatuses[0])),
+           &writeStatusCount) &&
+       writeStatusCount == 1U && writeStatuses[0].status == 0x00U &&
+       device.identifyTimeSeconds() == 4U;
+
+  const uint8_t writeIdentifyNoRspReq[] = {0x00U, 0x54U, 0x05U, 0x00U,
+                                           0x00U, 0x21U, 0x02U, 0x00U};
+  responseLength = 0U;
+  ok = ok &&
+       device.handleZclRequest(kZigbeeClusterIdentify, writeIdentifyNoRspReq,
+                               sizeof(writeIdentifyNoRspReq), response,
+                               &responseLength) &&
+       responseLength == 0U && device.identifyTimeSeconds() == 2U &&
+       device.identifyEffect() == kZigbeeIdentifyEffectNone;
+
+  const uint8_t writeOnOffReadOnlyReq[] = {0x00U, 0x55U, 0x02U, 0x00U,
+                                           0x00U, 0x10U, 0x01U};
+  responseLength = 0U;
+  ok = ok &&
+       device.handleZclRequest(kZigbeeClusterOnOff, writeOnOffReadOnlyReq,
+                               sizeof(writeOnOffReadOnlyReq), response,
+                               &responseLength) &&
+       ZigbeeCodec::parseZclFrame(response, responseLength, &parsed) &&
+       parsed.valid && parsed.commandId == 0x04U &&
+       ZigbeeCodec::parseWriteAttributesResponse(
+           parsed.payload, parsed.payloadLength, writeStatuses,
+           static_cast<uint8_t>(sizeof(writeStatuses) / sizeof(writeStatuses[0])),
+           &writeStatusCount) &&
+       writeStatusCount == 1U && writeStatuses[0].status == 0x88U &&
+       writeStatuses[0].attributeId == 0x0000U;
+
+  const uint8_t writeIdentifyInvalidTypeReq[] = {0x00U, 0x56U, 0x02U, 0x00U,
+                                                 0x00U, 0x10U, 0x01U};
+  responseLength = 0U;
+  ok = ok &&
+       device.handleZclRequest(kZigbeeClusterIdentify,
+                               writeIdentifyInvalidTypeReq,
+                               sizeof(writeIdentifyInvalidTypeReq), response,
+                               &responseLength) &&
+       ZigbeeCodec::parseZclFrame(response, responseLength, &parsed) &&
+       parsed.valid && parsed.commandId == 0x04U &&
+       ZigbeeCodec::parseWriteAttributesResponse(
+           parsed.payload, parsed.payloadLength, writeStatuses,
+           static_cast<uint8_t>(sizeof(writeStatuses) / sizeof(writeStatuses[0])),
+           &writeStatusCount) &&
+       writeStatusCount == 1U && writeStatuses[0].status == 0x85U &&
+       writeStatuses[0].attributeId == 0x0000U;
+
+  ZigbeeWriteAttributeRecord undividedRecords[2];
+  memset(undividedRecords, 0, sizeof(undividedRecords));
+  undividedRecords[0].attributeId = 0x0000U;
+  undividedRecords[0].value.type = ZigbeeZclDataType::kUint16;
+  undividedRecords[0].value.data.u16 = 9U;
+  undividedRecords[1].attributeId = 0xFFFCU;
+  undividedRecords[1].value.type = ZigbeeZclDataType::kBitmap32;
+  undividedRecords[1].value.data.u32 = 0U;
+  responseLength = 0U;
+  ok = ok && ZigbeeCodec::buildWriteAttributesUndividedRequest(
+                   undividedRecords, 2U, 0x57U, writeFrame, &writeFrameLength) &&
+       device.handleZclRequest(kZigbeeClusterIdentify, writeFrame,
+                               writeFrameLength, response, &responseLength) &&
+       ZigbeeCodec::parseZclFrame(response, responseLength, &parsed) &&
+       parsed.valid && parsed.commandId == 0x04U &&
+       ZigbeeCodec::parseWriteAttributesResponse(
+           parsed.payload, parsed.payloadLength, writeStatuses,
+           static_cast<uint8_t>(sizeof(writeStatuses) / sizeof(writeStatuses[0])),
+           &writeStatusCount) &&
+       writeStatusCount == 1U && writeStatuses[0].status == 0x88U &&
+       writeStatuses[0].attributeId == 0xFFFCU &&
+       device.identifyTimeSeconds() == 2U;
+
+  const uint8_t addGroupReq[] = {0x01U, 0x58U, 0x00U, 0x22U, 0x22U, 0x05U,
                                  'L',   'i',   'v',   'i',   'n'};
   responseLength = 0U;
   ok = ok && device.handleZclRequest(kZigbeeClusterGroups, addGroupReq,
@@ -1806,7 +2198,7 @@ static bool testIdentifyGroupsScenesFlow() {
   ok = ok && containsByteSequence(parsed.payload, parsed.payloadLength,
                                   kAddGroupRsp, sizeof(kAddGroupRsp));
 
-  const uint8_t addGroupIfIdentifyingReq[] = {0x01U, 0x54U, 0x05U, 0x33U, 0x33U,
+  const uint8_t addGroupIfIdentifyingReq[] = {0x01U, 0x59U, 0x05U, 0x33U, 0x33U,
                                               0x04U, 'T',   'e',   's',   't'};
   responseLength = 0U;
   ok = ok &&
@@ -1817,7 +2209,7 @@ static bool testIdentifyGroupsScenesFlow() {
        parsed.valid && parsed.commandId == 0x0BU &&
        device.isInGroup(0x3333U);
 
-  const uint8_t viewGroupReq[] = {0x01U, 0x55U, 0x01U, 0x33U, 0x33U};
+  const uint8_t viewGroupReq[] = {0x01U, 0x5AU, 0x01U, 0x33U, 0x33U};
   responseLength = 0U;
   ok = ok && device.handleZclRequest(kZigbeeClusterGroups, viewGroupReq,
                                      sizeof(viewGroupReq), response,
@@ -1829,8 +2221,65 @@ static bool testIdentifyGroupsScenesFlow() {
                                   kViewGroupPrefix,
                                   sizeof(kViewGroupPrefix));
 
+  const uint8_t shortIdentifyReq[] = {0x01U, 0x5BU, 0x00U, 0x01U, 0x00U};
+  responseLength = 0U;
+  ok = ok && device.handleZclRequest(kZigbeeClusterIdentify, shortIdentifyReq,
+                                     sizeof(shortIdentifyReq), response,
+                                     &responseLength) &&
+       ZigbeeCodec::parseZclFrame(response, responseLength, &parsed) &&
+       parsed.valid && parsed.commandId == 0x0BU;
+  const uint32_t identifyWaitStart = millis();
+  while ((millis() - identifyWaitStart) < 1200U) {
+    device.updateIdentify(millis());
+    delay(1);
+  }
+  ok = ok && !device.identifying() && device.identifyTimeSeconds() == 0U &&
+       device.identifyEffect() == kZigbeeIdentifyEffectNone;
+
+  const uint8_t identifyQueryReq[] = {0x01U, 0x5CU, 0x01U};
+  responseLength = 0U;
+  ok = ok && device.handleZclRequest(kZigbeeClusterIdentify, identifyQueryReq,
+                                     sizeof(identifyQueryReq), response,
+                                     &responseLength) &&
+       ZigbeeCodec::parseZclFrame(response, responseLength, &parsed) &&
+       parsed.valid && parsed.commandId == 0x00U &&
+       parsed.payloadLength == 0U;
+
+  const uint8_t addGroupIfNotIdentifyingReq[] = {0x01U, 0x5DU, 0x05U, 0x44U,
+                                                 0x44U, 0x04U, 'L',   'a',
+                                                 't',   'e'};
+  responseLength = 0U;
+  ok = ok &&
+       device.handleZclRequest(kZigbeeClusterGroups,
+                               addGroupIfNotIdentifyingReq,
+                               sizeof(addGroupIfNotIdentifyingReq), response,
+                               &responseLength) &&
+       ZigbeeCodec::parseZclFrame(response, responseLength, &parsed) &&
+       parsed.valid && parsed.commandId == 0x0BU &&
+       !device.isInGroup(0x4444U);
+
+  const uint8_t triggerBlinkReq[] = {0x01U, 0x5EU, 0x40U, 0x00U, 0x00U};
+  responseLength = 0U;
+  ok = ok && device.handleZclRequest(kZigbeeClusterIdentify, triggerBlinkReq,
+                                     sizeof(triggerBlinkReq), response,
+                                     &responseLength) &&
+       ZigbeeCodec::parseZclFrame(response, responseLength, &parsed) &&
+       parsed.valid && parsed.commandId == 0x0BU &&
+       device.identifying() && device.identifyTimeSeconds() > 0U &&
+       device.identifyEffect() == kZigbeeIdentifyEffectBlink;
+
+  const uint8_t stopEffectReq[] = {0x01U, 0x5FU, 0x40U, 0xFFU, 0x00U};
+  responseLength = 0U;
+  ok = ok && device.handleZclRequest(kZigbeeClusterIdentify, stopEffectReq,
+                                     sizeof(stopEffectReq), response,
+                                     &responseLength) &&
+       ZigbeeCodec::parseZclFrame(response, responseLength, &parsed) &&
+       parsed.valid && parsed.commandId == 0x0BU &&
+       !device.identifying() && device.identifyTimeSeconds() == 0U &&
+       device.identifyEffect() == kZigbeeIdentifyEffectNone;
+
   const uint8_t addSceneReq[] = {
-      0x01U, 0x56U, 0x00U, 0x22U, 0x22U, 0x07U, 0x10U, 0x00U, 0x07U,
+      0x01U, 0x60U, 0x00U, 0x22U, 0x22U, 0x07U, 0x10U, 0x00U, 0x07U,
       'E',   'v',   'e',   'n',   'i',   'n',   'g', 0x06U, 0x00U,
       0x01U, 0x01U, 0x08U, 0x00U, 0x01U, 0x33U};
   responseLength = 0U;
@@ -2035,12 +2484,59 @@ static bool testZclClientCodec() {
        parsedDiscovered[1].dataType == ZigbeeZclDataType::kBitmap32 &&
        parsedDiscovered[2].attributeId == 0xFFFDU &&
        parsedDiscovered[2].dataType == ZigbeeZclDataType::kUint16;
+
+  ok = ok &&
+       ZigbeeCodec::buildDiscoverAttributesExtendedRequest(
+           0x0000U, 3U, 0x74U, encoded, &encodedLength) &&
+       ZigbeeCodec::parseZclFrame(encoded, encodedLength, &request) &&
+       request.valid && request.commandId == 0x15U &&
+       request.transactionSequence == 0x74U &&
+       request.payloadLength == 3U &&
+       ZigbeeCodec::parseDiscoverAttributesRequest(
+           request.payload, request.payloadLength, &startAttributeId,
+           &maxAttributeIds) &&
+       startAttributeId == 0x0000U && maxAttributeIds == 3U;
+
+  ZigbeeDiscoveredExtendedAttributeRecord discoveredExtended[3];
+  discoveredExtended[0].attributeId = 0x0000U;
+  discoveredExtended[0].dataType = ZigbeeZclDataType::kUint16;
+  discoveredExtended[0].accessControl = 0x07U;
+  discoveredExtended[1].attributeId = 0xFFFCU;
+  discoveredExtended[1].dataType = ZigbeeZclDataType::kBitmap32;
+  discoveredExtended[1].accessControl = 0x05U;
+  discoveredExtended[2].attributeId = 0xFFFDU;
+  discoveredExtended[2].dataType = ZigbeeZclDataType::kUint16;
+  discoveredExtended[2].accessControl = 0x05U;
+  ok = ok && ZigbeeCodec::buildDiscoverAttributesExtendedResponse(
+                   discoveredExtended, 3U, true, 0x75U, encoded,
+                   &encodedLength) &&
+       ZigbeeCodec::parseZclFrame(encoded, encodedLength, &response) &&
+       response.valid && response.commandId == 0x16U &&
+       response.transactionSequence == 0x75U;
+
+  bool extendedDiscoveryComplete = false;
+  uint8_t parsedExtendedCount = 0U;
+  ZigbeeDiscoveredExtendedAttributeRecord parsedExtended[4];
+  ok = ok && ZigbeeCodec::parseDiscoverAttributesExtendedResponse(
+                   response.payload, response.payloadLength,
+                   &extendedDiscoveryComplete, parsedExtended, 4U,
+                   &parsedExtendedCount) &&
+       extendedDiscoveryComplete && parsedExtendedCount == 3U &&
+       parsedExtended[0].attributeId == 0x0000U &&
+       parsedExtended[0].dataType == ZigbeeZclDataType::kUint16 &&
+       parsedExtended[0].accessControl == 0x07U &&
+       parsedExtended[1].attributeId == 0xFFFCU &&
+       parsedExtended[1].dataType == ZigbeeZclDataType::kBitmap32 &&
+       parsedExtended[1].accessControl == 0x05U &&
+       parsedExtended[2].attributeId == 0xFFFDU &&
+       parsedExtended[2].dataType == ZigbeeZclDataType::kUint16 &&
+       parsedExtended[2].accessControl == 0x05U;
   
   ok = ok && ZigbeeCodec::buildDiscoverCommandsReceivedRequest(
-                   0x00U, 3U, 0x74U, encoded, &encodedLength) &&
+                   0x00U, 3U, 0x76U, encoded, &encodedLength) &&
        ZigbeeCodec::parseZclFrame(encoded, encodedLength, &request) &&
        request.valid && request.commandId == 0x11U &&
-       request.transactionSequence == 0x74U &&
+       request.transactionSequence == 0x76U &&
        request.payloadLength == 2U;
 
   uint8_t startCommandId = 0U;
@@ -2051,10 +2547,10 @@ static bool testZclClientCodec() {
        startCommandId == 0x00U && maxCommandIds == 3U;
 
   ok = ok && ZigbeeCodec::buildDiscoverCommandsGeneratedRequest(
-                   0x01U, 2U, 0x75U, encoded, &encodedLength) &&
+                   0x01U, 2U, 0x77U, encoded, &encodedLength) &&
        ZigbeeCodec::parseZclFrame(encoded, encodedLength, &request) &&
        request.valid && request.commandId == 0x13U &&
-       request.transactionSequence == 0x75U &&
+       request.transactionSequence == 0x77U &&
        request.payloadLength == 2U &&
        ZigbeeCodec::parseDiscoverCommandsRequest(
            request.payload, request.payloadLength, &startCommandId,
@@ -2117,6 +2613,56 @@ static bool testZclClientCodec() {
        ZigbeeCodec::parseZclFrame(encoded, encodedLength, &request) &&
        request.valid && request.commandId == 0x06U &&
        request.transactionSequence == 0x73U;
+
+  ZigbeeConfigureReportingStatusRecord configureReportingResponse[2];
+  configureReportingResponse[0].status = 0x00U;
+  configureReportingResponse[0].direction = 0U;
+  configureReportingResponse[0].attributeId = 0x0000U;
+  ok = ok && ZigbeeCodec::buildConfigureReportingResponse(
+                   configureReportingResponse, 1U, 0x74U, encoded,
+                   &encodedLength) &&
+       ZigbeeCodec::parseZclFrame(encoded, encodedLength, &response) &&
+       response.valid && response.commandId == 0x07U &&
+       response.transactionSequence == 0x74U;
+
+  ZigbeeConfigureReportingStatusRecord parsedConfigureReportingResponse[2];
+  uint8_t parsedConfigureReportingResponseCount = 0U;
+  ok = ok && ZigbeeCodec::parseConfigureReportingResponse(
+                   response.payload, response.payloadLength,
+                   parsedConfigureReportingResponse, 2U,
+                   &parsedConfigureReportingResponseCount) &&
+       parsedConfigureReportingResponseCount == 1U &&
+       parsedConfigureReportingResponse[0].status == 0x00U &&
+       parsedConfigureReportingResponse[0].direction == 0U &&
+       parsedConfigureReportingResponse[0].attributeId == 0x0000U;
+
+  configureReportingResponse[0].status = 0x8DU;
+  configureReportingResponse[0].direction = 0U;
+  configureReportingResponse[0].attributeId = 0x0000U;
+  configureReportingResponse[1].status = 0x86U;
+  configureReportingResponse[1].direction = 1U;
+  configureReportingResponse[1].attributeId = 0x0001U;
+  ok = ok && ZigbeeCodec::buildConfigureReportingResponse(
+                   configureReportingResponse, 2U, 0x75U, encoded,
+                   &encodedLength) &&
+       ZigbeeCodec::parseZclFrame(encoded, encodedLength, &response) &&
+       response.valid && response.commandId == 0x07U &&
+       response.transactionSequence == 0x75U;
+
+  memset(parsedConfigureReportingResponse, 0,
+         sizeof(parsedConfigureReportingResponse));
+  parsedConfigureReportingResponseCount = 0U;
+  ok = ok && ZigbeeCodec::parseConfigureReportingResponse(
+                   response.payload, response.payloadLength,
+                   parsedConfigureReportingResponse, 2U,
+                   &parsedConfigureReportingResponseCount) &&
+       parsedConfigureReportingResponseCount == 2U &&
+       parsedConfigureReportingResponse[0].status == 0x8DU &&
+       parsedConfigureReportingResponse[0].direction == 0U &&
+       parsedConfigureReportingResponse[0].attributeId == 0x0000U &&
+       parsedConfigureReportingResponse[1].status == 0x86U &&
+       parsedConfigureReportingResponse[1].direction == 1U &&
+       parsedConfigureReportingResponse[1].attributeId == 0x0001U;
 
   ZigbeeReadReportingConfigurationRecord readReportingRequest[2];
   readReportingRequest[0].direction = 0U;
