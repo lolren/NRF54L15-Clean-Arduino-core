@@ -23,7 +23,8 @@ using namespace nrf54l15;
 
 static constexpr uint16_t kSystemOffTimeoutLfclk = 5U;
 static constexpr uint8_t kSystemOffWakeLeadLfclk = 4U;
-static constexpr uint32_t kSystemOffCompareSyncSpinLimit = 2000000UL;
+static constexpr uint32_t kLfclkFrequencyHz = 32768UL;
+static constexpr uint32_t kMaxCcLatchWaitUs = 77UL;
 static constexpr uint32_t kGrtcStartSettleUs = 93UL;
 #if defined(ARDUINO_XIAO_NRF54L15)
 static constexpr uint32_t kZephyrAllowedCcMaskXiao = 0x67UL;
@@ -190,7 +191,7 @@ void ensureGrtcReady(NRF_GRTC_Type* grtc) {
 
   grtc->TASKS_START = GRTC_TASKS_START_TASKS_START_Trigger;
   __asm volatile("dsb 0xF" ::: "memory");
-  busyWaitApproxUs(kGrtcStartSettleUs);
+  delayMicroseconds(kGrtcStartSettleUs);
 
   const uint32_t active =
       NRF54L15_GRTC_SYSCOUNTER(grtc).ACTIVE & GRTC_SYSCOUNTER_ACTIVE_ACTIVE_Msk;
@@ -272,22 +273,12 @@ void ensureLfxoRunning() {
   }
 }
 
-bool waitForSystemOffCompareSync(NRF_GRTC_Type* grtc, uint8_t wakeChannel) {
-  if (grtc == nullptr) {
-    return false;
-  }
-
-  uint32_t spinLimit = kSystemOffCompareSyncSpinLimit;
-  while (spinLimit-- > 0U) {
-    if (grtc->EVENTS_COMPARE[wakeChannel] != 0U) {
-      return false;
-    }
-    if (grtc->EVENTS_RTCOMPARESYNC != 0U) {
-      return true;
-    }
-  }
-
-  return false;
+void waitForSystemOffWakeLatch() {
+  const uint32_t waitUs =
+      (static_cast<uint32_t>(kSystemOffTimeoutLfclk) * 1000000UL) /
+          kLfclkFrequencyHz +
+      kMaxCcLatchWaitUs;
+  delayMicroseconds(waitUs);
 }
 
 uint8_t systemOffWakeChannel() {
@@ -339,37 +330,23 @@ void programSystemOffWake(uint32_t delayUs) {
     }
   }
 
-  for (uint8_t attempt = 0U; attempt < 3U; ++attempt) {
-    NRF54L15_GRTC_SYSCOUNTER(grtc).ACTIVE =
-        (GRTC_SYSCOUNTER_ACTIVE_ACTIVE_Active
-         << GRTC_SYSCOUNTER_ACTIVE_ACTIVE_Pos);
-    __asm volatile("dsb 0xF" ::: "memory");
+  ensureGrtcReady(grtc);
 
-    ensureGrtcReady(grtc);
+  const uint64_t wakeTimestamp = readGrtcCounter(grtc) + delayUs;
+  grtc->EVENTS_COMPARE[wakeChannel] = 0U;
+  grtc->CC[wakeChannel].CCEN =
+      (GRTC_CC_CCEN_ACTIVE_Disable << GRTC_CC_CCEN_ACTIVE_Pos);
+  grtc->CC[wakeChannel].CCL =
+      static_cast<uint32_t>(wakeTimestamp & 0xFFFFFFFFULL);
+  grtc->CC[wakeChannel].CCH =
+      (static_cast<uint32_t>((wakeTimestamp >> 32U) & 0xFFFFFUL)
+       << GRTC_CC_CCH_CCH_Pos) &
+      GRTC_CC_CCH_CCH_Msk;
+  NRF54L15_GRTC_INTENSET_REG(grtc) = (1UL << wakeChannel);
+  grtc->CC[wakeChannel].CCEN =
+      (GRTC_CC_CCEN_ACTIVE_Enable << GRTC_CC_CCEN_ACTIVE_Pos);
 
-    const uint64_t wakeTimestamp = readGrtcCounter(grtc) + delayUs;
-    grtc->EVENTS_RTCOMPARESYNC = 0U;
-    grtc->EVENTS_COMPARE[wakeChannel] = 0U;
-    grtc->CC[wakeChannel].CCEN =
-        (GRTC_CC_CCEN_ACTIVE_Disable << GRTC_CC_CCEN_ACTIVE_Pos);
-    grtc->CC[wakeChannel].CCL =
-        static_cast<uint32_t>(wakeTimestamp & 0xFFFFFFFFULL);
-    grtc->CC[wakeChannel].CCH =
-        (static_cast<uint32_t>((wakeTimestamp >> 32U) & 0xFFFFFUL)
-         << GRTC_CC_CCH_CCH_Pos) &
-        GRTC_CC_CCH_CCH_Msk;
-    grtc->CC[wakeChannel].CCEN =
-        (GRTC_CC_CCEN_ACTIVE_Enable << GRTC_CC_CCEN_ACTIVE_Pos);
-
-    NRF54L15_GRTC_SYSCOUNTER(grtc).ACTIVE =
-        (GRTC_SYSCOUNTER_ACTIVE_ACTIVE_NotActive
-         << GRTC_SYSCOUNTER_ACTIVE_ACTIVE_Pos);
-    __asm volatile("dsb 0xF" ::: "memory");
-
-    if (waitForSystemOffCompareSync(grtc, wakeChannel)) {
-      return;
-    }
-  }
+  waitForSystemOffWakeLatch();
 }
 
 double adcGainValue(xiao_nrf54l15::AdcGain gain) {
