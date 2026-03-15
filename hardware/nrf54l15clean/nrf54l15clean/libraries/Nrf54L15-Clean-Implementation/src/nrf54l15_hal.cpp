@@ -9587,15 +9587,20 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
       uint16_t recordCount = 0U;
 
       if (typeLength == kBleUuidLength16 && type16 == kUuidCharacteristic) {
-        entryLen = 7U;
-        outAttResponse[1] = entryLen;
         for (size_t i = 0; i < (sizeof(kBleCharacteristics) / sizeof(kBleCharacteristics[0]));
              ++i) {
           const BleCharacteristicRecord& ch = kBleCharacteristics[i];
           if (!inHandleRange(ch.declarationHandle, start, end)) {
             continue;
           }
-          if (entryLen != 7U || (used + entryLen) > maxAttResponseLen) {
+          const uint8_t candidateEntryLen = 7U;
+          if (entryLen == 0U) {
+            entryLen = candidateEntryLen;
+            outAttResponse[1] = entryLen;
+          } else if (candidateEntryLen != entryLen) {
+            break;
+          }
+          if ((used + entryLen) > maxAttResponseLen) {
             break;
           }
           writeLe16(&outAttResponse[used], ch.declarationHandle);
@@ -9635,15 +9640,20 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
           ++recordCount;
         }
       } else if (typeLength == kBleUuidLength16 && type16 == kUuidPrimaryService) {
-        entryLen = 4U;
-        outAttResponse[1] = entryLen;
         for (size_t i = 0; i < (sizeof(kBlePrimaryServices) / sizeof(kBlePrimaryServices[0]));
              ++i) {
           const BlePrimaryServiceRecord& service = kBlePrimaryServices[i];
           if (!inHandleRange(service.startHandle, start, end)) {
             continue;
           }
-          if (entryLen != 4U || (used + entryLen) > maxAttResponseLen) {
+          const uint8_t candidateEntryLen = 4U;
+          if (entryLen == 0U) {
+            entryLen = candidateEntryLen;
+            outAttResponse[1] = entryLen;
+          } else if (candidateEntryLen != entryLen) {
+            break;
+          }
+          if ((used + entryLen) > maxAttResponseLen) {
             break;
           }
           writeLe16(&outAttResponse[used], service.startHandle);
