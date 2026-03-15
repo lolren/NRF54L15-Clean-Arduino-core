@@ -3633,6 +3633,22 @@ constexpr uint32_t kVdmaDescriptorAttrAarIrk =
 constexpr uint32_t kVdmaDescriptorAttrAarResolvedIndex =
     (0x11UL << VDMADESCRIPTOR_CONFIG_ATTRIBUTE_Pos) &
     VDMADESCRIPTOR_CONFIG_ATTRIBUTE_Msk;
+constexpr uint32_t kVdmaDescriptorAttrCcmAlen =
+    (VDMADESCRIPTOR_CONFIG_ATTRIBUTE_CcmAlen
+     << VDMADESCRIPTOR_CONFIG_ATTRIBUTE_Pos) &
+    VDMADESCRIPTOR_CONFIG_ATTRIBUTE_Msk;
+constexpr uint32_t kVdmaDescriptorAttrCcmMlen =
+    (VDMADESCRIPTOR_CONFIG_ATTRIBUTE_CcmMlen
+     << VDMADESCRIPTOR_CONFIG_ATTRIBUTE_Pos) &
+    VDMADESCRIPTOR_CONFIG_ATTRIBUTE_Msk;
+constexpr uint32_t kVdmaDescriptorAttrCcmAdata =
+    (VDMADESCRIPTOR_CONFIG_ATTRIBUTE_CcmAdata
+     << VDMADESCRIPTOR_CONFIG_ATTRIBUTE_Pos) &
+    VDMADESCRIPTOR_CONFIG_ATTRIBUTE_Msk;
+constexpr uint32_t kVdmaDescriptorAttrCcmMdata =
+    (VDMADESCRIPTOR_CONFIG_ATTRIBUTE_CcmMdata
+     << VDMADESCRIPTOR_CONFIG_ATTRIBUTE_Pos) &
+    VDMADESCRIPTOR_CONFIG_ATTRIBUTE_Msk;
 constexpr size_t kAarMaxIrksScratch = 64U;
 constexpr uint32_t kCracenRngFailureMask =
     CRACENCORE_RNGCONTROL_STATUS_REPFAIL_Msk |
@@ -3672,6 +3688,23 @@ void zeroVdmaDescriptor(NRF_VDMADESCRIPTOR_Type* descriptor) {
   }
   descriptor->PTR = 0U;
   descriptor->CONFIG = 0U;
+}
+
+void stageBleCcmNonceWords(const uint8_t iv[8], uint64_t counter,
+                           uint8_t direction, uint32_t outWords[4]) {
+  if (iv == nullptr || outWords == nullptr) {
+    return;
+  }
+
+  uint8_t nonce[13] = {};
+  uint8_t nonceRegisterBytes[16] = {};
+
+  buildBleCcmNonce(iv, counter, direction, nonce);
+  memcpy(&nonceRegisterBytes[3], nonce, sizeof(nonce));
+
+  for (uint8_t i = 0U; i < 4U; ++i) {
+    outWords[i] = packBigEndianWord(&nonceRegisterBytes[(3U - i) * 4U]);
+  }
 }
 
 }  // namespace
@@ -4020,6 +4053,270 @@ void Ecb::clearEvents() {
   }
   ecb_->EVENTS_END = 0U;
   ecb_->EVENTS_ERROR = 0U;
+}
+
+Ccm::Ccm(uint32_t base)
+    : ccm_(reinterpret_cast<NRF_CCM_Type*>(static_cast<uintptr_t>(base))) {}
+
+bool Ccm::encryptBlePacket(const uint8_t key[16], const uint8_t iv[8],
+                           uint64_t counter, uint8_t direction, uint8_t header,
+                           const uint8_t* plaintext, uint8_t plaintextLen,
+                           uint8_t* outCipherWithMic,
+                           uint8_t* outCipherWithMicLen,
+                           CcmBleDataRate dataRate, uint8_t adataMask,
+                           uint32_t spinLimit) {
+  if (ccm_ == nullptr || key == nullptr || iv == nullptr ||
+      outCipherWithMic == nullptr || outCipherWithMicLen == nullptr) {
+    return false;
+  }
+  if (plaintextLen > 0U && plaintext == nullptr) {
+    return false;
+  }
+  if (plaintextLen > kBleDataPduMaxPayload) {
+    return false;
+  }
+
+  *outCipherWithMicLen = 0U;
+
+  alignas(4) uint8_t inputPayloadScratch[kBleDataPduMaxPayload + kBleMicLen] = {};
+  alignas(4) uint8_t outputPayloadScratch[kBleDataPduMaxPayload + kBleMicLen] = {};
+  alignas(4) uint8_t adataScratch[1] = {header};
+  alignas(4) uint8_t adataOutScratch[1] = {};
+  alignas(4) NRF_VDMADESCRIPTOR_Type inJobs[5] = {};
+  alignas(4) NRF_VDMADESCRIPTOR_Type outJobs[5] = {};
+  uint16_t inAlen = 1U;
+  uint16_t inMlen = plaintextLen;
+  uint16_t outAlen = 0xFFFFU;
+  uint16_t outMlen = 0xFFFFU;
+  uint32_t nonceWords[4] = {};
+
+  if (plaintextLen > 0U) {
+    memcpy(inputPayloadScratch, plaintext, plaintextLen);
+  }
+
+  configureVdmaDescriptor(
+      &inJobs[0], reinterpret_cast<const uint8_t*>(&inAlen), sizeof(inAlen),
+      kVdmaDescriptorAttrCcmAlen);
+  configureVdmaDescriptor(
+      &inJobs[1], reinterpret_cast<const uint8_t*>(&inMlen), sizeof(inMlen),
+      kVdmaDescriptorAttrCcmMlen);
+  configureVdmaDescriptor(&inJobs[2], adataScratch, sizeof(adataScratch),
+                          kVdmaDescriptorAttrCcmAdata);
+  configureVdmaDescriptor(&inJobs[3], inputPayloadScratch, plaintextLen,
+                          kVdmaDescriptorAttrCcmMdata);
+  zeroVdmaDescriptor(&inJobs[4]);
+
+  configureVdmaDescriptor(
+      &outJobs[0], reinterpret_cast<const uint8_t*>(&outAlen), sizeof(outAlen),
+      kVdmaDescriptorAttrCcmAlen);
+  configureVdmaDescriptor(
+      &outJobs[1], reinterpret_cast<const uint8_t*>(&outMlen), sizeof(outMlen),
+      kVdmaDescriptorAttrCcmMlen);
+  configureVdmaDescriptor(&outJobs[2], adataOutScratch, sizeof(adataOutScratch),
+                          kVdmaDescriptorAttrCcmAdata);
+  configureVdmaDescriptor(&outJobs[3], outputPayloadScratch,
+                          static_cast<size_t>(plaintextLen + kBleMicLen),
+                          kVdmaDescriptorAttrCcmMdata);
+  zeroVdmaDescriptor(&outJobs[4]);
+
+  stageBleCcmNonceWords(iv, counter, direction, nonceWords);
+
+  ccm_->ENABLE = CCM_ENABLE_ENABLE_Disabled;
+  ccm_->INTENCLR = 0xFFFFFFFFUL;
+  clearEvents();
+  NVIC_ClearPendingIRQ(CCM00_IRQn);
+  ccm_->ENABLE = CCM_ENABLE_ENABLE_Enabled;
+  ccm_->MODE = (CCM_MODE_MODE_Encryption << CCM_MODE_MODE_Pos) |
+               (CCM_MODE_PROTOCOL_Ble << CCM_MODE_PROTOCOL_Pos) |
+               (static_cast<uint32_t>(dataRate) << CCM_MODE_DATARATE_Pos) |
+               (CCM_MODE_MACLEN_M4 << CCM_MODE_MACLEN_Pos);
+  ccm_->RATEOVERRIDE = static_cast<uint32_t>(dataRate);
+  ccm_->ADATAMASK = static_cast<uint32_t>(adataMask);
+  for (uint8_t i = 0U; i < 4U; ++i) {
+    ccm_->KEY.VALUE[i] = packBigEndianWord(&key[(3U - i) * 4U]);
+    ccm_->NONCE.VALUE[i] = nonceWords[i];
+  }
+  ccm_->IN.PTR = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&inJobs[0]));
+  ccm_->OUT.PTR =
+      static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&outJobs[0]));
+  __asm volatile("dsb 0xF" ::: "memory");
+
+  bool finished = false;
+  ccm_->TASKS_START = CCM_TASKS_START_TASKS_START_Trigger;
+  while (spinLimit-- > 0U) {
+    if (ccm_->EVENTS_ERROR != 0U) {
+      break;
+    }
+    if (ccm_->EVENTS_END != 0U) {
+      finished = true;
+      break;
+    }
+  }
+
+  const uint32_t error = errorStatus();
+  if (!finished) {
+    ccm_->TASKS_STOP = CCM_TASKS_STOP_TASKS_STOP_Trigger;
+  }
+  const uint16_t actualOutMlen =
+      (outMlen != 0U && outMlen != 0xFFFFU)
+          ? outMlen
+          : static_cast<uint16_t>(plaintextLen + kBleMicLen);
+  const bool ok = finished &&
+                  ((ccm_->EVENTS_ERROR & CCM_EVENTS_ERROR_EVENTS_ERROR_Msk) == 0U) &&
+                  (error == CCM_ERRORSTATUS_ERRORSTATUS_NoError) &&
+                  (actualOutMlen <= sizeof(outputPayloadScratch));
+
+  if (ok) {
+    memcpy(outCipherWithMic, outputPayloadScratch, actualOutMlen);
+    *outCipherWithMicLen = static_cast<uint8_t>(actualOutMlen);
+  }
+
+  ccm_->ENABLE = CCM_ENABLE_ENABLE_Disabled;
+  NVIC_ClearPendingIRQ(CCM00_IRQn);
+  return ok;
+}
+
+bool Ccm::decryptBlePacket(const uint8_t key[16], const uint8_t iv[8],
+                           uint64_t counter, uint8_t direction, uint8_t header,
+                           const uint8_t* cipherWithMic, uint8_t cipherWithMicLen,
+                           uint8_t* outPlaintext, uint8_t* outPlaintextLen,
+                           bool* outMacValid, CcmBleDataRate dataRate,
+                           uint8_t adataMask, uint32_t spinLimit) {
+  if (ccm_ == nullptr || key == nullptr || iv == nullptr ||
+      cipherWithMic == nullptr || outPlaintext == nullptr ||
+      outPlaintextLen == nullptr) {
+    return false;
+  }
+  if (outMacValid != nullptr) {
+    *outMacValid = false;
+  }
+  *outPlaintextLen = 0U;
+
+  if (cipherWithMicLen < kBleMicLen) {
+    return false;
+  }
+
+  const uint8_t payloadLen = static_cast<uint8_t>(cipherWithMicLen - kBleMicLen);
+  if (payloadLen > kBleDataPduMaxPayload) {
+    return false;
+  }
+
+  alignas(4) uint8_t inputPayloadScratch[kBleDataPduMaxPayload + kBleMicLen] = {};
+  alignas(4) uint8_t outputPayloadScratch[kBleDataPduMaxPayload + kBleMicLen] = {};
+  alignas(4) uint8_t adataScratch[1] = {header};
+  alignas(4) uint8_t adataOutScratch[1] = {};
+  alignas(4) NRF_VDMADESCRIPTOR_Type inJobs[5] = {};
+  alignas(4) NRF_VDMADESCRIPTOR_Type outJobs[5] = {};
+  uint16_t inAlen = 1U;
+  uint16_t inMlen = cipherWithMicLen;
+  uint16_t outAlen = 0xFFFFU;
+  uint16_t outMlen = 0xFFFFU;
+  uint32_t nonceWords[4] = {};
+
+  memcpy(inputPayloadScratch, cipherWithMic, cipherWithMicLen);
+
+  configureVdmaDescriptor(
+      &inJobs[0], reinterpret_cast<const uint8_t*>(&inAlen), sizeof(inAlen),
+      kVdmaDescriptorAttrCcmAlen);
+  configureVdmaDescriptor(
+      &inJobs[1], reinterpret_cast<const uint8_t*>(&inMlen), sizeof(inMlen),
+      kVdmaDescriptorAttrCcmMlen);
+  configureVdmaDescriptor(&inJobs[2], adataScratch, sizeof(adataScratch),
+                          kVdmaDescriptorAttrCcmAdata);
+  configureVdmaDescriptor(&inJobs[3], inputPayloadScratch, cipherWithMicLen,
+                          kVdmaDescriptorAttrCcmMdata);
+  zeroVdmaDescriptor(&inJobs[4]);
+
+  configureVdmaDescriptor(
+      &outJobs[0], reinterpret_cast<const uint8_t*>(&outAlen), sizeof(outAlen),
+      kVdmaDescriptorAttrCcmAlen);
+  configureVdmaDescriptor(
+      &outJobs[1], reinterpret_cast<const uint8_t*>(&outMlen), sizeof(outMlen),
+      kVdmaDescriptorAttrCcmMlen);
+  configureVdmaDescriptor(&outJobs[2], adataOutScratch, sizeof(adataOutScratch),
+                          kVdmaDescriptorAttrCcmAdata);
+  configureVdmaDescriptor(&outJobs[3], outputPayloadScratch, payloadLen,
+                          kVdmaDescriptorAttrCcmMdata);
+  zeroVdmaDescriptor(&outJobs[4]);
+
+  stageBleCcmNonceWords(iv, counter, direction, nonceWords);
+
+  ccm_->ENABLE = CCM_ENABLE_ENABLE_Disabled;
+  ccm_->INTENCLR = 0xFFFFFFFFUL;
+  clearEvents();
+  NVIC_ClearPendingIRQ(CCM00_IRQn);
+  ccm_->ENABLE = CCM_ENABLE_ENABLE_Enabled;
+  ccm_->MODE = (CCM_MODE_MODE_Decryption << CCM_MODE_MODE_Pos) |
+               (CCM_MODE_PROTOCOL_Ble << CCM_MODE_PROTOCOL_Pos) |
+               (static_cast<uint32_t>(dataRate) << CCM_MODE_DATARATE_Pos) |
+               (CCM_MODE_MACLEN_M4 << CCM_MODE_MACLEN_Pos);
+  ccm_->RATEOVERRIDE = static_cast<uint32_t>(dataRate);
+  ccm_->ADATAMASK = static_cast<uint32_t>(adataMask);
+  for (uint8_t i = 0U; i < 4U; ++i) {
+    ccm_->KEY.VALUE[i] = packBigEndianWord(&key[(3U - i) * 4U]);
+    ccm_->NONCE.VALUE[i] = nonceWords[i];
+  }
+  ccm_->IN.PTR = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&inJobs[0]));
+  ccm_->OUT.PTR =
+      static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&outJobs[0]));
+  __asm volatile("dsb 0xF" ::: "memory");
+
+  bool finished = false;
+  ccm_->TASKS_START = CCM_TASKS_START_TASKS_START_Trigger;
+  while (spinLimit-- > 0U) {
+    if (ccm_->EVENTS_ERROR != 0U) {
+      break;
+    }
+    if (ccm_->EVENTS_END != 0U) {
+      finished = true;
+      break;
+    }
+  }
+
+  const uint32_t error = errorStatus();
+  const bool macValid = macStatus();
+  if (outMacValid != nullptr) {
+    *outMacValid = macValid;
+  }
+  if (!finished) {
+    ccm_->TASKS_STOP = CCM_TASKS_STOP_TASKS_STOP_Trigger;
+  }
+  const bool noError = finished &&
+                       ((ccm_->EVENTS_ERROR & CCM_EVENTS_ERROR_EVENTS_ERROR_Msk) == 0U) &&
+                       (error == CCM_ERRORSTATUS_ERRORSTATUS_NoError) &&
+                       (outMlen <= payloadLen);
+
+  if (noError) {
+    memcpy(outPlaintext, outputPayloadScratch, outMlen);
+    *outPlaintextLen = static_cast<uint8_t>(outMlen);
+  }
+
+  ccm_->ENABLE = CCM_ENABLE_ENABLE_Disabled;
+  NVIC_ClearPendingIRQ(CCM00_IRQn);
+  return noError && macValid;
+}
+
+uint32_t Ccm::errorStatus() const {
+  if (ccm_ == nullptr) {
+    return CCM_ERRORSTATUS_ERRORSTATUS_DmaError;
+  }
+  return ccm_->ERRORSTATUS & CCM_ERRORSTATUS_ERRORSTATUS_Msk;
+}
+
+bool Ccm::macStatus() const {
+  if (ccm_ == nullptr) {
+    return false;
+  }
+  return (ccm_->MACSTATUS & CCM_MACSTATUS_MACSTATUS_Msk) ==
+         CCM_MACSTATUS_MACSTATUS_CheckPassed;
+}
+
+void Ccm::clearEvents() {
+  if (ccm_ == nullptr) {
+    return;
+  }
+  ccm_->EVENTS_END = 0U;
+  ccm_->EVENTS_ERROR = 0U;
 }
 
 Comp::Comp(uint32_t base)

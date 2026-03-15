@@ -14,6 +14,7 @@ static Pdm g_pdm;
 static CracenRng g_rng;
 static Aar g_aar;
 static Ecb g_ecb;
+static Ccm g_ccm;
 static BleRadio g_ble;
 
 static uint32_t g_passCount = 0;
@@ -242,6 +243,75 @@ static bool testEcb() {
   return ok && match;
 }
 
+static bool testCcm() {
+  static const uint8_t kKey[16] = {
+      0x99, 0xAD, 0x1B, 0x52, 0x26, 0xA3, 0x7E, 0x3E,
+      0x05, 0x8E, 0x3B, 0x8E, 0x27, 0xC2, 0xC6, 0x66,
+  };
+  static const uint8_t kIv[8] = {
+      0x24, 0xAB, 0xDC, 0xBA, 0xBE, 0xBA, 0xAF, 0xDE,
+  };
+  static const uint8_t kPlaintext[1] = {0x06};
+  static const uint8_t kExpectedCipherWithMic[5] = {
+      0x9F, 0xCD, 0xA7, 0xF4, 0x48,
+  };
+  static const uint8_t kHeader = 0x0FU;
+
+  uint8_t cipherWithMic[8] = {};
+  uint8_t cipherWithMicLen = 0U;
+  const bool encOk =
+      g_ccm.encryptBlePacket(kKey, kIv, 0U, 1U, kHeader,
+                             kPlaintext, sizeof(kPlaintext),
+                             cipherWithMic, &cipherWithMicLen,
+                             CcmBleDataRate::k125Kbit, 0xE3U, 600000UL);
+  const bool encMatch =
+      encOk &&
+      (cipherWithMicLen == sizeof(kExpectedCipherWithMic)) &&
+      (memcmp(cipherWithMic, kExpectedCipherWithMic,
+              sizeof(kExpectedCipherWithMic)) == 0);
+
+  uint8_t plaintext[4] = {};
+  uint8_t plaintextLen = 0U;
+  bool macValid = false;
+  const bool decOk =
+      g_ccm.decryptBlePacket(kKey, kIv, 0U, 1U, kHeader,
+                             kExpectedCipherWithMic, sizeof(kExpectedCipherWithMic),
+                             plaintext, &plaintextLen, &macValid,
+                             CcmBleDataRate::k125Kbit, 0xE3U, 600000UL);
+  const bool decMatch =
+      decOk && macValid &&
+      (plaintextLen == sizeof(kPlaintext)) &&
+      (memcmp(plaintext, kPlaintext, sizeof(kPlaintext)) == 0);
+
+  uint8_t tampered[sizeof(kExpectedCipherWithMic)] = {};
+  memcpy(tampered, kExpectedCipherWithMic, sizeof(tampered));
+  tampered[sizeof(tampered) - 1U] ^= 0x01U;
+
+  uint8_t tamperedPlaintext[4] = {};
+  uint8_t tamperedPlaintextLen = 0U;
+  bool tamperedMacValid = false;
+  const bool tamperedOk =
+      g_ccm.decryptBlePacket(kKey, kIv, 0U, 1U, kHeader,
+                             tampered, sizeof(tampered),
+                             tamperedPlaintext, &tamperedPlaintextLen,
+                             &tamperedMacValid,
+                             CcmBleDataRate::k125Kbit, 0xE3U, 600000UL);
+  const bool tamperRejected = !tamperedOk && !tamperedMacValid;
+
+  char detail[128];
+  snprintf(detail, sizeof(detail),
+           "enc=%s dec=%s mac=%s tamper=%s err=%lu len=%u",
+           encMatch ? "ok" : "fail",
+           decMatch ? "ok" : "fail",
+           macValid ? "yes" : "no",
+           tamperRejected ? "rejected" : "fail",
+           static_cast<unsigned long>(g_ccm.errorStatus()),
+           static_cast<unsigned>(cipherWithMicLen));
+  const bool pass = encMatch && decMatch && tamperRejected;
+  reportResult("CCM", pass, detail);
+  return pass;
+}
+
 static bool computeBleAh(Ecb& ecb, const uint8_t irk[16], const uint8_t prand[3],
                          uint8_t hash[3]) {
   uint8_t keyBe[16] = {};
@@ -375,6 +445,7 @@ void setup() {
   testPdm();
   testCracenRng();
   testEcb();
+  testCcm();
   testAar();
   testBleRadio();
 

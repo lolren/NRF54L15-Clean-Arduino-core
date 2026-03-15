@@ -22,6 +22,7 @@ This package uses direct peripheral register access from the nRF54L15 datasheet 
 - `CracenRng`: hardware entropy through the `CRACEN` / `CRACENCORE` RNG FIFO.
 - `Aar`: hardware BLE address resolution against one or more IRKs through `AAR00`.
 - `Ecb`: hardware AES-128 ECB block encryption through the `ECB00` peripheral and EasyDMA job lists.
+- `Ccm`: hardware BLE packet encryption/decryption through `CCM00`.
 - `Comp`: general-purpose comparator in single-ended threshold or differential mode.
 - `Lpcomp`: low-power comparator with analog-detect behavior suited for wake use.
 - `Qdec`: hardware quadrature decoder with accumulator and double-transition reporting.
@@ -44,6 +45,7 @@ Raw peripheral compatibility exposed by the core:
 - `NRF_DPPIC20`
 - `NRF_RADIO`
 - `NRF_AAR00`
+- `NRF_CCM00`
 - `NRF_ECB00`
 - `NRF_CRACEN`
 - `NRF_CRACENCORE`
@@ -88,6 +90,15 @@ Board note:
 - It shares the same AES core as `AAR00` and `CCM00`, so `ECB` always has the lowest priority and can abort if another block needs the shared crypto core.
 - On `nRF54L15`, the `KEY.VALUE[n]` register byte order is reversed relative to older `nRF52` and `nRF53` families.
 - The `Ecb` wrapper accepts the key in normal byte order and handles the reversed register packing internally.
+
+## CCM note
+
+- `CCM00` is the hardware packet-mode AES-CCM block that BLE uses for encrypted data PDUs.
+- The first public wrapper here is intentionally BLE-focused: one header byte as AAD, payload bytes as MDATA, and a `4-byte` MIC.
+- `encryptBlePacket(...)` returns `ciphertext || mic` because the BLE header byte stays in the clear.
+- `decryptBlePacket(...)` returns `false` when the MAC check fails, and the optional `outMacValid` pointer lets sketches report that cleanly.
+- The wrapper defaults to `125 Kbit` timing because it is an off-radio helper; if you want to mirror a live link more closely, pass `k1Mbit` or `k2Mbit` explicitly.
+- `CCM00` shares the same AES core as `AAR00` and `ECB00`, so it is still a shared crypto resource.
 
 ## AAR note
 
@@ -210,6 +221,7 @@ new non-BLE parity blocks:
 - WDT configuration path
 - PDM microphone capture path
 - ECB hardware AES-128 block encryption against the datasheet known vector
+- CCM hardware BLE packet encryption/decryption against a Bluetooth spec vector
 - AAR hardware BLE private-address resolution against a generated IRK list
 
 `examples/LowPower/InterruptWatchdogLowPower/InterruptWatchdogLowPower.ino` demonstrates:
@@ -295,6 +307,12 @@ Callback note:
 - `examples/Peripherals/EcbAesKnownVector/EcbAesKnownVector.ino`
   - Uses the `Ecb` wrapper with the exact AES-128 sample vector from the `nRF54L15` datasheet.
   - Good first check when you want to confirm the key-byte-order handling and EasyDMA job-list setup are both correct.
+- `examples/Peripherals/CcmBleSpecVector/CcmBleSpecVector.ino`
+  - Uses the `Ccm` wrapper with a Bluetooth LE CCM spec packet and checks both encrypt and decrypt.
+  - Good first check when you want to confirm the BLE nonce packing, AAD handling, and MIC generation are all correct.
+- `examples/Peripherals/CcmBlePacketTamperDetect/CcmBlePacketTamperDetect.ino`
+  - Encrypts an application-style BLE payload, decrypts it back, then flips one byte to prove the hardware rejects a bad MIC.
+  - This is the most practical "what does CCM buy me?" demo because it shows both confidentiality and authenticity.
 - `examples/Peripherals/AarResolvePrivateAddress/AarResolvePrivateAddress.ino`
   - Verifies both a known spec-style RPA and a generated RPA against the hardware `AAR` block.
   - Good first check when you want to confirm the job-list setup, address byte order, and resolved-index reporting are all correct on real hardware.

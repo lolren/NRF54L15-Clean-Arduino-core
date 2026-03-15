@@ -364,6 +364,52 @@ class Ecb {
   NRF_ECB_Type* ecb_;
 };
 
+enum class CcmBleDataRate : uint8_t {
+  k125Kbit = CCM_MODE_DATARATE_125Kbit,
+  k250Kbit = CCM_MODE_DATARATE_250Kbit,
+  k500Kbit = CCM_MODE_DATARATE_500Kbit,
+  k1Mbit = CCM_MODE_DATARATE_1Mbit,
+  k2Mbit = CCM_MODE_DATARATE_2Mbit,
+  k4Mbit = CCM_MODE_DATARATE_4Mbit,
+};
+
+class Ccm {
+ public:
+  explicit Ccm(uint32_t base = nrf54l15::CCM00_BASE);
+
+  bool encryptBlePacket(const uint8_t key[16],
+                        const uint8_t iv[8],
+                        uint64_t counter,
+                        uint8_t direction,
+                        uint8_t header,
+                        const uint8_t* plaintext,
+                        uint8_t plaintextLen,
+                        uint8_t* outCipherWithMic,
+                        uint8_t* outCipherWithMicLen,
+                        CcmBleDataRate dataRate = CcmBleDataRate::k125Kbit,
+                        uint8_t adataMask = 0xE3U,
+                        uint32_t spinLimit = 200000UL);
+  bool decryptBlePacket(const uint8_t key[16],
+                        const uint8_t iv[8],
+                        uint64_t counter,
+                        uint8_t direction,
+                        uint8_t header,
+                        const uint8_t* cipherWithMic,
+                        uint8_t cipherWithMicLen,
+                        uint8_t* outPlaintext,
+                        uint8_t* outPlaintextLen,
+                        bool* outMacValid = nullptr,
+                        CcmBleDataRate dataRate = CcmBleDataRate::k125Kbit,
+                        uint8_t adataMask = 0xE3U,
+                        uint32_t spinLimit = 200000UL);
+  uint32_t errorStatus() const;
+  bool macStatus() const;
+  void clearEvents();
+
+ private:
+  NRF_CCM_Type* ccm_;
+};
+
 enum class CompReference : uint8_t {
   kInt1V2 = COMP_REFSEL_REFSEL_Int1V2,
   kVdd = COMP_REFSEL_REFSEL_VDD,
