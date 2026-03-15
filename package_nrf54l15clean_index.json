@@ -16,8 +16,8 @@
           "category": "Arduino",
           "url": "https://github.com/lolren/NRF54L15-Clean-Arduino-core/releases/download/v0.1.81/nrf54l15clean-0.1.81.tar.bz2",
           "archiveFileName": "nrf54l15clean-0.1.81.tar.bz2",
-          "checksum": "SHA-256:3a0df9627b44e8fa18b5b833b463d249992b07991d82a17cf5c2797855bfd92b",
-          "size": "462731",
+          "checksum": "SHA-256:a6bd47a0f46b938bd84f99eec57777e3507b1196774fb58e4bc4571652ead69a",
+          "size": "456396",
           "boards": [
             {
               "name": "XIAO nRF54L15 (Nrf54L15-Clean-Implementation)"
