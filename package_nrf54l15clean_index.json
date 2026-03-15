@@ -12,6 +12,38 @@
         {
           "name": "Nrf54L15-Clean-Implementation",
           "architecture": "nrf54l15clean",
+          "version": "0.1.71",
+          "category": "Arduino",
+          "url": "https://github.com/REPLACE_ME/REPLACE_ME/releases/download/v0.1.71/nrf54l15clean-0.1.71.tar.bz2",
+          "archiveFileName": "nrf54l15clean-0.1.71.tar.bz2",
+          "checksum": "SHA-256:9cf956691f056622cd65ca0bb481161d1331e7de61677e05cb15496e1f585078",
+          "size": "441207",
+          "boards": [
+            {
+              "name": "XIAO nRF54L15 (Nrf54L15-Clean-Implementation)"
+            }
+          ],
+          "help": {
+            "online": "https://github.com/REPLACE_ME/REPLACE_ME"
+          },
+          "toolsDependencies": [
+            {
+              "packager": "arduino",
+              "name": "arm-none-eabi-gcc",
+              "version": "7-2017q4"
+            },
+            {
+              "packager": "arduino",
+              "name": "openocd",
+              "version": "0.11.0-arduino2"
+            }
+          ],
+          "discoveryDependencies": [],
+          "monitorDependencies": []
+        },
+        {
+          "name": "Nrf54L15-Clean-Implementation",
+          "architecture": "nrf54l15clean",
           "version": "0.1.70",
           "category": "Arduino",
           "url": "https://github.com/REPLACE_ME/REPLACE_ME/releases/download/v0.1.70/nrf54l15clean-0.1.70.tar.bz2",
