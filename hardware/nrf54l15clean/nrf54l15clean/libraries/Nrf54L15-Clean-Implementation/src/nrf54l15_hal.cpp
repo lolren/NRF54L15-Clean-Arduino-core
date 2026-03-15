@@ -3440,6 +3440,10 @@ Grtc::Grtc(uint32_t base, uint8_t compareChannelCount)
 }
 
 bool Grtc::begin(GrtcClockSource clockSource) {
+  if (clockSource == GrtcClockSource::kLfxo) {
+    ensureLfxoRunning();
+  }
+
   uint32_t clkcfg = grtc_->CLKCFG;
   clkcfg &= ~GRTC_CLKCFG_CLKSEL_Msk;
   clkcfg |= (static_cast<uint32_t>(clockSource) << GRTC_CLKCFG_CLKSEL_Pos) &

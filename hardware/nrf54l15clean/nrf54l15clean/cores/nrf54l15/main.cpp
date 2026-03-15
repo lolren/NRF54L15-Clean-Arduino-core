@@ -3,10 +3,19 @@
 
 extern "C" void nrf54l15_clean_idle_service(void);
 extern "C" size_t nrf54l15_heap_free_bytes(void);
+#if defined(NRF54L15_CLEAN_POWER_LOW)
+extern "C" void nrf54l15_core_bootstrap_low_power_timebase(void);
+#endif
 
 extern "C" void __attribute__((weak)) init(void) {
 #if !defined(NRF54L15_CLEAN_LOWPOWER_BOOT_MINIMAL)
     initSysTick();
+#if defined(NRF54L15_CLEAN_POWER_LOW)
+    // Zephyr brings LFCLK/GRTC up before application code runs. Do the same in
+    // low-power mode so the first delay()/SYSTEM OFF cycle does not pay the
+    // one-time LFXO startup penalty in user-visible timing.
+    nrf54l15_core_bootstrap_low_power_timebase();
+#endif
 #endif
 }
 extern "C" void __attribute__((weak)) initVariant(void) {}

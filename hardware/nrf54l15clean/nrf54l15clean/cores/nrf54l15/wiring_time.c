@@ -287,9 +287,11 @@ static void initLowPowerTimebase(void)
         return;
     }
 
+    ensureSystemOffLfxoRunning();
+
     uint32_t clkcfg = g_low_power_grtc->CLKCFG;
     clkcfg &= ~GRTC_CLKCFG_CLKSEL_Msk;
-    clkcfg |= (GRTC_CLKCFG_CLKSEL_SystemLFCLK << GRTC_CLKCFG_CLKSEL_Pos);
+    clkcfg |= (GRTC_CLKCFG_CLKSEL_LFXO << GRTC_CLKCFG_CLKSEL_Pos);
     g_low_power_grtc->CLKCFG = clkcfg;
 
     g_low_power_grtc->TIMEOUT =
@@ -319,6 +321,11 @@ static void initLowPowerTimebase(void)
     NVIC_SetPriority(kLowPowerTickIrq, 3U);
     NVIC_EnableIRQ(kLowPowerTickIrq);
     g_low_power_timebase_initialized = 1U;
+}
+
+void nrf54l15_core_bootstrap_low_power_timebase(void)
+{
+    initLowPowerTimebase();
 }
 
 static void delayUntilLowPowerCounterUs(uint64_t targetUs)
