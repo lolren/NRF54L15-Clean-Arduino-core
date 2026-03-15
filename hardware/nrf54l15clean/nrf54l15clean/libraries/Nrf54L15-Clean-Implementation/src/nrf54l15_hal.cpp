@@ -2520,6 +2520,193 @@ bool Spim::transfer(const uint8_t* tx, uint8_t* rx, size_t len,
   return endOk && stopOk;
 }
 
+Spis::Spis(uint32_t base)
+    : spis_(reinterpret_cast<NRF_SPIS_Type*>(static_cast<uintptr_t>(base))),
+      active_(false) {}
+
+bool Spis::begin(const Pin& sck, const Pin& mosi, const Pin& miso,
+                 const Pin& csn, SpiMode mode, bool lsbFirst,
+                 uint8_t defaultChar, uint8_t overReadChar,
+                 bool autoAcquireAfterEnd) {
+  if (!isConnected(sck) || !isConnected(mosi) || !isConnected(miso) ||
+      !isConnected(csn)) {
+    return false;
+  }
+
+  if (!Gpio::configure(sck, GpioDirection::kInput, GpioPull::kDisabled) ||
+      !Gpio::configure(mosi, GpioDirection::kInput, GpioPull::kDisabled) ||
+      !Gpio::configure(miso, GpioDirection::kOutput, GpioPull::kDisabled) ||
+      !Gpio::configure(csn, GpioDirection::kInput, GpioPull::kPullUp) ||
+      !Gpio::write(miso, true)) {
+    return false;
+  }
+
+  spis_->ENABLE = (SPIS_ENABLE_ENABLE_Disabled << SPIS_ENABLE_ENABLE_Pos);
+  spis_->PSEL.SCK = make_psel(sck.port, sck.pin);
+  spis_->PSEL.MOSI = make_psel(mosi.port, mosi.pin);
+  spis_->PSEL.MISO = make_psel(miso.port, miso.pin);
+  spis_->PSEL.CSN = make_psel(csn.port, csn.pin);
+
+  uint32_t config = 0U;
+  if (lsbFirst) {
+    config |= (SPIS_CONFIG_ORDER_LsbFirst << SPIS_CONFIG_ORDER_Pos) &
+              SPIS_CONFIG_ORDER_Msk;
+  }
+  if (mode == SpiMode::kMode1 || mode == SpiMode::kMode3) {
+    config |= (SPIS_CONFIG_CPHA_Trailing << SPIS_CONFIG_CPHA_Pos) &
+              SPIS_CONFIG_CPHA_Msk;
+  }
+  if (mode == SpiMode::kMode2 || mode == SpiMode::kMode3) {
+    config |= (SPIS_CONFIG_CPOL_ActiveLow << SPIS_CONFIG_CPOL_Pos) &
+              SPIS_CONFIG_CPOL_Msk;
+  }
+
+  spis_->CONFIG = config;
+  spis_->DEF = ((static_cast<uint32_t>(defaultChar) << SPIS_DEF_DEF_Pos) &
+                SPIS_DEF_DEF_Msk);
+  spis_->ORC = ((static_cast<uint32_t>(overReadChar) << SPIS_ORC_ORC_Pos) &
+                SPIS_ORC_ORC_Msk);
+  spis_->SHORTS =
+      autoAcquireAfterEnd
+          ? ((SPIS_SHORTS_END_ACQUIRE_Enabled << SPIS_SHORTS_END_ACQUIRE_Pos) &
+             SPIS_SHORTS_END_ACQUIRE_Msk)
+          : 0U;
+  spis_->INTENCLR = 0xFFFFFFFFUL;
+  spis_->EVENTS_END = 0U;
+  spis_->EVENTS_ACQUIRED = 0U;
+  spis_->EVENTS_DMA.RX.END = 0U;
+  spis_->EVENTS_DMA.TX.END = 0U;
+
+  spis_->ENABLE = ((SPIS_ENABLE_ENABLE_Enabled << SPIS_ENABLE_ENABLE_Pos) &
+                   SPIS_ENABLE_ENABLE_Msk);
+  active_ = true;
+  clearStatus();
+  return true;
+}
+
+bool Spis::acquire(uint32_t spinLimit) {
+  if (!active_) {
+    return false;
+  }
+  if ((spis_->SEMSTAT & SPIS_SEMSTAT_SEMSTAT_Msk) ==
+      (SPIS_SEMSTAT_SEMSTAT_CPU << SPIS_SEMSTAT_SEMSTAT_Pos)) {
+    return true;
+  }
+
+  spis_->EVENTS_ACQUIRED = 0U;
+  spis_->TASKS_ACQUIRE = SPIS_TASKS_ACQUIRE_TASKS_ACQUIRE_Trigger;
+  while (spinLimit-- > 0U) {
+    if ((spis_->SEMSTAT & SPIS_SEMSTAT_SEMSTAT_Msk) ==
+        (SPIS_SEMSTAT_SEMSTAT_CPU << SPIS_SEMSTAT_SEMSTAT_Pos)) {
+      return true;
+    }
+    if (spis_->EVENTS_ACQUIRED != 0U) {
+      spis_->EVENTS_ACQUIRED = 0U;
+      return true;
+    }
+  }
+
+  return (spis_->SEMSTAT & SPIS_SEMSTAT_SEMSTAT_Msk) ==
+         (SPIS_SEMSTAT_SEMSTAT_CPU << SPIS_SEMSTAT_SEMSTAT_Pos);
+}
+
+bool Spis::setBuffers(uint8_t* rx, size_t rxLen, const uint8_t* tx, size_t txLen,
+                      uint32_t spinLimit) {
+  if (!active_ || rx == nullptr || tx == nullptr || rxLen == 0U || txLen == 0U ||
+      rxLen > 0xFFFFU || txLen > 0xFFFFU) {
+    return false;
+  }
+  if (!acquire(spinLimit)) {
+    return false;
+  }
+
+  spis_->DMA.RX.PTR =
+      static_cast<uint32_t>(reinterpret_cast<uintptr_t>(rx));
+  spis_->DMA.RX.MAXCNT =
+      (static_cast<uint32_t>(rxLen) << SPIS_DMA_RX_MAXCNT_MAXCNT_Pos) &
+      SPIS_DMA_RX_MAXCNT_MAXCNT_Msk;
+  spis_->DMA.TX.PTR = static_cast<uint32_t>(
+      reinterpret_cast<uintptr_t>(const_cast<uint8_t*>(tx)));
+  spis_->DMA.TX.MAXCNT =
+      (static_cast<uint32_t>(txLen) << SPIS_DMA_TX_MAXCNT_MAXCNT_Pos) &
+      SPIS_DMA_TX_MAXCNT_MAXCNT_Msk;
+
+  spis_->EVENTS_END = 0U;
+  spis_->EVENTS_DMA.RX.END = 0U;
+  spis_->EVENTS_DMA.TX.END = 0U;
+  clearStatus();
+  return true;
+}
+
+bool Spis::releaseTransaction() {
+  if (!active_) {
+    return false;
+  }
+  spis_->TASKS_RELEASE = SPIS_TASKS_RELEASE_TASKS_RELEASE_Trigger;
+  return true;
+}
+
+bool Spis::pollAcquired(bool clearEventFlag) {
+  const bool fired = active_ && (spis_->EVENTS_ACQUIRED != 0U);
+  if (fired && clearEventFlag) {
+    spis_->EVENTS_ACQUIRED = 0U;
+  }
+  return fired;
+}
+
+bool Spis::pollEnd(bool clearEventFlag) {
+  const bool fired = active_ && (spis_->EVENTS_END != 0U);
+  if (fired && clearEventFlag) {
+    spis_->EVENTS_END = 0U;
+  }
+  return fired;
+}
+
+size_t Spis::receivedBytes() const {
+  if (!active_) {
+    return 0U;
+  }
+  return static_cast<size_t>((spis_->DMA.RX.AMOUNT & SPIS_DMA_RX_AMOUNT_AMOUNT_Msk) >>
+                             SPIS_DMA_RX_AMOUNT_AMOUNT_Pos);
+}
+
+size_t Spis::transmittedBytes() const {
+  if (!active_) {
+    return 0U;
+  }
+  return static_cast<size_t>((spis_->DMA.TX.AMOUNT & SPIS_DMA_TX_AMOUNT_AMOUNT_Msk) >>
+                             SPIS_DMA_TX_AMOUNT_AMOUNT_Pos);
+}
+
+bool Spis::overflowed() const {
+  return active_ && ((spis_->STATUS & SPIS_STATUS_OVERFLOW_Msk) != 0U);
+}
+
+bool Spis::overread() const {
+  return active_ && ((spis_->STATUS & SPIS_STATUS_OVERREAD_Msk) != 0U);
+}
+
+void Spis::clearStatus() {
+  if (spis_ == nullptr) {
+    return;
+  }
+  spis_->STATUS = SPIS_STATUS_OVERREAD_Clear | SPIS_STATUS_OVERFLOW_Clear;
+}
+
+void Spis::end() {
+  if (spis_ == nullptr) {
+    return;
+  }
+
+  spis_->SHORTS = 0U;
+  spis_->ENABLE = (SPIS_ENABLE_ENABLE_Disabled << SPIS_ENABLE_ENABLE_Pos);
+  spis_->PSEL.SCK = PSEL_DISCONNECTED;
+  spis_->PSEL.MOSI = PSEL_DISCONNECTED;
+  spis_->PSEL.MISO = PSEL_DISCONNECTED;
+  spis_->PSEL.CSN = PSEL_DISCONNECTED;
+  active_ = false;
+}
+
 Twim::Twim(uint32_t base) : base_(base) {}
 
 bool Twim::begin(const Pin& scl, const Pin& sda, TwimFrequency frequency) {

@@ -75,6 +75,32 @@ class Spim {
   Pin cs_;
 };
 
+class Spis {
+ public:
+  explicit Spis(uint32_t base = nrf54l15::SPIS00_BASE);
+
+  bool begin(const Pin& sck, const Pin& mosi, const Pin& miso, const Pin& csn,
+             SpiMode mode = SpiMode::kMode0, bool lsbFirst = false,
+             uint8_t defaultChar = 0xFFU, uint8_t overReadChar = 0x00U,
+             bool autoAcquireAfterEnd = true);
+  bool acquire(uint32_t spinLimit = 200000UL);
+  bool setBuffers(uint8_t* rx, size_t rxLen, const uint8_t* tx, size_t txLen,
+                  uint32_t spinLimit = 200000UL);
+  bool releaseTransaction();
+  bool pollAcquired(bool clearEvent = true);
+  bool pollEnd(bool clearEvent = true);
+  size_t receivedBytes() const;
+  size_t transmittedBytes() const;
+  bool overflowed() const;
+  bool overread() const;
+  void clearStatus();
+  void end();
+
+ private:
+  NRF_SPIS_Type* spis_;
+  bool active_;
+};
+
 enum class TwimFrequency : uint32_t {
   k100k = nrf54l15::twim::FREQUENCY_100K,
   k250k = nrf54l15::twim::FREQUENCY_250K,

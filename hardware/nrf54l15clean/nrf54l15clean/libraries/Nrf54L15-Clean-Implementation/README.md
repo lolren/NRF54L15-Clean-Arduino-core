@@ -9,6 +9,7 @@ This package uses direct peripheral register access from the nRF54L15 datasheet 
 - `ClockControl`: HFXO control plus runtime CPU-frequency and idle clock-scaling helpers.
 - `Gpio`: configure/read/write/toggle and open-drain style drive setup for I2C.
 - `Spim`: SPI master with route-aware instance selection (`SPIM21` in USB-bridge `Serial` mode, `SPIM20` in header-UART `Serial` mode), plus EasyDMA transfer and runtime frequency control.
+- `Spis`: SPI target/slave mode with EasyDMA buffers, semaphore handover, and transaction-complete polling.
 - `Twim`: I2C master on a caller-selected controller base (for example `TWIM22`
   for `D4/D5`, `TWIM30` for `D12/D11`), plus write/read/writeRead and runtime
   frequency control.
@@ -39,6 +40,9 @@ Raw peripheral compatibility exposed by the core:
 
 - `NRF_DPPIC20`
 - `NRF_RADIO`
+- `NRF_SPIS00`
+- `NRF_SPIS20`
+- `NRF_SPIS21`
 - `NRF_COMP`
 - `NRF_LPCOMP`
 - `NRF_QDEC20`
@@ -248,6 +252,9 @@ Callback note:
 - `examples/Peripherals/CompDifferentialProbe/CompDifferentialProbe.ino`
   - Uses `Comp` in differential mode to compare `A0` directly against `A1`.
   - Useful when you want analog-to-analog comparison without continuously sampling SAADC.
+- `examples/Peripherals/SpisTargetEcho/SpisTargetEcho.ino`
+  - Uses the new `Spis` wrapper to act as an SPI target on `CS=D2 SCK=D8 MISO=D9 MOSI=D10`.
+  - Demonstrates the semaphore-based target flow: preload DMA buffers, release the transaction, and inspect what the controller actually clocked.
 - `examples/Peripherals/QdecRotaryReporter/QdecRotaryReporter.ino`
   - Uses the hardware `QDEC` block to decode a rotary encoder on `D0/D1`.
   - Prints signed movement deltas and accumulated position without software edge decoding.
