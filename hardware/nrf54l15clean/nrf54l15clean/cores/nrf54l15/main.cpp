@@ -11,9 +11,10 @@ extern "C" void __attribute__((weak)) init(void) {
 #if !defined(NRF54L15_CLEAN_LOWPOWER_BOOT_MINIMAL)
     initSysTick();
 #if defined(NRF54L15_CLEAN_POWER_LOW)
-    // Zephyr brings LFCLK/GRTC up before application code runs. Do the same in
-    // low-power mode so the first delay()/SYSTEM OFF cycle does not pay the
-    // one-time LFXO startup penalty in user-visible timing.
+    // Kick LFCLK/LFXO startup early, but do not block boot on crystal settle
+    // time. The low-power timebase still completes its blocking wait on first
+    // use; this just hides the one-time startup penalty behind normal sketch
+    // activity, closer to the Zephyr behavior seen on the XIAO board.
     nrf54l15_core_bootstrap_low_power_timebase();
 #endif
 #endif

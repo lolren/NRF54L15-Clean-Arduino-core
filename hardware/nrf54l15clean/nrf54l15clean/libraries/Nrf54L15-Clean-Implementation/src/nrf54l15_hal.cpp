@@ -163,6 +163,19 @@ void startLfclkSource(NRF_CLOCK_Type* clock, uint32_t src) {
   clock->TASKS_LFCLKSTART = CLOCK_TASKS_LFCLKSTART_TASKS_LFCLKSTART_Trigger;
 }
 
+bool lfclkStartAlreadyRequested(NRF_CLOCK_Type* clock, uint32_t src) {
+  if (clock == nullptr) {
+    return false;
+  }
+
+  const uint32_t run = (clock->LFCLK.RUN & CLOCK_LFCLK_RUN_STATUS_Msk) >>
+                       CLOCK_LFCLK_RUN_STATUS_Pos;
+  const uint32_t requestedSrc =
+      (clock->LFCLK.SRCCOPY & CLOCK_LFCLK_SRCCOPY_SRC_Msk) >>
+      CLOCK_LFCLK_SRCCOPY_SRC_Pos;
+  return (run == CLOCK_LFCLK_RUN_STATUS_Triggered) && (requestedSrc == src);
+}
+
 bool grtcSyscounterReady(NRF_GRTC_Type* grtc) {
   if (grtc == nullptr) {
     return false;
@@ -262,19 +275,9 @@ void ensureLfxoRunning() {
   }
 
   static constexpr uint32_t kLfclkStartSpinLimit = 2000000UL;
-
-  // Match Zephyr's two-stage XTAL startup: RC first for immediate LFCLK
-  // availability, then switch the source to the crystal once LFCLKSTARTED
-  // fires for the RC stage.
-  if (!lfclkRunningFrom(clock, CLOCK_LFCLK_STAT_SRC_LFRC)) {
-    startLfclkSource(clock, CLOCK_LFCLK_SRC_SRC_LFRC);
-    if (!waitForLfclkStarted(clock, CLOCK_LFCLK_STAT_SRC_LFRC,
-                             kLfclkStartSpinLimit)) {
-      return;
-    }
+  if (!lfclkStartAlreadyRequested(clock, CLOCK_LFCLK_SRCCOPY_SRC_LFXO)) {
+    startLfclkSource(clock, CLOCK_LFCLK_SRC_SRC_LFXO);
   }
-
-  startLfclkSource(clock, CLOCK_LFCLK_SRC_SRC_LFXO);
   if (!waitForLfclkStarted(clock, CLOCK_LFCLK_STAT_SRC_LFXO,
                            kLfclkStartSpinLimit)) {
     return;
