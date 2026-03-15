@@ -216,10 +216,10 @@ def append_connect_mode(cmd: list[str], connect_mode: str | None) -> list[str]:
 
 
 def retry_connect_mode(target: str, attempt: int) -> str | None:
-    if attempt <= 1:
-        return None
     if target.strip().lower() == "nrf54l":
         return "under-reset"
+    if attempt <= 1:
+        return None
     return "halt"
 
 
