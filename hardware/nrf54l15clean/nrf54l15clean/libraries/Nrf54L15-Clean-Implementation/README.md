@@ -38,6 +38,12 @@ Raw peripheral compatibility exposed by the core:
 - `NRF_I2S0`
 - `NRF_I2S`
 
+RTC note:
+
+- `nRF54L15` exposes `GRTC` for low-frequency timekeeping, alarms, and timed wake.
+- This is an RTC-like monotonic counter/compare block, not a battery-backed calendar clock by itself.
+- The `Grtc` HAL reports uptime in microseconds and supports relative/absolute compare alarms.
+
 ## Board pin map
 
 Pin mappings in `src/xiao_nrf54l15_pins.h` are taken from the XIAO nRF54L15 schematic pages:
@@ -186,6 +192,12 @@ Callback note:
   - Common `nrf_to_nrf` / RF24-style TX-RX flow using `begin()`, pipes, `startListening()`, `stopListening()`, `write()`, `available()`, and `read()`.
 - `examples/Peripherals/nrf_to_nrfAcknowledgementPayloads/nrf_to_nrfAcknowledgementPayloads.ino`
   - Common `nrf_to_nrf` ACK-payload flow using dynamic payloads and `writeAckPayload()`.
+- `examples/Peripherals/GrtcUptimeClock/GrtcUptimeClock.ino`
+  - Reads the `GRTC` SYSCOUNTER and prints formatted uptime once per second.
+  - Shows the most honest RTC-like use on `nRF54L15`: stable uptime since boot.
+- `examples/Peripherals/GrtcCompareAlarmTicker/GrtcCompareAlarmTicker.ino`
+  - Arms a `GRTC` compare channel as a periodic alarm source and polls for compare events.
+  - Shows how to build repeating alarm/ticker behavior without pretending the hardware is a wall clock.
 
 Compatibility note:
 
