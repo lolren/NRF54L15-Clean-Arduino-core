@@ -3634,6 +3634,11 @@ constexpr uint32_t kVdmaDescriptorAttrAarResolvedIndex =
     (0x11UL << VDMADESCRIPTOR_CONFIG_ATTRIBUTE_Pos) &
     VDMADESCRIPTOR_CONFIG_ATTRIBUTE_Msk;
 constexpr size_t kAarMaxIrksScratch = 64U;
+constexpr uint32_t kCracenRngFailureMask =
+    CRACENCORE_RNGCONTROL_STATUS_REPFAIL_Msk |
+    CRACENCORE_RNGCONTROL_STATUS_PROPFAIL_Msk |
+    CRACENCORE_RNGCONTROL_STATUS_STARTUPFAIL_Msk |
+    CRACENCORE_RNGCONTROL_STATUS_FIFOACCFAIL_Msk;
 
 alignas(4) uint8_t g_aarAddressScratch[6] = {};
 alignas(4) uint8_t g_aarIrkScratch[kAarMaxIrksScratch * 16U] = {};
@@ -3670,6 +3675,154 @@ void zeroVdmaDescriptor(NRF_VDMADESCRIPTOR_Type* descriptor) {
 }
 
 }  // namespace
+
+CracenRng::CracenRng(uint32_t controlBase, uint32_t coreBase)
+    : cracen_(reinterpret_cast<NRF_CRACEN_Type*>(
+          static_cast<uintptr_t>(controlBase))),
+      core_(reinterpret_cast<NRF_CRACENCORE_Type*>(
+          static_cast<uintptr_t>(coreBase))),
+      active_(false) {}
+
+bool CracenRng::begin(uint32_t spinLimit) {
+  if (cracen_ == nullptr || core_ == nullptr) {
+    return false;
+  }
+
+  const uint32_t nextEnable = cracen_->ENABLE | CRACEN_ENABLE_RNG_Msk;
+  cracen_->ENABLE = nextEnable;
+  clearEvent();
+
+  uint32_t control = core_->RNGCONTROL.CONTROL;
+  control &= ~CRACENCORE_RNGCONTROL_CONTROL_ENABLE_Msk;
+  core_->RNGCONTROL.CONTROL = control;
+  __asm volatile("dsb 0xF" ::: "memory");
+
+  control |= CRACENCORE_RNGCONTROL_CONTROL_ENABLE_Msk;
+  core_->RNGCONTROL.CONTROL = control;
+  __asm volatile("dsb 0xF" ::: "memory");
+
+  active_ = true;
+  return ensureDataAvailable(spinLimit);
+}
+
+void CracenRng::end() {
+  if (cracen_ == nullptr || core_ == nullptr) {
+    active_ = false;
+    return;
+  }
+
+  uint32_t control = core_->RNGCONTROL.CONTROL;
+  control &= ~CRACENCORE_RNGCONTROL_CONTROL_ENABLE_Msk;
+  core_->RNGCONTROL.CONTROL = control;
+  __asm volatile("dsb 0xF" ::: "memory");
+
+  cracen_->ENABLE &= ~CRACEN_ENABLE_RNG_Msk;
+  clearEvent();
+  active_ = false;
+}
+
+bool CracenRng::fill(void* data, size_t length, uint32_t spinLimit) {
+  if (data == nullptr) {
+    return false;
+  }
+
+  const bool temporaryBegin = !active_;
+  if (temporaryBegin && !begin(spinLimit)) {
+    return false;
+  }
+
+  uint8_t* out = static_cast<uint8_t*>(data);
+  size_t remaining = length;
+  bool ok = true;
+  while (remaining > 0U) {
+    uint32_t word = 0U;
+    if (!randomWord(&word, spinLimit)) {
+      ok = false;
+      break;
+    }
+
+    const size_t chunk = (remaining < sizeof(word)) ? remaining : sizeof(word);
+    memcpy(out, &word, chunk);
+    out += chunk;
+    remaining -= chunk;
+  }
+
+  if (temporaryBegin) {
+    end();
+  }
+  return ok;
+}
+
+bool CracenRng::randomWord(uint32_t* outWord, uint32_t spinLimit) {
+  if (outWord == nullptr) {
+    return false;
+  }
+
+  const bool temporaryBegin = !active_;
+  if (temporaryBegin && !begin(spinLimit)) {
+    return false;
+  }
+
+  const bool ready = ensureDataAvailable(spinLimit);
+  if (ready) {
+    *outWord = core_->RNGCONTROL.FIFO[0];
+  }
+
+  if (temporaryBegin) {
+    end();
+  }
+  return ready;
+}
+
+uint32_t CracenRng::availableWords() const {
+  if (core_ == nullptr) {
+    return 0U;
+  }
+  return core_->RNGCONTROL.FIFOLEVEL &
+         CRACENCORE_RNGCONTROL_FIFOLEVEL_FIFOLEVEL_Msk;
+}
+
+uint32_t CracenRng::status() const {
+  if (core_ == nullptr) {
+    return 0xFFFFFFFFUL;
+  }
+  return core_->RNGCONTROL.STATUS;
+}
+
+bool CracenRng::healthy() const {
+  const uint32_t currentStatus = status();
+  const uint32_t state =
+      (currentStatus & CRACENCORE_RNGCONTROL_STATUS_STATE_Msk) >>
+      CRACENCORE_RNGCONTROL_STATUS_STATE_Pos;
+  return (currentStatus != 0xFFFFFFFFUL) &&
+         ((currentStatus & kCracenRngFailureMask) == 0U) &&
+         (state != CRACENCORE_RNGCONTROL_STATUS_STATE_ERROR);
+}
+
+bool CracenRng::active() const { return active_; }
+
+void CracenRng::clearEvent() {
+  if (cracen_ == nullptr) {
+    return;
+  }
+  cracen_->EVENTS_RNG = 0U;
+}
+
+bool CracenRng::ensureDataAvailable(uint32_t spinLimit) {
+  if (!active_ || core_ == nullptr) {
+    return false;
+  }
+
+  while (spinLimit-- > 0U) {
+    if (availableWords() != 0U) {
+      return healthy();
+    }
+    if (!healthy()) {
+      return false;
+    }
+  }
+  return false;
+}
 
 Aar::Aar(uint32_t base)
     : aar_(reinterpret_cast<NRF_AAR_Type*>(static_cast<uintptr_t>(base))) {}

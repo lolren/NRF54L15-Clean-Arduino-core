@@ -11,6 +11,7 @@ static Grtc g_grtc;
 static TempSensor g_temp;
 static Watchdog g_wdt;
 static Pdm g_pdm;
+static CracenRng g_rng;
 static Aar g_aar;
 static Ecb g_ecb;
 static BleRadio g_ble;
@@ -173,6 +174,40 @@ static bool testPdm() {
            static_cast<int>(pcm[0]));
   reportResult("PDM", ok && captured, detail);
   return ok && captured;
+}
+
+static bool testCracenRng() {
+  uint8_t first[16] = {};
+  uint8_t second[16] = {};
+
+  const bool ok = g_rng.begin(600000UL) &&
+                  g_rng.fill(first, sizeof(first), 600000UL) &&
+                  g_rng.fill(second, sizeof(second), 600000UL);
+  const bool same = (memcmp(first, second, sizeof(first)) == 0);
+  const uint32_t status = g_rng.status();
+  const uint32_t fifoWords = g_rng.availableWords();
+  g_rng.end();
+
+  char firstHex[9];
+  char secondHex[9];
+  snprintf(firstHex, sizeof(firstHex), "%02X%02X%02X%02X",
+           first[0], first[1], first[2], first[3]);
+  snprintf(secondHex, sizeof(secondHex), "%02X%02X%02X%02X",
+           second[0], second[1], second[2], second[3]);
+
+  char detail[128];
+  snprintf(detail, sizeof(detail),
+           "ok=%s healthy=%s same=%s status=0x%08lX fifo=%lu a=%s b=%s",
+           ok ? "yes" : "no",
+           g_rng.healthy() ? "yes" : "no",
+           same ? "yes" : "no",
+           static_cast<unsigned long>(status),
+           static_cast<unsigned long>(fifoWords),
+           firstHex,
+           secondHex);
+  const bool pass = ok && !same && (status != 0xFFFFFFFFUL);
+  reportResult("CRACEN-RNG", pass, detail);
+  return pass;
 }
 
 static bool testEcb() {
@@ -338,6 +373,7 @@ void setup() {
   testWatchdogConfig();
   testBoardControl();
   testPdm();
+  testCracenRng();
   testEcb();
   testAar();
   testBleRadio();

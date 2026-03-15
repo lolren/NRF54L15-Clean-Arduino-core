@@ -19,6 +19,7 @@ This package uses direct peripheral register access from the nRF54L15 datasheet 
 - `Pwm`: PWM single-output setup with duty/frequency control.
 - `Gpiote`: GPIO task/event channels with callback service.
 - `Dppic`: DPPI channel helper for publish/subscribe wiring between peripherals.
+- `CracenRng`: hardware entropy through the `CRACEN` / `CRACENCORE` RNG FIFO.
 - `Aar`: hardware BLE address resolution against one or more IRKs through `AAR00`.
 - `Ecb`: hardware AES-128 ECB block encryption through the `ECB00` peripheral and EasyDMA job lists.
 - `Comp`: general-purpose comparator in single-ended threshold or differential mode.
@@ -44,6 +45,8 @@ Raw peripheral compatibility exposed by the core:
 - `NRF_RADIO`
 - `NRF_AAR00`
 - `NRF_ECB00`
+- `NRF_CRACEN`
+- `NRF_CRACENCORE`
 - `NRF_SPIS00`
 - `NRF_SPIS20`
 - `NRF_SPIS21`
@@ -93,6 +96,13 @@ Board note:
 - The IRK list is passed as contiguous `16-byte` Bluetooth IRKs in normal byte order; the wrapper swaps them into the hardware's big-endian AAR layout internally.
 - On `nRF54L15`, the output job list format is a little stricter than the datasheet implies; the wrapper hides that quirk and returns the resolved index through the normal API.
 - `AAR00` shares the same AES core as `ECB00` and `CCM00`, so it can still lose arbitration against higher-priority crypto users.
+
+## CRACEN RNG note
+
+- `CRACEN` gates the hardware RNG block, and `CRACENCORE.RNGCONTROL` exposes the conditioned entropy FIFO.
+- `CracenRng` is the clean wrapper for that path. It polls the FIFO, checks the health/status flags, and returns real random bytes to sketches.
+- This is separate from Arduino `random()`, which is still just a pseudo-random generator until you seed it.
+- If you want true entropy directly, use `CracenRng::fill(...)`. If you want legacy Arduino helpers with a real seed, read a `uint32_t` from `CracenRng` and pass it to `randomSeed(...)`.
 
 ## Power-fail comparator note
 
@@ -276,6 +286,12 @@ Callback note:
 - `examples/Peripherals/SpisTargetEcho/SpisTargetEcho.ino`
   - Uses the new `Spis` wrapper to act as an SPI target on `CS=D2 SCK=D8 MISO=D9 MOSI=D10`.
   - Demonstrates the semaphore-based target flow: preload DMA buffers, release the transaction, and inspect what the controller actually clocked.
+- `examples/Peripherals/CracenRandomBytes/CracenRandomBytes.ino`
+  - Reads a 32-byte burst directly from the hardware entropy FIFO and prints it in hex.
+  - Good first check when you want to prove you are getting real silicon entropy instead of pseudo-random state.
+- `examples/Peripherals/CracenSeedArduinoRandom/CracenSeedArduinoRandom.ino`
+  - Reads a hardware-random seed and hands it to Arduino `randomSeed(...)`.
+  - This is the most practical bridge for existing sketches that already rely on Arduino `random()`.
 - `examples/Peripherals/EcbAesKnownVector/EcbAesKnownVector.ino`
   - Uses the `Ecb` wrapper with the exact AES-128 sample vector from the `nRF54L15` datasheet.
   - Good first check when you want to confirm the key-byte-order handling and EasyDMA job-list setup are both correct.

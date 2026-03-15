@@ -301,6 +301,29 @@ class Dppic {
   NRF_DPPIC_Type* dppic_;
 };
 
+class CracenRng {
+ public:
+  explicit CracenRng(uint32_t controlBase = nrf54l15::CRACEN_BASE,
+                     uint32_t coreBase = nrf54l15::CRACENCORE_BASE);
+
+  bool begin(uint32_t spinLimit = 400000UL);
+  void end();
+  bool fill(void* data, size_t length, uint32_t spinLimit = 400000UL);
+  bool randomWord(uint32_t* outWord, uint32_t spinLimit = 400000UL);
+  uint32_t availableWords() const;
+  uint32_t status() const;
+  bool healthy() const;
+  bool active() const;
+  void clearEvent();
+
+ private:
+  bool ensureDataAvailable(uint32_t spinLimit);
+
+  NRF_CRACEN_Type* cracen_;
+  NRF_CRACENCORE_Type* core_;
+  bool active_;
+};
+
 class Aar {
  public:
   explicit Aar(uint32_t base = nrf54l15::AAR00_BASE);
