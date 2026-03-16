@@ -7541,6 +7541,7 @@ BleRadio::BleRadio(uint32_t radioBase, uint32_t ficrBase)
       gapBatteryLevel_(100U),
       customGattServices_{},
       customGattCharacteristics_{},
+      customGattWriteHandlers_{},
       customGattServiceCount_(0U),
       customGattCharacteristicCount_(0U),
       customGattNextHandle_(kCustomGattHandleStart),
@@ -7838,6 +7839,7 @@ bool BleRadio::clearCustomGatt() {
   }
   memset(customGattServices_, 0, sizeof(customGattServices_));
   memset(customGattCharacteristics_, 0, sizeof(customGattCharacteristics_));
+  memset(customGattWriteHandlers_, 0, sizeof(customGattWriteHandlers_));
   customGattServiceCount_ = 0U;
   customGattCharacteristicCount_ = 0U;
   customGattNextHandle_ = kCustomGattHandleStart;
@@ -7880,6 +7882,32 @@ BleRadio::findCustomCharacteristicByValueHandle(uint16_t valueHandle) const {
   for (uint8_t i = 0U; i < customGattCharacteristicCount_; ++i) {
     if (customGattCharacteristics_[i].valueHandle == valueHandle) {
       return &customGattCharacteristics_[i];
+    }
+  }
+  return nullptr;
+}
+
+BleRadio::BleCustomWriteHandlerState*
+BleRadio::findCustomGattWriteHandler(uint16_t valueHandle) {
+  if (valueHandle == 0U) {
+    return nullptr;
+  }
+  for (uint8_t i = 0U; i < customGattCharacteristicCount_; ++i) {
+    if (customGattWriteHandlers_[i].valueHandle == valueHandle) {
+      return &customGattWriteHandlers_[i];
+    }
+  }
+  return nullptr;
+}
+
+const BleRadio::BleCustomWriteHandlerState*
+BleRadio::findCustomGattWriteHandler(uint16_t valueHandle) const {
+  if (valueHandle == 0U) {
+    return nullptr;
+  }
+  for (uint8_t i = 0U; i < customGattCharacteristicCount_; ++i) {
+    if (customGattWriteHandlers_[i].valueHandle == valueHandle) {
+      return &customGattWriteHandlers_[i];
     }
   }
   return nullptr;
@@ -8156,6 +8184,39 @@ bool BleRadio::isCustomGattCccdEnabled(uint16_t valueHandle, bool indication) co
   return ((characteristic->cccdValue & mask) != 0U);
 }
 
+bool BleRadio::setCustomGattWriteHandler(uint16_t valueHandle,
+                                         BleGattWriteCallback callback,
+                                         void* context) {
+  if (findCustomCharacteristicByValueHandle(valueHandle) == nullptr) {
+    return false;
+  }
+
+  BleCustomWriteHandlerState* existing = findCustomGattWriteHandler(valueHandle);
+  if (existing != nullptr) {
+    if (callback == nullptr) {
+      memset(existing, 0, sizeof(*existing));
+    } else {
+      existing->callback = callback;
+      existing->context = context;
+    }
+    return true;
+  }
+
+  if (callback == nullptr) {
+    return true;
+  }
+
+  for (uint8_t i = 0U; i < customGattCharacteristicCount_; ++i) {
+    if (customGattWriteHandlers_[i].valueHandle == 0U) {
+      customGattWriteHandlers_[i].valueHandle = valueHandle;
+      customGattWriteHandlers_[i].callback = callback;
+      customGattWriteHandlers_[i].context = context;
+      return true;
+    }
+  }
+  return false;
+}
+
 void BleRadio::setCustomGattWriteCallback(BleGattWriteCallback callback, void* context) {
   customGattWriteCallback_ = callback;
   customGattWriteContext_ = context;
@@ -8193,7 +8254,13 @@ bool BleRadio::writeCustomGattCharacteristic(uint16_t handle, const uint8_t* val
     if (valueLength > 0U) {
       memcpy(valueTarget->value, value, valueLength);
     }
-    if (customGattWriteCallback_ != nullptr) {
+    BleCustomWriteHandlerState* handler =
+        findCustomGattWriteHandler(valueTarget->valueHandle);
+    if (handler != nullptr && handler->callback != nullptr) {
+      handler->callback(valueTarget->valueHandle, valueTarget->value,
+                        valueTarget->valueLength, withResponse,
+                        handler->context);
+    } else if (customGattWriteCallback_ != nullptr) {
       customGattWriteCallback_(valueTarget->valueHandle, valueTarget->value,
                                valueTarget->valueLength, withResponse,
                                customGattWriteContext_);

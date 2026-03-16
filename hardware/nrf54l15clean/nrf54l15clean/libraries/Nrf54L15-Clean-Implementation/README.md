@@ -36,6 +36,7 @@ This package uses direct peripheral register access from the nRF54L15 datasheet 
 - `I2sRx`: reusable RX-only `I2S20` wrapper with double-buffer capture, IRQ service, optional auto-restart, and callback-based buffer delivery.
 - `I2sDuplex`: reusable full-duplex `I2S20` wrapper with shared stop/restart handling, TX refill callback, and RX delivery callback.
 - `BleRadio`: register-level BLE 1M link layer + minimal ATT/GATT peripheral path via `RADIO`.
+- `BleNordicUart`: lightweight Arduino `Stream` wrapper for Nordic UART Service (NUS) peripheral mode on top of `BleRadio` custom GATT.
 - `ZigbeeRadio`: IEEE 802.15.4 PHY/MAC-lite data-frame + MAC-command frame TX/RX helpers via `RADIO`.
 - `RawRadioLink`: proprietary 1 Mbit packet TX/RX helper via `RADIO`.
 - `nrf_to_nrf`: thin RF24-style compatibility wrapper for common sketch flows on top of `RawRadioLink`.
@@ -356,6 +357,12 @@ BLE examples:
 - `examples/BLE/BleCustomGattRuntime/BleCustomGattRuntime.ino`
   - Demonstrates runtime registration of custom 16-bit GATT service/characteristics.
   - Includes writable characteristic, CCCD-backed notification characteristic, and serial command hooks.
+- `examples/BLE/BleNordicUartBridge/BleNordicUartBridge.ino`
+  - Exposes the standard Nordic UART Service peripheral and bridges BLE RX/TX to USB `Serial`.
+  - Good first smoke test with nRF Connect or any NUS-capable phone/desktop client.
+- `examples/BLE/BleNordicUartCommandConsole/BleNordicUartCommandConsole.ino`
+  - Uses the same NUS transport as a simple text command console.
+  - Includes `help`, `status`, `led on`, `led off`, `led toggle`, and `echo <text>` commands.
 - `examples/BLE/BleBatteryNotifyPeripheral/BleBatteryNotifyPeripheral.ino`
   - Connectable/scannable BLE peripheral focused on Battery Level notifications.
   - Periodically updates battery percentage and emits notifications when CCCD notify is enabled.

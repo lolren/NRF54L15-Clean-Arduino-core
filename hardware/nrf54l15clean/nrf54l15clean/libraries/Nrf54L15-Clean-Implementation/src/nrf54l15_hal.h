@@ -1506,6 +1506,9 @@ class BleRadio {
                                       bool indicate = false);
   bool isCustomGattCccdEnabled(uint16_t valueHandle,
                                bool indication = false) const;
+  bool setCustomGattWriteHandler(uint16_t valueHandle,
+                                 BleGattWriteCallback callback,
+                                 void* context = nullptr);
   void setCustomGattWriteCallback(BleGattWriteCallback callback,
                                   void* context = nullptr);
 
@@ -1583,6 +1586,12 @@ class BleRadio {
     uint8_t value[kCustomGattMaxValueLength];
   };
 
+  struct BleCustomWriteHandlerState {
+    uint16_t valueHandle;
+    BleGattWriteCallback callback;
+    void* context;
+  };
+
   bool configureBle1M();
   bool beginUnconnectedRadioActivity(uint32_t spinLimit = 1500000UL);
   void endUnconnectedRadioActivity();
@@ -1647,6 +1656,9 @@ class BleRadio {
   const BleCustomServiceState* findCustomServiceByHandle(uint16_t serviceHandle) const;
   BleCustomCharacteristicState* findCustomCharacteristicByValueHandle(uint16_t valueHandle);
   const BleCustomCharacteristicState* findCustomCharacteristicByValueHandle(
+      uint16_t valueHandle) const;
+  BleCustomWriteHandlerState* findCustomGattWriteHandler(uint16_t valueHandle);
+  const BleCustomWriteHandlerState* findCustomGattWriteHandler(
       uint16_t valueHandle) const;
   BleCustomCharacteristicState* findCustomCharacteristicByCccdHandle(uint16_t cccdHandle);
   const BleCustomCharacteristicState* findCustomCharacteristicByCccdHandle(
@@ -1799,6 +1811,7 @@ class BleRadio {
   uint8_t gapBatteryLevel_;
   BleCustomServiceState customGattServices_[kCustomGattMaxServices];
   BleCustomCharacteristicState customGattCharacteristics_[kCustomGattMaxCharacteristics];
+  BleCustomWriteHandlerState customGattWriteHandlers_[kCustomGattMaxCharacteristics];
   uint8_t customGattServiceCount_;
   uint8_t customGattCharacteristicCount_;
   uint16_t customGattNextHandle_;
