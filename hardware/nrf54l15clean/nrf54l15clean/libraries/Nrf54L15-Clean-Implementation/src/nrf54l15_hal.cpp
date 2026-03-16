@@ -9649,6 +9649,7 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit
       (txLlid == kBlePduLlControl) &&
       (txLength >= 1U) &&
       (txPlainPayloadForCurrentTx[0] == kBleLlCtrlStartEncRsp);
+  const bool txIsEmptyAckPlain = (txLlid == 0x01U) && (txLength == 0U);
 
   const bool sessionEncryptionActive = connectionEncTxEnabled_ && connectionEncSessionValid_;
   const bool encryptCurrentTx = sessionEncryptionActive &&
@@ -9752,12 +9753,15 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit
   }
 
   // During start encryption, some controllers send LL_START_ENC_REQ as a second
-  // packet in a later connection event. Keep TX->RX turnaround in hardware while
-  // awaiting LL_START_ENC_REQ so we can catch it without CPU latency.
+  // packet in a later connection event. Some Linux centrals also send early LL
+  // control PDUs immediately after the first empty ACK. Keep TX->RX turnaround
+  // in hardware for those cases so we can catch same-event follow-up packets
+  // without CPU latency.
   const bool doPostTxRxTurnaround =
       !terminateInd &&
       ((connectionEncStartReqPending_ && txIsEncRspPlain) ||
-       txIsStartEncReqPlain);
+       txIsStartEncReqPlain ||
+       txIsEmptyAckPlain);
 
   clearRadioCoreEvents(radio_);
   if (doPostTxRxTurnaround) {
@@ -9971,6 +9975,67 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit
       ++followPackets;
       ++encDebug_.followupEndSeen;
       const uint32_t followRxEndTimestampUs = micros();
+      auto transmitImmediateFollowupResponse = [&](uint8_t txFollowLlid,
+                                                   uint8_t txFollowLength) -> bool {
+        connectionLastTxLlid_ = txFollowLlid;
+        connectionLastTxLength_ = txFollowLength;
+        connectionLastTxWasEncrypted_ = false;
+        connectionLastTxEncryptedLength_ = 0U;
+        memset(connectionLastTxEncryptedPayload_, 0,
+               sizeof(connectionLastTxEncryptedPayload_));
+        connectionLastTxPlainLlid_ = txFollowLlid;
+        connectionLastTxPlainLength_ = txFollowLength;
+        if (txFollowLength > 0U) {
+          memcpy(connectionLastTxPlainPayload_, connectionTxPayload_, txFollowLength);
+        }
+
+        txPacket_[0] = static_cast<uint8_t>((txFollowLlid & 0x03U) |
+                                            ((connectionExpectedRxSn_ & 0x01U) << 2U) |
+                                            ((connectionTxSn_ & 0x01U) << 3U));
+        txPacket_[1] = txFollowLength;
+        memcpy(&txPacket_[2], connectionTxPayload_, txFollowLength);
+
+        clearRadioCoreEvents(radio_);
+        radio_->PACKETPTR =
+            static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&txPacket_[0]));
+        radio_->SHORTS =
+            ((RADIO_SHORTS_TXREADY_START_Enabled << RADIO_SHORTS_TXREADY_START_Pos) &
+             RADIO_SHORTS_TXREADY_START_Msk) |
+            ((RADIO_SHORTS_PHYEND_DISABLE_Enabled << RADIO_SHORTS_PHYEND_DISABLE_Pos) &
+             RADIO_SHORTS_PHYEND_DISABLE_Msk);
+
+        const uint32_t txFollowTriggerTargetUs =
+            followRxEndTimestampUs + kBleConnTxenAfterRxUs;
+        uint32_t txFollowTriggerNowUs = micros();
+        while (!timeReachedUs(txFollowTriggerNowUs, txFollowTriggerTargetUs)) {
+          txFollowTriggerNowUs = micros();
+        }
+        radio_->TASKS_TXEN = RADIO_TASKS_TXEN_TASKS_TXEN_Trigger;
+
+        const uint32_t txFollowEndBudgetUs = kBleConnTxDisableWaitUs + 1200U;
+        const bool txFollowEndSeen =
+            waitRadioEndBudgeted(radio_, txFollowEndBudgetUs, spinLimit / 2U + 1U);
+        bool txFollowOk = false;
+        if (txFollowEndSeen) {
+          txFollowOk =
+              waitRadioDisabledBudgeted(radio_, kBleConnTxDisableWaitUs,
+                                        spinLimit / 2U + 1U);
+        }
+        if (!txFollowOk) {
+          radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
+          waitRadioDisabledBudgeted(radio_, kBleConnTxDisableWaitUs,
+                                    spinLimit / 2U + 1U);
+        }
+        radio_->SHORTS = 0U;
+        if (txFollowOk) {
+          connectionTxHistoryValid_ = true;
+          connectionLastTxSn_ =
+              static_cast<uint8_t>((txPacket_[0] >> 3U) & 0x01U);
+        }
+        lastTxOkForEncEnable = txFollowOk;
+        return txFollowOk;
+      };
+
       bool followDisabled =
           waitRadioDisabledBudgeted(radio_, kBleConnDisableWaitUs, spinLimit / 2U + 1U);
       if (!followDisabled) {
@@ -10106,7 +10171,6 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit
         encDebug_.lastFollowLen = rxLengthFollow;
         encDebug_.lastFollowByte0 =
             (rxLengthFollow >= 1U) ? rxPacket_[2] : 0U;
-
         if (packetIsNewFollow && !terminateInd &&
             (llidFollow == kBlePduLlControl) &&
             (rxLengthFollow >= 1U) &&
@@ -10118,66 +10182,10 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit
                                      connectionTxPayload_, &responseLength,
                                      &followTerminate) &&
               responseLength > 0U) {
-            const uint8_t txFollowLlid = kBlePduLlControl;
-            const uint8_t txFollowLength = responseLength;
-
-            connectionLastTxLlid_ = txFollowLlid;
-            connectionLastTxLength_ = txFollowLength;
-            connectionLastTxWasEncrypted_ = false;
-            connectionLastTxEncryptedLength_ = 0U;
-            memset(connectionLastTxEncryptedPayload_, 0,
-                   sizeof(connectionLastTxEncryptedPayload_));
-            connectionLastTxPlainLlid_ = txFollowLlid;
-            connectionLastTxPlainLength_ = txFollowLength;
-            if (txFollowLength > 0U) {
-              memcpy(connectionLastTxPlainPayload_, connectionTxPayload_, txFollowLength);
-            }
-
-            txPacket_[0] = static_cast<uint8_t>((txFollowLlid & 0x03U) |
-                                                ((connectionExpectedRxSn_ & 0x01U) << 2U) |
-                                                ((connectionTxSn_ & 0x01U) << 3U));
-            txPacket_[1] = txFollowLength;
-            memcpy(&txPacket_[2], connectionTxPayload_, txFollowLength);
-
-            clearRadioCoreEvents(radio_);
-            radio_->PACKETPTR =
-                static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&txPacket_[0]));
-            radio_->SHORTS =
-                ((RADIO_SHORTS_TXREADY_START_Enabled << RADIO_SHORTS_TXREADY_START_Pos) &
-                 RADIO_SHORTS_TXREADY_START_Msk) |
-                ((RADIO_SHORTS_PHYEND_DISABLE_Enabled << RADIO_SHORTS_PHYEND_DISABLE_Pos) &
-                 RADIO_SHORTS_PHYEND_DISABLE_Msk);
-
-            const uint32_t txFollowTriggerTargetUs =
-                followRxEndTimestampUs + kBleConnTxenAfterRxUs;
-            uint32_t txFollowTriggerNowUs = micros();
-            while (!timeReachedUs(txFollowTriggerNowUs, txFollowTriggerTargetUs)) {
-              txFollowTriggerNowUs = micros();
-            }
-            radio_->TASKS_TXEN = RADIO_TASKS_TXEN_TASKS_TXEN_Trigger;
-
-            const uint32_t txFollowEndBudgetUs = kBleConnTxDisableWaitUs + 1200U;
-            const bool txFollowEndSeen =
-                waitRadioEndBudgeted(radio_, txFollowEndBudgetUs, spinLimit / 2U + 1U);
-            bool txFollowOk = false;
-            if (txFollowEndSeen) {
-              txFollowOk =
-                  waitRadioDisabledBudgeted(radio_, kBleConnTxDisableWaitUs,
-                                            spinLimit / 2U + 1U);
-            }
-            if (!txFollowOk) {
-              radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
-              waitRadioDisabledBudgeted(radio_, kBleConnTxDisableWaitUs,
-                                        spinLimit / 2U + 1U);
-            }
-            radio_->SHORTS = 0U;
-            if (txFollowOk) {
-              connectionTxHistoryValid_ = true;
-              connectionLastTxSn_ =
-                  static_cast<uint8_t>((txPacket_[0] >> 3U) & 0x01U);
+            if (transmitImmediateFollowupResponse(kBlePduLlControl,
+                                                  responseLength)) {
               ++encDebug_.followupStartEncRspTxOk;
             }
-            lastTxOkForEncEnable = txFollowOk;
 
             if (followTerminate) {
               terminateInd = true;
@@ -10186,6 +10194,49 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit
 
           // We handled LL_START_ENC_REQ; don't keep listening in this event.
           break;
+        }
+
+        if (packetIsNewFollow && !terminateInd && !connectionPendingTxValid_) {
+          uint8_t deferredFollowLlid = 0U;
+          uint8_t deferredFollowLength = 0U;
+          const bool encryptionProcedureBusyFollow =
+              connectionEncSessionValid_ &&
+              (connectionEncKeyDerivationPending_ ||
+               connectionEncStartReqTxPending_ ||
+               connectionEncAwaitingStartRsp_ ||
+               connectionEncEnableTxOnNextEvent_ ||
+               connectionEncStartReqPending_);
+
+          if (!encryptionProcedureBusyFollow &&
+              (llidFollow == kBlePduLlControl) &&
+              (rxLengthFollow >= 1U)) {
+            if (buildLlControlResponse(&rxPacket_[2], rxLengthFollow,
+                                       connectionTxPayload_,
+                                       &deferredFollowLength,
+                                       &terminateInd) &&
+                (deferredFollowLength > 0U)) {
+              transmitImmediateFollowupResponse(kBlePduLlControl,
+                                                deferredFollowLength);
+              break;
+            }
+          } else if (!encryptionProcedureBusyFollow &&
+                     (llidFollow == kBlePduDataStartOrComplete) &&
+                     (rxLengthFollow >= kBleL2capHeaderLen)) {
+            if (buildL2capResponse(&rxPacket_[2], rxLengthFollow,
+                                   connectionTxPayload_,
+                                   &deferredFollowLength) &&
+                (deferredFollowLength > 0U)) {
+              deferredFollowLlid = kBlePduDataStartOrComplete;
+            }
+          }
+
+          if (!terminateInd && (deferredFollowLength > 0U)) {
+            connectionPendingTxLlid_ = deferredFollowLlid;
+            connectionPendingTxLength_ = deferredFollowLength;
+            memcpy(connectionPendingTxPayload_, connectionTxPayload_,
+                   deferredFollowLength);
+            connectionPendingTxValid_ = true;
+          }
         }
       }
 
@@ -10488,11 +10539,7 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit
   }
 
   if (terminateInd) {
-    connectionPendingTxLlid_ = 0x01U;
-    connectionPendingTxLength_ = 0U;
-    connectionPendingTxValid_ = false;
-    connected_ = false;
-    restoreAdvertisingLinkDefaults();
+    disconnect(spinLimit / 2U + 1U);
   }
 
   clearRadioCoreEvents(radio_);
@@ -13378,6 +13425,8 @@ void BleRadio::restoreAdvertisingLinkDefaults() {
   connectionPreparedWriteMask_ = 0U;
   clearConnectionSecurityState();
   scanCycleStartIndex_ = 0U;
+  buildAdvertisingPacket();
+  buildScanResponsePacket();
   setAdvertisingChannel(BleAdvertisingChannel::k37);
 }
 
