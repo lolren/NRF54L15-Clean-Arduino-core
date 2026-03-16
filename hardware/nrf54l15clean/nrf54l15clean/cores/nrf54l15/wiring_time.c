@@ -24,20 +24,21 @@ static const uint32_t kSystemOffLfclkFrequencyHz = 32768UL;
 static const uint32_t kSystemOffMaxCcLatchWaitUs = 77UL;
 static const uint32_t kSystemOffMinimumLatencyGuardUs = 1000UL;
 static const uint32_t kGrtcStartSettleUs = 93UL;
+#if defined(NRF54L15_CLEAN_POWER_LOW)
 static const uint16_t kLowPowerDelayTimeoutLfclk = 5U;
 static const uint8_t kLowPowerDelayWakeLfclk = 4U;
 static const unsigned long kLowPowerDelayBoardCollapseThresholdMs = 30UL;
-#if defined(ARDUINO_XIAO_NRF54L15)
-static const uint32_t kZephyrAllowedCcMaskXiao = 0x67UL;
-static const uint8_t kZephyrMainCcChannelXiao = 1U;
-#endif
-
 #if NRF54L15_GRTC_IRQ_GROUP == 2U
 static const IRQn_Type kLowPowerTickIrq = GRTC_2_IRQn;
 #elif NRF54L15_GRTC_IRQ_GROUP == 1U
 static const IRQn_Type kLowPowerTickIrq = GRTC_1_IRQn;
 #else
 static const IRQn_Type kLowPowerTickIrq = GRTC_0_IRQn;
+#endif
+#endif
+#if defined(ARDUINO_XIAO_NRF54L15)
+static const uint32_t kZephyrAllowedCcMaskXiao = 0x67UL;
+static const uint8_t kZephyrMainCcChannelXiao = 1U;
 #endif
 
 static void disableSystemOffRetention(void)
@@ -133,6 +134,7 @@ static bool grtcSyscounterReady(NRF_GRTC_Type* grtc)
            GRTC_SYSCOUNTER_SYSCOUNTERH_BUSY_Ready;
 }
 
+#if defined(NRF54L15_CLEAN_POWER_LOW)
 static void busyWaitApproxUs(uint32_t us)
 {
     uint32_t cyclesPerUs = SystemCoreClock / 1000000UL;
@@ -149,6 +151,7 @@ static void busyWaitApproxUs(uint32_t us)
         __NOP();
     }
 }
+#endif
 
 static void ensureGrtcReady(NRF_GRTC_Type* grtc)
 {
@@ -397,6 +400,7 @@ static void delayBoardStateExit(const xiao_nrf54l15_board_state_t* state, uint8_
 #endif
 }
 
+#if defined(NRF54L15_CLEAN_POWER_LOW)
 static uint8_t delayShouldCollapseBoardState(unsigned long ms)
 {
 #if defined(ARDUINO_XIAO_NRF54L15)
@@ -407,6 +411,7 @@ static uint8_t delayShouldCollapseBoardState(unsigned long ms)
     return 0U;
 #endif
 }
+#endif
 
 static uint8_t systemOffWakeChannel(void)
 {

@@ -631,9 +631,6 @@ static void timer_pwm_release_pin(uint8_t index)
         return;
     }
 
-    const uint8_t dppi_channel = timer_pwm_slot_dppi_channel(slot);
-    const uint8_t sync_dppi_channel = timer_pwm_slot_sync_dppi_channel(slot);
-    const uintptr_t timer_base = k_timer_pwm_base[slot];
     const uint8_t gpiote_channel = g_timer_pwm_slot_gpiote_channel[slot];
 
     timer_pwm_stop_slot(slot);

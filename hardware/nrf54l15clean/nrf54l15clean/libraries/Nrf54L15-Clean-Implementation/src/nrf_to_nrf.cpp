@@ -395,7 +395,10 @@ bool nrf_to_nrf::setDataRate(uint8_t speed) {
 
 void nrf_to_nrf::setPALevel(uint8_t level, bool lnaEnable) {
   (void)lnaEnable;
-  paLevel_ = (level <= NRF_PA_MAX) ? level : NRF_PA_LOW;
+  if (level > static_cast<uint8_t>(NRF_PA_MAX)) {
+    level = static_cast<uint8_t>(NRF_PA_LOW);
+  }
+  paLevel_ = level;
   rawConfig_.txPowerDbm = paLevelToDbm(paLevel_);
   if (initialized_) {
     (void)link_.setTxPowerDbm(rawConfig_.txPowerDbm);

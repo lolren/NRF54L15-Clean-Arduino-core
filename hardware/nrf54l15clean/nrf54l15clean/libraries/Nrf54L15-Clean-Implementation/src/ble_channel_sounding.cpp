@@ -440,25 +440,6 @@ bool estimateMedianAndMad(const float* values,
   return true;
 }
 
-void sortPhaseSamples(float* freqsHz, float* phases, size_t count) {
-  if (freqsHz == nullptr || phases == nullptr || count < 2U) {
-    return;
-  }
-
-  for (size_t i = 1U; i < count; ++i) {
-    const float freq = freqsHz[i];
-    const float phase = phases[i];
-    size_t j = i;
-    while (j > 0U && freqsHz[j - 1U] > freq) {
-      freqsHz[j] = freqsHz[j - 1U];
-      phases[j] = phases[j - 1U];
-      --j;
-    }
-    freqsHz[j] = freq;
-    phases[j] = phase;
-  }
-}
-
 void sortPhaseSamplesWithQuality(float* freqsHz,
                                  float* phases,
                                  float* quality,

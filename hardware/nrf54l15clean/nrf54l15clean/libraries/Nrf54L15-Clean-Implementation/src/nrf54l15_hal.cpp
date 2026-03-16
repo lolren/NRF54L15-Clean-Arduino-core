@@ -190,22 +190,6 @@ bool grtcSyscounterReady(NRF_GRTC_Type* grtc) {
          GRTC_SYSCOUNTER_SYSCOUNTERH_BUSY_Ready;
 }
 
-void busyWaitApproxUs(uint32_t us) {
-  uint32_t cyclesPerUs = SystemCoreClock / 1000000UL;
-  if (cyclesPerUs == 0U) {
-    cyclesPerUs = 64U;
-  }
-
-  uint32_t iterations = cyclesPerUs * us;
-  if (iterations == 0U) {
-    iterations = 1U;
-  }
-
-  while (iterations-- > 0U) {
-    __asm volatile("nop");
-  }
-}
-
 void ensureGrtcReady(NRF_GRTC_Type* grtc) {
   if (grtc == nullptr) {
     return;
@@ -9933,8 +9917,9 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit
     const uint32_t followStartUs = micros();
     uint8_t followPackets = 0U;
     while (!terminateInd) {
-      const uint32_t nowUs = micros();
-      const uint32_t elapsedUs = static_cast<uint32_t>(nowUs - followStartUs);
+      const uint32_t followNowUs = micros();
+      const uint32_t elapsedUs =
+          static_cast<uint32_t>(followNowUs - followStartUs);
       if ((elapsedUs >= followListenUs) || (followPackets >= 8U)) {
         break;
       }
