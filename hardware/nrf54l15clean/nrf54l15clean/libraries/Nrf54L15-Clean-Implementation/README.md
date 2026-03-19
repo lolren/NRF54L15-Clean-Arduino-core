@@ -353,6 +353,9 @@ BLE examples:
 - `examples/BLE/BleExtendedAdv499/BleExtendedAdv499.ino`
   - Demonstrates the same TX path with one `AUX_CHAIN_IND` after the first auxiliary packet.
   - Current chained limit is `499` bytes of AdvData total.
+- `examples/BLE/BleExtendedAdv995/BleExtendedAdv995.ino`
+  - Fills the current multi-chain TX limit with one `AUX_ADV_IND` and three `AUX_CHAIN_IND` follow-ups.
+  - Current maximum is `995` bytes of AdvData total.
 - `examples/BLE/BleConnectableScannableAdvertiser/BleConnectableScannableAdvertiser.ino`
   - Uses `ADV_IND`, listens for `SCAN_REQ`/`CONNECT_IND`, and sends `SCAN_RSP`.
   - Exposes interaction counters and peer addresses over UART.
@@ -360,8 +363,8 @@ BLE examples:
   - `AdvData` and `ScanRspData` are each limited to `31` bytes in legacy BLE.
   - The on-air PDU body can still be `37` bytes because it includes `AdvA` (`6` bytes) plus the `31` bytes of AD data.
 - Extended Advertising note:
-  - This core now includes a minimal `ADV_EXT_IND -> AUX_ADV_IND` TX path for larger broadcast payloads.
-  - Current limits are LE 1M only, non-connectable/non-scannable, one auxiliary chain step (`AUX_CHAIN_IND`), no scan response, and no connectable/scannable extended modes yet.
+  - This core now includes a minimal `ADV_EXT_IND -> AUX_ADV_IND` TX path for larger broadcast payloads, with up to three `AUX_CHAIN_IND` follow-ups.
+  - Current limits are LE 1M only, non-connectable/non-scannable, up to `995` bytes of AdvData total, no scan response, and no connectable/scannable extended modes yet.
 - `examples/BLE/BleConnectionPeripheral/BleConnectionPeripheral.ino`
   - Accepts legacy `CONNECT_IND`, tracks connection parameters, and runs data-channel events.
   - Responds to common LL control PDUs and ATT requests, with link event metadata logs.

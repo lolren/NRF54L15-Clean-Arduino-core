@@ -8,12 +8,11 @@ using namespace xiao_nrf54l15;
 
 // Minimal extended advertising example.
 //
-// Current core support intentionally stays narrow:
+// This stays within the single-AUX packet budget so the controller only emits:
 // - primary ADV_EXT_IND on channels 37/38/39
 // - one AUX_ADV_IND on a fixed secondary channel
 // - LE 1M PHY only
 // - non-connectable, non-scannable
-// - single auxiliary payload, up to 251 bytes of AdvData
 
 static BleRadio g_ble;
 static PowerManager g_power;
@@ -36,6 +35,9 @@ static constexpr uint8_t kAddress[6] = {0x51, 0x00, 0x15, 0x54, 0xDE, 0xC0};
 
 static bool appendAdField(uint8_t type, const uint8_t* value, size_t valueLen) {
   if ((valueLen > 0U) && (value == nullptr)) {
+    return false;
+  }
+  if (valueLen > 254U) {
     return false;
   }
   if ((g_extDataLen + valueLen + 2U) > sizeof(g_extData)) {

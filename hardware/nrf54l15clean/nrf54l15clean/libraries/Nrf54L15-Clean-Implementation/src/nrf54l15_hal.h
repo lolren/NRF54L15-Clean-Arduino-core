@@ -1258,7 +1258,8 @@ constexpr uint8_t kBleLegacyAddressLength = 6U;
 constexpr uint8_t kBleLegacyAdDataMaxLength = 31U;
 constexpr uint8_t kBleLegacyRawPayloadMaxLength =
     static_cast<uint8_t>(kBleLegacyAddressLength + kBleLegacyAdDataMaxLength);
-constexpr uint16_t kBleExtendedAdvDataMaxLength = 499U;
+constexpr uint8_t kBleExtendedSecondaryPacketCountMax = 4U;
+constexpr uint16_t kBleExtendedAdvDataMaxLength = 995U;
 
 enum BleGattCharacteristicProperty : uint8_t {
   kBleGattPropRead = 0x02U,
@@ -1740,12 +1741,12 @@ class BleRadio {
   uint8_t extendedAdvSid_;
   uint16_t extendedAdvDid_;
   uint8_t extendedAdvAuxChannel_;
+  uint8_t extendedSecondaryPacketCount_;
   uint8_t scanRspData_[kBleLegacyAdDataMaxLength];
   size_t scanRspDataLen_;
   alignas(4) uint8_t txPacket_[2 + 6 + 31];
   alignas(4) uint8_t extendedPrimaryPacket_[2 + 255];
-  alignas(4) uint8_t extendedAuxPacket_[2 + 255];
-  alignas(4) uint8_t extendedChainPacket_[2 + 255];
+  alignas(4) uint8_t extendedSecondaryPackets_[kBleExtendedSecondaryPacketCountMax][2 + 255];
   alignas(4) uint8_t scanRspPacket_[2 + 6 + 31];
   alignas(4) uint8_t rxPacket_[2 + 255];
   alignas(4) uint8_t connectionTxPayload_[255];

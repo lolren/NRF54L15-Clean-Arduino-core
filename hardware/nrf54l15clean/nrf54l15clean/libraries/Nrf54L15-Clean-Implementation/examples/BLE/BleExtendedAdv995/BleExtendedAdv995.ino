@@ -6,10 +6,14 @@
 
 using namespace xiao_nrf54l15;
 
-// Chained extended advertising example.
+// Multi-chain extended advertising example.
 //
-// This sketch exceeds the single AUX_ADV_IND payload budget and forces the
-// core to emit one AUX_CHAIN_IND after the first auxiliary packet.
+// This fills the current controller limit:
+// - primary ADV_EXT_IND on channels 37/38/39
+// - one AUX_ADV_IND
+// - three AUX_CHAIN_IND payload follow-ups
+// - LE 1M PHY only
+// - non-connectable, non-scannable
 
 static BleRadio g_ble;
 static PowerManager g_power;
@@ -20,15 +24,15 @@ static uint8_t g_extData[kBleExtendedAdvDataMaxLength];
 static size_t g_extDataLen = 0U;
 
 static constexpr int8_t kTxPowerDbm = 0;
-static constexpr uint8_t kAdvertisingSid = 4U;
-static constexpr uint8_t kAuxChannel = 24U;
+static constexpr uint8_t kAdvertisingSid = 5U;
+static constexpr uint8_t kAuxChannel = 28U;
 static constexpr uint32_t kAuxOffsetUs = 3000UL;
 static constexpr uint32_t kInterPrimaryDelayUs = 350UL;
 static constexpr uint32_t kAdvertisingIntervalMs = 120UL;
 static constexpr uint32_t kSpinLimit = 900000UL;
 static constexpr uint16_t kCompanyId = 0x3154U;
-static constexpr char kName[] = "X54-EXT-499";
-static constexpr uint8_t kAddress[6] = {0x52, 0x00, 0x15, 0x54, 0xDE, 0xC0};
+static constexpr char kName[] = "X54-EXT-995";
+static constexpr uint8_t kAddress[6] = {0x53, 0x00, 0x15, 0x54, 0xDE, 0xC0};
 
 static bool appendAdField(uint8_t type, const uint8_t* value, size_t valueLen) {
   if ((valueLen > 0U) && (value == nullptr)) {
@@ -77,9 +81,11 @@ static bool buildExtendedPayload() {
     return false;
   }
 
-  return appendPatternField(0xFFU, 239U, static_cast<uint8_t>('a')) &&
-         appendPatternField(0xFFU, 240U, static_cast<uint8_t>('A')) &&
-         (g_extDataLen == 499U);
+  return appendPatternField(0xFFU, 243U, static_cast<uint8_t>('A')) &&
+         appendPatternField(0xFFU, 243U, static_cast<uint8_t>('a')) &&
+         appendPatternField(0xFFU, 243U, static_cast<uint8_t>('0')) &&
+         appendPatternField(0xFFU, 242U, static_cast<uint8_t>('k')) &&
+         (g_extDataLen == kBleExtendedAdvDataMaxLength);
 }
 
 static void printAddress(const uint8_t* addr) {
@@ -98,7 +104,7 @@ void setup() {
   Serial.begin(115200);
   delay(350);
 
-  Serial.print("\r\nBleExtendedAdv499 start\r\n");
+  Serial.print("\r\nBleExtendedAdv995 start\r\n");
   Gpio::configure(kPinUserLed, GpioDirection::kOutput, GpioPull::kDisabled);
   Gpio::write(kPinUserLed, true);
 
@@ -139,7 +145,7 @@ void setup() {
   Serial.print(kAdvertisingSid);
   Serial.print(" aux_channel=");
   Serial.print(kAuxChannel);
-  Serial.print(" chain_expected=yes\r\n");
+  Serial.print(" chain_packets=4\r\n");
 }
 
 void loop() {
@@ -153,9 +159,9 @@ void loop() {
   if ((now - g_lastLogMs) >= 1000UL) {
     g_lastLogMs = now;
 
-    char line[176];
+    char line[184];
     snprintf(line, sizeof(line),
-             "t=%lu ext_events=%lu last=%s ext_len=%u sid=%u aux_ch=%u chain=yes\r\n",
+             "t=%lu ext_events=%lu last=%s ext_len=%u sid=%u aux_ch=%u chain_packets=4\r\n",
              static_cast<unsigned long>(now),
              static_cast<unsigned long>(g_extEvents),
              ok ? "OK" : "FAIL",

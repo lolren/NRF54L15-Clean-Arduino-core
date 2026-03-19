@@ -7464,12 +7464,12 @@ BleRadio::BleRadio(uint32_t radioBase, uint32_t ficrBase)
       extendedAdvSid_(0U),
       extendedAdvDid_(0U),
       extendedAdvAuxChannel_(20U),
+      extendedSecondaryPacketCount_(0U),
       scanRspData_{0},
       scanRspDataLen_(0),
       txPacket_{0},
       extendedPrimaryPacket_{0},
-      extendedAuxPacket_{0},
-      extendedChainPacket_{0},
+      extendedSecondaryPackets_{0},
       scanRspPacket_{0},
       rxPacket_{0},
       connectionTxPayload_{0},
@@ -8615,25 +8615,19 @@ bool BleRadio::buildExtendedAdvertisingPackets(uint32_t auxOffsetUs,
       static_cast<uint8_t>(1U + kPrimaryExtHdrLen);
   constexpr uint8_t kAuxExtHdrLenNoChain = static_cast<uint8_t>(1U + 2U);
   constexpr uint8_t kAuxExtHdrLenWithChain = static_cast<uint8_t>(1U + 2U + 3U);
-  constexpr size_t kAuxDataCapacityNoChain = 255U - (1U + kAuxExtHdrLenNoChain);
-  constexpr size_t kAuxDataCapacityWithChain = 255U - (1U + kAuxExtHdrLenWithChain);
-  constexpr size_t kChainDataCapacity = 255U - (1U + kAuxExtHdrLenNoChain);
+  constexpr size_t kSecondaryDataCapacityNoChain = 255U - (1U + kAuxExtHdrLenNoChain);
+  constexpr size_t kSecondaryDataCapacityWithChain = 255U - (1U + kAuxExtHdrLenWithChain);
 
-  const bool useChain = (extendedAdvDataLen_ > kAuxDataCapacityNoChain);
-  if (useChain &&
-      (extendedAdvDataLen_ > (kAuxDataCapacityWithChain + kChainDataCapacity))) {
-    return false;
+  uint8_t secondaryPacketCount = 1U;
+  size_t remainingForCount = extendedAdvDataLen_;
+  while (remainingForCount > kSecondaryDataCapacityNoChain) {
+    if (secondaryPacketCount >= kBleExtendedSecondaryPacketCountMax) {
+      return false;
+    }
+    remainingForCount -= kSecondaryDataCapacityWithChain;
+    ++secondaryPacketCount;
   }
-
-  const size_t auxDataLen =
-      useChain ? kAuxDataCapacityWithChain : extendedAdvDataLen_;
-  const size_t chainDataLen = extendedAdvDataLen_ - auxDataLen;
-  const uint8_t auxExtHdrLen =
-      useChain ? kAuxExtHdrLenWithChain : kAuxExtHdrLenNoChain;
-  const uint8_t auxHeaderFlags =
-      useChain ? static_cast<uint8_t>(kBleExtendedAuxHeaderFlags | 0x10U)
-               : kBleExtendedAuxHeaderFlags;
-  const size_t auxPayloadLen = 1U + auxExtHdrLen + auxDataLen;
+  extendedSecondaryPacketCount_ = secondaryPacketCount;
 
   size_t offset = 0U;
   extendedPrimaryPacket_[offset++] = static_cast<uint8_t>(kBlePduAdvExtInd | txAdd);
@@ -8653,40 +8647,43 @@ bool BleRadio::buildExtendedAdvertisingPackets(uint32_t auxOffsetUs,
   extendedPrimaryPacket_[offset++] = static_cast<uint8_t>(
       ((auxOffsetUnits >> 8U) & 0x1FU) | (kBleExtendedAuxPhy1M << 5U));
 
-  offset = 0U;
-  extendedAuxPacket_[offset++] = kBlePduAdvExtInd;
-  extendedAuxPacket_[offset++] = static_cast<uint8_t>(auxPayloadLen);
-  extendedAuxPacket_[offset++] = static_cast<uint8_t>(
-      (kBleExtendedAdvModeNonConnNonScan << 6U) | auxExtHdrLen);
-  extendedAuxPacket_[offset++] = auxHeaderFlags;
-  extendedAuxPacket_[offset++] = static_cast<uint8_t>(extendedAdvDid_ & 0xFFU);
-  extendedAuxPacket_[offset++] = static_cast<uint8_t>(
-      ((extendedAdvDid_ >> 8U) & 0x0FU) | (static_cast<uint16_t>(extendedAdvSid_) << 4U));
-  if (useChain) {
-    extendedAuxPacket_[offset++] = static_cast<uint8_t>(
-        (extendedAdvAuxChannel_ & 0x3FU) |
-        (kBleExtendedClockAccuracy500Ppm << 6U));
-    extendedAuxPacket_[offset++] = static_cast<uint8_t>(auxOffsetUnits & 0xFFU);
-    extendedAuxPacket_[offset++] = static_cast<uint8_t>(
-        ((auxOffsetUnits >> 8U) & 0x1FU) | (kBleExtendedAuxPhy1M << 5U));
-  }
-  if (auxDataLen > 0U) {
-    memcpy(&extendedAuxPacket_[offset], extendedAdvData_, auxDataLen);
-    offset += auxDataLen;
-  }
+  size_t dataCursor = 0U;
+  size_t remaining = extendedAdvDataLen_;
+  for (uint8_t packetIndex = 0U; packetIndex < secondaryPacketCount; ++packetIndex) {
+    const bool hasFollowingPacket = ((packetIndex + 1U) < secondaryPacketCount);
+    const size_t dataLen = hasFollowingPacket ? kSecondaryDataCapacityWithChain : remaining;
+    const uint8_t extHdrLen =
+        hasFollowingPacket ? kAuxExtHdrLenWithChain : kAuxExtHdrLenNoChain;
+    const uint8_t headerFlags =
+        hasFollowingPacket ? static_cast<uint8_t>(kBleExtendedAuxHeaderFlags | 0x10U)
+                           : kBleExtendedAuxHeaderFlags;
+    const size_t payloadLen = 1U + extHdrLen + dataLen;
+    uint8_t* packet = &extendedSecondaryPackets_[packetIndex][0];
 
-  if (useChain) {
     offset = 0U;
-    extendedChainPacket_[offset++] = kBlePduAdvExtInd;
-    extendedChainPacket_[offset++] = static_cast<uint8_t>(1U + kAuxExtHdrLenNoChain + chainDataLen);
-    extendedChainPacket_[offset++] = static_cast<uint8_t>(
-        (kBleExtendedAdvModeNonConnNonScan << 6U) | kAuxExtHdrLenNoChain);
-    extendedChainPacket_[offset++] = kBleExtendedAuxHeaderFlags;
-    extendedChainPacket_[offset++] = static_cast<uint8_t>(extendedAdvDid_ & 0xFFU);
-    extendedChainPacket_[offset++] = static_cast<uint8_t>(
-        ((extendedAdvDid_ >> 8U) & 0x0FU) |
-        (static_cast<uint16_t>(extendedAdvSid_) << 4U));
-    memcpy(&extendedChainPacket_[offset], &extendedAdvData_[auxDataLen], chainDataLen);
+    packet[offset++] = kBlePduAdvExtInd;
+    packet[offset++] = static_cast<uint8_t>(payloadLen);
+    packet[offset++] = static_cast<uint8_t>(
+        (kBleExtendedAdvModeNonConnNonScan << 6U) | extHdrLen);
+    packet[offset++] = headerFlags;
+    packet[offset++] = static_cast<uint8_t>(extendedAdvDid_ & 0xFFU);
+    packet[offset++] = static_cast<uint8_t>(
+        ((extendedAdvDid_ >> 8U) & 0x0FU) | (static_cast<uint16_t>(extendedAdvSid_) << 4U));
+
+    if (hasFollowingPacket) {
+      packet[offset++] = static_cast<uint8_t>(
+          (extendedAdvAuxChannel_ & 0x3FU) |
+          (kBleExtendedClockAccuracy500Ppm << 6U));
+      packet[offset++] = static_cast<uint8_t>(auxOffsetUnits & 0xFFU);
+      packet[offset++] = static_cast<uint8_t>(
+          ((auxOffsetUnits >> 8U) & 0x1FU) | (kBleExtendedAuxPhy1M << 5U));
+    }
+
+    if (dataLen > 0U) {
+      memcpy(&packet[offset], &extendedAdvData_[dataCursor], dataLen);
+    }
+    dataCursor += dataLen;
+    remaining -= dataLen;
   }
 
   return true;
@@ -8837,7 +8834,6 @@ bool BleRadio::advertiseExtendedEvent(uint32_t auxOffsetUs,
       BleAdvertisingChannel::k39,
   };
   const uint8_t startIndex = static_cast<uint8_t>(advCycleStartIndex_ % 3U);
-  const bool useChain = (extendedAdvDataLen_ > 251U);
 
   for (size_t i = 0U; i < 3U; ++i) {
     const uint8_t idx = static_cast<uint8_t>((startIndex + i) % 3U);
@@ -8864,23 +8860,25 @@ bool BleRadio::advertiseExtendedEvent(uint32_t auxOffsetUs,
       nowUs = bleTimingUs();
     }
 
-    uint32_t auxReadyUs = 0U;
-    if (!transmitPreparedPacketOnCurrentChannel(&extendedAuxPacket_[0], spinLimit,
-                                                &auxReadyUs)) {
-      endUnconnectedRadioActivity();
-      return false;
-    }
-
-    if (useChain) {
-      const uint32_t chainTargetUs = auxReadyUs + actualAuxOffsetUs;
-      nowUs = bleTimingUs();
-      while (!timeReachedUs(nowUs, chainTargetUs)) {
-        nowUs = bleTimingUs();
-      }
-
-      if (!transmitPreparedPacketOnCurrentChannel(&extendedChainPacket_[0], spinLimit)) {
+    uint32_t secondaryReadyUs = 0U;
+    for (uint8_t secondaryIndex = 0U;
+         secondaryIndex < extendedSecondaryPacketCount_;
+         ++secondaryIndex) {
+      if (!transmitPreparedPacketOnCurrentChannel(
+              &extendedSecondaryPackets_[secondaryIndex][0],
+              spinLimit,
+              ((secondaryIndex + 1U) < extendedSecondaryPacketCount_) ? &secondaryReadyUs
+                                                                      : nullptr)) {
         endUnconnectedRadioActivity();
         return false;
+      }
+
+      if ((secondaryIndex + 1U) < extendedSecondaryPacketCount_) {
+        const uint32_t nextTargetUs = secondaryReadyUs + actualAuxOffsetUs;
+        nowUs = bleTimingUs();
+        while (!timeReachedUs(nowUs, nextTargetUs)) {
+          nowUs = bleTimingUs();
+        }
       }
     }
 
