@@ -799,6 +799,14 @@ constexpr uint32_t kBleAccessAddress = 0x8E89BED6UL;
 constexpr uint32_t kBleAdvertisingCrcInit = 0x555555UL;
 constexpr uint32_t kBleCrcPolynomial = 0x00065BUL;
 constexpr uint8_t kBlePduScanReq = 0x03U;
+constexpr uint8_t kBlePduAdvExtInd = 0x07U;
+constexpr uint8_t kBleExtendedAdvModeNonConnNonScan = 0x00U;
+constexpr uint8_t kBleExtendedPrimaryHeaderFlags = 0x19U;  // AdvA + ADI + AuxPtr
+constexpr uint8_t kBleExtendedAuxHeaderFlags = 0x08U;      // ADI
+constexpr uint8_t kBleExtendedAuxPhy1M = 0x00U;
+constexpr uint8_t kBleExtendedAuxOffsetUnit30Us = 30U;
+constexpr uint16_t kBleExtendedAuxOffsetMaxUnits = 0x1FFFU;
+constexpr uint8_t kBleExtendedClockAccuracy500Ppm = 0x00U;
 constexpr uint8_t kBlePduScanRsp = 0x04U;
 constexpr uint8_t kBlePduConnectInd = 0x05U;
 constexpr uint8_t kBlePduLlControl = 0x03U;
@@ -7451,9 +7459,16 @@ BleRadio::BleRadio(uint32_t radioBase, uint32_t ficrBase)
       address_{0},
       advData_{0},
       advDataLen_(0),
+      extendedAdvData_{0},
+      extendedAdvDataLen_(0),
+      extendedAdvSid_(0U),
+      extendedAdvDid_(0U),
+      extendedAdvAuxChannel_(20U),
       scanRspData_{0},
       scanRspDataLen_(0),
       txPacket_{0},
+      extendedPrimaryPacket_{0},
+      extendedAuxPacket_{0},
       scanRspPacket_{0},
       rxPacket_{0},
       connectionTxPayload_{0},
@@ -7870,6 +7885,83 @@ bool BleRadio::setAdvertisingName(const char* name, bool includeFlags) {
   }
   const bool ok = setAdvertisingData(payload, used);
   if (ok && gapDeviceNameLen_ == 0U) {
+    setGattDeviceName(name);
+  }
+  return ok;
+}
+
+bool BleRadio::setExtendedAdvertisingSid(uint8_t sid) {
+  if (sid >= 16U) {
+    return false;
+  }
+  extendedAdvSid_ = sid;
+  return true;
+}
+
+bool BleRadio::setExtendedAdvertisingAuxChannel(uint8_t dataChannel) {
+  if (dataChannel > 36U) {
+    return false;
+  }
+  extendedAdvAuxChannel_ = dataChannel;
+  return true;
+}
+
+bool BleRadio::setExtendedAdvertisingData(const uint8_t* data, size_t len) {
+  if (len > sizeof(extendedAdvData_)) {
+    return false;
+  }
+  if ((len > 0U) && (data == nullptr)) {
+    return false;
+  }
+
+  if (len > 0U) {
+    memcpy(extendedAdvData_, data, len);
+  }
+  extendedAdvDataLen_ = len;
+  extendedAdvDid_ = static_cast<uint16_t>((extendedAdvDid_ + 1U) & 0x0FFFU);
+  return true;
+}
+
+bool BleRadio::setExtendedAdvertisingName(const char* name, bool includeFlags) {
+  if (name == nullptr) {
+    return false;
+  }
+
+  uint8_t payload[kBleExtendedAdvDataMaxLength];
+  size_t used = 0U;
+
+  if (includeFlags) {
+    payload[used++] = 2U;
+    payload[used++] = 0x01U;
+    payload[used++] = 0x06U;
+  }
+
+  const size_t nameLen = strlen(name);
+  if (used >= sizeof(payload)) {
+    return false;
+  }
+
+  const size_t remaining = sizeof(payload) - used;
+  if (remaining < 2U) {
+    return false;
+  }
+
+  size_t copyLen = nameLen;
+  uint8_t adType = 0x09U;
+  if ((copyLen + 2U) > remaining) {
+    copyLen = remaining - 2U;
+    adType = 0x08U;
+  }
+
+  payload[used++] = static_cast<uint8_t>(copyLen + 1U);
+  payload[used++] = adType;
+  if (copyLen > 0U) {
+    memcpy(&payload[used], name, copyLen);
+    used += copyLen;
+  }
+
+  const bool ok = setExtendedAdvertisingData(payload, used);
+  if (ok && (gapDeviceNameLen_ == 0U)) {
     setGattDeviceName(name);
   }
   return ok;
@@ -8495,6 +8587,123 @@ bool BleRadio::buildScanResponsePacket() {
   return true;
 }
 
+bool BleRadio::buildExtendedAdvertisingPackets(uint32_t auxOffsetUs,
+                                               uint32_t* actualAuxOffsetUs) {
+  uint32_t auxOffsetUnits =
+      (auxOffsetUs + kBleExtendedAuxOffsetUnit30Us - 1U) /
+      kBleExtendedAuxOffsetUnit30Us;
+  if (auxOffsetUnits == 0U) {
+    auxOffsetUnits = 1U;
+  }
+  if (auxOffsetUnits > kBleExtendedAuxOffsetMaxUnits) {
+    return false;
+  }
+
+  const uint32_t encodedAuxOffsetUs =
+      auxOffsetUnits * kBleExtendedAuxOffsetUnit30Us;
+  if (actualAuxOffsetUs != nullptr) {
+    *actualAuxOffsetUs = encodedAuxOffsetUs;
+  }
+
+  const uint8_t txAdd =
+      (addressType_ == BleAddressType::kRandomStatic) ? (1U << 6U) : 0U;
+
+  constexpr uint8_t kPrimaryExtHdrLen =
+      static_cast<uint8_t>(1U + kBleLegacyAddressLength + 2U + 3U);
+  constexpr uint8_t kPrimaryPayloadLen =
+      static_cast<uint8_t>(1U + kPrimaryExtHdrLen);
+  constexpr uint8_t kAuxExtHdrLen = static_cast<uint8_t>(1U + 2U);
+  const size_t auxPayloadLen = 1U + kAuxExtHdrLen + extendedAdvDataLen_;
+  if (auxPayloadLen > 255U) {
+    return false;
+  }
+
+  size_t offset = 0U;
+  extendedPrimaryPacket_[offset++] = static_cast<uint8_t>(kBlePduAdvExtInd | txAdd);
+  extendedPrimaryPacket_[offset++] = kPrimaryPayloadLen;
+  extendedPrimaryPacket_[offset++] = static_cast<uint8_t>(
+      (kBleExtendedAdvModeNonConnNonScan << 6U) | kPrimaryExtHdrLen);
+  extendedPrimaryPacket_[offset++] = kBleExtendedPrimaryHeaderFlags;
+  memcpy(&extendedPrimaryPacket_[offset], address_, sizeof(address_));
+  offset += sizeof(address_);
+  extendedPrimaryPacket_[offset++] = static_cast<uint8_t>(extendedAdvDid_ & 0xFFU);
+  extendedPrimaryPacket_[offset++] = static_cast<uint8_t>(
+      ((extendedAdvDid_ >> 8U) & 0x0FU) | (static_cast<uint16_t>(extendedAdvSid_) << 4U));
+  extendedPrimaryPacket_[offset++] = static_cast<uint8_t>(
+      (extendedAdvAuxChannel_ & 0x3FU) |
+      (kBleExtendedClockAccuracy500Ppm << 6U));
+  extendedPrimaryPacket_[offset++] = static_cast<uint8_t>(auxOffsetUnits & 0xFFU);
+  extendedPrimaryPacket_[offset++] = static_cast<uint8_t>(
+      ((auxOffsetUnits >> 8U) & 0x1FU) | (kBleExtendedAuxPhy1M << 5U));
+
+  offset = 0U;
+  extendedAuxPacket_[offset++] = kBlePduAdvExtInd;
+  extendedAuxPacket_[offset++] = static_cast<uint8_t>(auxPayloadLen);
+  extendedAuxPacket_[offset++] = static_cast<uint8_t>(
+      (kBleExtendedAdvModeNonConnNonScan << 6U) | kAuxExtHdrLen);
+  extendedAuxPacket_[offset++] = kBleExtendedAuxHeaderFlags;
+  extendedAuxPacket_[offset++] = static_cast<uint8_t>(extendedAdvDid_ & 0xFFU);
+  extendedAuxPacket_[offset++] = static_cast<uint8_t>(
+      ((extendedAdvDid_ >> 8U) & 0x0FU) | (static_cast<uint16_t>(extendedAdvSid_) << 4U));
+  if (extendedAdvDataLen_ > 0U) {
+    memcpy(&extendedAuxPacket_[offset], extendedAdvData_, extendedAdvDataLen_);
+    offset += extendedAdvDataLen_;
+  }
+
+  return true;
+}
+
+bool BleRadio::transmitPreparedPacketOnCurrentChannel(const uint8_t* packet,
+                                                      uint32_t spinLimit,
+                                                      uint32_t* txReadyUs) {
+  if (!initialized_ || radio_ == nullptr || connected_ || packet == nullptr) {
+    return false;
+  }
+
+  clearRadioCoreEvents(radio_);
+  radio_->PACKETPTR = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(packet));
+  radio_->SHORTS =
+      ((RADIO_SHORTS_TXREADY_START_Enabled << RADIO_SHORTS_TXREADY_START_Pos) &
+       RADIO_SHORTS_TXREADY_START_Msk) |
+      ((RADIO_SHORTS_PHYEND_DISABLE_Enabled << RADIO_SHORTS_PHYEND_DISABLE_Pos) &
+       RADIO_SHORTS_PHYEND_DISABLE_Msk);
+
+  radio_->TASKS_TXEN = RADIO_TASKS_TXEN_TASKS_TXEN_Trigger;
+
+  bool readySeen = false;
+  bool disabledSeen = false;
+  uint32_t remaining = spinLimit;
+  while (remaining-- > 0U) {
+    if (!readySeen && (radio_->EVENTS_READY != 0U)) {
+      readySeen = true;
+      if (txReadyUs != nullptr) {
+        *txReadyUs = bleTimingUs();
+      }
+    }
+
+    if (radio_->EVENTS_DISABLED != 0U) {
+      disabledSeen = true;
+      break;
+    }
+
+    const uint32_t state =
+        (radio_->STATE & RADIO_STATE_STATE_Msk) >> RADIO_STATE_STATE_Pos;
+    if (state == RADIO_STATE_STATE_Disabled) {
+      disabledSeen = true;
+      break;
+    }
+  }
+
+  if (!disabledSeen) {
+    radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
+    waitDisabled(spinLimit / 2U + 1U);
+  }
+
+  radio_->SHORTS = 0U;
+  clearRadioCoreEvents(radio_);
+  return disabledSeen;
+}
+
 bool BleRadio::advertiseOncePrepared(BleAdvertisingChannel channel,
                                      uint32_t spinLimit) {
   if (!initialized_ || radio_ == nullptr || connected_) {
@@ -8503,27 +8712,7 @@ bool BleRadio::advertiseOncePrepared(BleAdvertisingChannel channel,
   if (!setAdvertisingChannel(channel)) {
     return false;
   }
-
-  clearRadioCoreEvents(radio_);
-  radio_->PACKETPTR =
-      static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&txPacket_[0]));
-
-  radio_->SHORTS =
-      ((RADIO_SHORTS_TXREADY_START_Enabled << RADIO_SHORTS_TXREADY_START_Pos) &
-       RADIO_SHORTS_TXREADY_START_Msk) |
-      ((RADIO_SHORTS_PHYEND_DISABLE_Enabled << RADIO_SHORTS_PHYEND_DISABLE_Pos) &
-       RADIO_SHORTS_PHYEND_DISABLE_Msk);
-
-  radio_->TASKS_TXEN = RADIO_TASKS_TXEN_TASKS_TXEN_Trigger;
-  const bool ok = waitDisabled(spinLimit);
-  if (!ok) {
-    radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
-    waitDisabled(spinLimit / 2U + 1U);
-  }
-
-  radio_->SHORTS = 0U;
-  clearRadioCoreEvents(radio_);
-  return ok;
+  return transmitPreparedPacketOnCurrentChannel(&txPacket_[0], spinLimit);
 }
 
 bool BleRadio::advertiseOnce(BleAdvertisingChannel channel, uint32_t spinLimit) {
@@ -8573,6 +8762,81 @@ bool BleRadio::advertiseEvent(uint32_t interChannelDelayUs, uint32_t spinLimit) 
   const bool ok = advertiseOncePrepared(BleAdvertisingChannel::k39, spinLimit);
   endUnconnectedRadioActivity();
   return ok;
+}
+
+bool BleRadio::advertiseExtendedEvent(uint32_t auxOffsetUs,
+                                      uint32_t interPrimaryDelayUs,
+                                      uint32_t spinLimit) {
+  if (!initialized_ || radio_ == nullptr || connected_) {
+    return false;
+  }
+  if (!beginUnconnectedRadioActivity(1500000UL)) {
+    return false;
+  }
+
+  uint32_t actualAuxOffsetUs = 0U;
+  if (!buildExtendedAdvertisingPackets(auxOffsetUs, &actualAuxOffsetUs)) {
+    endUnconnectedRadioActivity();
+    return false;
+  }
+
+  {
+    static uint32_t seed = 0U;
+    if (seed == 0U) {
+      seed = micros() ^ (static_cast<uint32_t>(address_[0]) << 24U);
+    }
+    seed = seed * 1103515245U + 12345U;
+    const uint32_t advDelayUs = (seed % 10001U);
+    if (advDelayUs > 0U) {
+      delayMicroseconds(advDelayUs);
+    }
+  }
+
+  const BleAdvertisingChannel channels[] = {
+      BleAdvertisingChannel::k37,
+      BleAdvertisingChannel::k38,
+      BleAdvertisingChannel::k39,
+  };
+  const uint8_t startIndex = static_cast<uint8_t>(advCycleStartIndex_ % 3U);
+
+  for (size_t i = 0U; i < 3U; ++i) {
+    const uint8_t idx = static_cast<uint8_t>((startIndex + i) % 3U);
+    if (!setAdvertisingChannel(channels[idx])) {
+      endUnconnectedRadioActivity();
+      return false;
+    }
+
+    uint32_t primaryReadyUs = 0U;
+    if (!transmitPreparedPacketOnCurrentChannel(&extendedPrimaryPacket_[0], spinLimit,
+                                                &primaryReadyUs)) {
+      endUnconnectedRadioActivity();
+      return false;
+    }
+
+    if (!setDataChannel(extendedAdvAuxChannel_)) {
+      endUnconnectedRadioActivity();
+      return false;
+    }
+
+    const uint32_t auxTargetUs = primaryReadyUs + actualAuxOffsetUs;
+    uint32_t nowUs = bleTimingUs();
+    while (!timeReachedUs(nowUs, auxTargetUs)) {
+      nowUs = bleTimingUs();
+    }
+
+    if (!transmitPreparedPacketOnCurrentChannel(&extendedAuxPacket_[0], spinLimit)) {
+      endUnconnectedRadioActivity();
+      return false;
+    }
+
+    if (((i + 1U) < 3U) && (interPrimaryDelayUs > 0U)) {
+      delayMicroseconds(interPrimaryDelayUs);
+    }
+  }
+
+  advCycleStartIndex_ = static_cast<uint8_t>((startIndex + 1U) % 3U);
+  endUnconnectedRadioActivity();
+  return true;
 }
 
 bool BleRadio::advertiseInteractOncePrepared(BleAdvertisingChannel channel,

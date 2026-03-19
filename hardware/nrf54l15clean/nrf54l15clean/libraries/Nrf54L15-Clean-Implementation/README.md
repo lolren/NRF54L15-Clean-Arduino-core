@@ -347,13 +347,18 @@ BLE examples:
 - `examples/BLE/BleLegacyAdv31Plus31/BleLegacyAdv31Plus31.ino`
   - Fills the full legacy `31`-byte `AdvData` budget and the full legacy `31`-byte `ScanRspData` budget.
   - Uses `ADV_SCAN_IND` so a phone or `BleActiveScanner` can verify the practical legacy maximum without opening a connection.
+- `examples/BLE/BleExtendedAdv251/BleExtendedAdv251.ino`
+  - Demonstrates minimal Extended Advertising with `ADV_EXT_IND` on the primary channels and one `AUX_ADV_IND` payload on a fixed secondary channel.
+  - Current scope is LE 1M, non-connectable, non-scannable, single auxiliary payload, up to `251` bytes of AdvData.
 - `examples/BLE/BleConnectableScannableAdvertiser/BleConnectableScannableAdvertiser.ino`
   - Uses `ADV_IND`, listens for `SCAN_REQ`/`CONNECT_IND`, and sends `SCAN_RSP`.
   - Exposes interaction counters and peer addresses over UART.
 - Legacy payload note:
   - `AdvData` and `ScanRspData` are each limited to `31` bytes in legacy BLE.
   - The on-air PDU body can still be `37` bytes because it includes `AdvA` (`6` bytes) plus the `31` bytes of AD data.
-  - Extended Advertising is not implemented in this core yet.
+- Extended Advertising note:
+  - This core now includes a minimal `ADV_EXT_IND -> AUX_ADV_IND` TX path for larger broadcast payloads.
+  - Current limits are LE 1M only, single auxiliary packet, no chaining, no scan response, and no connectable/scannable extended modes yet.
 - `examples/BLE/BleConnectionPeripheral/BleConnectionPeripheral.ino`
   - Accepts legacy `CONNECT_IND`, tracks connection parameters, and runs data-channel events.
   - Responds to common LL control PDUs and ATT requests, with link event metadata logs.
