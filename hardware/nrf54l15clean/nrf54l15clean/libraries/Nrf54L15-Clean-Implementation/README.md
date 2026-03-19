@@ -341,9 +341,19 @@ BLE examples:
   - Legacy advertising on channels 37/38/39 with custom ADV payload.
 - `examples/BLE/BlePassiveScanner/BlePassiveScanner.ino`
   - Passive scanner over channels 37/38/39 with RSSI and header parsing.
+- `examples/BLE/BleActiveScanner/BleActiveScanner.ino`
+  - Active scanner that logs both the raw legacy payload length (`AdvA + data`, up to `37`) and the AD-data length (`0..31`).
+  - Useful for verifying whether bytes live in the primary ADV payload or only in the scan response.
+- `examples/BLE/BleLegacyAdv31Plus31/BleLegacyAdv31Plus31.ino`
+  - Fills the full legacy `31`-byte `AdvData` budget and the full legacy `31`-byte `ScanRspData` budget.
+  - Uses `ADV_SCAN_IND` so a phone or `BleActiveScanner` can verify the practical legacy maximum without opening a connection.
 - `examples/BLE/BleConnectableScannableAdvertiser/BleConnectableScannableAdvertiser.ino`
   - Uses `ADV_IND`, listens for `SCAN_REQ`/`CONNECT_IND`, and sends `SCAN_RSP`.
   - Exposes interaction counters and peer addresses over UART.
+- Legacy payload note:
+  - `AdvData` and `ScanRspData` are each limited to `31` bytes in legacy BLE.
+  - The on-air PDU body can still be `37` bytes because it includes `AdvA` (`6` bytes) plus the `31` bytes of AD data.
+  - Extended Advertising is not implemented in this core yet.
 - `examples/BLE/BleConnectionPeripheral/BleConnectionPeripheral.ino`
   - Accepts legacy `CONNECT_IND`, tracks connection parameters, and runs data-channel events.
   - Responds to common LL control PDUs and ATT requests, with link event metadata logs.

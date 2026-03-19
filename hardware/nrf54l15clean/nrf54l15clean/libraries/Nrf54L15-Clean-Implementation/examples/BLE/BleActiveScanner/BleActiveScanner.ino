@@ -59,20 +59,20 @@ static void printAddress(const uint8_t* addr) {
   }
 }
 
-static size_t extractLocalNameFromAdvPayload(const uint8_t* payloadWithAddress,
-                                             uint8_t payloadLen,
-                                             char* out,
-                                             size_t outSize) {
+static size_t extractLocalNameFromAdData(const uint8_t* payload,
+                                         uint8_t payloadLen,
+                                         char* out,
+                                         size_t outSize) {
   if (out == nullptr || outSize == 0U) {
     return 0U;
   }
   out[0] = '\0';
-  if (payloadWithAddress == nullptr || payloadLen <= 6U) {
+  if (payload == nullptr || payloadLen == 0U) {
     return 0U;
   }
 
-  const uint8_t* p = payloadWithAddress + 6U;
-  uint8_t rem = static_cast<uint8_t>(payloadLen - 6U);
+  const uint8_t* p = payload;
+  uint8_t rem = payloadLen;
   while (rem > 1U) {
     const uint8_t fieldLen = p[0];
     if (fieldLen == 0U) {
@@ -157,12 +157,12 @@ void loop() {
   const uint8_t advType = static_cast<uint8_t>(result.advHeader & 0x0FU);
   char advName[33] = {0};
   char scanRspName[33] = {0};
-  (void)extractLocalNameFromAdvPayload(result.advPayload, result.advPayloadLength,
-                                       advName, sizeof(advName));
+  (void)extractLocalNameFromAdData(result.advData(), result.advDataLength(),
+                                   advName, sizeof(advName));
   if (result.scanResponseReceived) {
-    (void)extractLocalNameFromAdvPayload(result.scanRspPayload,
-                                         result.scanRspPayloadLength,
-                                         scanRspName, sizeof(scanRspName));
+    (void)extractLocalNameFromAdData(result.scanRspData(),
+                                     result.scanRspDataLength(),
+                                     scanRspName, sizeof(scanRspName));
   }
 
   Serial.print("#");
@@ -175,8 +175,10 @@ void loop() {
   Serial.print(pduTypeName(advType));
   Serial.print(" advA=");
   printAddress(result.advertiserAddress);
-  Serial.print(" adv_len=");
+  Serial.print(" adv_raw_len=");
   Serial.print(result.advPayloadLength);
+  Serial.print(" adv_data_len=");
+  Serial.print(result.advDataLength());
   if (advName[0] != '\0') {
     Serial.print(" adv_name=");
     Serial.print(advName);
@@ -186,8 +188,10 @@ void loop() {
     Serial.print(" scan_rsp=1");
     Serial.print(" scan_rssi=");
     Serial.print(result.scanRspRssiDbm);
-    Serial.print(" scan_len=");
+    Serial.print(" scan_raw_len=");
     Serial.print(result.scanRspPayloadLength);
+    Serial.print(" scan_data_len=");
+    Serial.print(result.scanRspDataLength());
     if (scanRspName[0] != '\0') {
       Serial.print(" scan_name=");
       Serial.print(scanRspName);

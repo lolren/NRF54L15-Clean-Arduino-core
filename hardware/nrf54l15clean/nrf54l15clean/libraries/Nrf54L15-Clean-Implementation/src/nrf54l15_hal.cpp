@@ -7836,7 +7836,7 @@ bool BleRadio::setAdvertisingName(const char* name, bool includeFlags) {
     return false;
   }
 
-  uint8_t payload[31];
+  uint8_t payload[kBleLegacyAdDataMaxLength];
   size_t used = 0;
 
   if (includeFlags) {
@@ -8412,7 +8412,7 @@ void BleRadio::clearCustomGattConnectionState() {
 
 bool BleRadio::buildAdvertisingPacket() {
   const size_t payloadLen = sizeof(address_) + advDataLen_;
-  if (payloadLen > 37U) {
+  if (payloadLen > kBleLegacyRawPayloadMaxLength) {
     return false;
   }
 
@@ -8455,7 +8455,7 @@ bool BleRadio::setScanResponseName(const char* name) {
     return false;
   }
 
-  uint8_t payload[31];
+  uint8_t payload[kBleLegacyAdDataMaxLength];
   size_t used = 0;
 
   const size_t nameLen = strlen(name);
@@ -8476,7 +8476,7 @@ bool BleRadio::setScanResponseName(const char* name) {
 
 bool BleRadio::buildScanResponsePacket() {
   const size_t payloadLen = sizeof(address_) + scanRspDataLen_;
-  if (payloadLen > 37U) {
+  if (payloadLen > kBleLegacyRawPayloadMaxLength) {
     return false;
   }
 

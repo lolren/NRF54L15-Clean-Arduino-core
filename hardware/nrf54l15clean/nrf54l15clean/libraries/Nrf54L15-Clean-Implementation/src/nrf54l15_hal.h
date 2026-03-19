@@ -1254,6 +1254,11 @@ enum class BleAdvertisingChannel : uint8_t {
   k39 = 39,
 };
 
+constexpr uint8_t kBleLegacyAddressLength = 6U;
+constexpr uint8_t kBleLegacyAdDataMaxLength = 31U;
+constexpr uint8_t kBleLegacyRawPayloadMaxLength =
+    static_cast<uint8_t>(kBleLegacyAddressLength + kBleLegacyAdDataMaxLength);
+
 enum BleGattCharacteristicProperty : uint8_t {
   kBleGattPropRead = 0x02U,
   kBleGattPropWriteNoRsp = 0x04U,
@@ -1274,15 +1279,42 @@ struct BleActiveScanResult {
   BleAdvertisingChannel channel;
   int8_t advRssiDbm;
   uint8_t advHeader;
+  // Raw legacy PDU payload copied from the air: [AdvA(6)] [AdvData(0..31)].
   uint8_t advPayloadLength;
   bool advertiserAddressRandom;
-  uint8_t advertiserAddress[6];
-  uint8_t advPayload[31];
+  uint8_t advertiserAddress[kBleLegacyAddressLength];
+  uint8_t advPayload[kBleLegacyRawPayloadMaxLength];
   bool scanResponseReceived;
   int8_t scanRspRssiDbm;
   uint8_t scanRspHeader;
+  // Raw legacy SCAN_RSP payload copied from the air: [AdvA(6)] [ScanRspData(0..31)].
   uint8_t scanRspPayloadLength;
-  uint8_t scanRspPayload[31];
+  uint8_t scanRspPayload[kBleLegacyRawPayloadMaxLength];
+
+  const uint8_t* advData() const {
+    return (advPayloadLength > kBleLegacyAddressLength)
+               ? &advPayload[kBleLegacyAddressLength]
+               : nullptr;
+  }
+
+  uint8_t advDataLength() const {
+    return (advPayloadLength > kBleLegacyAddressLength)
+               ? static_cast<uint8_t>(advPayloadLength - kBleLegacyAddressLength)
+               : 0U;
+  }
+
+  const uint8_t* scanRspData() const {
+    return (scanRspPayloadLength > kBleLegacyAddressLength)
+               ? &scanRspPayload[kBleLegacyAddressLength]
+               : nullptr;
+  }
+
+  uint8_t scanRspDataLength() const {
+    return (scanRspPayloadLength > kBleLegacyAddressLength)
+               ? static_cast<uint8_t>(scanRspPayloadLength -
+                                      kBleLegacyAddressLength)
+               : 0U;
+  }
 };
 
 struct BleAdvInteraction {
@@ -1688,9 +1720,9 @@ class BleRadio {
   bool useChSel2_;
   bool externalAntenna_;
   uint8_t address_[6];
-  uint8_t advData_[31];
+  uint8_t advData_[kBleLegacyAdDataMaxLength];
   size_t advDataLen_;
-  uint8_t scanRspData_[31];
+  uint8_t scanRspData_[kBleLegacyAdDataMaxLength];
   size_t scanRspDataLen_;
   alignas(4) uint8_t txPacket_[2 + 6 + 31];
   alignas(4) uint8_t scanRspPacket_[2 + 6 + 31];

@@ -1,0 +1,161 @@
+#include <Arduino.h>
+
+#include <stdio.h>
+
+#include "nrf54l15_hal.h"
+
+using namespace xiao_nrf54l15;
+
+// Legacy advertising budget example.
+//
+// Legacy BLE gives you:
+// - up to 31 bytes of AdvData
+// - up to 31 bytes of ScanRspData
+//
+// The on-air PDU body is larger (up to 37 bytes) because it also carries the
+// advertiser address (AdvA, 6 bytes). This sketch fills both 31-byte AD-data
+// budgets and listens for SCAN_REQ so the full 31 + 31 pattern can be tested
+// with a phone scanner or the BleActiveScanner example.
+
+static BleRadio g_ble;
+static PowerManager g_power;
+
+static uint32_t g_advEvents = 0;
+static uint32_t g_scanReqCount = 0;
+static uint32_t g_scanRspCount = 0;
+static uint32_t g_lastLogMs = 0;
+
+static constexpr BoardAntennaPath kAntennaPath = BoardAntennaPath::kCeramic;
+static constexpr int8_t kTxPowerDbm = 0;
+static constexpr uint32_t kAdvIntervalMs = 100UL;
+static constexpr uint32_t kInterChannelDelayUs = 350U;
+static constexpr uint32_t kRequestListenSpinLimit = 250000UL;
+static constexpr uint32_t kSpinLimit = 900000UL;
+
+static const uint8_t kAddress[6] = {0x31, 0x00, 0x15, 0x54, 0xDE, 0xC0};
+
+static const uint8_t kAdvPayload[] = {
+    2, 0x01, 0x06,
+    9, 0x09, 'X', '5', '4', '-', '3', '1', '-', 'A',
+    17, 0xFF,
+    0x31, 0x31, 0x54, 0x15, 0xA0, 0xA1, 0xA2, 0xA3,
+    0xA4, 0xA5, 0xA6, 0xA7, 0xA8, 0xA9, 0xAA, 0xAB,
+};
+
+static const uint8_t kScanRspPayload[] = {
+    12, 0x09, 'X', '5', '4', '-', '3', '1', '-', 'S', 'C', 'A', 'N',
+    17, 0x07,
+    0x12, 0x34, 0x56, 0x78, 0x90, 0xAB, 0xCD, 0xEF,
+    0x10, 0x32, 0x54, 0x76, 0x98, 0xBA, 0xDC, 0xFE,
+};
+
+static_assert(sizeof(kAdvPayload) == kBleLegacyAdDataMaxLength,
+              "Legacy AdvData budget must stay at 31 bytes");
+static_assert(sizeof(kScanRspPayload) == kBleLegacyAdDataMaxLength,
+              "Legacy ScanRspData budget must stay at 31 bytes");
+
+static void printAddress(const uint8_t* addr) {
+  if (addr == nullptr) {
+    return;
+  }
+
+  for (int i = 5; i >= 0; --i) {
+    if (addr[i] < 16U) {
+      Serial.print('0');
+    }
+    Serial.print(addr[i], HEX);
+    if (i > 0) {
+      Serial.print(':');
+    }
+  }
+}
+
+void setup() {
+  Serial.begin(115200);
+  delay(350);
+
+  Serial.print("\r\nBleLegacyAdv31Plus31 start\r\n");
+  Gpio::configure(kPinUserLed, GpioDirection::kOutput, GpioPull::kDisabled);
+  Gpio::write(kPinUserLed, true);
+
+  g_power.setLatencyMode(PowerLatencyMode::kLowPower);
+
+  bool ok = BoardControl::setAntennaPath(kAntennaPath);
+  if (ok) {
+    ok = g_ble.begin(kTxPowerDbm);
+  }
+  if (ok) {
+    ok = g_ble.setDeviceAddress(kAddress, BleAddressType::kRandomStatic);
+  }
+  if (ok) {
+    ok = g_ble.setAdvertisingPduType(BleAdvPduType::kAdvScanInd);
+  }
+  if (ok) {
+    ok = g_ble.setAdvertisingData(kAdvPayload, sizeof(kAdvPayload));
+  }
+  if (ok) {
+    ok = g_ble.setScanResponseData(kScanRspPayload, sizeof(kScanRspPayload));
+  }
+
+  Serial.print("BLE init: ");
+  Serial.print(ok ? "OK" : "FAIL");
+  Serial.print("\r\n");
+  if (!ok) {
+    return;
+  }
+
+  Serial.print("addr=");
+  printAddress(kAddress);
+  Serial.print(" type=random\r\n");
+  Serial.print("adv_data_len=");
+  Serial.print(sizeof(kAdvPayload));
+  Serial.print(" scan_rsp_data_len=");
+  Serial.print(sizeof(kScanRspPayload));
+  Serial.print(" raw_legacy_payload_len=");
+  Serial.print(kBleLegacyRawPayloadMaxLength);
+  Serial.print("\r\n");
+}
+
+void loop() {
+  BleAdvInteraction interaction{};
+  const bool ok = g_ble.advertiseInteractEvent(&interaction, kInterChannelDelayUs,
+                                               kRequestListenSpinLimit,
+                                               kSpinLimit);
+  ++g_advEvents;
+  if (interaction.receivedScanRequest) {
+    ++g_scanReqCount;
+  }
+  if (interaction.scanResponseTransmitted) {
+    ++g_scanRspCount;
+  }
+
+  Gpio::write(kPinUserLed, (g_advEvents & 0x1U) == 0U);
+
+  const uint32_t now = millis();
+  if ((now - g_lastLogMs) >= 1000UL) {
+    g_lastLogMs = now;
+
+    char line[192];
+    snprintf(line, sizeof(line),
+             "t=%lu adv_events=%lu scan_req=%lu scan_rsp=%lu last=%s type=ADV_SCAN_IND adv_len=%u scan_len=%u raw_pdu=%u\r\n",
+             static_cast<unsigned long>(now),
+             static_cast<unsigned long>(g_advEvents),
+             static_cast<unsigned long>(g_scanReqCount),
+             static_cast<unsigned long>(g_scanRspCount),
+             ok ? "OK" : "FAIL",
+             static_cast<unsigned>(sizeof(kAdvPayload)),
+             static_cast<unsigned>(sizeof(kScanRspPayload)),
+             static_cast<unsigned>(kBleLegacyRawPayloadMaxLength));
+    Serial.print(line);
+
+    if (interaction.receivedScanRequest) {
+      Serial.print("last_scan_req peer=");
+      printAddress(interaction.peerAddress);
+      Serial.print(" addr_type=");
+      Serial.print(interaction.peerAddressRandom ? "random" : "public");
+      Serial.print("\r\n");
+    }
+  }
+
+  delay(kAdvIntervalMs);
+}
