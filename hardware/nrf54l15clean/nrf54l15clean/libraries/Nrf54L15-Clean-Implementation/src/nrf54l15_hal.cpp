@@ -863,6 +863,36 @@ constexpr uint32_t kBleConnTxenAfterRxUs = 95U;
 constexpr uint32_t kBleAdvRequestListenMaxUs = 2500U;
 constexpr uint32_t kBleScanRspListenMaxUs = 2500U;
 
+void initBleGrtc() {
+  static bool initialized = false;
+  if (initialized) {
+    return;
+  }
+
+  NRF_GRTC_Type* const grtc = NRF_GRTC;
+  if (grtc == nullptr) {
+    return;
+  }
+
+  uint32_t mode = grtc->MODE;
+  mode &= ~GRTC_MODE_SYSCOUNTEREN_Msk;
+  mode |= (GRTC_MODE_SYSCOUNTEREN_Enabled << GRTC_MODE_SYSCOUNTEREN_Pos);
+  grtc->MODE = mode;
+  __asm volatile("dsb 0xF" ::: "memory");
+
+  grtc->TASKS_START = GRTC_TASKS_START_TASKS_START_Trigger;
+  __asm volatile("dsb 0xF" ::: "memory");
+  NRF54L15_GRTC_SYSCOUNTER(grtc).ACTIVE =
+      (GRTC_SYSCOUNTER_ACTIVE_ACTIVE_Active <<
+       GRTC_SYSCOUNTER_ACTIVE_ACTIVE_Pos);
+  __asm volatile("dsb 0xF" ::: "memory");
+  initialized = true;
+}
+
+static inline uint32_t bleTimingUs() {
+  return NRF54L15_GRTC_SYSCOUNTER(NRF_GRTC).SYSCOUNTERL;
+}
+
 #if defined(NRF54L15_CLEAN_BLE_TIMING_AGGRESSIVE) && (NRF54L15_CLEAN_BLE_TIMING_AGGRESSIVE == 1)
 constexpr uint32_t kBleConnAnchorPrewaitUs = 120U;
 constexpr uint32_t kBleConnRxStartLeadUs = 1200U;
@@ -2055,6 +2085,10 @@ uint32_t bleConnectionRxListenUs(uint16_t intervalUnits, uint8_t masterScaCode) 
   return kBleConnRxStartLeadUs + postAnchorListenUs;
 }
 
+uint32_t bleDataPduAirTimeUs(uint8_t payloadLength) {
+  return static_cast<uint32_t>(10U + payloadLength) * 8U;
+}
+
 uint8_t bleReverse8(uint8_t v) {
   v = static_cast<uint8_t>(((v & 0xF0U) >> 4U) | ((v & 0x0FU) << 4U));
   v = static_cast<uint8_t>(((v & 0xCCU) >> 2U) | ((v & 0x33U) << 2U));
@@ -2086,7 +2120,7 @@ bool waitRadioEndBudgeted(NRF_RADIO_Type* radio, uint32_t budgetUs, uint32_t spi
     return false;
   }
 
-  const uint32_t startUs = micros();
+  const uint32_t startUs = bleTimingUs();
   uint8_t divider = kBleConnMicrosPollDivider;
   while (spinLimit-- > 0U) {
     if (radio->EVENTS_PHYEND != 0U || radio->EVENTS_END != 0U) {
@@ -2096,7 +2130,7 @@ bool waitRadioEndBudgeted(NRF_RADIO_Type* radio, uint32_t budgetUs, uint32_t spi
     if (--divider == 0U) {
       divider = kBleConnMicrosPollDivider;
       if ((budgetUs > 0U) &&
-          (static_cast<uint32_t>(micros() - startUs) >= budgetUs)) {
+          (static_cast<uint32_t>(bleTimingUs() - startUs) >= budgetUs)) {
         break;
       }
     }
@@ -2110,7 +2144,7 @@ bool waitRadioDisabledBudgeted(NRF_RADIO_Type* radio, uint32_t budgetUs, uint32_
     return false;
   }
 
-  const uint32_t startUs = micros();
+  const uint32_t startUs = bleTimingUs();
   uint8_t divider = kBleConnMicrosPollDivider;
   while (spinLimit-- > 0U) {
     if (radio->EVENTS_DISABLED != 0U) {
@@ -2126,7 +2160,7 @@ bool waitRadioDisabledBudgeted(NRF_RADIO_Type* radio, uint32_t budgetUs, uint32_
     if (--divider == 0U) {
       divider = kBleConnMicrosPollDivider;
       if ((budgetUs > 0U) &&
-          (static_cast<uint32_t>(micros() - startUs) >= budgetUs)) {
+          (static_cast<uint32_t>(bleTimingUs() - startUs) >= budgetUs)) {
         break;
       }
     }
@@ -2145,7 +2179,7 @@ bool waitRadioRxDoneBudgeted(NRF_RADIO_Type* radio, uint32_t budgetUs, uint32_t 
     return false;
   }
 
-  const uint32_t startUs = micros();
+  const uint32_t startUs = bleTimingUs();
   uint8_t divider = kBleConnMicrosPollDivider;
   while (spinLimit-- > 0U) {
     if ((radio->EVENTS_CRCOK != 0U) || (radio->EVENTS_CRCERROR != 0U)) {
@@ -2155,7 +2189,7 @@ bool waitRadioRxDoneBudgeted(NRF_RADIO_Type* radio, uint32_t budgetUs, uint32_t 
     if (--divider == 0U) {
       divider = kBleConnMicrosPollDivider;
       if ((budgetUs > 0U) &&
-          (static_cast<uint32_t>(micros() - startUs) >= budgetUs)) {
+          (static_cast<uint32_t>(bleTimingUs() - startUs) >= budgetUs)) {
         break;
       }
     }
@@ -7570,6 +7604,7 @@ bool BleRadio::begin(int8_t txPowerDbm) {
   // GPIO state. Tools > Antenna still sets the startup default in initVariant().
   g_boardAntennaPath = BoardControl::antennaPath();
   externalAntenna_ = (g_boardAntennaPath == BoardAntennaPath::kExternal);
+  initBleGrtc();
 
   if (!beginUnconnectedRadioActivity(1500000UL)) {
     return false;
@@ -8588,7 +8623,7 @@ bool BleRadio::advertiseInteractOncePrepared(BleAdvertisingChannel channel,
     clearRadioCoreEvents(radio_);
     return true;
   }
-  const uint32_t rxEndUs = micros();
+  const uint32_t rxEndUs = bleTimingUs();
 
   const uint32_t crcStatus =
       (radio_->CRCSTATUS & RADIO_CRCSTATUS_CRCSTATUS_Msk) >>
@@ -8666,9 +8701,9 @@ bool BleRadio::advertiseInteractOncePrepared(BleAdvertisingChannel channel,
 
     // Wait for T_IFS turnaround (150us nominal).
     const uint32_t txTriggerTargetUs = rxEndUs + kBleConnTxenAfterRxUs;
-    uint32_t txTriggerNowUs = micros();
+    uint32_t txTriggerNowUs = bleTimingUs();
     while (!timeReachedUs(txTriggerNowUs, txTriggerTargetUs)) {
-      txTriggerNowUs = micros();
+      txTriggerNowUs = bleTimingUs();
     }
 
     radio_->TASKS_TXEN = RADIO_TASKS_TXEN_TASKS_TXEN_Trigger;
@@ -8966,7 +9001,7 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit
           ? (static_cast<uint32_t>(connectionIntervalUnits_) * 1250UL)
           : 1250UL;
 
-  uint32_t nowUs = micros();
+  uint32_t nowUs = bleTimingUs();
   // If application code stalled long enough that the current event window is
   // already behind us, align channel selection to the next event to avoid
   // staying one event behind indefinitely.
@@ -9000,7 +9035,7 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit
     // Short, bounded pre-wait near anchor reduces event jitter while
     // allowing RX ramp-up before the nominal event anchor.
     while (!timeReachedUs(nowUs, rxStartUs)) {
-      nowUs = micros();
+      nowUs = bleTimingUs();
     }
   }
 
@@ -9028,7 +9063,7 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit
           static_cast<uint32_t>(connectionIntervalUnits_) * 1250UL;
       if (newIntervalUs > 0U) {
         connectionNextEventUs_ = currentEventAnchorUs + newIntervalUs;
-        const uint32_t nowUsAfterUpdate = micros();
+        const uint32_t nowUsAfterUpdate = bleTimingUs();
         uint8_t guard = 8U;
         while (guard-- > 0U && timeReachedUs(nowUsAfterUpdate, connectionNextEventUs_)) {
           connectionNextEventUs_ += newIntervalUs;
@@ -9133,7 +9168,7 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit
     emitBleTrace("EVT_RX_TIMEOUT");
     return true;
   }
-  const uint32_t rxEndTimestampUs = micros();
+  const uint32_t rxEndTimestampUs = bleTimingUs();
 
   bool disabled =
       waitRadioDisabledBudgeted(radio_, kBleConnDisableWaitUs, spinLimit / 2U + 1U);
@@ -9192,23 +9227,22 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit
     return true;
   }
   connectionMissedEventCount_ = 0U;
-  if (connectionSyncAttemptsRemaining_ > 0U) {
-    // First successful packet may arrive anywhere in the initial transmit
-    // window; re-anchor once from observed timing, then switch to normal
-    // interval tracking to avoid accumulating processing-latency drift.
-    const uint32_t intervalUs =
-        (connectionIntervalUnits_ > 0U)
-            ? (static_cast<uint32_t>(connectionIntervalUnits_) * 1250UL)
-            : 1250UL;
-    connectionNextEventUs_ = micros() + intervalUs;
-    connectionSyncAttemptsRemaining_ = 0U;
-  }
 
   const uint8_t hdr0 = rxPacket_[0];
   const uint8_t llid = hdr0 & 0x03U;
   const uint8_t nesn = (hdr0 >> 2U) & 0x01U;
   const uint8_t sn = (hdr0 >> 3U) & 0x01U;
   const uint8_t rxLengthRaw = rxPacket_[1];
+  const uint32_t intervalUs =
+      (connectionIntervalUnits_ > 0U)
+          ? (static_cast<uint32_t>(connectionIntervalUnits_) * 1250UL)
+          : 1250UL;
+  const uint32_t rxPacketStartUs =
+      rxEndTimestampUs - bleDataPduAirTimeUs(rxLengthRaw);
+  connectionNextEventUs_ = rxPacketStartUs + intervalUs;
+  if (connectionSyncAttemptsRemaining_ > 0U) {
+    connectionSyncAttemptsRemaining_ = 0U;
+  }
 
   bool peerAckedLastTx =
       connectionTxHistoryValid_ && (nesn != connectionLastTxSn_);
@@ -9854,9 +9888,9 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit
          RADIO_SHORTS_PHYEND_DISABLE_Msk);
   }
   const uint32_t txTriggerTargetUs = rxEndTimestampUs + kBleConnTxenAfterRxUs;
-  uint32_t txTriggerNowUs = micros();
+  uint32_t txTriggerNowUs = bleTimingUs();
   while (!timeReachedUs(txTriggerNowUs, txTriggerTargetUs)) {
-    txTriggerNowUs = micros();
+    txTriggerNowUs = bleTimingUs();
   }
   const uint32_t txLagUs = static_cast<uint32_t>(txTriggerNowUs - txTriggerTargetUs);
   encDebug_.txenLagLastUs = txLagUs;
@@ -10012,10 +10046,10 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit
         followListenUs = capUs;
       }
     }
-    const uint32_t followStartUs = micros();
+    const uint32_t followStartUs = bleTimingUs();
     uint8_t followPackets = 0U;
     while (!terminateInd) {
-      const uint32_t followNowUs = micros();
+      const uint32_t followNowUs = bleTimingUs();
       const uint32_t elapsedUs =
           static_cast<uint32_t>(followNowUs - followStartUs);
       if ((elapsedUs >= followListenUs) || (followPackets >= 8U)) {
@@ -10034,7 +10068,7 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit
 
       ++followPackets;
       ++encDebug_.followupEndSeen;
-      const uint32_t followRxEndTimestampUs = micros();
+      const uint32_t followRxEndTimestampUs = bleTimingUs();
       auto transmitImmediateFollowupResponse = [&](uint8_t txFollowLlid,
                                                    uint8_t txFollowLength) -> bool {
         connectionLastTxLlid_ = txFollowLlid;
@@ -10066,9 +10100,9 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit
 
         const uint32_t txFollowTriggerTargetUs =
             followRxEndTimestampUs + kBleConnTxenAfterRxUs;
-        uint32_t txFollowTriggerNowUs = micros();
+        uint32_t txFollowTriggerNowUs = bleTimingUs();
         while (!timeReachedUs(txFollowTriggerNowUs, txFollowTriggerTargetUs)) {
-          txFollowTriggerNowUs = micros();
+          txFollowTriggerNowUs = bleTimingUs();
         }
         radio_->TASKS_TXEN = RADIO_TASKS_TXEN_TASKS_TXEN_Trigger;
 
@@ -10746,7 +10780,7 @@ bool BleRadio::scanActiveOnce(BleAdvertisingChannel channel,
     endUnconnectedRadioActivity();
     return false;
   }
-  const uint32_t advEndUs = micros();
+  const uint32_t advEndUs = bleTimingUs();
 
   bool disabled = waitDisabled(spinLimit / 2U + 1U);
   if (!disabled) {
@@ -10825,9 +10859,9 @@ bool BleRadio::scanActiveOnce(BleAdvertisingChannel channel,
        RADIO_SHORTS_PHYEND_DISABLE_Msk);
 
   const uint32_t txTriggerTargetUs = advEndUs + kBleConnTxenAfterRxUs;
-  uint32_t txTriggerNowUs = micros();
+  uint32_t txTriggerNowUs = bleTimingUs();
   while (!timeReachedUs(txTriggerNowUs, txTriggerTargetUs)) {
-    txTriggerNowUs = micros();
+    txTriggerNowUs = bleTimingUs();
   }
 
   radio_->TASKS_TXEN = RADIO_TASKS_TXEN_TASKS_TXEN_Trigger;
@@ -10986,7 +11020,7 @@ bool BleRadio::handleRequestAndMaybeRespond(BleAdvertisingChannel channel,
     clearRadioCoreEvents(radio_);
     return true;
   }
-  const uint32_t rxEndUs = micros();
+  const uint32_t rxEndUs = bleTimingUs();
 
   const uint32_t crcStatus =
       (radio_->CRCSTATUS & RADIO_CRCSTATUS_CRCSTATUS_Msk) >>
@@ -11064,9 +11098,9 @@ bool BleRadio::handleRequestAndMaybeRespond(BleAdvertisingChannel channel,
 
     // Wait for T_IFS turnaround (150us nominal).
     const uint32_t txTriggerTargetUs = rxEndUs + kBleConnTxenAfterRxUs;
-    uint32_t txTriggerNowUs = micros();
+    uint32_t txTriggerNowUs = bleTimingUs();
     while (!timeReachedUs(txTriggerNowUs, txTriggerTargetUs)) {
-      txTriggerNowUs = micros();
+      txTriggerNowUs = bleTimingUs();
     }
 
     radio_->TASKS_TXEN = RADIO_TASKS_TXEN_TASKS_TXEN_Trigger;
@@ -11162,7 +11196,11 @@ bool BleRadio::startConnectionFromConnectInd(const uint8_t* payload, uint8_t len
   memset(connectionPendingChannelMap_, 0, sizeof(connectionPendingChannelMap_));
   connectionPendingChannelCount_ = 0U;
   connectionServiceChangedIndicationsEnabled_ = false;
-  connectionServiceChangedIndicationPending_ = false;
+  // Arduino sketches can change the exposed GATT database completely between
+  // uploads while keeping the same static BLE address. Queue a full-database
+  // Service Changed indication on every new connection so centrals like
+  // Android invalidate stale caches before using custom services.
+  connectionServiceChangedIndicationPending_ = true;
   connectionServiceChangedIndicationAwaitingConfirm_ = false;
   connectionBatteryNotificationsEnabled_ = false;
   connectionBatteryNotificationPending_ = false;
@@ -11190,7 +11228,8 @@ bool BleRadio::startConnectionFromConnectInd(const uint8_t* payload, uint8_t len
       (RADIO_RXADDRESSES_ADDR0_Enabled << RADIO_RXADDRESSES_ADDR0_Pos) &
       RADIO_RXADDRESSES_ADDR0_Msk;
 
-  const uint32_t nowUs = (connectIndEndUs != 0U) ? connectIndEndUs : micros();
+  const uint32_t nowUs =
+      (connectIndEndUs != 0U) ? connectIndEndUs : bleTimingUs();
   // First data event uses legacy transmitWindowDelay (+1.25 ms) in addition to
   // transmitWindowOffset from CONNECT_IND.
   const uint32_t offsetUs =
@@ -13406,7 +13445,7 @@ void BleRadio::emitBleTrace(const char* message) const {
 void BleRadio::updateNextConnectionEventTime() {
   const uint32_t intervalUs = static_cast<uint32_t>(connectionIntervalUnits_) * 1250UL;
   if (intervalUs == 0U) {
-    connectionNextEventUs_ = micros() + 1250UL;
+    connectionNextEventUs_ = bleTimingUs() + 1250UL;
     ++connectionEventCounter_;
     return;
   }
@@ -13415,7 +13454,7 @@ void BleRadio::updateNextConnectionEventTime() {
   ++connectionEventCounter_;
 
   // Catch up if caller serviced connection late.
-  const uint32_t nowUs = micros();
+  const uint32_t nowUs = bleTimingUs();
   uint8_t guard = 8U;
   while (guard-- > 0U && timeReachedUs(nowUs, connectionNextEventUs_)) {
     connectionNextEventUs_ += intervalUs;
