@@ -1324,6 +1324,7 @@ struct BleExtendedScanResult {
   int8_t primaryRssiDbm;
   uint8_t primaryHeader;
   uint8_t primaryPayloadLength;
+  uint8_t advMode;
   bool advertiserAddressRandom;
   uint8_t advertiserAddress[kBleLegacyAddressLength];
   uint16_t did;
@@ -1334,6 +1335,11 @@ struct BleExtendedScanResult {
   uint8_t secondaryPacketCount;
   uint16_t dataLength;
   uint8_t data[kBleExtendedAdvDataMaxLength];
+  bool scanResponseReceived;
+  int8_t scanRspRssiDbm;
+  uint8_t scanRspSecondaryPacketCount;
+  uint16_t scanRspDataLength;
+  uint8_t scanRspData[kBleExtendedAdvDataMaxLength];
 };
 
 struct BleAdvInteraction {
@@ -1529,6 +1535,8 @@ class BleRadio {
   bool setExtendedAdvertisingAuxChannel(uint8_t dataChannel);
   bool setExtendedAdvertisingData(const uint8_t* data, size_t len);
   bool setExtendedAdvertisingName(const char* name, bool includeFlags = true);
+  bool setExtendedScanResponseData(const uint8_t* data, size_t len);
+  bool setExtendedScanResponseName(const char* name);
   bool buildAdvertisingPacket();
   bool setGattDeviceName(const char* name);
   bool setGattBatteryLevel(uint8_t percent);
@@ -1581,6 +1589,10 @@ class BleRadio {
   bool advertiseExtendedEvent(uint32_t auxOffsetUs = 3000U,
                               uint32_t interPrimaryDelayUs = 350U,
                               uint32_t spinLimit = 600000UL);
+  bool advertiseExtendedScannableEvent(uint32_t auxOffsetUs = 3000U,
+                                       uint32_t interPrimaryDelayUs = 350U,
+                                       uint32_t requestListenSpinLimit = 250000UL,
+                                       uint32_t spinLimit = 600000UL);
 
   // Advertise and listen for SCAN_REQ / CONNECT_IND on a single channel.
   bool advertiseInteractOnce(BleAdvertisingChannel channel,
@@ -1629,6 +1641,16 @@ class BleRadio {
   bool scanExtendedCycle(BleExtendedScanResult* result,
                          uint32_t perChannelPrimaryListenSpinLimit = 300000UL,
                          uint32_t secondaryListenSpinLimit = 300000UL);
+  bool scanExtendedActiveOnce(BleAdvertisingChannel channel,
+                              BleExtendedScanResult* result,
+                              uint32_t primaryListenSpinLimit = 900000UL,
+                              uint32_t secondaryListenSpinLimit = 300000UL,
+                              uint32_t scanRspListenSpinLimit = 300000UL,
+                              uint32_t spinLimit = 900000UL);
+  bool scanExtendedActiveCycle(BleExtendedScanResult* result,
+                               uint32_t perChannelPrimaryListenSpinLimit = 300000UL,
+                               uint32_t secondaryListenSpinLimit = 300000UL,
+                               uint32_t scanRspListenSpinLimit = 300000UL);
 
  private:
   static constexpr uint16_t kCustomGattHandleStart = 0x0020U;
@@ -1670,6 +1692,10 @@ class BleRadio {
   void releaseRfPathForBle();
   bool buildExtendedAdvertisingPackets(uint32_t auxOffsetUs,
                                        uint32_t* actualAuxOffsetUs = nullptr);
+  bool buildExtendedScannableAdvertisingPackets(
+      uint32_t auxOffsetUs,
+      uint32_t* actualAuxOffsetUs = nullptr,
+      uint32_t* actualScanRspChainOffsetUs = nullptr);
   bool transmitPreparedPacketOnCurrentChannel(const uint8_t* packet,
                                               uint32_t spinLimit,
                                               uint32_t* txReadyUs = nullptr);
@@ -1684,7 +1710,11 @@ class BleRadio {
                                      uint8_t* outPayloadLength,
                                      const uint8_t** outPayload,
                                      int8_t* outRssiDbm,
+                                     uint32_t* outStartUs = nullptr,
                                      uint32_t* outEndUs = nullptr);
+  bool handleExtendedScanRequestAndMaybeRespond(uint32_t requestListenSpinLimit,
+                                                uint32_t scanRspChainOffsetUs,
+                                                uint32_t spinLimit);
   bool waitDisabled(uint32_t spinLimit);
   bool waitForEnd(uint32_t spinLimit);
   bool setAdvertisingChannel(BleAdvertisingChannel channel);
@@ -1770,15 +1800,20 @@ class BleRadio {
   size_t advDataLen_;
   uint8_t extendedAdvData_[kBleExtendedAdvDataMaxLength];
   size_t extendedAdvDataLen_;
+  uint8_t extendedScanRspData_[kBleExtendedAdvDataMaxLength];
+  size_t extendedScanRspDataLen_;
   uint8_t extendedAdvSid_;
   uint16_t extendedAdvDid_;
   uint8_t extendedAdvAuxChannel_;
   uint8_t extendedSecondaryPacketCount_;
+  uint8_t extendedScanRspPacketCount_;
   uint8_t scanRspData_[kBleLegacyAdDataMaxLength];
   size_t scanRspDataLen_;
   alignas(4) uint8_t txPacket_[2 + 6 + 31];
   alignas(4) uint8_t extendedPrimaryPacket_[2 + 255];
+  alignas(4) uint8_t extendedAuxAdvPacket_[2 + 255];
   alignas(4) uint8_t extendedSecondaryPackets_[kBleExtendedSecondaryPacketCountMax][2 + 255];
+  alignas(4) uint8_t extendedScanRspPackets_[kBleExtendedSecondaryPacketCountMax][2 + 255];
   alignas(4) uint8_t scanRspPacket_[2 + 6 + 31];
   alignas(4) uint8_t rxPacket_[2 + 255];
   alignas(4) uint8_t connectionTxPayload_[255];
