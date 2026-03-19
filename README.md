@@ -104,6 +104,11 @@ Two-board `nrf_to_nrf` regression:
 
 - `scripts/nrf_to_nrf_dual_board_regression.py --example ack-payloads`
 - `scripts/nrf_to_nrf_dual_board_regression.py --example getting-started`
+
+Two-board extended advertising regression:
+
+- `scripts/ble_extended_adv_dual_board_regression.py --advertiser 995`
+- `scripts/ble_extended_adv_dual_board_regression.py --advertiser 499`
 - expects two XIAO nRF54L15 boards on separate `/dev/ttyACM*` ports
 - auto-resolves each board's CMSIS-DAP UID from the serial port and flashes deterministically
 - Bring-up: `CleanBringUp`, `PeripheralSelfTest`, `FeatureParitySelfTest`
