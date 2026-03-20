@@ -1572,6 +1572,8 @@ class BleRadio {
                                       bool indicate = false);
   bool isCustomGattCccdEnabled(uint16_t valueHandle,
                                bool indication = false) const;
+  uint16_t currentAttMtu() const;
+  uint8_t maxNotificationValueLength() const;
   bool setCustomGattWriteHandler(uint16_t valueHandle,
                                  BleGattWriteCallback callback,
                                  void* context = nullptr);

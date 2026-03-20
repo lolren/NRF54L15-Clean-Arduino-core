@@ -6,7 +6,11 @@
 #include <nrf54l15.h>
 
 #include "Stream.h"
+#include "cmsis.h"
 #include "pins_arduino.h"
+
+extern "C" void SPIM20_IRQHandler(void);
+extern "C" void SPIM21_IRQHandler(void);
 
 class HardwareSerial : public Stream {
 public:
@@ -33,11 +37,19 @@ public:
     bool usesPins(uint8_t txPin, uint8_t rxPin) const;
 
 private:
+    friend void SPIM20_IRQHandler(void);
+    friend void SPIM21_IRQHandler(void);
+
     void startRxDma();
     void stopRxDma();
     void serviceRxDma();
+    void handleIrq();
+    void processRxDmaEvents();
+    void commitRxBytes(const uint8_t* data, uint32_t amount);
+    void flushPartialRxDma(uintptr_t base);
 
-    static constexpr uint16_t kRxRingSize = 256U;
+    static constexpr uint16_t kRxRingSize = 1024U;
+    static constexpr uint8_t kRxDmaChunkSize = 1U;
 
     NRF_UARTE_Type* _uart;
     uint8_t _txPin;
@@ -46,21 +58,23 @@ private:
     unsigned long _baud;
     uint16_t _config;
 
-    uint16_t _rxHead;
-    uint16_t _rxTail;
-    uint16_t _rxCount;
-    uint32_t _rxDropped;
+    volatile uint16_t _rxHead;
+    volatile uint16_t _rxTail;
+    volatile uint16_t _rxCount;
+    volatile uint32_t _rxDropped;
 
     // UARTE EasyDMA requires word-aligned RAM addresses for PTR.
-    alignas(4) uint32_t _rxDmaWord[2];
-    uint8_t _rxDmaActive;
-    uint8_t _rxDmaPrepared;
-    bool _rxDmaRunning;
+    alignas(4) uint8_t _rxDmaBuffer[2][kRxDmaChunkSize];
+    volatile uint8_t _rxDmaActive;
+    volatile uint8_t _rxDmaPrepared;
+    volatile bool _rxDmaRunning;
+    volatile uint8_t _rxDmaObservedAmount;
+    volatile uint32_t _rxDmaLastActivityUs;
 
     alignas(4) uint8_t _txByte;
     uint8_t _dataMask;
 
-    uint8_t _rxRing[kRxRingSize];
+    volatile uint8_t _rxRing[kRxRingSize];
 };
 
 extern HardwareSerial Serial;

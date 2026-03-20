@@ -5,8 +5,10 @@
 namespace {
 
 static constexpr uint32_t kPselDisconnected = 0xFFFFFFFFUL;
+static constexpr uint32_t kRxFrameTimeoutBits = 32UL;
 
 // UARTE register offsets.
+static constexpr uint32_t U_TASKS_FLUSHRX      = 0x01CUL;
 static constexpr uint32_t U_TASKS_DMA_RX_START = 0x028UL;
 static constexpr uint32_t U_TASKS_DMA_RX_STOP  = 0x02CUL;
 static constexpr uint32_t U_TASKS_DMA_TX_START = 0x050UL;
@@ -18,13 +20,18 @@ static constexpr uint32_t U_EVENTS_TXSTOPPED   = 0x130UL;
 static constexpr uint32_t U_EVENTS_DMA_RX_END  = 0x14CUL;
 static constexpr uint32_t U_EVENTS_DMA_RX_READY = 0x150UL;
 static constexpr uint32_t U_EVENTS_DMA_TX_END  = 0x168UL;
+static constexpr uint32_t U_EVENTS_FRAMETIMEOUT = 0x174UL;
 
 static constexpr uint32_t U_SHORTS             = 0x200UL;
+static constexpr uint32_t U_INTENSET           = 0x304UL;
+static constexpr uint32_t U_INTENCLR           = 0x308UL;
 
 static constexpr uint32_t U_ERRORSRC           = 0x480UL;
 static constexpr uint32_t U_ENABLE             = 0x500UL;
 static constexpr uint32_t U_BAUDRATE           = 0x524UL;
 static constexpr uint32_t U_CONFIG             = 0x56CUL;
+static constexpr uint32_t U_ADDRESS            = 0x574UL;
+static constexpr uint32_t U_FRAMETIMEOUT       = 0x578UL;
 
 static constexpr uint32_t U_PSEL_TXD           = 0x604UL;
 static constexpr uint32_t U_PSEL_CTS           = 0x608UL;
@@ -197,7 +204,58 @@ static uint32_t serial_byte_timeout_us(unsigned long baud, uint32_t bytes) {
     return (per_byte * bytes) + margin;
 }
 
+static constexpr uint32_t kUarteRxInterruptMask =
+    UARTE_INTENCLR_ERROR_Msk |
+    UARTE_INTENCLR_RXTO_Msk |
+    UARTE_INTENCLR_FRAMETIMEOUT_Msk |
+    UARTE_INTENCLR_DMARXEND_Msk |
+    UARTE_INTENCLR_DMARXREADY_Msk;
+
+static bool uart_try_irqn_for_instance(const NRF_UARTE_Type* uart, IRQn_Type* irqn) {
+    if (irqn == nullptr || uart == nullptr) {
+        return false;
+    }
+
+    const uintptr_t base = reinterpret_cast<uintptr_t>(uart);
+    if (base == reinterpret_cast<uintptr_t>(NRF_UARTE20)) {
+        *irqn = SPIM20_IRQn;
+        return true;
+    }
+    if (base == reinterpret_cast<uintptr_t>(NRF_UARTE21)) {
+        *irqn = SPIM21_IRQn;
+        return true;
+    }
+    return false;
+}
+
+static HardwareSerial* g_uarte20Owner = nullptr;
+static HardwareSerial* g_uarte21Owner = nullptr;
+static HardwareSerial* g_unknownOwner = nullptr;
+
+static HardwareSerial*& uart_owner_slot(const NRF_UARTE_Type* uart) {
+    const uintptr_t base = reinterpret_cast<uintptr_t>(uart);
+    if (base == reinterpret_cast<uintptr_t>(NRF_UARTE20)) {
+        return g_uarte20Owner;
+    }
+    if (base == reinterpret_cast<uintptr_t>(NRF_UARTE21)) {
+        return g_uarte21Owner;
+    }
+    return g_unknownOwner;
+}
+
 }  // namespace
+
+extern "C" void SPIM20_IRQHandler(void) {
+    if (g_uarte20Owner != nullptr) {
+        g_uarte20Owner->handleIrq();
+    }
+}
+
+extern "C" void SPIM21_IRQHandler(void) {
+    if (g_uarte21Owner != nullptr) {
+        g_uarte21Owner->handleIrq();
+    }
+}
 
 HardwareSerial::HardwareSerial(NRF_UARTE_Type* uart, uint8_t txPin, uint8_t rxPin)
     : _uart(uart),
@@ -210,13 +268,36 @@ HardwareSerial::HardwareSerial(NRF_UARTE_Type* uart, uint8_t txPin, uint8_t rxPi
       _rxTail(0U),
       _rxCount(0U),
       _rxDropped(0U),
-      _rxDmaWord{0U, 0U},
+      _rxDmaBuffer{{0U}, {0U}},
       _rxDmaActive(0U),
       _rxDmaPrepared(1U),
       _rxDmaRunning(false),
+      _rxDmaObservedAmount(0U),
+      _rxDmaLastActivityUs(0U),
       _txByte(0),
       _dataMask(0xFFU),
       _rxRing{0} {}
+
+void HardwareSerial::commitRxBytes(const uint8_t* data, uint32_t amount) {
+    if (data == nullptr || amount == 0U) {
+        return;
+    }
+    if (amount > kRxDmaChunkSize) {
+        amount = kRxDmaChunkSize;
+    }
+
+    for (uint32_t i = 0; i < amount; ++i) {
+        const uint8_t value = data[i];
+        if (_rxCount >= kRxRingSize) {
+            ++_rxDropped;
+        } else {
+            _rxRing[_rxHead] = value;
+            _rxHead = static_cast<uint16_t>(
+                (_rxHead + 1U) & static_cast<uint16_t>(kRxRingSize - 1U));
+            ++_rxCount;
+        }
+    }
+}
 
 void HardwareSerial::begin(unsigned long baud) {
     begin(baud, SERIAL_8N1);
@@ -244,8 +325,10 @@ void HardwareSerial::begin(unsigned long baud, uint16_t config) {
     reg32(base + U_PSEL_RTS) = kPselDisconnected;
     const UarteFormat fmt = decode_serial_format(config);
     _dataMask = fmt.dataMask;
-    reg32(base + U_CONFIG) = fmt.configReg;
+    reg32(base + U_CONFIG) = fmt.configReg | UARTE_CONFIG_FRAMETIMEOUT_Enabled;
     reg32(base + U_BAUDRATE) = baud_to_reg(baud);
+    reg32(base + U_ADDRESS) = 0U;
+    reg32(base + U_FRAMETIMEOUT) = kRxFrameTimeoutBits;
     reg32(base + U_ENABLE) = UARTE_ENABLE_ENABLE_Enabled;
 
     _baud = baud;
@@ -257,7 +340,19 @@ void HardwareSerial::begin(unsigned long baud, uint16_t config) {
     _rxDmaActive = 0U;
     _rxDmaPrepared = 1U;
     _rxDmaRunning = false;
+    _rxDmaObservedAmount = 0U;
+    _rxDmaLastActivityUs = 0U;
     _configured = true;
+
+    IRQn_Type irqn = Reset_IRQn;
+    if (uart_try_irqn_for_instance(_uart, &irqn)) {
+        HardwareSerial*& owner = uart_owner_slot(_uart);
+        owner = this;
+        NVIC_DisableIRQ(irqn);
+        NVIC_ClearPendingIRQ(irqn);
+        NVIC_SetPriority(irqn, 2U);
+        NVIC_EnableIRQ(irqn);
+    }
     startRxDma();
 }
 
@@ -269,6 +364,7 @@ void HardwareSerial::end() {
     stopRxDma();
 
     const uintptr_t base = reinterpret_cast<uintptr_t>(_uart);
+    reg32(base + U_INTENCLR) = kUarteRxInterruptMask;
     reg32(base + U_TASKS_DMA_TX_STOP) = UARTE_TASKS_DMA_TX_STOP_STOP_Trigger;
     reg32(base + U_ENABLE) = UARTE_ENABLE_ENABLE_Disabled;
 
@@ -276,6 +372,16 @@ void HardwareSerial::end() {
     reg32(base + U_PSEL_RXD) = kPselDisconnected;
     reg32(base + U_PSEL_CTS) = kPselDisconnected;
     reg32(base + U_PSEL_RTS) = kPselDisconnected;
+
+    IRQn_Type irqn = Reset_IRQn;
+    if (uart_try_irqn_for_instance(_uart, &irqn)) {
+        HardwareSerial*& owner = uart_owner_slot(_uart);
+        if (owner == this) {
+            NVIC_DisableIRQ(irqn);
+            NVIC_ClearPendingIRQ(irqn);
+            owner = nullptr;
+        }
+    }
 
     _configured = false;
     _rxCount = 0U;
@@ -323,31 +429,23 @@ void HardwareSerial::startRxDma() {
 
     const uintptr_t base = reinterpret_cast<uintptr_t>(_uart);
 
+    reg32(base + U_INTENCLR) = kUarteRxInterruptMask;
     reg32(base + U_EVENTS_DMA_RX_END) = 0U;
     reg32(base + U_EVENTS_DMA_RX_READY) = 0U;
     reg32(base + U_EVENTS_ERROR) = 0U;
     reg32(base + U_EVENTS_RXTO) = 0U;
+    reg32(base + U_EVENTS_FRAMETIMEOUT) = 0U;
     reg32(base + U_ERRORSRC) = 0xFFFFFFFFUL;
 
-    // Keep RX running continuously; restarting RX in software after gaps can
-    // desynchronize framing under continuous TX.
-    reg32(base + U_SHORTS) |= UARTE_SHORTS_DMA_RX_END_DMA_RX_START_Msk;
-
-    _rxDmaWord[_rxDmaActive] = 0U;
+    memset(_rxDmaBuffer[_rxDmaActive], 0, HardwareSerial::kRxDmaChunkSize);
     reg32(base + U_DMA_RX_PTR) =
-        static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&_rxDmaWord[_rxDmaActive]));
-    reg32(base + U_DMA_RX_MAXCNT) = 1U;
+        static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&_rxDmaBuffer[_rxDmaActive][0]));
+    reg32(base + U_DMA_RX_MAXCNT) = HardwareSerial::kRxDmaChunkSize;
     reg32(base + U_TASKS_DMA_RX_START) = UARTE_TASKS_DMA_RX_START_START_Trigger;
-
-    // Arm the next ping-pong buffer once EasyDMA has buffered the current PTR/MAXCNT.
-    (void)wait_event_timeout_us(base, U_EVENTS_DMA_RX_READY, 2000UL);
-    if (reg32(base + U_EVENTS_DMA_RX_READY) != 0U) {
-        reg32(base + U_EVENTS_DMA_RX_READY) = 0U;
-        reg32(base + U_DMA_RX_PTR) =
-            static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&_rxDmaWord[_rxDmaPrepared]));
-        reg32(base + U_DMA_RX_MAXCNT) = 1U;
-    }
     _rxDmaRunning = true;
+    _rxDmaObservedAmount = 0U;
+    _rxDmaLastActivityUs = micros();
+    reg32(base + U_INTENSET) = kUarteRxInterruptMask;
 }
 
 void HardwareSerial::stopRxDma() {
@@ -359,26 +457,27 @@ void HardwareSerial::stopRxDma() {
     }
 
     const uintptr_t base = reinterpret_cast<uintptr_t>(_uart);
+    reg32(base + U_INTENCLR) = kUarteRxInterruptMask;
     reg32(base + U_SHORTS) &= ~UARTE_SHORTS_DMA_RX_END_DMA_RX_START_Msk;
     reg32(base + U_EVENTS_RXTO) = 0U;
+    reg32(base + U_EVENTS_FRAMETIMEOUT) = 0U;
     reg32(base + U_TASKS_DMA_RX_STOP) = UARTE_TASKS_DMA_RX_STOP_STOP_Trigger;
     wait_event_timeout_us(base, U_EVENTS_RXTO, serial_byte_timeout_us(_baud, 2U));
     reg32(base + U_ERRORSRC) = 0xFFFFFFFFUL;
     _rxDmaRunning = false;
 }
 
-void HardwareSerial::serviceRxDma() {
+void HardwareSerial::flushPartialRxDma(uintptr_t base) {
+    (void)base;
+}
+
+void HardwareSerial::processRxDmaEvents() {
     if (!_configured || _uart == nullptr) {
         return;
     }
 
     const uintptr_t base = reinterpret_cast<uintptr_t>(_uart);
-    if (!_rxDmaRunning) {
-        startRxDma();
-        return;
-    }
-
-    if (reg32(base + U_EVENTS_ERROR) != 0U) {
+    if ((reg32(base + U_EVENTS_ERROR) != 0U) || (reg32(base + U_ERRORSRC) != 0U)) {
         reg32(base + U_EVENTS_ERROR) = 0U;
         reg32(base + U_ERRORSRC) = 0xFFFFFFFFUL;
         stopRxDma();
@@ -386,59 +485,41 @@ void HardwareSerial::serviceRxDma() {
         return;
     }
 
-    if (reg32(base + U_EVENTS_DMA_RX_READY) != 0U) {
-        reg32(base + U_EVENTS_DMA_RX_READY) = 0U;
-        reg32(base + U_DMA_RX_PTR) =
-            static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&_rxDmaWord[_rxDmaPrepared]));
-        reg32(base + U_DMA_RX_MAXCNT) = 1U;
+    if (reg32(base + U_EVENTS_DMA_RX_END) == 0U) {
+        return;
     }
 
-    // Move completed bytes into the software ring. RX restarts via SHORTS.
-    while (reg32(base + U_EVENTS_DMA_RX_END) != 0U) {
-        reg32(base + U_EVENTS_DMA_RX_END) = 0U;
-
-        // If the peripheral reported an error for this reception window,
-        // drop the byte to avoid forwarding garbage into higher layers.
-        if ((reg32(base + U_EVENTS_ERROR) != 0U) || (reg32(base + U_ERRORSRC) != 0U)) {
-            reg32(base + U_EVENTS_ERROR) = 0U;
-            reg32(base + U_ERRORSRC) = 0xFFFFFFFFUL;
-            stopRxDma();
-            startRxDma();
-            break;
-        }
-
-        const uint8_t value =
-            static_cast<uint8_t>(_rxDmaWord[_rxDmaActive] & 0xFFU);
-
-        if (_rxCount >= kRxRingSize) {
-            ++_rxDropped;
-        } else {
-            _rxRing[_rxHead] = value;
-            _rxHead = static_cast<uint16_t>(
-                (_rxHead + 1U) & static_cast<uint16_t>(kRxRingSize - 1U));
-            ++_rxCount;
-        }
-
-        const uint8_t prevActive = _rxDmaActive;
-        _rxDmaActive = _rxDmaPrepared;
-        _rxDmaPrepared = prevActive;
-        _rxDmaWord[_rxDmaPrepared] = 0U;
-
-        if (reg32(base + U_EVENTS_DMA_RX_READY) != 0U) {
-            reg32(base + U_EVENTS_DMA_RX_READY) = 0U;
-            reg32(base + U_DMA_RX_PTR) =
-                static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&_rxDmaWord[_rxDmaPrepared]));
-            reg32(base + U_DMA_RX_MAXCNT) = 1U;
-        }
-
-        if (reg32(base + U_EVENTS_ERROR) != 0U) {
-            reg32(base + U_EVENTS_ERROR) = 0U;
-            reg32(base + U_ERRORSRC) = 0xFFFFFFFFUL;
-            stopRxDma();
-            startRxDma();
-            break;
-        }
+    reg32(base + U_EVENTS_DMA_RX_END) = 0U;
+    uint32_t amount = reg32(base + U_DMA_RX_AMOUNT);
+    if (amount > kRxDmaChunkSize) {
+        amount = kRxDmaChunkSize;
     }
+    commitRxBytes(_rxDmaBuffer[_rxDmaActive], amount);
+    memset(_rxDmaBuffer[_rxDmaActive], 0, kRxDmaChunkSize);
+    _rxDmaRunning = false;
+    _rxDmaObservedAmount = 0U;
+    _rxDmaLastActivityUs = micros();
+    startRxDma();
+}
+
+void HardwareSerial::serviceRxDma() {
+    if (!_configured || _uart == nullptr) {
+        return;
+    }
+
+    const uint32_t primask = __get_PRIMASK();
+    __disable_irq();
+    if (!_rxDmaRunning) {
+        startRxDma();
+        __set_PRIMASK(primask);
+        return;
+    }
+    processRxDmaEvents();
+    __set_PRIMASK(primask);
+}
+
+void HardwareSerial::handleIrq() {
+    processRxDmaEvents();
 }
 
 int HardwareSerial::available() {
@@ -448,7 +529,10 @@ int HardwareSerial::available() {
 
 int HardwareSerial::read() {
     serviceRxDma();
+    const uint32_t primask = __get_PRIMASK();
+    __disable_irq();
     if (_rxCount == 0U) {
+        __set_PRIMASK(primask);
         return -1;
     }
 
@@ -456,15 +540,21 @@ int HardwareSerial::read() {
     _rxTail = static_cast<uint16_t>(
         (_rxTail + 1U) & static_cast<uint16_t>(kRxRingSize - 1U));
     --_rxCount;
+    __set_PRIMASK(primask);
     return static_cast<int>(value & _dataMask);
 }
 
 int HardwareSerial::peek() {
     serviceRxDma();
+    const uint32_t primask = __get_PRIMASK();
+    __disable_irq();
     if (_rxCount == 0U) {
+        __set_PRIMASK(primask);
         return -1;
     }
-    return static_cast<int>(_rxRing[_rxTail] & _dataMask);
+    const int value = static_cast<int>(_rxRing[_rxTail] & _dataMask);
+    __set_PRIMASK(primask);
+    return value;
 }
 
 void HardwareSerial::flush() {

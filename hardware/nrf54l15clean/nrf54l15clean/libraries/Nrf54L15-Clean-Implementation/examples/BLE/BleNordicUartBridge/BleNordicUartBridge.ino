@@ -13,6 +13,18 @@ static bool g_bannerSent = false;
 static uint32_t g_lastStatusMs = 0U;
 static uint32_t g_lastSelfTestMs = 0U;
 static uint32_t g_usbDroppedBytes = 0U;
+static uint32_t g_bleDroppedBytes = 0U;
+
+static constexpr uint16_t kUsbToBleBufferSize = 1024U;
+static constexpr uint16_t kBleToUsbBufferSize = 1024U;
+static uint16_t g_usbToBleHead = 0U;
+static uint16_t g_usbToBleTail = 0U;
+static uint16_t g_usbToBleCount = 0U;
+static uint16_t g_bleToUsbHead = 0U;
+static uint16_t g_bleToUsbTail = 0U;
+static uint16_t g_bleToUsbCount = 0U;
+static uint8_t g_usbToBleBuffer[kUsbToBleBufferSize] = {0};
+static uint8_t g_bleToUsbBuffer[kBleToUsbBufferSize] = {0};
 
 static constexpr int8_t kTxPowerDbm = 0;
 // Leave the bridged USB CDC stream clean during active sessions. Runtime logs on
@@ -24,7 +36,8 @@ static constexpr bool kUseFixedAddress = true;
 // Debug aid: when enabled, the sketch generates a known ASCII stream internally
 // (no USB input) to help isolate BLE TX corruption vs. USB-UART bridge issues.
 static constexpr bool kEnableSelfTestTx = false;
-static const uint8_t kAddress[6] = {0x36, 0x00, 0x15, 0x54, 0xDE, 0xC0};
+static constexpr uint32_t kConnectionPollTimeoutUs = 2000UL;
+static const uint8_t kAddress[6] = {0x38, 0x00, 0x15, 0x54, 0xDE, 0xC0};
 static const uint8_t kNusAdvPayload[] = {
     2, 0x01, 0x06,  // Flags: LE General Discoverable + BR/EDR not supported.
     8, 0x09, 'X', '5', '4', '-', 'N', 'U', 'S',  // Complete local name.
@@ -65,51 +78,107 @@ static const char* disconnectReasonLabel(uint8_t reason) {
   }
 }
 
-static void pumpUsbToBle(int maxBytes) {
-  // Without hardware flow control, the USB-UART bridge can overrun if the BLE
-  // link can't drain fast enough (or if notifications are temporarily off
-  // during Android discovery). Prefer dropping input bytes early rather than
-  // letting the UART receiver overflow and inject garbage into the stream.
+static uint16_t advanceBridgeIndex(uint16_t index, uint16_t capacity) {
+  ++index;
+  if (index >= capacity) {
+    index = 0U;
+  }
+  return index;
+}
 
-  int budget = g_nus.availableForWrite();
-  if (budget > maxBytes) {
-    budget = maxBytes;
-  }
-  if (!g_nus.isNotifyEnabled() || budget <= 0) {
-    // Drop aggressively to keep the UART from overflowing and corrupting
-    // subsequent bytes. Bound work per call so we still service BLE anchors.
-    int dropBudget = maxBytes * 64;
-    if (dropBudget < 64) {
-      dropBudget = 64;
-    }
-    while (dropBudget > 0) {
-      const int ch = Serial.read();
-      if (ch < 0) {
-        break;
-      }
-      ++g_usbDroppedBytes;
-      --dropBudget;
-    }
-    return;
-  }
+static void clearBridgeBuffers() {
+  g_usbToBleHead = 0U;
+  g_usbToBleTail = 0U;
+  g_usbToBleCount = 0U;
+  g_bleToUsbHead = 0U;
+  g_bleToUsbTail = 0U;
+  g_bleToUsbCount = 0U;
+}
+
+static void stageUsbToBle(int maxBytes) {
+  int budget = maxBytes;
   while (budget > 0 && Serial.available() > 0) {
     const int ch = Serial.read();
     if (ch < 0) {
       break;
     }
-    g_nus.write(static_cast<uint8_t>(ch));
+    if (g_usbToBleCount >= kUsbToBleBufferSize) {
+      ++g_usbDroppedBytes;
+    } else {
+      g_usbToBleBuffer[g_usbToBleHead] = static_cast<uint8_t>(ch);
+      g_usbToBleHead = advanceBridgeIndex(g_usbToBleHead, kUsbToBleBufferSize);
+      ++g_usbToBleCount;
+    }
     --budget;
   }
 }
 
-static void pumpBleToUsb(int maxBytes) {
+static void pumpUsbToBle(int maxBytes) {
+  if (!g_nus.isNotifyEnabled() || g_usbToBleCount == 0U) {
+    return;
+  }
+
+  int budget = g_nus.availableForWrite();
+  const int payloadLimit = g_nus.maxPayloadLength();
+  if (budget > payloadLimit) {
+    budget = payloadLimit;
+  }
+  if (budget > maxBytes) {
+    budget = maxBytes;
+  }
+  if (budget <= 0) {
+    return;
+  }
+
+  uint8_t chunk[64] = {0};
+  size_t chunkLength = static_cast<size_t>(budget);
+  if (chunkLength > sizeof(chunk)) {
+    chunkLength = sizeof(chunk);
+  }
+  if (chunkLength > g_usbToBleCount) {
+    chunkLength = g_usbToBleCount;
+  }
+
+  uint16_t index = g_usbToBleTail;
+  for (size_t i = 0; i < chunkLength; ++i) {
+    chunk[i] = g_usbToBleBuffer[index];
+    index = advanceBridgeIndex(index, kUsbToBleBufferSize);
+  }
+
+  const size_t written = g_nus.write(chunk, chunkLength);
+  for (size_t i = 0; i < written; ++i) {
+    g_usbToBleTail = advanceBridgeIndex(g_usbToBleTail, kUsbToBleBufferSize);
+    --g_usbToBleCount;
+  }
+}
+
+static void stageBleToUsb(int maxBytes) {
   int budget = maxBytes;
   while (budget > 0 && g_nus.available() > 0) {
     const int ch = g_nus.read();
     if (ch < 0) {
       break;
     }
-    Serial.write(static_cast<uint8_t>(ch));
+    if (g_bleToUsbCount >= kBleToUsbBufferSize) {
+      ++g_bleDroppedBytes;
+    } else {
+      g_bleToUsbBuffer[g_bleToUsbHead] = static_cast<uint8_t>(ch);
+      g_bleToUsbHead = advanceBridgeIndex(g_bleToUsbHead, kBleToUsbBufferSize);
+      ++g_bleToUsbCount;
+    }
+    --budget;
+  }
+}
+
+static void pumpBleToUsb(int maxBytes) {
+  int budget = maxBytes;
+  while (budget > 0 && g_bleToUsbCount > 0U) {
+    const size_t written = Serial.write(g_bleToUsbBuffer[g_bleToUsbTail]);
+    if (written != 1U) {
+      break;
+    }
+    g_bleToUsbTail = advanceBridgeIndex(g_bleToUsbTail, kBleToUsbBufferSize);
+    --g_bleToUsbCount;
     --budget;
   }
 }
@@ -195,6 +264,7 @@ void loop() {
     if (g_wasConnected) {
       g_wasConnected = false;
       g_bannerSent = false;
+      clearBridgeBuffers();
       Gpio::write(kPinUserLed, true);
       if (kEnableBridgeLogs) {
         Serial.print("\r\nBLE client disconnected\r\n");
@@ -223,12 +293,14 @@ void loop() {
 
   // Keep BLE connection-event polling tight; missing anchors leads to 0x08 timeouts.
   BleConnectionEvent evt{};
-  const bool eventStarted = g_ble.pollConnectionEvent(&evt, 300000UL) && evt.eventStarted;
+  const bool eventStarted =
+      g_ble.pollConnectionEvent(&evt, kConnectionPollTimeoutUs) && evt.eventStarted;
   if (!eventStarted) {
     g_nus.service();
-    // Keep UART flowing between connection events without doing a long, blocking pump.
-    pumpUsbToBle(2);
-    pumpBleToUsb(2);
+    stageUsbToBle(64);
+    stageBleToUsb(16);
+    pumpUsbToBle(8);
+    pumpBleToUsb(8);
     return;
   }
 
@@ -255,9 +327,11 @@ void loop() {
   // Only pump UART after a real connection event.
   selfTestTx();
   if (!kEnableSelfTestTx) {
-    pumpUsbToBle(16);
+    stageUsbToBle(128);
   }
-  pumpBleToUsb(16);
+  stageBleToUsb(128);
+  pumpUsbToBle(64);
+  pumpBleToUsb(64);
 
   if (!g_bannerSent && g_nus.isNotifyEnabled()) {
     g_bannerSent = true;
@@ -275,6 +349,12 @@ void loop() {
     Serial.print(g_nus.txDroppedBytes());
     Serial.print(" usb_drop=");
     Serial.print(g_usbDroppedBytes);
+    Serial.print(" ble_drop=");
+    Serial.print(g_bleDroppedBytes);
+    Serial.print(" usb_q=");
+    Serial.print(g_usbToBleCount);
+    Serial.print(" ble_q=");
+    Serial.print(g_bleToUsbCount);
     Serial.print("\r\n");
   }
 

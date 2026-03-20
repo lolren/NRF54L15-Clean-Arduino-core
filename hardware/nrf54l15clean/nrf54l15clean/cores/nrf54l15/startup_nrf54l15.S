@@ -53,8 +53,15 @@ g_pfnVectors:
     /* IRQ 70..71: AAR00/CCM00 and ECB00. */
     .word   AAR00_CCM00_IRQHandler
     .word   ECB00_IRQHandler
-    /* IRQ 72..148 */
-    .rept 77
+    /* IRQ 72..139 */
+    .rept 68
+    .word   Default_Handler
+    .endr
+    /* IRQ 140..141: serial-fabric instances used by HardwareSerial. */
+    .word   SPIM20_IRQHandler
+    .word   SPIM21_IRQHandler
+    /* IRQ 142..148 */
+    .rept 7
     .word   Default_Handler
     .endr
     /* IRQ 149..150: TWIM/TWIS instances used by Wire target IRQ mode. */

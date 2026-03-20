@@ -202,6 +202,10 @@ uint32_t BleNordicUart::txDroppedBytes() const {
   return txDroppedBytes_;
 }
 
+uint8_t BleNordicUart::maxPayloadLength() const {
+  return notificationValueLimit();
+}
+
 void BleNordicUart::clear() {
   clearRx();
   clearTx();
@@ -345,6 +349,11 @@ bool BleNordicUart::queueNextNotification() {
   return true;
 }
 
+uint8_t BleNordicUart::notificationValueLimit() const {
+  const uint8_t limit = ble_.maxNotificationValueLength();
+  return (limit > 0U) ? limit : 1U;
+}
+
 size_t BleNordicUart::copyTxChunk(uint8_t* outChunk, size_t maxLength) const {
   if (outChunk == nullptr || maxLength == 0U || txCount_ == 0U) {
     return 0U;
@@ -353,6 +362,10 @@ size_t BleNordicUart::copyTxChunk(uint8_t* outChunk, size_t maxLength) const {
   size_t chunkLength = txCount_;
   if (chunkLength > maxLength) {
     chunkLength = maxLength;
+  }
+  const uint8_t valueLimit = notificationValueLimit();
+  if (chunkLength > valueLimit) {
+    chunkLength = valueLimit;
   }
 
   uint16_t index = txTail_;

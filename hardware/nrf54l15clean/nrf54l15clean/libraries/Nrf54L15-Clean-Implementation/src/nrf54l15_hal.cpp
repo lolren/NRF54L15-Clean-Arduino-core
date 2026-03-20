@@ -1017,6 +1017,7 @@ constexpr uint16_t kBleL2capLeSignalingMtu = 23U;
 
 constexpr uint32_t kBleConnSlaveScaPpm = 50UL;
 constexpr uint8_t kBleConnMicrosPollDivider = 32U;
+constexpr uint32_t kBleConnEventSpinFloor = 450000UL;
 // With fast ramp-up enabled, trigger TXEN ~115 us after RX end so packet start
 // lands near the BLE 150 us inter-frame spacing.
 constexpr uint32_t kBleConnTxenAfterRxUs = 95U;
@@ -8523,6 +8524,23 @@ bool BleRadio::notifyCustomGattCharacteristic(uint16_t valueHandle, bool indicat
   return true;
 }
 
+uint16_t BleRadio::currentAttMtu() const {
+  return (connected_ && connectionAttMtu_ >= kBleDefaultAttMtu)
+             ? connectionAttMtu_
+             : kBleDefaultAttMtu;
+}
+
+uint8_t BleRadio::maxNotificationValueLength() const {
+  const uint16_t mtu = currentAttMtu();
+  if (mtu <= 3U) {
+    return 1U;
+  }
+  const uint16_t maxValueLength =
+      minU16(static_cast<uint16_t>(kCustomGattMaxValueLength),
+             static_cast<uint16_t>(mtu - 3U));
+  return static_cast<uint8_t>((maxValueLength > 0U) ? maxValueLength : 1U);
+}
+
 bool BleRadio::isCustomGattCccdEnabled(uint16_t valueHandle, bool indication) const {
   const BleCustomCharacteristicState* characteristic =
       findCustomCharacteristicByValueHandle(valueHandle);
@@ -9968,6 +9986,9 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit
 
   if (!initialized_ || radio_ == nullptr || !connected_) {
     return false;
+  }
+  if (spinLimit < kBleConnEventSpinFloor) {
+    spinLimit = kBleConnEventSpinFloor;
   }
 
   const uint32_t intervalUsForListen =
