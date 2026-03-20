@@ -11046,10 +11046,10 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit
   if (doPostTxRxTurnaround && txOk && !terminateInd) {
     ++encDebug_.followupArmed;
     uint32_t followListenUs = kBleConnFollowupRxListenMaxUs;
-    const uint32_t intervalUs =
+    const uint32_t followIntervalUs =
         static_cast<uint32_t>(connectionIntervalUnits_) * 1250UL;
-    if (intervalUs > 3000U) {
-      const uint32_t capUs = intervalUs - 3000U;
+    if (followIntervalUs > 3000U) {
+      const uint32_t capUs = followIntervalUs - 3000U;
       if (followListenUs > capUs) {
         followListenUs = capUs;
       }

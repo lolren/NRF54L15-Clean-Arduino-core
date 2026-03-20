@@ -14,6 +14,7 @@ static uint32_t g_lastStatusMs = 0U;
 static uint32_t g_lastSelfTestMs = 0U;
 static uint32_t g_usbDroppedBytes = 0U;
 static uint32_t g_bleDroppedBytes = 0U;
+static uint32_t g_lastUsbIngressUs = 0U;
 
 static constexpr uint16_t kUsbToBleBufferSize = 1024U;
 static constexpr uint16_t kBleToUsbBufferSize = 1024U;
@@ -37,6 +38,7 @@ static constexpr bool kUseFixedAddress = true;
 // (no USB input) to help isolate BLE TX corruption vs. USB-UART bridge issues.
 static constexpr bool kEnableSelfTestTx = false;
 static constexpr uint32_t kConnectionPollTimeoutUs = 2000UL;
+static constexpr uint32_t kUsbToBleCoalesceUs = 2000UL;
 static const uint8_t kAddress[6] = {0x38, 0x00, 0x15, 0x54, 0xDE, 0xC0};
 static const uint8_t kNusAdvPayload[] = {
     2, 0x01, 0x06,  // Flags: LE General Discoverable + BR/EDR not supported.
@@ -108,6 +110,7 @@ static void stageUsbToBle(int maxBytes) {
       g_usbToBleBuffer[g_usbToBleHead] = static_cast<uint8_t>(ch);
       g_usbToBleHead = advanceBridgeIndex(g_usbToBleHead, kUsbToBleBufferSize);
       ++g_usbToBleCount;
+      g_lastUsbIngressUs = micros();
     }
     --budget;
   }
@@ -128,6 +131,13 @@ static void pumpUsbToBle(int maxBytes) {
   }
   if (budget <= 0) {
     return;
+  }
+
+  if (g_usbToBleCount < static_cast<uint16_t>(budget)) {
+    const uint32_t ageUs = micros() - g_lastUsbIngressUs;
+    if (ageUs < kUsbToBleCoalesceUs) {
+      return;
+    }
   }
 
   uint8_t chunk[64] = {0};
