@@ -1,29 +1,29 @@
 #!/usr/bin/env python3
 """Generate CoreVersionGenerated.h from the package version string."""
 
-from __future__ import annotations
-
 import argparse
 import re
 from pathlib import Path
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--version", required=True, help="Package version string, e.g. 0.1.86")
     parser.add_argument("--out", required=True, type=Path, help="Output header path")
     return parser.parse_args()
 
 
-def parse_version(version: str) -> tuple[int, int, int]:
+def parse_version(version):
     match = re.fullmatch(r"\s*(\d+)\.(\d+)\.(\d+)\s*", version)
     if not match:
-        raise SystemExit(f"Unsupported version format {version!r}; expected major.minor.patch")
+        raise SystemExit(
+            "Unsupported version format {!r}; expected major.minor.patch".format(version)
+        )
     return tuple(int(group) for group in match.groups())
 
 
-def render_header(version: str, major: int, minor: int, patch: int) -> str:
-    return f"""#ifndef NRF54L15_CLEAN_CORE_VERSION_GENERATED_H
+def render_header(version, major, minor, patch):
+    return """#ifndef NRF54L15_CLEAN_CORE_VERSION_GENERATED_H
 #define NRF54L15_CLEAN_CORE_VERSION_GENERATED_H
 
 #define ARDUINO_NRF54L15_CLEAN_VERSION_MAJOR {major}
@@ -42,10 +42,10 @@ def render_header(version: str, major: int, minor: int, patch: int) -> str:
 #define ARDUINO_NRF54L15_CLEAN_VERSION_STRING "{version}"
 
 #endif  // NRF54L15_CLEAN_CORE_VERSION_GENERATED_H
-"""
+""".format(version=version, major=major, minor=minor, patch=patch)
 
 
-def main() -> int:
+def main():
     args = parse_args()
     major, minor, patch = parse_version(args.version)
     output_path = args.out.resolve()
