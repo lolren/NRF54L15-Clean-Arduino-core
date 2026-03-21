@@ -49,7 +49,9 @@ private:
     void flushPartialRxDma(uintptr_t base);
 
     static constexpr uint16_t kRxRingSize = 1024U;
-    static constexpr uint8_t kRxDmaChunkSize = 1U;
+    // Keep enough hardware-backed RX slack to survive short BLE timing-critical
+    // sections without dropping bridge UART bytes.
+    static constexpr uint8_t kRxDmaChunkSize = 128U;
 
     NRF_UARTE_Type* _uart;
     uint8_t _txPin;

@@ -12,9 +12,9 @@ static bool g_wasConnected = false;
 static bool g_bannerSent = false;
 static uint32_t g_lastStatusMs = 0U;
 static uint32_t g_lastSelfTestMs = 0U;
+static uint32_t g_lastBleDbgMs = 0U;
 static uint32_t g_usbDroppedBytes = 0U;
 static uint32_t g_bleDroppedBytes = 0U;
-static uint32_t g_lastUsbIngressUs = 0U;
 
 static constexpr uint16_t kUsbToBleBufferSize = 1024U;
 static constexpr uint16_t kBleToUsbBufferSize = 1024U;
@@ -37,8 +37,15 @@ static constexpr bool kUseFixedAddress = true;
 // Debug aid: when enabled, the sketch generates a known ASCII stream internally
 // (no USB input) to help isolate BLE TX corruption vs. USB-UART bridge issues.
 static constexpr bool kEnableSelfTestTx = false;
+static constexpr bool kEnableBleBgService = true;
 static constexpr uint32_t kConnectionPollTimeoutUs = 2000UL;
-static constexpr uint32_t kUsbToBleCoalesceUs = 2000UL;
+static constexpr uint16_t kEventNoopStageBytes = 256U;
+static constexpr uint16_t kEventPumpBytes = 64U;
+static constexpr uint16_t kEventStageBytes = 512U;
+static constexpr uint16_t kPumpChunkBytes = 64U;
+static constexpr uint16_t kBleChunkBytes = 20U;
+static constexpr uint32_t kStatusPeriodMs = 2000UL;
+static constexpr uint32_t kDebugPeriodMs = 1000UL;
 static const uint8_t kAddress[6] = {0x38, 0x00, 0x15, 0x54, 0xDE, 0xC0};
 static const uint8_t kNusAdvPayload[] = {
     2, 0x01, 0x06,  // Flags: LE General Discoverable + BR/EDR not supported.
@@ -97,6 +104,41 @@ static void clearBridgeBuffers() {
   g_bleToUsbCount = 0U;
 }
 
+static void printBleDebug(uint32_t nowMs) {
+  if ((nowMs - g_lastBleDbgMs) < kDebugPeriodMs) {
+    return;
+  }
+  g_lastBleDbgMs = nowMs;
+
+  BleEncryptionDebugCounters dbg{};
+  g_ble.getEncryptionDebugCounters(&dbg);
+  Serial.print("ble_dbg late_poll=");
+  Serial.print(dbg.connLatePollCount);
+  Serial.print(" missed_last=");
+  Serial.print(dbg.connMissedEventCountLast);
+  Serial.print(" missed_max=");
+  Serial.print(dbg.connMissedEventCountMax);
+  Serial.print(" rx_timeout=");
+  Serial.print(dbg.connRxTimeoutCount);
+  Serial.print(" tx_timeout=");
+  Serial.print(dbg.connTxTimeoutCount);
+  Serial.print(" follow_timeout=");
+  Serial.print(dbg.connFollowupRxTimeoutCount);
+  Serial.print(" follow_crc_err=");
+  Serial.print(dbg.connFollowupRxCrcErrorCount);
+  Serial.print(" tx_lag_last=");
+  Serial.print(dbg.txenLagLastUs);
+  Serial.print(" tx_lag_max=");
+  Serial.print(dbg.txenLagMaxUs);
+  Serial.print(" tx_late=");
+  Serial.print(dbg.txenLateCount);
+  Serial.print(" q=");
+  Serial.print(g_usbToBleCount);
+  Serial.print("/");
+  Serial.print(g_bleToUsbCount);
+  Serial.print("\r\n");
+}
+
 static void stageUsbToBle(int maxBytes) {
   int budget = maxBytes;
   while (budget > 0 && Serial.available() > 0) {
@@ -110,7 +152,6 @@ static void stageUsbToBle(int maxBytes) {
       g_usbToBleBuffer[g_usbToBleHead] = static_cast<uint8_t>(ch);
       g_usbToBleHead = advanceBridgeIndex(g_usbToBleHead, kUsbToBleBufferSize);
       ++g_usbToBleCount;
-      g_lastUsbIngressUs = micros();
     }
     --budget;
   }
@@ -133,18 +174,15 @@ static void pumpUsbToBle(int maxBytes) {
     return;
   }
 
+  if (budget > static_cast<int>(kBleChunkBytes)) {
+    budget = static_cast<int>(kBleChunkBytes);
+  }
   if (g_usbToBleCount < static_cast<uint16_t>(budget)) {
-    const uint32_t ageUs = micros() - g_lastUsbIngressUs;
-    if (ageUs < kUsbToBleCoalesceUs) {
-      return;
-    }
+    budget = static_cast<int>(g_usbToBleCount);
   }
 
-  uint8_t chunk[64] = {0};
+  uint8_t chunk[kBleChunkBytes] = {0};
   size_t chunkLength = static_cast<size_t>(budget);
-  if (chunkLength > sizeof(chunk)) {
-    chunkLength = sizeof(chunk);
-  }
   if (chunkLength > g_usbToBleCount) {
     chunkLength = g_usbToBleCount;
   }
@@ -270,12 +308,16 @@ void loop() {
     BleAdvInteraction adv{};
     g_ble.advertiseInteractEvent(&adv, 350U, 350000UL, 700000UL);
     g_nus.service();
+    if (kEnableBridgeLogs && g_wasConnected) {
+      printBleDebug(millis());
+    }
 
     if (g_wasConnected) {
       g_wasConnected = false;
       g_bannerSent = false;
       clearBridgeBuffers();
       Gpio::write(kPinUserLed, true);
+      g_lastBleDbgMs = 0U;
       if (kEnableBridgeLogs) {
         Serial.print("\r\nBLE client disconnected\r\n");
       }
@@ -295,6 +337,11 @@ void loop() {
   if (!g_wasConnected) {
     g_wasConnected = true;
     g_bannerSent = false;
+    g_lastBleDbgMs = 0U;
+    g_ble.clearEncryptionDebugCounters();
+    if (kEnableBleBgService) {
+      g_ble.setBackgroundConnectionServiceEnabled(true);
+    }
     Gpio::write(kPinUserLed, false);
     if (kEnableBridgeLogs) {
       Serial.print("\r\nBLE client connected\r\n");
@@ -307,14 +354,17 @@ void loop() {
       g_ble.pollConnectionEvent(&evt, kConnectionPollTimeoutUs) && evt.eventStarted;
   if (!eventStarted) {
     g_nus.service();
-    stageUsbToBle(64);
-    stageBleToUsb(16);
-    pumpUsbToBle(8);
-    pumpBleToUsb(8);
+    stageUsbToBle(kEventNoopStageBytes);
+    stageBleToUsb(kEventNoopStageBytes);
+    pumpUsbToBle(kEventPumpBytes);
+    pumpBleToUsb(kEventPumpBytes);
     return;
   }
 
   g_nus.service(&evt);
+  if (kEnableBridgeLogs) {
+    printBleDebug(millis());
+  }
   if (evt.terminateInd) {
     if (kEnableBridgeLogs) {
       Serial.print("BLE link terminated");
@@ -337,11 +387,11 @@ void loop() {
   // Only pump UART after a real connection event.
   selfTestTx();
   if (!kEnableSelfTestTx) {
-    stageUsbToBle(128);
+    stageUsbToBle(kEventStageBytes);
   }
-  stageBleToUsb(128);
-  pumpUsbToBle(64);
-  pumpBleToUsb(64);
+  stageBleToUsb(kEventStageBytes);
+  pumpUsbToBle(kPumpChunkBytes);
+  pumpBleToUsb(kPumpChunkBytes);
 
   if (!g_bannerSent && g_nus.isNotifyEnabled()) {
     g_bannerSent = true;
@@ -349,7 +399,7 @@ void loop() {
   }
 
   const uint32_t nowMs = millis();
-  if (kEnableBridgeLogs && (nowMs - g_lastStatusMs) >= 2000UL) {
+  if (kEnableBridgeLogs && (nowMs - g_lastStatusMs) >= kStatusPeriodMs) {
     g_lastStatusMs = nowMs;
     Serial.print("notify=");
     Serial.print(g_nus.isNotifyEnabled() ? "on" : "off");

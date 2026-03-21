@@ -10,7 +10,10 @@ static PowerManager g_power;
 static uint8_t g_batteryLevel = 100U;
 static uint32_t g_lastBatteryUpdateMs = 0U;
 static uint32_t g_lastLogMs = 0U;
+static bool g_wasConnected = false;
 static constexpr int8_t kTxPowerDbm = -8;
+static constexpr bool kLogConnectionPackets = false;
+static constexpr bool kLogBatteryReadDebug = true;
 
 void setup() {
   Serial.begin(115200);
@@ -25,6 +28,7 @@ void setup() {
   bool ok = g_ble.begin(kTxPowerDbm);
   if (ok) {
     ok = g_ble.setDeviceAddress(kAddress, BleAddressType::kRandomStatic) &&
+         g_ble.setAdvertisingChannelSelectionAlgorithm2(true) &&
          g_ble.setAdvertisingPduType(BleAdvPduType::kAdvInd) &&
          g_ble.setAdvertisingName("X54-GATT", true) &&
          g_ble.setScanResponseName("X54-GATT-SCAN") &&
@@ -47,6 +51,59 @@ void loop() {
   }
 
   if (!g_ble.isConnected()) {
+    if (g_wasConnected) {
+      g_wasConnected = false;
+      BleEncryptionDebugCounters dbg{};
+      uint8_t lastReason = 0U;
+      bool lastRemote = false;
+      g_ble.getEncryptionDebugCounters(&dbg);
+      const bool haveLastReason =
+          g_ble.getLastDisconnectReason(&lastReason, &lastRemote);
+      Serial.print("disc reason_valid=");
+      Serial.print(haveLastReason ? "1" : "0");
+      Serial.print(" reason=0x");
+      if (lastReason < 16U) {
+        Serial.print('0');
+      }
+      Serial.print(lastReason, HEX);
+      Serial.print(" remote=");
+      Serial.print(lastRemote ? "1" : "0");
+      Serial.print(" chm_rx_ce=");
+      Serial.print(dbg.connLastChannelMapRxEventCounter);
+      Serial.print(" chm_inst=");
+      Serial.print(dbg.connLastChannelMapInstant);
+      Serial.print(" chm_apply_ce=");
+      Serial.print(dbg.connLastChannelMapAppliedEventCounter);
+      Serial.print(" chm_apply_ch=");
+      Serial.print(dbg.connLastChannelMapAppliedDataChannel);
+      Serial.print(" chm_pend=");
+      Serial.print(dbg.connChannelMapPendingCount);
+      Serial.print(" chm_apply=");
+      Serial.print(dbg.connChannelMapAppliedCount);
+      Serial.print(" chm_dup=");
+      Serial.print(dbg.connChannelMapDuplicateCount);
+      Serial.print(" chm_to_after_apply=");
+      Serial.print(dbg.connChannelMapTimeoutAfterApplyCount);
+      Serial.print(" chm_to_ce=");
+      Serial.print(dbg.connLastChannelMapTimeoutEventCounter);
+      Serial.print(" rx_to=");
+      Serial.print(dbg.connRxTimeoutCount);
+      Serial.print(" rx_crc=");
+      Serial.print(dbg.connRxCrcErrorCount);
+      Serial.print(" iatt_ack=");
+      Serial.print(dbg.connImplicitAttProgressAckCount);
+      Serial.print(" bg_thr=");
+      Serial.print(dbg.connBgServiceThreadCount);
+      Serial.print(" bg_isr=");
+      Serial.print(dbg.connBgServiceIsrCount);
+      Serial.print(" bg_due=");
+      Serial.print(dbg.connBgDueCount);
+      Serial.print(" bg_lag_last=");
+      Serial.print(dbg.connBgWakeLagLastUs);
+      Serial.print(" bg_lag_max=");
+      Serial.print(dbg.connBgWakeLagMaxUs);
+      Serial.print("\r\n");
+    }
     BleAdvInteraction adv{};
     g_ble.advertiseInteractEvent(&adv, 350U, 350000UL, 700000UL);
     Gpio::write(kPinUserLed, true);
@@ -54,20 +111,112 @@ void loop() {
     return;
   }
 
+  g_wasConnected = true;
+
   BleConnectionEvent evt{};
   const bool ran = g_ble.pollConnectionEvent(&evt, 450000UL);
   if (ran && evt.eventStarted) {
     Gpio::write(kPinUserLed, false);
 
-    if (evt.packetReceived && evt.crcOk && (evt.attPacket || evt.llControlPacket)) {
+    if (kLogBatteryReadDebug && evt.attPacket &&
+        evt.payload != nullptr && evt.payloadLength >= 7U &&
+        ((evt.attOpcode == 0x0AU) || (evt.attOpcode == 0x10U) ||
+         (evt.attOpcode == 0x12U))) {
+      const uint16_t attHandle =
+          static_cast<uint16_t>(evt.payload[5]) |
+          static_cast<uint16_t>(static_cast<uint16_t>(evt.payload[6]) << 8U);
+      const bool logReadHandle =
+          (evt.attOpcode == 0x0AU) &&
+          ((attHandle == 0x0003U) || (attHandle == 0x0012U));
+      const bool logPrimaryServiceBrowse = (evt.attOpcode == 0x10U) && (attHandle == 0x0001U);
+      const bool logCccdWrite =
+          (evt.attOpcode == 0x12U) &&
+          ((attHandle == 0x000BU) || (attHandle == 0x0013U));
+      if (logReadHandle || logPrimaryServiceBrowse || logCccdWrite) {
+        if (evt.attOpcode == 0x0AU) {
+          Serial.print(attHandle == 0x0003U ? "devname-read ce=" : "batt-read ce=");
+        } else if (evt.attOpcode == 0x10U) {
+          Serial.print("svc-browse ce=");
+        } else {
+          Serial.print(attHandle == 0x000BU ? "svcchg-cccd ce=" : "batt-cccd ce=");
+        }
+        Serial.print(evt.eventCounter);
+        Serial.print(" ch=");
+        Serial.print(evt.dataChannel);
+        Serial.print(" new=");
+        Serial.print(evt.packetIsNew ? 1 : 0);
+        Serial.print(" ack=");
+        Serial.print(evt.peerAckedLastTx ? 1 : 0);
+        Serial.print(" fresh=");
+        Serial.print(evt.freshTxAllowed ? 1 : 0);
+        Serial.print(" iack=");
+        Serial.print(evt.implicitEmptyAck ? 1 : 0);
+        Serial.print(" rxsn=");
+        Serial.print(evt.rxSn);
+        Serial.print(" rxnesn=");
+        Serial.print(evt.rxNesn);
+        Serial.print(" txsn=");
+        Serial.print(evt.txSn);
+        Serial.print(" txnesn=");
+        Serial.print(evt.txNesn);
+        Serial.print(" tx_llid=");
+        Serial.print(evt.txLlid);
+        Serial.print(" tx_len=");
+        Serial.print(evt.txPayloadLength);
+        if (evt.txPayload != nullptr && evt.txPayloadLength >= 5U) {
+          Serial.print(" tx_att=0x");
+          if (evt.txPayload[4] < 16U) {
+            Serial.print('0');
+          }
+          Serial.print(evt.txPayload[4], HEX);
+          if (evt.txPayloadLength >= 7U) {
+            const uint16_t txHandle =
+                static_cast<uint16_t>(evt.txPayload[5]) |
+                static_cast<uint16_t>(static_cast<uint16_t>(evt.txPayload[6]) << 8U);
+            Serial.print(" tx_handle=0x");
+            if (txHandle < 0x1000U) {
+              Serial.print('0');
+            }
+            if (txHandle < 0x0100U) {
+              Serial.print('0');
+            }
+            if (txHandle < 0x0010U) {
+              Serial.print('0');
+            }
+            Serial.print(txHandle, HEX);
+          }
+        }
+        Serial.print("\r\n");
+      }
+    }
+
+    if (kLogConnectionPackets &&
+        evt.packetReceived && evt.crcOk &&
+        (evt.attPacket || evt.llControlPacket)) {
       Serial.print("ce=");
       Serial.print(evt.eventCounter);
+      Serial.print(" ch=");
+      Serial.print(evt.dataChannel);
       Serial.print(" llid=");
       Serial.print(evt.llid);
       Serial.print(" rx_len=");
       Serial.print(evt.payloadLength);
       Serial.print(" tx_len=");
       Serial.print(evt.txPayloadLength);
+      Serial.print(" new=");
+      Serial.print(evt.packetIsNew ? 1 : 0);
+      Serial.print(" ack=");
+      Serial.print(evt.peerAckedLastTx ? 1 : 0);
+      Serial.print(" iack=");
+      Serial.print(evt.implicitEmptyAck ? 1 : 0);
+      Serial.print(" rxsn=");
+      Serial.print(evt.rxSn);
+      Serial.print(" rxnesn=");
+      Serial.print(evt.rxNesn);
+      Serial.print(" txsn=");
+      Serial.print(evt.txSn);
+      Serial.print(" txnesn=");
+      Serial.print(evt.txNesn);
       if (evt.llControlPacket) {
         Serial.print(" ll_op=0x");
         if (evt.llControlOpcode < 16U) {

@@ -92,6 +92,11 @@ bool BleNordicUart::begin() {
     return false;
   }
 
+  // Advertise the NUS service UUID so Android BLE serial apps can discover this
+  // device by UUID scan filter.  The GAP device name is automatically moved to
+  // the scan response, so it still appears when the central performs an active scan.
+  ble_.setAdvertisingServiceUuid128(kServiceUuid128);
+
   serviceHandle_ = serviceHandle;
   rxValueHandle_ = rxValueHandle;
   txValueHandle_ = txValueHandle;
@@ -137,6 +142,17 @@ void BleNordicUart::service(const BleConnectionEvent* event) {
       --txCount_;
       --advance;
     }
+    txChunkLength_ = 0U;
+    txNotificationInFlight_ = false;
+  }
+
+  // If CCCD was disabled while a notification was in-flight (e.g. Android
+  // temporarily wrote CCCD=0 during GATT re-discovery after a Service Changed
+  // indication), the HAL silently drops the queued notification without ever
+  // firing eventSentNotificationForHandle. Clear the in-flight flag so the
+  // same bytes can be re-queued once CCCD is re-enabled. txTail_ is not
+  // advanced, so the data is re-sent rather than lost.
+  if (txNotificationInFlight_ && ble_.isConnected() && !isNotifyEnabled()) {
     txChunkLength_ = 0U;
     txNotificationInFlight_ = false;
   }

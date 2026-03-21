@@ -35,6 +35,47 @@ static constexpr uint8_t kZephyrMainCcChannelXiao = 1U;
 xiao_nrf54l15::I2sTx* g_activeI2sTx = nullptr;
 xiao_nrf54l15::I2sRx* g_activeI2sRx = nullptr;
 xiao_nrf54l15::I2sDuplex* g_activeI2sDuplex = nullptr;
+// Reserve one GRTC compare channel for BLE connection anchors so the custom LL
+// can arm itself independently of sketch polling.
+static constexpr uint8_t kBleBackgroundCompareChannel = 2U;
+#if NRF54L15_GRTC_IRQ_GROUP == 2U
+static constexpr IRQn_Type kBleBackgroundGrtcIrq = GRTC_2_IRQn;
+#elif NRF54L15_GRTC_IRQ_GROUP == 1U
+static constexpr IRQn_Type kBleBackgroundGrtcIrq = GRTC_1_IRQn;
+#else
+static constexpr IRQn_Type kBleBackgroundGrtcIrq = GRTC_0_IRQn;
+#endif
+xiao_nrf54l15::BleRadio* volatile g_bleBackgroundRadio = nullptr;
+
+#if !defined(NRF54L15_CLEAN_BLE_BACKGROUND_SERVICE)
+#define NRF54L15_CLEAN_BLE_BACKGROUND_SERVICE 1
+#endif
+
+#if !defined(NRF54L15_CLEAN_BLE_BACKGROUND_GRTC_IRQ_RUN)
+#define NRF54L15_CLEAN_BLE_BACKGROUND_GRTC_IRQ_RUN 1
+#endif
+
+#if !defined(NRF54L15_CLEAN_BLE_BACKGROUND_PENDSV_HANDOFF)
+#define NRF54L15_CLEAN_BLE_BACKGROUND_PENDSV_HANDOFF 1
+#endif
+
+static volatile uint8_t g_bleBackgroundPendSvPending = 0U;
+
+static inline void blePendSvSetPending() {
+  constexpr uintptr_t kIcsrAddress = 0xE000ED04UL;
+  constexpr uint32_t kPendSvSetMask = (1UL << 28U);
+  *reinterpret_cast<volatile uint32_t*>(kIcsrAddress) = kPendSvSetMask;
+  __DSB();
+  __ISB();
+}
+
+static inline void blePendSvClearPending() {
+  constexpr uintptr_t kIcsrAddress = 0xE000ED04UL;
+  constexpr uint32_t kPendSvClearMask = (1UL << 27U);
+  *reinterpret_cast<volatile uint32_t*>(kIcsrAddress) = kPendSvClearMask;
+  __DSB();
+  __ISB();
+}
 
 uint32_t gpioBaseForPort(uint8_t port) {
   switch (port) {
@@ -992,16 +1033,19 @@ constexpr uint8_t kBleLlErrorConnectionTimeout = 0x08U;
 constexpr uint8_t kBleLlErrorCommandDisallowed = 0x0CU;
 constexpr uint8_t kBleLlErrorLlProcedureCollision = 0x23U;
 constexpr uint8_t kBleLlErrorMicFailure = 0x3DU;
-constexpr uint8_t kBleLlFeatureMaskOctet0 = 0x1FU;
+constexpr uint8_t kBleLlFeatureMaskOctet0 = 0x3FU;  // bits 0-5: encryption, conn-param-req, ext-reject, slave-features, ping, DLE
 constexpr uint64_t kBleEncPacketCounterMask = 0x7FFFFFFFFFULL;
 
 constexpr uint16_t kBleL2capCidAtt = 0x0004U;
 constexpr uint16_t kBleL2capCidLeSignaling = 0x0005U;
 constexpr uint16_t kBleL2capCidSmp = 0x0006U;
 constexpr uint8_t kBleL2capHeaderLen = 4U;
-constexpr uint8_t kBleDataPduMaxPayload = 27U;
+constexpr uint8_t kBleDataPduMaxPayload = 251U;  // BLE 4.2+ Data Length Extension max
 constexpr uint8_t kBleMicLen = 4U;
 constexpr uint16_t kBleDefaultAttMtu = 23U;
+// Maximum ATT MTU the server will negotiate; derived from DLE payload minus L2CAP header.
+constexpr uint16_t kBleServerPreferredMtu =
+    static_cast<uint16_t>(kBleDataPduMaxPayload - kBleL2capHeaderLen);  // 247
 constexpr uint8_t kL2capSigCodeCommandRejectRsp = 0x01U;
 constexpr uint8_t kL2capSigCodeConnParamUpdateReq = 0x12U;
 constexpr uint8_t kL2capSigCodeConnParamUpdateRsp = 0x13U;
@@ -1057,6 +1101,118 @@ static inline uint32_t bleTimingUs() {
   return NRF54L15_GRTC_SYSCOUNTER(NRF_GRTC).SYSCOUNTERL;
 }
 
+static inline bool bleBackgroundCompareEventPending() {
+  return NRF_GRTC->EVENTS_COMPARE[kBleBackgroundCompareChannel] != 0U;
+}
+
+static inline bool bleBackgroundCompareEnabled() {
+  return ((NRF_GRTC->CC[kBleBackgroundCompareChannel].CCEN &
+           GRTC_CC_CCEN_ACTIVE_Msk) >>
+          GRTC_CC_CCEN_ACTIVE_Pos) == GRTC_CC_CCEN_ACTIVE_Enable;
+}
+
+static inline void bleBackgroundDisableCompare() {
+  NRF54L15_GRTC_INTENCLR_REG(NRF_GRTC) =
+      (1UL << static_cast<uint32_t>(kBleBackgroundCompareChannel));
+  NRF_GRTC->CC[kBleBackgroundCompareChannel].CCEN =
+      (GRTC_CC_CCEN_ACTIVE_Disable << GRTC_CC_CCEN_ACTIVE_Pos);
+  NRF_GRTC->EVENTS_COMPARE[kBleBackgroundCompareChannel] = 0U;
+}
+
+static inline void bleBackgroundEnableIrq() {
+  NVIC->ICPR[static_cast<uint32_t>(kBleBackgroundGrtcIrq) >> 5U] =
+      (1UL << (static_cast<uint32_t>(kBleBackgroundGrtcIrq) & 0x1FUL));
+  NVIC_SetPriority(kBleBackgroundGrtcIrq, 3U);
+  NVIC_EnableIRQ(kBleBackgroundGrtcIrq);
+  NVIC_SetPriority(PendSV_IRQn, 7U);
+}
+
+static inline uint64_t bleAbsoluteTimeFromLowCounter(uint32_t targetUs) {
+  const uint64_t nowAbs = readGrtcCounter(NRF_GRTC);
+  const uint32_t nowUs = static_cast<uint32_t>(nowAbs & 0xFFFFFFFFULL);
+  const bool targetAlreadyReached =
+      static_cast<int32_t>(nowUs - targetUs) >= 0;
+  const uint32_t deltaUs =
+      targetAlreadyReached ? 0U : static_cast<uint32_t>(targetUs - nowUs);
+  return nowAbs + static_cast<uint64_t>(deltaUs);
+}
+
+static inline bool bleRunningInIsr() {
+  return (__get_IPSR() != 0U);
+}
+
+static inline uint32_t bleEnterCritical() {
+  const uint32_t primask = __get_PRIMASK();
+  __disable_irq();
+  __DSB();
+  __ISB();
+  return primask;
+}
+
+static inline void bleExitCritical(uint32_t primask) {
+  __DSB();
+  __ISB();
+  if ((primask & 0x1U) == 0U) {
+    __enable_irq();
+  }
+}
+
+// Keep the RADIO shortcut combinations explicit in one place. These match the
+// datasheet-backed TIFS flow the current LL already relies on:
+// PHYEND->DISABLE + DISABLED->RXEN/TXEN + READY->START.
+static inline uint32_t bleRadioShortsRxListen() {
+  return ((RADIO_SHORTS_RXREADY_START_Enabled << RADIO_SHORTS_RXREADY_START_Pos) &
+          RADIO_SHORTS_RXREADY_START_Msk) |
+         ((RADIO_SHORTS_ADDRESS_RSSISTART_Enabled
+           << RADIO_SHORTS_ADDRESS_RSSISTART_Pos) &
+          RADIO_SHORTS_ADDRESS_RSSISTART_Msk) |
+         ((RADIO_SHORTS_PHYEND_DISABLE_Enabled << RADIO_SHORTS_PHYEND_DISABLE_Pos) &
+          RADIO_SHORTS_PHYEND_DISABLE_Msk);
+}
+
+static inline uint32_t bleRadioShortsTxOnly() {
+  return ((RADIO_SHORTS_TXREADY_START_Enabled << RADIO_SHORTS_TXREADY_START_Pos) &
+          RADIO_SHORTS_TXREADY_START_Msk) |
+         ((RADIO_SHORTS_PHYEND_DISABLE_Enabled << RADIO_SHORTS_PHYEND_DISABLE_Pos) &
+          RADIO_SHORTS_PHYEND_DISABLE_Msk);
+}
+
+static inline uint32_t bleRadioShortsTxThenRxAtTifs() {
+  return bleRadioShortsTxOnly() |
+         ((RADIO_SHORTS_DISABLED_RXEN_Enabled << RADIO_SHORTS_DISABLED_RXEN_Pos) &
+          RADIO_SHORTS_DISABLED_RXEN_Msk) |
+         ((RADIO_SHORTS_RXREADY_START_Enabled << RADIO_SHORTS_RXREADY_START_Pos) &
+          RADIO_SHORTS_RXREADY_START_Msk) |
+         ((RADIO_SHORTS_ADDRESS_RSSISTART_Enabled
+           << RADIO_SHORTS_ADDRESS_RSSISTART_Pos) &
+          RADIO_SHORTS_ADDRESS_RSSISTART_Msk);
+}
+
+static inline void noteConnectionMissedEvent(BleEncryptionDebugCounters* counters,
+                                             uint32_t missedCount) {
+  if (counters == nullptr) {
+    return;
+  }
+  counters->connMissedEventCountLast = missedCount;
+  if (missedCount > counters->connMissedEventCountMax) {
+    counters->connMissedEventCountMax = missedCount;
+  }
+}
+
+static inline void noteTxenLag(BleEncryptionDebugCounters* counters,
+                               uint32_t lagUs) {
+  if (counters == nullptr) {
+    return;
+  }
+  counters->txenLagLastUs = lagUs;
+  if (lagUs > counters->txenLagMaxUs) {
+    counters->txenLagMaxUs = lagUs;
+  }
+  if (lagUs > 0U) {
+    ++counters->txenLateCount;
+  }
+}
+
 #if defined(NRF54L15_CLEAN_BLE_TIMING_AGGRESSIVE) && (NRF54L15_CLEAN_BLE_TIMING_AGGRESSIVE == 1)
 constexpr uint32_t kBleConnAnchorPrewaitUs = 120U;
 constexpr uint32_t kBleConnRxStartLeadUs = 1200U;
@@ -1082,13 +1238,13 @@ constexpr uint16_t kBlePreferredConnIntervalMaxUnits = 80U;
 constexpr uint16_t kBlePreferredConnLatency = 0U;
 constexpr uint16_t kBlePreferredConnTimeoutUnits = 500U;
 #else
-constexpr uint32_t kBleConnAnchorPrewaitUs = 360U;
+constexpr uint32_t kBleConnAnchorPrewaitUs = 500U;
 constexpr uint32_t kBleConnRxStartLeadUs = 1200U;
-constexpr uint32_t kBleConnRxListenBaseUs = 900U;
-constexpr uint32_t kBleConnRxListenMaxUs = 4500U;
+constexpr uint32_t kBleConnRxListenBaseUs = 1800U;
+constexpr uint32_t kBleConnRxListenMaxUs = 8000U;
 constexpr uint32_t kBleConnDisableWaitUs = 750U;
 constexpr uint32_t kBleConnTxDisableWaitUs = 750U;
-constexpr uint32_t kBleConnFirstEventFallbackUs = 1500U;
+constexpr uint32_t kBleConnFirstEventFallbackUs = 2000U;
 constexpr uint16_t kBlePreferredConnIntervalMinUnits = 24U;
 constexpr uint16_t kBlePreferredConnIntervalMaxUnits = 40U;
 constexpr uint16_t kBlePreferredConnLatency = 0U;
@@ -1102,6 +1258,11 @@ constexpr uint16_t kBlePreferredConnTimeoutUnits = 500U;
 // Post-ENC_RSP follow-up listen is only to catch a same-event START_ENC_REQ.
 // Keep this bounded, but long enough to tolerate controller/event jitter.
 constexpr uint32_t kBleConnFollowupRxListenMaxUs = 4000U;
+constexpr uint32_t kBleConnResyncExtraListenUs = 2400U;
+constexpr uint32_t kBleConnResyncPostAnchorMaxUs = 10000U;
+constexpr uint8_t kBleConnChannelMapPendingResyncEventsMax = 10U;
+constexpr uint8_t kBleConnChannelMapApplyResyncEvents = 5U;
+constexpr uint8_t kBleConnGenericMissResyncEvents = 4U;
 
 constexpr uint8_t kSmpCodePairingRequest = 0x01U;
 constexpr uint8_t kSmpCodePairingResponse = 0x02U;
@@ -1164,10 +1325,13 @@ constexpr uint8_t kAttOpReadBlobReq = 0x0CU;
 constexpr uint8_t kAttOpReadBlobRsp = 0x0DU;
 constexpr uint8_t kAttOpReadMultipleReq = 0x0EU;
 constexpr uint8_t kAttOpReadMultipleRsp = 0x0FU;
+constexpr uint8_t kAttOpReadMultipleVariableReq = 0x20U;
+constexpr uint8_t kAttOpReadMultipleVariableRsp = 0x21U;
 constexpr uint8_t kAttOpReadByGroupTypeReq = 0x10U;
 constexpr uint8_t kAttOpReadByGroupTypeRsp = 0x11U;
 constexpr uint8_t kAttOpWriteReq = 0x12U;
 constexpr uint8_t kAttOpWriteRsp = 0x13U;
+constexpr uint8_t kAttOpSignedWriteCmd = 0xD2U;
 constexpr uint8_t kAttOpPrepareWriteReq = 0x16U;
 constexpr uint8_t kAttOpPrepareWriteRsp = 0x17U;
 constexpr uint8_t kAttOpExecuteWriteReq = 0x18U;
@@ -1176,6 +1340,50 @@ constexpr uint8_t kAttOpHandleValueNtf = 0x1BU;
 constexpr uint8_t kAttOpHandleValueInd = 0x1DU;
 constexpr uint8_t kAttOpHandleValueCfm = 0x1EU;
 constexpr uint8_t kAttOpWriteCmd = 0x52U;
+
+static inline bool attOpcodeIsClientProgressPdu(uint8_t opcode) {
+  switch (opcode) {
+    case kAttOpExchangeMtuReq:
+    case kAttOpFindInfoReq:
+    case kAttOpFindByTypeValueReq:
+    case kAttOpReadByTypeReq:
+    case kAttOpReadReq:
+    case kAttOpReadBlobReq:
+    case kAttOpReadMultipleReq:
+    case kAttOpReadMultipleVariableReq:
+    case kAttOpReadByGroupTypeReq:
+    case kAttOpWriteReq:
+    case kAttOpPrepareWriteReq:
+    case kAttOpExecuteWriteReq:
+    case kAttOpWriteCmd:
+    case kAttOpSignedWriteCmd:
+    case kAttOpHandleValueCfm:
+      return true;
+    default:
+      return false;
+  }
+}
+
+static inline bool attOpcodeIsServerResponsePdu(uint8_t opcode) {
+  switch (opcode) {
+    case kAttOpErrorRsp:
+    case kAttOpExchangeMtuRsp:
+    case kAttOpFindInfoRsp:
+    case kAttOpFindByTypeValueRsp:
+    case kAttOpReadByTypeRsp:
+    case kAttOpReadRsp:
+    case kAttOpReadBlobRsp:
+    case kAttOpReadMultipleRsp:
+    case kAttOpReadMultipleVariableRsp:
+    case kAttOpReadByGroupTypeRsp:
+    case kAttOpWriteRsp:
+    case kAttOpPrepareWriteRsp:
+    case kAttOpExecuteWriteRsp:
+      return true;
+    default:
+      return false;
+  }
+}
 
 constexpr uint8_t kAttErrInvalidHandle = 0x01U;
 constexpr uint8_t kAttErrReadNotPermitted = 0x02U;
@@ -2279,7 +2487,8 @@ uint16_t bleCsa2PrnE(uint16_t eventCounter, uint16_t channelId) {
   return static_cast<uint16_t>(prn ^ channelId);
 }
 
-bool waitRadioEndBudgeted(NRF_RADIO_Type* radio, uint32_t budgetUs, uint32_t spinLimit) {
+bool waitRadioEndBudgeted(NRF_RADIO_Type* radio, uint32_t budgetUs, uint32_t spinLimit,
+                          uint32_t* outEndTimestampUs = nullptr) {
   if (radio == nullptr || spinLimit == 0U) {
     return false;
   }
@@ -2288,6 +2497,9 @@ bool waitRadioEndBudgeted(NRF_RADIO_Type* radio, uint32_t budgetUs, uint32_t spi
   uint8_t divider = kBleConnMicrosPollDivider;
   while (spinLimit-- > 0U) {
     if (radio->EVENTS_PHYEND != 0U || radio->EVENTS_END != 0U) {
+      if (outEndTimestampUs != nullptr) {
+        *outEndTimestampUs = bleTimingUs();
+      }
       return true;
     }
 
@@ -2300,7 +2512,11 @@ bool waitRadioEndBudgeted(NRF_RADIO_Type* radio, uint32_t budgetUs, uint32_t spi
     }
   }
 
-  return (radio->EVENTS_PHYEND != 0U || radio->EVENTS_END != 0U);
+  const bool endSeen = (radio->EVENTS_PHYEND != 0U || radio->EVENTS_END != 0U);
+  if (endSeen && outEndTimestampUs != nullptr) {
+    *outEndTimestampUs = bleTimingUs();
+  }
+  return endSeen;
 }
 
 bool waitRadioDisabledBudgeted(NRF_RADIO_Type* radio, uint32_t budgetUs, uint32_t spinLimit) {
@@ -2338,7 +2554,8 @@ bool waitRadioDisabledBudgeted(NRF_RADIO_Type* radio, uint32_t budgetUs, uint32_
   return (state == RADIO_STATE_STATE_Disabled);
 }
 
-bool waitRadioRxDoneBudgeted(NRF_RADIO_Type* radio, uint32_t budgetUs, uint32_t spinLimit) {
+bool waitRadioRxDoneBudgeted(NRF_RADIO_Type* radio, uint32_t budgetUs, uint32_t spinLimit,
+                             uint32_t* outDoneTimestampUs = nullptr) {
   if (radio == nullptr || spinLimit == 0U) {
     return false;
   }
@@ -2347,6 +2564,9 @@ bool waitRadioRxDoneBudgeted(NRF_RADIO_Type* radio, uint32_t budgetUs, uint32_t 
   uint8_t divider = kBleConnMicrosPollDivider;
   while (spinLimit-- > 0U) {
     if ((radio->EVENTS_CRCOK != 0U) || (radio->EVENTS_CRCERROR != 0U)) {
+      if (outDoneTimestampUs != nullptr) {
+        *outDoneTimestampUs = bleTimingUs();
+      }
       return true;
     }
 
@@ -2359,7 +2579,11 @@ bool waitRadioRxDoneBudgeted(NRF_RADIO_Type* radio, uint32_t budgetUs, uint32_t 
     }
   }
 
-  return ((radio->EVENTS_CRCOK != 0U) || (radio->EVENTS_CRCERROR != 0U));
+  const bool doneSeen = ((radio->EVENTS_CRCOK != 0U) || (radio->EVENTS_CRCERROR != 0U));
+  if (doneSeen && outDoneTimestampUs != nullptr) {
+    *outDoneTimestampUs = bleTimingUs();
+  }
+  return doneSeen;
 }
 
 bool llEventInstantReached(uint16_t currentEventCounter, uint16_t instant) {
@@ -7673,6 +7897,27 @@ BleRadio::BleRadio(uint32_t radioBase, uint32_t ficrBase)
       connectionPreparedWriteHandle_(0U),
       connectionPreparedWriteValue_{0},
       connectionPreparedWriteMask_(0U),
+      backgroundConnectionServiceEnabled_(false),
+      backgroundConnectionServiceArmed_(false),
+      backgroundConnectionServiceInProgress_(false),
+      backgroundConnectionServiceDue_(false),
+      deferredConnectionEventHead_(0U),
+      deferredConnectionEventTail_(0U),
+      deferredConnectionEventCount_(0U),
+      backgroundConnectionWakeUs_(0U),
+      deferredConnectionPayload_{0},
+      deferredConnectionTxPayload_{0},
+      consumedDeferredConnectionPayload_{0},
+      consumedDeferredConnectionTxPayload_{0},
+      deferredConnectionEvents_{},
+      deferredGattWrites_{},
+      deferredTraces_{},
+      deferredGattWriteHead_(0U),
+      deferredGattWriteTail_(0U),
+      deferredGattWriteCount_(0U),
+      deferredTraceHead_(0U),
+      deferredTraceTail_(0U),
+      deferredTraceCount_(0U),
       lastDisconnectReason_(0U),
       lastDisconnectReasonValid_(false),
       lastDisconnectReasonRemote_(false),
@@ -7801,6 +8046,7 @@ void BleRadio::endUnconnectedRadioActivity() {
 
 bool BleRadio::begin(int8_t txPowerDbm) {
   connected_ = false;
+  stopBackgroundConnectionService();
   advCycleStartIndex_ = 0U;
   scanCycleStartIndex_ = 0U;
   clearCustomGattConnectionState();
@@ -7874,6 +8120,7 @@ bool BleRadio::begin(int8_t txPowerDbm) {
 void BleRadio::end() {
   if (radio_ == nullptr) {
     connected_ = false;
+    stopBackgroundConnectionService();
     initialized_ = false;
     clearCustomGattConnectionState();
     endUnconnectedRadioActivity();
@@ -7885,6 +8132,7 @@ void BleRadio::end() {
   waitDisabled(120000UL);
   clearRadioCoreEvents(radio_);
   connected_ = false;
+  stopBackgroundConnectionService();
   initialized_ = false;
   clearCustomGattConnectionState();
   endUnconnectedRadioActivity();
@@ -8172,14 +8420,17 @@ bool BleRadio::setGattBatteryLevel(uint8_t percent) {
   if (percent > 100U) {
     return false;
   }
+  const uint32_t irqState = bleEnterCritical();
   if (gapBatteryLevel_ != percent) {
     gapBatteryLevel_ = percent;
     if (connected_ && connectionBatteryNotificationsEnabled_) {
       connectionBatteryNotificationPending_ = true;
     }
+    bleExitCritical(irqState);
     return true;
   }
   gapBatteryLevel_ = percent;
+  bleExitCritical(irqState);
   return true;
 }
 
@@ -8451,9 +8702,11 @@ bool BleRadio::setCustomGattCharacteristicValue(uint16_t valueHandle,
     return false;
   }
 
+  const uint32_t irqState = bleEnterCritical();
   BleCustomCharacteristicState* characteristic =
       findCustomCharacteristicByValueHandle(valueHandle);
   if (characteristic == nullptr) {
+    bleExitCritical(irqState);
     return false;
   }
   characteristic->valueLength = valueLength;
@@ -8461,6 +8714,7 @@ bool BleRadio::setCustomGattCharacteristicValue(uint16_t valueHandle,
   if (valueLength > 0U) {
     memcpy(characteristic->value, value, valueLength);
   }
+  bleExitCritical(irqState);
   return true;
 }
 
@@ -8469,29 +8723,36 @@ bool BleRadio::getCustomGattCharacteristicValue(uint16_t valueHandle, uint8_t* o
   if (outValue == nullptr || inOutValueLength == nullptr) {
     return false;
   }
+  const uint32_t irqState = bleEnterCritical();
   const BleCustomCharacteristicState* characteristic =
       findCustomCharacteristicByValueHandle(valueHandle);
   if (characteristic == nullptr) {
+    bleExitCritical(irqState);
     return false;
   }
   if (*inOutValueLength < characteristic->valueLength) {
     *inOutValueLength = characteristic->valueLength;
+    bleExitCritical(irqState);
     return false;
   }
   if (characteristic->valueLength > 0U) {
     memcpy(outValue, characteristic->value, characteristic->valueLength);
   }
   *inOutValueLength = characteristic->valueLength;
+  bleExitCritical(irqState);
   return true;
 }
 
 bool BleRadio::notifyCustomGattCharacteristic(uint16_t valueHandle, bool indicate) {
+  const uint32_t irqState = bleEnterCritical();
   if (!connected_) {
+    bleExitCritical(irqState);
     return false;
   }
   BleCustomCharacteristicState* characteristic =
       findCustomCharacteristicByValueHandle(valueHandle);
   if (characteristic == nullptr) {
+    bleExitCritical(irqState);
     return false;
   }
 
@@ -8502,26 +8763,70 @@ bool BleRadio::notifyCustomGattCharacteristic(uint16_t valueHandle, bool indicat
       ((characteristic->cccdValue & 0x0002U) != 0U);
   if (indicate) {
     if (!indicateEnabled || connectionCustomIndicationAwaitingHandle_ != 0U) {
+      bleExitCritical(irqState);
       return false;
     }
   } else if (!notifyEnabled) {
+    bleExitCritical(irqState);
     return false;
   }
 
   const ptrdiff_t idx = (characteristic - &customGattCharacteristics_[0]);
   if (idx < 0 ||
       static_cast<uint8_t>(idx) >= customGattCharacteristicCount_) {
+    bleExitCritical(irqState);
     return false;
   }
   if (connectionCustomNotificationPending_ &&
       connectionCustomPendingCharIndex_ != static_cast<uint8_t>(idx)) {
+    bleExitCritical(irqState);
     return false;
   }
 
   connectionCustomNotificationPending_ = true;
   connectionCustomPendingCharIndex_ = static_cast<uint8_t>(idx);
   connectionCustomPendingIndication_ = indicate;
+  bleExitCritical(irqState);
   return true;
+}
+
+bool BleRadio::isCustomGattNotificationQueued(uint16_t valueHandle, bool indicate) const {
+  const uint32_t irqState = bleEnterCritical();
+  const BleCustomCharacteristicState* characteristic =
+      findCustomCharacteristicByValueHandle(valueHandle);
+  if (characteristic == nullptr) {
+    bleExitCritical(irqState);
+    return false;
+  }
+
+  bool queued = false;
+  const ptrdiff_t idx = (characteristic - &customGattCharacteristics_[0]);
+  if (idx >= 0 &&
+      static_cast<uint8_t>(idx) < customGattCharacteristicCount_ &&
+      connectionCustomNotificationPending_ &&
+      (connectionCustomPendingCharIndex_ == static_cast<uint8_t>(idx)) &&
+      (connectionCustomPendingIndication_ == indicate)) {
+    queued = true;
+  }
+
+  if (!queued &&
+      connectionPendingTxValid_ &&
+      (connectionPendingTxLlid_ == kBlePduDataStartOrComplete) &&
+      (connectionPendingTxLength_ >= 7U) &&
+      (readLe16(&connectionPendingTxPayload_[2]) == kBleL2capCidAtt)) {
+    const uint8_t expectedOpcode =
+        indicate ? kAttOpHandleValueInd : kAttOpHandleValueNtf;
+    queued = (connectionPendingTxPayload_[4] == expectedOpcode) &&
+             (readLe16(&connectionPendingTxPayload_[5]) == valueHandle);
+  }
+
+  if (!queued && indicate &&
+      (connectionCustomIndicationAwaitingHandle_ == valueHandle)) {
+    queued = true;
+  }
+
+  bleExitCritical(irqState);
+  return queued;
 }
 
 uint16_t BleRadio::currentAttMtu() const {
@@ -8554,7 +8859,9 @@ bool BleRadio::isCustomGattCccdEnabled(uint16_t valueHandle, bool indication) co
 bool BleRadio::setCustomGattWriteHandler(uint16_t valueHandle,
                                          BleGattWriteCallback callback,
                                          void* context) {
+  const uint32_t irqState = bleEnterCritical();
   if (findCustomCharacteristicByValueHandle(valueHandle) == nullptr) {
+    bleExitCritical(irqState);
     return false;
   }
 
@@ -8566,10 +8873,12 @@ bool BleRadio::setCustomGattWriteHandler(uint16_t valueHandle,
       existing->callback = callback;
       existing->context = context;
     }
+    bleExitCritical(irqState);
     return true;
   }
 
   if (callback == nullptr) {
+    bleExitCritical(irqState);
     return true;
   }
 
@@ -8578,15 +8887,19 @@ bool BleRadio::setCustomGattWriteHandler(uint16_t valueHandle,
       customGattWriteHandlers_[i].valueHandle = valueHandle;
       customGattWriteHandlers_[i].callback = callback;
       customGattWriteHandlers_[i].context = context;
+      bleExitCritical(irqState);
       return true;
     }
   }
+  bleExitCritical(irqState);
   return false;
 }
 
 void BleRadio::setCustomGattWriteCallback(BleGattWriteCallback callback, void* context) {
+  const uint32_t irqState = bleEnterCritical();
   customGattWriteCallback_ = callback;
   customGattWriteContext_ = context;
+  bleExitCritical(irqState);
 }
 
 bool BleRadio::writeCustomGattCharacteristic(uint16_t handle, const uint8_t* value,
@@ -8624,13 +8937,25 @@ bool BleRadio::writeCustomGattCharacteristic(uint16_t handle, const uint8_t* val
     BleCustomWriteHandlerState* handler =
         findCustomGattWriteHandler(valueTarget->valueHandle);
     if (handler != nullptr && handler->callback != nullptr) {
-      handler->callback(valueTarget->valueHandle, valueTarget->value,
-                        valueTarget->valueLength, withResponse,
-                        handler->context);
+      if (bleRunningInIsr()) {
+        enqueueDeferredGattWrite(handler->callback, handler->context,
+                                 valueTarget->valueHandle, valueTarget->value,
+                                 valueTarget->valueLength, withResponse);
+      } else {
+        handler->callback(valueTarget->valueHandle, valueTarget->value,
+                          valueTarget->valueLength, withResponse,
+                          handler->context);
+      }
     } else if (customGattWriteCallback_ != nullptr) {
-      customGattWriteCallback_(valueTarget->valueHandle, valueTarget->value,
-                               valueTarget->valueLength, withResponse,
-                               customGattWriteContext_);
+      if (bleRunningInIsr()) {
+        enqueueDeferredGattWrite(customGattWriteCallback_, customGattWriteContext_,
+                                 valueTarget->valueHandle, valueTarget->value,
+                                 valueTarget->valueLength, withResponse);
+      } else {
+        customGattWriteCallback_(valueTarget->valueHandle, valueTarget->value,
+                                 valueTarget->valueLength, withResponse,
+                                 customGattWriteContext_);
+      }
     }
     return true;
   }
@@ -8784,6 +9109,44 @@ bool BleRadio::buildScanResponsePacket() {
   memcpy(&scanRspPacket_[2], address_, sizeof(address_));
   if (scanRspDataLen_ > 0U) {
     memcpy(&scanRspPacket_[2 + sizeof(address_)], scanRspData_, scanRspDataLen_);
+  }
+
+  return true;
+}
+
+bool BleRadio::setAdvertisingServiceUuid128(
+    const uint8_t uuid128[kCustomGattUuid128Length]) {
+  if (uuid128 == nullptr) {
+    return false;
+  }
+
+  // Build advertising payload: Flags (3 bytes) + Complete 128-bit UUID list (18 bytes).
+  // Total = 21 bytes, well within the 31-byte limit.
+  uint8_t payload[kBleLegacyAdDataMaxLength];
+  size_t used = 0U;
+
+  // AD type 0x01: Flags — LE General Discoverable, BR/EDR Not Supported.
+  payload[used++] = 2U;
+  payload[used++] = 0x01U;
+  payload[used++] = 0x06U;
+
+  // AD type 0x07: Complete List of 128-bit Service UUIDs.
+  // BLE advertising encodes 128-bit UUIDs in little-endian (LSB first), which is
+  // the byte-reversal of the canonical big-endian representation passed in by the caller.
+  payload[used++] = 1U + kCustomGattUuid128Length;  // length field
+  payload[used++] = 0x07U;                           // AD type
+  for (uint8_t i = 0U; i < kCustomGattUuid128Length; ++i) {
+    payload[used++] = uuid128[kCustomGattUuid128Length - 1U - i];
+  }
+
+  if (!setAdvertisingData(payload, used)) {
+    return false;
+  }
+
+  // Move the GAP device name to scan response so scanners that request more
+  // info (active scan) will still see the human-readable name.
+  if (scanRspDataLen_ == 0U && gapDeviceNameLen_ > 0U) {
+    setScanResponseName(reinterpret_cast<const char*>(gapDeviceName_));
   }
 
   return true;
@@ -9800,14 +10163,22 @@ bool BleRadio::advertiseInteractEvent(BleAdvInteraction* interaction,
 bool BleRadio::isConnected() const { return connected_; }
 
 bool BleRadio::isConnectionEncrypted() const {
-  return connected_ &&
-         connectionEncSessionValid_ &&
-         connectionEncRxEnabled_ &&
-         connectionEncTxEnabled_;
+  const uint32_t irqState = bleEnterCritical();
+  const bool encrypted = connected_ &&
+                         connectionEncSessionValid_ &&
+                         connectionEncRxEnabled_ &&
+                         connectionEncTxEnabled_;
+  bleExitCritical(irqState);
+  return encrypted;
 }
 
 bool BleRadio::getConnectionInfo(BleConnectionInfo* info) const {
-  if (info == nullptr || !connected_) {
+  if (info == nullptr) {
+    return false;
+  }
+  const uint32_t irqState = bleEnterCritical();
+  if (!connected_) {
+    bleExitCritical(irqState);
     return false;
   }
 
@@ -9822,6 +10193,7 @@ bool BleRadio::getConnectionInfo(BleConnectionInfo* info) const {
   info->channelCount = connectionChannelCount_;
   info->hopIncrement = connectionHop_;
   info->sleepClockAccuracy = connectionSca_;
+  bleExitCritical(irqState);
   return true;
 }
 
@@ -9829,20 +10201,35 @@ void BleRadio::getEncryptionDebugCounters(BleEncryptionDebugCounters* out) const
   if (out == nullptr) {
     return;
   }
+  const uint32_t irqState = bleEnterCritical();
   *out = encDebug_;
+  bleExitCritical(irqState);
 }
 
 void BleRadio::clearEncryptionDebugCounters() {
+  const uint32_t irqState = bleEnterCritical();
   memset(&encDebug_, 0, sizeof(encDebug_));
+  bleExitCritical(irqState);
 }
 
-bool BleRadio::hasBondRecord() const { return bondRecordValid_; }
+bool BleRadio::hasBondRecord() const {
+  const uint32_t irqState = bleEnterCritical();
+  const bool valid = bondRecordValid_;
+  bleExitCritical(irqState);
+  return valid;
+}
 
 bool BleRadio::getBondRecord(BleBondRecord* outRecord) const {
-  if (outRecord == nullptr || !bondRecordValid_) {
+  if (outRecord == nullptr) {
+    return false;
+  }
+  const uint32_t irqState = bleEnterCritical();
+  if (!bondRecordValid_) {
+    bleExitCritical(irqState);
     return false;
   }
   memcpy(outRecord, &bondRecord_, sizeof(*outRecord));
+  bleExitCritical(irqState);
   return true;
 }
 
@@ -9870,18 +10257,26 @@ void BleRadio::setBondPersistenceCallbacks(BleBondLoadCallback loadCallback,
 }
 
 void BleRadio::setTraceCallback(BleTraceCallback callback, void* context) {
+  const uint32_t irqState = bleEnterCritical();
   traceCallback_ = callback;
   traceCallbackContext_ = context;
+  bleExitCritical(irqState);
 }
 
 bool BleRadio::getLastDisconnectReason(uint8_t* outReason, bool* outRemote) const {
-  if (outReason == nullptr || !lastDisconnectReasonValid_) {
+  if (outReason == nullptr) {
+    return false;
+  }
+  const uint32_t irqState = bleEnterCritical();
+  if (!lastDisconnectReasonValid_) {
+    bleExitCritical(irqState);
     return false;
   }
   *outReason = lastDisconnectReason_;
   if (outRemote != nullptr) {
     *outRemote = lastDisconnectReasonRemote_;
   }
+  bleExitCritical(irqState);
   return true;
 }
 
@@ -9889,6 +10284,14 @@ void BleRadio::rememberDisconnectReason(uint8_t reason, bool remote) {
   lastDisconnectReason_ = reason;
   lastDisconnectReasonValid_ = true;
   lastDisconnectReasonRemote_ = remote;
+  encDebug_.connLastDisconnectReason = reason;
+  encDebug_.connLastDisconnectRemote = remote ? 1U : 0U;
+  encDebug_.connLastDisconnectValid = 1U;
+  if (remote) {
+    ++encDebug_.connDisconnectRemoteCount;
+  } else {
+    ++encDebug_.connDisconnectLocalCount;
+  }
 }
 
 bool BleRadio::disconnect(uint32_t spinLimit) {
@@ -9896,6 +10299,7 @@ bool BleRadio::disconnect(uint32_t spinLimit) {
     return false;
   }
 
+  stopBackgroundConnectionService();
   radio_->SHORTS = 0U;
   radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
   waitDisabled(spinLimit);
@@ -9938,9 +10342,6 @@ bool BleRadio::disconnect(uint32_t spinLimit) {
   connectionPreparedWriteValue_[0] = 0U;
   connectionPreparedWriteValue_[1] = 0U;
   connectionPreparedWriteMask_ = 0U;
-  lastDisconnectReason_ = 0U;
-  lastDisconnectReasonValid_ = false;
-  lastDisconnectReasonRemote_ = false;
   clearCustomGattConnectionState();
   clearConnectionSecurityState();
   restoreAdvertisingLinkDefaults();
@@ -9950,7 +10351,402 @@ bool BleRadio::disconnect(uint32_t spinLimit) {
   return true;
 }
 
+bool BleRadio::consumeDeferredConnectionEvent(BleConnectionEvent* event) {
+  const uint32_t irqState = bleEnterCritical();
+  if (deferredConnectionEventCount_ == 0U) {
+    bleExitCritical(irqState);
+    return false;
+  }
+
+  const uint8_t slot = deferredConnectionEventHead_;
+  const BleConnectionEvent deferredEvent = deferredConnectionEvents_[slot];
+
+  if (event != nullptr) {
+    *event = deferredEvent;
+    if (deferredEvent.payload != nullptr && deferredEvent.payloadLength > 0U) {
+      memcpy(consumedDeferredConnectionPayload_, deferredConnectionPayload_[slot],
+             deferredEvent.payloadLength);
+      event->payload = &consumedDeferredConnectionPayload_[0];
+    } else {
+      event->payload = nullptr;
+    }
+    if (deferredEvent.txPayload != nullptr && deferredEvent.txPayloadLength > 0U) {
+      memcpy(consumedDeferredConnectionTxPayload_, deferredConnectionTxPayload_[slot],
+             deferredEvent.txPayloadLength);
+      event->txPayload = &consumedDeferredConnectionTxPayload_[0];
+    } else {
+      event->txPayload = nullptr;
+    }
+  }
+  deferredConnectionEventHead_ = static_cast<uint8_t>(
+      (deferredConnectionEventHead_ + 1U) % kDeferredConnectionEventDepth);
+  --deferredConnectionEventCount_;
+  bleExitCritical(irqState);
+  return true;
+}
+
+void BleRadio::snapshotDeferredConnectionEvent(const BleConnectionEvent& event) {
+  const uint32_t irqState = bleEnterCritical();
+  if (deferredConnectionEventCount_ >= kDeferredConnectionEventDepth) {
+    ++encDebug_.connDeferredEventOverwriteCount;
+    deferredConnectionEventHead_ = static_cast<uint8_t>(
+        (deferredConnectionEventHead_ + 1U) % kDeferredConnectionEventDepth);
+    --deferredConnectionEventCount_;
+  }
+
+  const uint8_t slot = deferredConnectionEventTail_;
+  deferredConnectionEvents_[slot] = event;
+  if (event.payload != nullptr && event.payloadLength > 0U) {
+    memcpy(deferredConnectionPayload_[slot], event.payload, event.payloadLength);
+    deferredConnectionEvents_[slot].payload = &deferredConnectionPayload_[slot][0];
+  } else {
+    deferredConnectionEvents_[slot].payload = nullptr;
+  }
+
+  if (event.txPayload != nullptr && event.txPayloadLength > 0U) {
+    memcpy(deferredConnectionTxPayload_[slot], event.txPayload,
+           event.txPayloadLength);
+    deferredConnectionEvents_[slot].txPayload =
+        &deferredConnectionTxPayload_[slot][0];
+  } else {
+    deferredConnectionEvents_[slot].txPayload = nullptr;
+  }
+
+  deferredConnectionEventTail_ = static_cast<uint8_t>(
+      (deferredConnectionEventTail_ + 1U) % kDeferredConnectionEventDepth);
+  ++deferredConnectionEventCount_;
+  g_bleBackgroundRadio = this;
+  bleExitCritical(irqState);
+}
+
+bool BleRadio::enqueueDeferredGattWrite(BleGattWriteCallback callback, void* context,
+                                        uint16_t valueHandle, const uint8_t* value,
+                                        uint8_t valueLength, bool withResponse) {
+  if (callback == nullptr || (valueLength > 0U && value == nullptr)) {
+    return false;
+  }
+  const uint8_t depth = static_cast<uint8_t>(
+      sizeof(deferredGattWrites_) / sizeof(deferredGattWrites_[0]));
+  const uint32_t irqState = bleEnterCritical();
+  if (deferredGattWriteCount_ >= depth) {
+    bleExitCritical(irqState);
+    ++encDebug_.connDeferredCallbackDropCount;
+    return false;
+  }
+
+  BleDeferredGattWriteState& slot = deferredGattWrites_[deferredGattWriteTail_];
+  slot.callback = callback;
+  slot.context = context;
+  slot.valueHandle = valueHandle;
+  slot.valueLength = valueLength;
+  slot.withResponse = withResponse ? 1U : 0U;
+  if (valueLength > 0U) {
+    memcpy(slot.value, value, valueLength);
+  }
+  if (valueLength < sizeof(slot.value)) {
+    memset(&slot.value[valueLength], 0, sizeof(slot.value) - valueLength);
+  }
+
+  deferredGattWriteTail_ = static_cast<uint8_t>(
+      (deferredGattWriteTail_ + 1U) % depth);
+  ++deferredGattWriteCount_;
+  g_bleBackgroundRadio = this;
+  bleExitCritical(irqState);
+  return true;
+}
+
+void BleRadio::dispatchDeferredGattWrites() {
+  while (true) {
+    BleDeferredGattWriteState slot{};
+    const uint8_t depth = static_cast<uint8_t>(
+        sizeof(deferredGattWrites_) / sizeof(deferredGattWrites_[0]));
+    const uint32_t irqState = bleEnterCritical();
+    if (deferredGattWriteCount_ == 0U) {
+      bleExitCritical(irqState);
+      return;
+    }
+    slot = deferredGattWrites_[deferredGattWriteHead_];
+    memset(&deferredGattWrites_[deferredGattWriteHead_], 0,
+           sizeof(deferredGattWrites_[deferredGattWriteHead_]));
+    deferredGattWriteHead_ =
+        static_cast<uint8_t>((deferredGattWriteHead_ + 1U) % depth);
+    --deferredGattWriteCount_;
+    bleExitCritical(irqState);
+
+    BleGattWriteCallback callback = slot.callback;
+    if (callback != nullptr) {
+      callback(slot.valueHandle, slot.value, slot.valueLength,
+               slot.withResponse != 0U, slot.context);
+    }
+  }
+}
+
+bool BleRadio::enqueueDeferredTrace(const char* message) {
+  if (message == nullptr) {
+    return false;
+  }
+  const uint8_t depth =
+      static_cast<uint8_t>(sizeof(deferredTraces_) / sizeof(deferredTraces_[0]));
+  const uint32_t irqState = bleEnterCritical();
+  if (deferredTraceCount_ >= depth) {
+    bleExitCritical(irqState);
+    ++encDebug_.connDeferredTraceDropCount;
+    return false;
+  }
+
+  deferredTraces_[deferredTraceTail_] = message;
+  deferredTraceTail_ = static_cast<uint8_t>(
+      (deferredTraceTail_ + 1U) % depth);
+  ++deferredTraceCount_;
+  g_bleBackgroundRadio = this;
+  bleExitCritical(irqState);
+  return true;
+}
+
+void BleRadio::dispatchDeferredTraces() {
+#if defined(NRF54L15_CLEAN_BLE_TRACE) && (NRF54L15_CLEAN_BLE_TRACE == 1)
+  while (true) {
+    const uint8_t depth =
+        static_cast<uint8_t>(sizeof(deferredTraces_) / sizeof(deferredTraces_[0]));
+    const uint32_t irqState = bleEnterCritical();
+    if (deferredTraceCount_ == 0U) {
+      bleExitCritical(irqState);
+      return;
+    }
+    const char* message = deferredTraces_[deferredTraceHead_];
+    deferredTraces_[deferredTraceHead_] = nullptr;
+    deferredTraceHead_ =
+        static_cast<uint8_t>((deferredTraceHead_ + 1U) % depth);
+    --deferredTraceCount_;
+    bleExitCritical(irqState);
+
+    if (message == nullptr) {
+      continue;
+    }
+    if (traceCallback_ != nullptr) {
+      traceCallback_(message, traceCallbackContext_);
+      continue;
+    }
+    Serial.print(F("[BLE] "));
+    Serial.println(message);
+  }
+#endif
+}
+
+void BleRadio::serviceDeferredApplicationWork() {
+  if (bleRunningInIsr()) {
+    return;
+  }
+  dispatchDeferredGattWrites();
+  dispatchDeferredTraces();
+  const uint32_t irqState = bleEnterCritical();
+  if (!backgroundConnectionServiceEnabled_ && g_bleBackgroundRadio == this &&
+      deferredConnectionEventCount_ == 0U &&
+      deferredGattWriteCount_ == 0U && deferredTraceCount_ == 0U) {
+    g_bleBackgroundRadio = nullptr;
+  }
+  bleExitCritical(irqState);
+}
+
+void BleRadio::stopBackgroundConnectionService() {
+  if (NRF54L15_CLEAN_BLE_BACKGROUND_SERVICE == 0) {
+    return;
+  }
+  const uint32_t irqState = bleEnterCritical();
+  backgroundConnectionServiceEnabled_ = false;
+  backgroundConnectionServiceArmed_ = false;
+  backgroundConnectionServiceInProgress_ = false;
+  backgroundConnectionServiceDue_ = false;
+  g_bleBackgroundPendSvPending = 0U;
+  blePendSvClearPending();
+  if (g_bleBackgroundRadio == this) {
+    bleBackgroundDisableCompare();
+    if (deferredConnectionEventCount_ == 0U &&
+        deferredGattWriteCount_ == 0U && deferredTraceCount_ == 0U) {
+      g_bleBackgroundRadio = nullptr;
+    }
+  }
+  bleExitCritical(irqState);
+}
+
+bool BleRadio::armBackgroundConnectionService() {
+  if (NRF54L15_CLEAN_BLE_BACKGROUND_SERVICE == 0) {
+    return false;
+  }
+  if (!initialized_ || radio_ == nullptr || !connected_) {
+    stopBackgroundConnectionService();
+    return false;
+  }
+
+  ensureGrtcReady(NRF_GRTC);
+
+  const uint32_t wakeUs =
+      connectionNextEventUs_ - kBleConnRxStartLeadUs - kBleConnAnchorPrewaitUs;
+
+  const uint64_t targetUs = bleAbsoluteTimeFromLowCounter(wakeUs);
+  const uint32_t lo = static_cast<uint32_t>(targetUs & 0xFFFFFFFFULL);
+  const uint32_t hi = static_cast<uint32_t>((targetUs >> 32U) & 0xFFFFFUL);
+
+  const uint32_t irqState = bleEnterCritical();
+  backgroundConnectionServiceEnabled_ = true;
+  g_bleBackgroundRadio = this;
+  backgroundConnectionWakeUs_ = wakeUs;
+  NRF_GRTC->EVENTS_COMPARE[kBleBackgroundCompareChannel] = 0U;
+  NRF_GRTC->CC[kBleBackgroundCompareChannel].CCEN =
+      (GRTC_CC_CCEN_ACTIVE_Disable << GRTC_CC_CCEN_ACTIVE_Pos);
+  NRF_GRTC->CC[kBleBackgroundCompareChannel].CCL = lo;
+  NRF_GRTC->CC[kBleBackgroundCompareChannel].CCH =
+      (hi << GRTC_CC_CCH_CCH_Pos) & GRTC_CC_CCH_CCH_Msk;
+  bleBackgroundEnableIrq();
+  NRF54L15_GRTC_INTENSET_REG(NRF_GRTC) =
+      (1UL << static_cast<uint32_t>(kBleBackgroundCompareChannel));
+  NRF_GRTC->CC[kBleBackgroundCompareChannel].CCEN =
+      (GRTC_CC_CCEN_ACTIVE_Enable << GRTC_CC_CCEN_ACTIVE_Pos);
+  backgroundConnectionServiceArmed_ = true;
+  bleExitCritical(irqState);
+  return true;
+}
+
+bool BleRadio::serviceBackgroundConnectionEvent() {
+  if (NRF54L15_CLEAN_BLE_BACKGROUND_SERVICE == 0) {
+    return false;
+  }
+  const uint32_t serviceEntryUs = bleTimingUs();
+  if (bleRunningInIsr()) {
+    ++encDebug_.connBgServiceIsrCount;
+  } else {
+    ++encDebug_.connBgServiceThreadCount;
+  }
+  const uint32_t irqState = bleEnterCritical();
+  if (!backgroundConnectionServiceEnabled_ || radio_ == nullptr || !connected_) {
+    bleExitCritical(irqState);
+    stopBackgroundConnectionService();
+    return false;
+  }
+  if (backgroundConnectionServiceInProgress_) {
+    bleExitCritical(irqState);
+    return false;
+  }
+
+  const bool backgroundDue = backgroundConnectionServiceDue_;
+  if (backgroundDue) {
+    ++encDebug_.connBgDueCount;
+  }
+  const uint32_t wakeLagUs =
+      timeReachedUs(serviceEntryUs, backgroundConnectionWakeUs_)
+          ? static_cast<uint32_t>(serviceEntryUs - backgroundConnectionWakeUs_)
+          : 0U;
+  encDebug_.connBgWakeLagLastUs = wakeLagUs;
+  if (wakeLagUs > encDebug_.connBgWakeLagMaxUs) {
+    encDebug_.connBgWakeLagMaxUs = wakeLagUs;
+  }
+  const bool comparePending = bleBackgroundCompareEventPending();
+  if (backgroundDue) {
+    backgroundConnectionServiceDue_ = false;
+  } else if (!comparePending) {
+    if (!backgroundConnectionServiceArmed_ || !bleBackgroundCompareEnabled()) {
+      backgroundConnectionServiceArmed_ = false;
+      bleExitCritical(irqState);
+      return armBackgroundConnectionService();
+    }
+
+    if (static_cast<int32_t>(bleTimingUs() - backgroundConnectionWakeUs_) < 0) {
+      bleExitCritical(irqState);
+      return false;
+    }
+  }
+
+  backgroundConnectionServiceInProgress_ = true;
+  if (!backgroundDue) {
+    bleBackgroundDisableCompare();
+    backgroundConnectionServiceArmed_ = false;
+  }
+  bleExitCritical(irqState);
+
+  BleConnectionEvent deferredEvent{};
+  const bool ran = pollConnectionEventCore(&deferredEvent, kBleConnEventSpinFloor);
+
+  const uint32_t exitIrqState = bleEnterCritical();
+  backgroundConnectionServiceInProgress_ = false;
+  bleExitCritical(exitIrqState);
+  if (ran) {
+    snapshotDeferredConnectionEvent(deferredEvent);
+  }
+
+  if (connected_ && backgroundConnectionServiceEnabled_) {
+    armBackgroundConnectionService();
+  } else {
+    stopBackgroundConnectionService();
+  }
+
+  return ran;
+}
+
 bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit) {
+  serviceDeferredApplicationWork();
+  if (consumeDeferredConnectionEvent(event)) {
+    return true;
+  }
+
+  const uint32_t irqState = bleEnterCritical();
+  const bool backgroundEnabled =
+      (NRF54L15_CLEAN_BLE_BACKGROUND_SERVICE != 0) &&
+      backgroundConnectionServiceEnabled_ && (g_bleBackgroundRadio == this);
+  const bool backgroundBusy = backgroundConnectionServiceInProgress_;
+  const bool backgroundArmed = backgroundConnectionServiceArmed_;
+  bleExitCritical(irqState);
+
+  if (backgroundBusy) {
+    return false;
+  }
+
+  if (backgroundEnabled) {
+    if (!backgroundArmed && connected_) {
+      armBackgroundConnectionService();
+    }
+    (void)serviceBackgroundConnectionEvent();
+    serviceDeferredApplicationWork();
+    if (consumeDeferredConnectionEvent(event)) {
+      return true;
+    }
+    return false;
+  }
+
+  const bool ran = pollConnectionEventCore(event, spinLimit);
+
+  serviceDeferredApplicationWork();
+  return ran;
+}
+
+void BleRadio::setBackgroundConnectionServiceEnabled(bool enabled) {
+  if (NRF54L15_CLEAN_BLE_BACKGROUND_SERVICE == 0) {
+    return;
+  }
+
+  if (!enabled) {
+    stopBackgroundConnectionService();
+    return;
+  }
+
+  if (!initialized_ || radio_ == nullptr || !connected_) {
+    const uint32_t irqState = bleEnterCritical();
+    backgroundConnectionServiceEnabled_ = false;
+    backgroundConnectionServiceArmed_ = false;
+    backgroundConnectionServiceInProgress_ = false;
+    backgroundConnectionServiceDue_ = false;
+    backgroundConnectionWakeUs_ = 0U;
+    bleExitCritical(irqState);
+    return;
+  }
+  (void)armBackgroundConnectionService();
+}
+
+bool BleRadio::isBackgroundConnectionServiceEnabled() const {
+  return backgroundConnectionServiceEnabled_;
+}
+
+bool BleRadio::pollConnectionEventCore(BleConnectionEvent* event,
+                                       uint32_t spinLimit) {
   if (event != nullptr) {
     event->eventStarted = false;
     event->packetReceived = false;
@@ -10020,6 +10816,9 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit
   }
   const bool useCurrentEventCounterForChannel =
       timeReachedUs(nowUs, connectionNextEventUs_ + lateAllowanceUs);
+  if (useCurrentEventCounterForChannel) {
+    ++encDebug_.connLatePollCount;
+  }
 
   const uint32_t rxStartUs = connectionNextEventUs_ - kBleConnRxStartLeadUs;
   if (!timeReachedUs(nowUs, rxStartUs)) {
@@ -10087,18 +10886,31 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit
     connectionPendingWinSize_ = 0U;
     connectionPendingWinOffset_ = 0U;
   }
+  bool channelMapAppliedThisEvent = false;
   if (connectionChannelMapPending_ &&
       llEventInstantReached(currentEventCounter, connectionChannelMapInstant_)) {
     if (connectionPendingChannelCount_ >= 2U) {
       memcpy(connectionChannelMap_, connectionPendingChannelMap_,
              sizeof(connectionChannelMap_));
       connectionChannelCount_ = connectionPendingChannelCount_;
+      ++encDebug_.connChannelMapAppliedCount;
+      encDebug_.connLastChannelMapAppliedEventCounter = currentEventCounter;
+      channelMapAppliedThisEvent = true;
+      // Channel-map instants are a common re-sync boundary in this custom LL.
+      // Keep RX widened for a few post-apply events so an isolated miss does
+      // not immediately cascade into repeated supervision-timeout misses.
+      armConnectionResyncWindow(kBleConnResyncExtraListenUs,
+                                kBleConnChannelMapApplyResyncEvents);
+      emitBleTrace("LL_CHANNEL_MAP_APPLIED");
     }
     connectionChannelMapPending_ = false;
   }
 
   const uint8_t dataChannel =
       selectNextDataChannel(useCurrentEventCounterForChannel);
+  if (channelMapAppliedThisEvent) {
+    encDebug_.connLastChannelMapAppliedDataChannel = dataChannel;
+  }
   if (!setDataChannel(dataChannel)) {
     return false;
   }
@@ -10113,14 +10925,7 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit
   memset(rxPacket_, 0, sizeof(rxPacket_));
   radio_->PACKETPTR =
       static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&rxPacket_[0]));
-  radio_->SHORTS =
-      ((RADIO_SHORTS_RXREADY_START_Enabled << RADIO_SHORTS_RXREADY_START_Pos) &
-       RADIO_SHORTS_RXREADY_START_Msk) |
-      ((RADIO_SHORTS_ADDRESS_RSSISTART_Enabled
-        << RADIO_SHORTS_ADDRESS_RSSISTART_Pos) &
-       RADIO_SHORTS_ADDRESS_RSSISTART_Msk) |
-      ((RADIO_SHORTS_PHYEND_DISABLE_Enabled << RADIO_SHORTS_PHYEND_DISABLE_Pos) &
-       RADIO_SHORTS_PHYEND_DISABLE_Msk);
+  radio_->SHORTS = bleRadioShortsRxListen();
   radio_->TASKS_RXEN = RADIO_TASKS_RXEN_TASKS_RXEN_Trigger;
 
   uint32_t rxListenUs =
@@ -10140,7 +10945,10 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit
       rxListenUs = 50000U;
     }
   }
-  const bool endSeen = waitRadioEndBudgeted(radio_, rxListenUs, spinLimit);
+  encDebug_.connLastRxListenBudgetUs = rxListenUs;
+  uint32_t rxEndTimestampUs = 0U;
+  const bool endSeen =
+      waitRadioEndBudgeted(radio_, rxListenUs, spinLimit, &rxEndTimestampUs);
   if (!endSeen) {
     radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
     waitRadioDisabledBudgeted(radio_, kBleConnDisableWaitUs, spinLimit / 2U + 1U);
@@ -10148,8 +10956,29 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit
     clearRadioCoreEvents(radio_);
     if (connectionSyncAttemptsRemaining_ > 0U) {
       --connectionSyncAttemptsRemaining_;
+      if (connectionSyncAttemptsRemaining_ == 0U) {
+        connectionFirstEventListenUs_ = 0U;
+      }
     }
     ++connectionMissedEventCount_;
+    ++encDebug_.connRxTimeoutCount;
+    const uint16_t sinceChannelMapApply =
+        static_cast<uint16_t>(currentEventCounter -
+                              static_cast<uint16_t>(encDebug_.connLastChannelMapAppliedEventCounter));
+    if ((encDebug_.connLastChannelMapAppliedEventCounter != 0U) &&
+        (sinceChannelMapApply < 4U)) {
+      ++encDebug_.connChannelMapTimeoutAfterApplyCount;
+      encDebug_.connLastChannelMapTimeoutEventCounter = currentEventCounter;
+    }
+    armConnectionResyncWindow(kBleConnResyncExtraListenUs,
+                              kBleConnGenericMissResyncEvents);
+    if (connectionChannelMapPending_ ||
+        ((encDebug_.connLastChannelMapAppliedEventCounter != 0U) &&
+         (sinceChannelMapApply < 4U))) {
+      armConnectionResyncWindow(kBleConnResyncExtraListenUs,
+                                kBleConnChannelMapApplyResyncEvents);
+    }
+    noteConnectionMissedEvent(&encDebug_, connectionMissedEventCount_);
     {
       const uint32_t intervalUs =
           (connectionIntervalUnits_ > 0U)
@@ -10176,8 +11005,6 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit
     emitBleTrace("EVT_RX_TIMEOUT");
     return true;
   }
-  const uint32_t rxEndTimestampUs = bleTimingUs();
-
   bool disabled =
       waitRadioDisabledBudgeted(radio_, kBleConnDisableWaitUs, spinLimit / 2U + 1U);
   if (!disabled) {
@@ -10206,8 +11033,15 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit
   if (!crcOk) {
     if (connectionSyncAttemptsRemaining_ > 0U) {
       --connectionSyncAttemptsRemaining_;
+      if (connectionSyncAttemptsRemaining_ == 0U) {
+        connectionFirstEventListenUs_ = 0U;
+      }
     }
     ++connectionMissedEventCount_;
+    ++encDebug_.connRxCrcErrorCount;
+    armConnectionResyncWindow(kBleConnResyncExtraListenUs,
+                              kBleConnGenericMissResyncEvents);
+    noteConnectionMissedEvent(&encDebug_, connectionMissedEventCount_);
     {
       const uint32_t intervalUs =
           (connectionIntervalUnits_ > 0U)
@@ -10235,6 +11069,7 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit
     return true;
   }
   connectionMissedEventCount_ = 0U;
+  encDebug_.connMissedEventCountLast = 0U;
 
   const uint8_t hdr0 = rxPacket_[0];
   const uint8_t llid = hdr0 & 0x03U;
@@ -10249,7 +11084,10 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit
       rxEndTimestampUs - bleDataPduAirTimeUs(rxLengthRaw);
   connectionNextEventUs_ = rxPacketStartUs + intervalUs;
   if (connectionSyncAttemptsRemaining_ > 0U) {
-    connectionSyncAttemptsRemaining_ = 0U;
+    --connectionSyncAttemptsRemaining_;
+    if (connectionSyncAttemptsRemaining_ == 0U) {
+      connectionFirstEventListenUs_ = 0U;
+    }
   }
 
   bool peerAckedLastTx =
@@ -10264,6 +11102,12 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit
     connectionExpectedRxSn_ ^= 0x01U;
     packetIsNew = true;
   }
+  if (!packetIsNew &&
+      (llid == kBlePduLlControl) &&
+      (rxLengthRaw >= 1U) &&
+      (rxPacket_[2] == kBleLlCtrlChannelMapInd)) {
+    ++encDebug_.connChannelMapDuplicateCount;
+  }
   bool implicitEmptyAck = false;
   const bool lastTxWasEarlyLlControlResponse =
       !connectionEncSessionValid_ &&
@@ -10276,6 +11120,26 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit
        (connectionLastTxPlainPayload_[0] == kBleLlCtrlPhyRsp) ||
        (connectionLastTxPlainPayload_[0] == kBleLlCtrlPingRsp) ||
        (connectionLastTxPlainPayload_[0] == kBleLlCtrlConnectionParamRsp));
+  const bool lastTxWasAttServerResponse =
+      !connectionEncSessionValid_ &&
+      connectionTxHistoryValid_ &&
+      (connectionLastTxLlid_ == kBlePduDataStartOrComplete) &&
+      (connectionLastTxPlainLength_ >= (kBleL2capHeaderLen + 1U)) &&
+      (readLe16(&connectionLastTxPlainPayload_[2]) == kBleL2capCidAtt) &&
+      attOpcodeIsServerResponsePdu(connectionLastTxPlainPayload_[4]);
+  const bool lastTxHadAttPayload =
+      !connectionEncSessionValid_ &&
+      connectionTxHistoryValid_ &&
+      (connectionLastTxLlid_ == kBlePduDataStartOrComplete) &&
+      (connectionLastTxPlainLength_ >= (kBleL2capHeaderLen + 1U)) &&
+      (readLe16(&connectionLastTxPlainPayload_[2]) == kBleL2capCidAtt);
+  const bool peerAdvancedToNewUnencryptedAttProcedure =
+      !connectionEncSessionValid_ &&
+      packetIsNew &&
+      (llid == kBlePduDataStartOrComplete) &&
+      (rxLengthRaw >= (kBleL2capHeaderLen + 1U)) &&
+      (readLe16(&rxPacket_[4]) == kBleL2capCidAtt) &&
+      attOpcodeIsClientProgressPdu(rxPacket_[2 + kBleL2capHeaderLen]);
   const bool pendingTxIsAttResponse =
       connectionPendingTxValid_ &&
       (connectionPendingTxLlid_ == kBlePduDataStartOrComplete) &&
@@ -10284,16 +11148,24 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit
   if (!peerAckedLastTx &&
       connectionTxHistoryValid_ &&
       packetIsNew &&
-      (((connectionLastTxLlid_ == 0x01U) &&
+       (((connectionLastTxLlid_ == 0x01U) &&
         (connectionLastTxLength_ == 0U)) ||
        lastTxWasEarlyLlControlResponse ||
+       ((lastTxWasAttServerResponse || lastTxHadAttPayload) &&
+        peerAdvancedToNewUnencryptedAttProcedure) ||
        pendingTxIsAttResponse)) {
     // Interop guard: some centrals advance SN while holding NESN stable after
     // empty-PDU ACK transitions, immediate early LL control responses, or
-    // queued ATT replies. Treat peer progress as an implicit ACK so queued TX
-    // payloads do not deadlock on duplicate NESN.
+    // queued ATT replies. Some centrals also issue the next unencrypted ATT
+    // procedure before updating NESN for the prior ATT response. Treat that
+    // higher-layer progress as an implicit ACK so ATT service discovery does
+    // not deadlock on a stale NESN bit.
     peerAckedLastTx = true;
     implicitEmptyAck = true;
+    if ((lastTxWasAttServerResponse || lastTxHadAttPayload) &&
+        peerAdvancedToNewUnencryptedAttProcedure) {
+      ++encDebug_.connImplicitAttProgressAckCount;
+    }
   }
   if (peerAckedLastTx) {
     connectionTxSn_ ^= 0x01U;
@@ -10625,6 +11497,9 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit
   bool llControlHandledImmediate = false;
   bool immediateLlControlResponseValid = false;
   uint8_t immediateLlControlResponseLength = 0U;
+  bool l2capHandledImmediate = false;
+  bool immediateL2capResponseValid = false;
+  uint8_t immediateL2capResponseLength = 0U;
   // If the peer has not ACKed our last TX PDU, keep retransmitting that exact
   // packet/SN until ACKed. This is required for encrypted empty PDUs as well,
   // since each fresh encrypted transmission consumes a new CCM packet counter.
@@ -10638,10 +11513,69 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit
       !deferAwaitingStartRspDecrypt &&
       canSendNewPayloadThisEvent) {
     llControlHandledImmediate = true;
-    if (buildLlControlResponse(&rxPacket_[2], rxLength, connectionTxPayload_,
+    if (buildLlControlResponse(&rxPacket_[2], rxLength, currentEventCounter,
+                               connectionTxPayload_,
                                &immediateLlControlResponseLength, &terminateInd) &&
         immediateLlControlResponseLength > 0U) {
       immediateLlControlResponseValid = true;
+    }
+  }
+
+  auto attRequestCanUseImmediateResponse = [&](uint8_t attOpcode) {
+    switch (attOpcode) {
+      case kAttOpExchangeMtuReq:
+      case kAttOpFindInfoReq:
+      case kAttOpFindByTypeValueReq:
+      case kAttOpReadByTypeReq:
+      case kAttOpReadReq:
+      case kAttOpReadBlobReq:
+      case kAttOpReadMultipleReq:
+      case kAttOpReadByGroupTypeReq:
+        return true;
+      default:
+        return false;
+    }
+  };
+  const uint16_t rxL2capCid =
+      (rxLength >= kBleL2capHeaderLen) ? readLe16(&rxPacket_[4]) : 0U;
+  const uint8_t rxAttOpcode =
+      (rxLength >= (kBleL2capHeaderLen + 1U)) ? rxPacket_[2 + kBleL2capHeaderLen] : 0U;
+  // Same-event ATT responses reduce dependence on a later connection event.
+  // Keep this path limited to read-only ATT procedures and CCCD writes so we do
+  // not pull arbitrary sketch write callbacks into the timing-critical TX path.
+  bool rxAttCanUseImmediateResponse =
+      packetIsNew &&
+      !terminateInd &&
+      (llid == kBlePduDataStartOrComplete) &&
+      !deferAwaitingStartRspDecrypt &&
+      canSendNewPayloadThisEvent &&
+      (rxLength >= (kBleL2capHeaderLen + 1U)) &&
+      (rxL2capCid == kBleL2capCidAtt) &&
+      attRequestCanUseImmediateResponse(rxAttOpcode);
+  if (!rxAttCanUseImmediateResponse &&
+      packetIsNew &&
+      !terminateInd &&
+      (llid == kBlePduDataStartOrComplete) &&
+      !deferAwaitingStartRspDecrypt &&
+      canSendNewPayloadThisEvent &&
+      (rxLength >= (kBleL2capHeaderLen + 3U)) &&
+      (rxL2capCid == kBleL2capCidAtt) &&
+      (rxAttOpcode == kAttOpWriteReq)) {
+    const uint16_t handle = readLe16(&rxPacket_[2 + kBleL2capHeaderLen + 1U]);
+    const bool isCccdHandle =
+        (handle == kHandleGattServiceChangedCccd) ||
+        (handle == kHandleBatteryLevelCccd) ||
+        (findCustomCharacteristicByCccdHandle(handle) != nullptr);
+    rxAttCanUseImmediateResponse = isCccdHandle;
+  }
+  if (rxAttCanUseImmediateResponse) {
+    l2capHandledImmediate = true;
+    if (buildL2capResponse(&rxPacket_[2], rxLength, connectionTxPayload_,
+                           &immediateL2capResponseLength) &&
+        immediateL2capResponseLength > 0U) {
+      immediateL2capResponseValid = true;
+    } else {
+      l2capHandledImmediate = false;
     }
   }
 
@@ -10681,6 +11615,9 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit
     if (immediateLlControlResponseValid) {
       txLlid = kBlePduLlControl;
       txLength = immediateLlControlResponseLength;
+    } else if (immediateL2capResponseValid) {
+      txLlid = kBlePduDataStartOrComplete;
+      txLength = immediateL2capResponseLength;
     } else if (connectionPendingTxValid_) {
       txLlid = connectionPendingTxLlid_;
       txLength = connectionPendingTxLength_;
@@ -10874,26 +11811,11 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit
     memcpy(rxPacket_, txPacket_, copyLen);
     radio_->PACKETPTR =
         static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&rxPacket_[0]));
-    radio_->SHORTS =
-        ((RADIO_SHORTS_TXREADY_START_Enabled << RADIO_SHORTS_TXREADY_START_Pos) &
-         RADIO_SHORTS_TXREADY_START_Msk) |
-        ((RADIO_SHORTS_PHYEND_DISABLE_Enabled << RADIO_SHORTS_PHYEND_DISABLE_Pos) &
-         RADIO_SHORTS_PHYEND_DISABLE_Msk) |
-        ((RADIO_SHORTS_DISABLED_RXEN_Enabled << RADIO_SHORTS_DISABLED_RXEN_Pos) &
-         RADIO_SHORTS_DISABLED_RXEN_Msk) |
-        ((RADIO_SHORTS_RXREADY_START_Enabled << RADIO_SHORTS_RXREADY_START_Pos) &
-         RADIO_SHORTS_RXREADY_START_Msk) |
-        ((RADIO_SHORTS_ADDRESS_RSSISTART_Enabled
-          << RADIO_SHORTS_ADDRESS_RSSISTART_Pos) &
-         RADIO_SHORTS_ADDRESS_RSSISTART_Msk);
+    radio_->SHORTS = bleRadioShortsTxThenRxAtTifs();
   } else {
     radio_->PACKETPTR =
         static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&txPacket_[0]));
-    radio_->SHORTS =
-        ((RADIO_SHORTS_TXREADY_START_Enabled << RADIO_SHORTS_TXREADY_START_Pos) &
-         RADIO_SHORTS_TXREADY_START_Msk) |
-        ((RADIO_SHORTS_PHYEND_DISABLE_Enabled << RADIO_SHORTS_PHYEND_DISABLE_Pos) &
-         RADIO_SHORTS_PHYEND_DISABLE_Msk);
+    radio_->SHORTS = bleRadioShortsTxOnly();
   }
   const uint32_t txTriggerTargetUs = rxEndTimestampUs + kBleConnTxenAfterRxUs;
   uint32_t txTriggerNowUs = bleTimingUs();
@@ -10901,10 +11823,7 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit
     txTriggerNowUs = bleTimingUs();
   }
   const uint32_t txLagUs = static_cast<uint32_t>(txTriggerNowUs - txTriggerTargetUs);
-  encDebug_.txenLagLastUs = txLagUs;
-  if (txLagUs > encDebug_.txenLagMaxUs) {
-    encDebug_.txenLagMaxUs = txLagUs;
-  }
+  noteTxenLag(&encDebug_, txLagUs);
   if (encryptCurrentTx) {
     ++encDebug_.encTxPacketCount;
     encDebug_.encTxenLagLastUs = txLagUs;
@@ -10952,15 +11871,7 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit
     radio_->EVENTS_DISABLED = 0U;
     radio_->EVENTS_CRCOK = 0U;
     radio_->EVENTS_CRCERROR = 0U;
-    radio_->SHORTS =
-        ((RADIO_SHORTS_RXREADY_START_Enabled << RADIO_SHORTS_RXREADY_START_Pos) &
-         RADIO_SHORTS_RXREADY_START_Msk) |
-        ((RADIO_SHORTS_ADDRESS_RSSISTART_Enabled
-          << RADIO_SHORTS_ADDRESS_RSSISTART_Pos) &
-         RADIO_SHORTS_ADDRESS_RSSISTART_Msk) |
-        ((RADIO_SHORTS_PHYEND_DISABLE_Enabled
-          << RADIO_SHORTS_PHYEND_DISABLE_Pos) &
-         RADIO_SHORTS_PHYEND_DISABLE_Msk);
+    radio_->SHORTS = bleRadioShortsRxListen();
 
     // Defensive fallback: if shortcut path did not enter RX, arm RX manually.
     const uint32_t state =
@@ -10970,6 +11881,7 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit
     }
   }
   if (!txOk) {
+    ++encDebug_.connTxTimeoutCount;
     emitBleTrace("EVT_TX_TIMEOUT");
   }
 
@@ -11054,6 +11966,7 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit
         followListenUs = capUs;
       }
     }
+    encDebug_.connLastFollowupListenBudgetUs = followListenUs;
     const uint32_t followStartUs = bleTimingUs();
     uint8_t followPackets = 0U;
     while (!terminateInd) {
@@ -11065,9 +11978,11 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit
       }
       const uint32_t remainingUs = followListenUs - elapsedUs;
 
-      const bool followEndSeen =
-          waitRadioRxDoneBudgeted(radio_, remainingUs, spinLimit / 2U + 1U);
+      uint32_t followRxEndTimestampUs = 0U;
+      const bool followEndSeen = waitRadioRxDoneBudgeted(
+          radio_, remainingUs, spinLimit / 2U + 1U, &followRxEndTimestampUs);
       if (!followEndSeen) {
+        ++encDebug_.connFollowupRxTimeoutCount;
         radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
         waitRadioDisabledBudgeted(radio_, kBleConnDisableWaitUs, spinLimit / 2U + 1U);
         radio_->SHORTS = 0U;
@@ -11076,7 +11991,6 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit
 
       ++followPackets;
       ++encDebug_.followupEndSeen;
-      const uint32_t followRxEndTimestampUs = bleTimingUs();
       auto transmitImmediateFollowupResponse = [&](uint8_t txFollowLlid,
                                                    uint8_t txFollowLength) -> bool {
         connectionLastTxLlid_ = txFollowLlid;
@@ -11100,11 +12014,7 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit
         clearRadioCoreEvents(radio_);
         radio_->PACKETPTR =
             static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&txPacket_[0]));
-        radio_->SHORTS =
-            ((RADIO_SHORTS_TXREADY_START_Enabled << RADIO_SHORTS_TXREADY_START_Pos) &
-             RADIO_SHORTS_TXREADY_START_Msk) |
-            ((RADIO_SHORTS_PHYEND_DISABLE_Enabled << RADIO_SHORTS_PHYEND_DISABLE_Pos) &
-             RADIO_SHORTS_PHYEND_DISABLE_Msk);
+        radio_->SHORTS = bleRadioShortsTxOnly();
 
         const uint32_t txFollowTriggerTargetUs =
             followRxEndTimestampUs + kBleConnTxenAfterRxUs;
@@ -11112,6 +12022,9 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit
         while (!timeReachedUs(txFollowTriggerNowUs, txFollowTriggerTargetUs)) {
           txFollowTriggerNowUs = bleTimingUs();
         }
+        noteTxenLag(&encDebug_,
+                    static_cast<uint32_t>(txFollowTriggerNowUs -
+                                          txFollowTriggerTargetUs));
         radio_->TASKS_TXEN = RADIO_TASKS_TXEN_TASKS_TXEN_Trigger;
 
         const uint32_t txFollowEndBudgetUs = kBleConnTxDisableWaitUs + 1200U;
@@ -11155,6 +12068,9 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit
           RADIO_CRCSTATUS_CRCSTATUS_Pos;
       const bool followCrcOk =
           (followCrcStatus == RADIO_CRCSTATUS_CRCSTATUS_CRCOk);
+      if (!followCrcOk) {
+        ++encDebug_.connFollowupRxCrcErrorCount;
+      }
       if (followCrcOk) {
         ++encDebug_.followupCrcOk;
         const uint8_t hdrFollow = rxPacket_[0];
@@ -11281,6 +12197,7 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit
           uint8_t responseLength = 0U;
           bool followTerminate = false;
           if (buildLlControlResponse(&rxPacket_[2], rxLengthFollow,
+                                     currentEventCounter,
                                      connectionTxPayload_, &responseLength,
                                      &followTerminate) &&
               responseLength > 0U) {
@@ -11313,6 +12230,7 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit
               (llidFollow == kBlePduLlControl) &&
               (rxLengthFollow >= 1U)) {
             if (buildLlControlResponse(&rxPacket_[2], rxLengthFollow,
+                                       currentEventCounter,
                                        connectionTxPayload_,
                                        &deferredFollowLength,
                                        &terminateInd) &&
@@ -11346,14 +12264,7 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit
       clearRadioCoreEvents(radio_);
       radio_->PACKETPTR =
           static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&rxPacket_[0]));
-      radio_->SHORTS =
-          ((RADIO_SHORTS_RXREADY_START_Enabled << RADIO_SHORTS_RXREADY_START_Pos) &
-           RADIO_SHORTS_RXREADY_START_Msk) |
-          ((RADIO_SHORTS_ADDRESS_RSSISTART_Enabled
-            << RADIO_SHORTS_ADDRESS_RSSISTART_Pos) &
-           RADIO_SHORTS_ADDRESS_RSSISTART_Msk) |
-          ((RADIO_SHORTS_PHYEND_DISABLE_Enabled << RADIO_SHORTS_PHYEND_DISABLE_Pos) &
-           RADIO_SHORTS_PHYEND_DISABLE_Msk);
+      radio_->SHORTS = bleRadioShortsRxListen();
       radio_->TASKS_RXEN = RADIO_TASKS_RXEN_TASKS_RXEN_Trigger;
     }
 
@@ -11509,13 +12420,15 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit
     } else if (!llControlHandledImmediate &&
         llid == kBlePduLlControl && rxLength >= 1U) {
       uint8_t responseLength = 0U;
-      if (buildLlControlResponse(&rxPacket_[2], rxLength, connectionTxPayload_,
+      if (buildLlControlResponse(&rxPacket_[2], rxLength, currentEventCounter,
+                                 connectionTxPayload_,
                                  &responseLength, &terminateInd) &&
           responseLength > 0U) {
         deferredLlid = kBlePduLlControl;
         deferredLength = responseLength;
       }
-    } else if (!encryptionProcedureBusy &&
+    } else if (!l2capHandledImmediate &&
+               !encryptionProcedureBusy &&
                llid == kBlePduDataStartOrComplete &&
                rxLength >= kBleL2capHeaderLen) {
       uint8_t responseLength = 0U;
@@ -11646,6 +12559,77 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit
 
   clearRadioCoreEvents(radio_);
   return true;
+}
+
+extern "C" void nrf54l15_ble_idle_service(void) {
+  if (NRF54L15_CLEAN_BLE_BACKGROUND_SERVICE == 0) {
+    return;
+  }
+  BleRadio* const radio = g_bleBackgroundRadio;
+  if (radio == nullptr) {
+    return;
+  }
+  (void)radio->serviceBackgroundConnectionEvent();
+  radio->serviceDeferredApplicationWork();
+}
+
+extern "C" void nrf54l15_ble_grtc_irq_service(void) {
+  if (NRF54L15_CLEAN_BLE_BACKGROUND_SERVICE == 0) {
+    return;
+  }
+  if (NRF54L15_CLEAN_BLE_BACKGROUND_GRTC_IRQ_RUN == 0) {
+    return;
+  }
+  BleRadio* const radio = g_bleBackgroundRadio;
+  if (radio == nullptr) {
+    return;
+  }
+  const uint32_t irqState = bleEnterCritical();
+  if (!radio->backgroundConnectionServiceEnabled_ || !radio->connected_ ||
+      radio->backgroundConnectionServiceInProgress_ ||
+      !bleBackgroundCompareEventPending()) {
+    bleExitCritical(irqState);
+    return;
+  }
+  bleBackgroundDisableCompare();
+  radio->backgroundConnectionServiceArmed_ = false;
+  radio->backgroundConnectionServiceDue_ = true;
+  if (NRF54L15_CLEAN_BLE_BACKGROUND_PENDSV_HANDOFF == 0) {
+    bleExitCritical(irqState);
+    return;
+  }
+  g_bleBackgroundPendSvPending = 1U;
+  bleExitCritical(irqState);
+  blePendSvSetPending();
+}
+
+extern "C" uint32_t nrf54l15_ble_grtc_reserved_cc_mask(void) {
+  if (NRF54L15_CLEAN_BLE_BACKGROUND_SERVICE == 0) {
+    return 0U;
+  }
+  BleRadio* const radio = g_bleBackgroundRadio;
+  if (radio == nullptr || !radio->backgroundConnectionServiceEnabled_ ||
+      !radio->connected_) {
+    return 0U;
+  }
+  return (1UL << static_cast<uint32_t>(kBleBackgroundCompareChannel));
+}
+
+extern "C" void PendSV_Handler(void) {
+  if (NRF54L15_CLEAN_BLE_BACKGROUND_SERVICE == 0 ||
+      NRF54L15_CLEAN_BLE_BACKGROUND_GRTC_IRQ_RUN == 0 ||
+      NRF54L15_CLEAN_BLE_BACKGROUND_PENDSV_HANDOFF == 0) {
+    return;
+  }
+  if (g_bleBackgroundPendSvPending == 0U) {
+    return;
+  }
+  g_bleBackgroundPendSvPending = 0U;
+  BleRadio* const radio = g_bleBackgroundRadio;
+  if (radio == nullptr) {
+    return;
+  }
+  (void)radio->serviceBackgroundConnectionEvent();
 }
 
 bool BleRadio::scanOnce(BleAdvertisingChannel channel, BleScanPacket* packet,
@@ -12811,11 +13795,7 @@ bool BleRadio::startConnectionFromConnectInd(const uint8_t* payload, uint8_t len
   memset(connectionPendingChannelMap_, 0, sizeof(connectionPendingChannelMap_));
   connectionPendingChannelCount_ = 0U;
   connectionServiceChangedIndicationsEnabled_ = false;
-  // Arduino sketches can change the exposed GATT database completely between
-  // uploads while keeping the same static BLE address. Queue a full-database
-  // Service Changed indication on every new connection so centrals like
-  // Android invalidate stale caches before using custom services.
-  connectionServiceChangedIndicationPending_ = true;
+  connectionServiceChangedIndicationPending_ = false;
   connectionServiceChangedIndicationAwaitingConfirm_ = false;
   connectionBatteryNotificationsEnabled_ = false;
   connectionBatteryNotificationPending_ = false;
@@ -12855,6 +13835,7 @@ bool BleRadio::startConnectionFromConnectInd(const uint8_t* payload, uint8_t len
     return false;
   }
   connected_ = true;
+  armBackgroundConnectionService();
   emitBleTrace("CONNECTED");
   return true;
 }
@@ -13122,9 +14103,7 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
       }
 
       const uint16_t clientRxMtu = readLe16(&attRequest[1]);
-      const uint16_t serverRxMtu =
-          minU16(kBleDefaultAttMtu,
-                 static_cast<uint16_t>(kBleDataPduMaxPayload - kBleL2capHeaderLen));
+      const uint16_t serverRxMtu = kBleServerPreferredMtu;
       const uint16_t negotiatedMtu = minU16(clientRxMtu, serverRxMtu);
       connectionAttMtu_ = (negotiatedMtu >= 23U) ? negotiatedMtu : 23U;
 
@@ -14340,6 +15319,7 @@ bool BleRadio::buildL2capAttResponse(const uint8_t* l2capPayload,
 }
 
 bool BleRadio::buildLlControlResponse(const uint8_t* payload, uint8_t length,
+                                      uint16_t currentEventCounter,
                                       uint8_t* outPayload, uint8_t* outLength,
                                       bool* terminateInd) {
   if (terminateInd != nullptr) {
@@ -14435,7 +15415,7 @@ bool BleRadio::buildLlControlResponse(const uint8_t* payload, uint8_t length,
           valid = false;
         }
         const uint16_t instantDelta =
-            static_cast<uint16_t>(instant - connectionEventCounter_);
+            static_cast<uint16_t>(instant - currentEventCounter);
         const bool instantInFuture = (instantDelta != 0U) && (instantDelta < 0x8000U);
         if (!instantInFuture) {
           valid = false;
@@ -14464,13 +15444,22 @@ bool BleRadio::buildLlControlResponse(const uint8_t* payload, uint8_t length,
         map[4] &= 0x1FU;
         const uint8_t count = bitCount37(map);
         const uint16_t instantDelta =
-            static_cast<uint16_t>(instant - connectionEventCounter_);
+            static_cast<uint16_t>(instant - currentEventCounter);
         const bool instantInFuture = (instantDelta != 0U) && (instantDelta < 0x8000U);
         if (count >= 2U && instantInFuture) {
           memcpy(connectionPendingChannelMap_, map, sizeof(connectionPendingChannelMap_));
           connectionPendingChannelCount_ = count;
           connectionChannelMapInstant_ = instant;
           connectionChannelMapPending_ = true;
+          uint8_t resyncEvents = static_cast<uint8_t>(instantDelta);
+          if (resyncEvents > kBleConnChannelMapPendingResyncEventsMax) {
+            resyncEvents = kBleConnChannelMapPendingResyncEventsMax;
+          }
+          armConnectionResyncWindow(kBleConnResyncExtraListenUs, resyncEvents);
+          ++encDebug_.connChannelMapPendingCount;
+          encDebug_.connLastChannelMapRxEventCounter = currentEventCounter;
+          encDebug_.connLastChannelMapInstant = instant;
+          emitBleTrace("LL_CHANNEL_MAP_PENDING");
         } else {
           return rejectMalformedRequest();
         }
@@ -14693,11 +15682,13 @@ bool BleRadio::buildLlControlResponse(const uint8_t* payload, uint8_t length,
       if (length != 9U) {
         return rejectMalformedRequest();
       }
+      // LL_LENGTH_RSP: MaxRxOctets, MaxRxTime, MaxTxOctets, MaxTxTime
+      // Time formula for 1M PHY: (octets + 14) * 8 µs → (251 + 14) * 8 = 2120 µs
       outPayload[0] = kBleLlCtrlLengthRsp;
-      writeLe16(&outPayload[1], kBleDataPduMaxPayload);
-      writeLe16(&outPayload[3], 328U);
-      writeLe16(&outPayload[5], kBleDataPduMaxPayload);
-      writeLe16(&outPayload[7], 328U);
+      writeLe16(&outPayload[1], kBleDataPduMaxPayload);  // MaxRxOctets = 251
+      writeLe16(&outPayload[3], 2120U);                  // MaxRxTime = 2120 µs
+      writeLe16(&outPayload[5], kBleDataPduMaxPayload);  // MaxTxOctets = 251
+      writeLe16(&outPayload[7], 2120U);                  // MaxTxTime = 2120 µs
       *outLength = 9U;
       return true;
 
@@ -15056,6 +16047,10 @@ void BleRadio::emitBleTrace(const char* message) const {
   if (message == nullptr) {
     return;
   }
+  if (bleRunningInIsr()) {
+    const_cast<BleRadio*>(this)->enqueueDeferredTrace(message);
+    return;
+  }
   if (traceCallback_ != nullptr) {
     traceCallback_(message, traceCallbackContext_);
     return;
@@ -15090,6 +16085,32 @@ void BleRadio::updateNextConnectionEventTime() {
       connectionChanUse_ =
           static_cast<uint8_t>((connectionChanUse_ + connectionHop_) % 37U);
     }
+  }
+}
+
+void BleRadio::armConnectionResyncWindow(uint32_t extraPostAnchorUs,
+                                         uint8_t attempts) {
+  if ((attempts == 0U) || (connectionIntervalUnits_ == 0U)) {
+    return;
+  }
+
+  uint32_t postAnchorListenUs =
+      bleConnectionRxListenUs(connectionIntervalUnits_, connectionSca_);
+  if (postAnchorListenUs > kBleConnRxStartLeadUs) {
+    postAnchorListenUs -= kBleConnRxStartLeadUs;
+  } else {
+    postAnchorListenUs = 0U;
+  }
+  postAnchorListenUs += extraPostAnchorUs;
+  if (postAnchorListenUs > kBleConnResyncPostAnchorMaxUs) {
+    postAnchorListenUs = kBleConnResyncPostAnchorMaxUs;
+  }
+
+  if (postAnchorListenUs > connectionFirstEventListenUs_) {
+    connectionFirstEventListenUs_ = postAnchorListenUs;
+  }
+  if (attempts > connectionSyncAttemptsRemaining_) {
+    connectionSyncAttemptsRemaining_ = attempts;
   }
 }
 
@@ -15202,6 +16223,7 @@ bool BleRadio::configureBle1M() {
   }
 
   connected_ = false;
+  stopBackgroundConnectionService();
 
   radio_->SHORTS = 0U;
   radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;

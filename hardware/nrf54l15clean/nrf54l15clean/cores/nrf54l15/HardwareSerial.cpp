@@ -325,7 +325,8 @@ void HardwareSerial::begin(unsigned long baud, uint16_t config) {
     reg32(base + U_PSEL_RTS) = kPselDisconnected;
     const UarteFormat fmt = decode_serial_format(config);
     _dataMask = fmt.dataMask;
-    reg32(base + U_CONFIG) = fmt.configReg | UARTE_CONFIG_FRAMETIMEOUT_Enabled;
+    reg32(base + U_CONFIG) = fmt.configReg |
+                             (UARTE_CONFIG_FRAMETIMEOUT_Enabled << UARTE_CONFIG_FRAMETIMEOUT_Pos);
     reg32(base + U_BAUDRATE) = baud_to_reg(baud);
     reg32(base + U_ADDRESS) = 0U;
     reg32(base + U_FRAMETIMEOUT) = kRxFrameTimeoutBits;
@@ -437,6 +438,13 @@ void HardwareSerial::startRxDma() {
     reg32(base + U_EVENTS_FRAMETIMEOUT) = 0U;
     reg32(base + U_ERRORSRC) = 0xFFFFFFFFUL;
 
+    // Enable FRAMETIMEOUT→DMA_RX_STOP shortcut so the idle-line timeout causes a
+    // proper DMA stop that fires DMA_RX_END with the correct byte count.
+    // DMA_RX_AMOUNT is only valid after a DMA completion event; without this
+    // shortcut, flushPartialRxDma would read a stale count from the previous
+    // transfer and corrupt the ring buffer.
+    reg32(base + U_SHORTS) |= UARTE_SHORTS_FRAMETIMEOUT_DMA_RX_STOP_Msk;
+
     memset(_rxDmaBuffer[_rxDmaActive], 0, HardwareSerial::kRxDmaChunkSize);
     reg32(base + U_DMA_RX_PTR) =
         static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&_rxDmaBuffer[_rxDmaActive][0]));
@@ -458,7 +466,8 @@ void HardwareSerial::stopRxDma() {
 
     const uintptr_t base = reinterpret_cast<uintptr_t>(_uart);
     reg32(base + U_INTENCLR) = kUarteRxInterruptMask;
-    reg32(base + U_SHORTS) &= ~UARTE_SHORTS_DMA_RX_END_DMA_RX_START_Msk;
+    reg32(base + U_SHORTS) &= ~(UARTE_SHORTS_DMA_RX_END_DMA_RX_START_Msk |
+                                UARTE_SHORTS_FRAMETIMEOUT_DMA_RX_STOP_Msk);
     reg32(base + U_EVENTS_RXTO) = 0U;
     reg32(base + U_EVENTS_FRAMETIMEOUT) = 0U;
     reg32(base + U_TASKS_DMA_RX_STOP) = UARTE_TASKS_DMA_RX_STOP_STOP_Trigger;
@@ -468,7 +477,22 @@ void HardwareSerial::stopRxDma() {
 }
 
 void HardwareSerial::flushPartialRxDma(uintptr_t base) {
-    (void)base;
+    if (!_rxDmaRunning) {
+        return;
+    }
+
+    uint32_t amount = reg32(base + U_DMA_RX_AMOUNT);
+    if (amount > kRxDmaChunkSize) {
+        amount = kRxDmaChunkSize;
+    }
+    if (amount <= _rxDmaObservedAmount) {
+        return;
+    }
+
+    const uint32_t delta = amount - _rxDmaObservedAmount;
+    commitRxBytes(&_rxDmaBuffer[_rxDmaActive][_rxDmaObservedAmount], delta);
+    _rxDmaObservedAmount = static_cast<uint8_t>(amount);
+    _rxDmaLastActivityUs = micros();
 }
 
 void HardwareSerial::processRxDmaEvents() {
@@ -480,9 +504,33 @@ void HardwareSerial::processRxDmaEvents() {
     if ((reg32(base + U_EVENTS_ERROR) != 0U) || (reg32(base + U_ERRORSRC) != 0U)) {
         reg32(base + U_EVENTS_ERROR) = 0U;
         reg32(base + U_ERRORSRC) = 0xFFFFFFFFUL;
-        stopRxDma();
-        startRxDma();
-        return;
+        // Per nRF54L15 PS §8.25.7, OVERRUN does not stop the UART receiver —
+        // clearing the error flags is sufficient recovery.  Do NOT call
+        // stopRxDma() here: its 708 µs blocking wait for RXTO lets the FIFO
+        // overflow again immediately under a continuous data burst (large paste),
+        // producing another OVERRUN on every restart and permanently breaking RX
+        // until reboot.  Fall through: if MAXCNT was also reached simultaneously,
+        // DMA_RX_END is set below and will flush the valid bytes and restart DMA.
+        // If DMA is still running (< MAXCNT), it continues normally.
+    }
+
+    if (reg32(base + U_EVENTS_DMA_RX_READY) != 0U) {
+        reg32(base + U_EVENTS_DMA_RX_READY) = 0U;
+        // DMA_RX_AMOUNT is stale until DMA_RX_END fires; skip flush here.
+    }
+
+    if (reg32(base + U_EVENTS_FRAMETIMEOUT) != 0U) {
+        reg32(base + U_EVENTS_FRAMETIMEOUT) = 0U;
+        // The FRAMETIMEOUT→DMA_RX_STOP shortcut has already triggered the stop
+        // task.  DMA_RX_END will fire with the correct byte count once the DMA
+        // has stopped; commit bytes there, not here, to avoid reading a stale
+        // DMA_RX_AMOUNT from the previous transfer.
+    }
+
+    if (reg32(base + U_EVENTS_RXTO) != 0U) {
+        reg32(base + U_EVENTS_RXTO) = 0U;
+        // Receiver stopped (follows DMA_RX_STOP).  DMA_RX_END carries the
+        // valid count; do not flush with a potentially stale AMOUNT here.
     }
 
     if (reg32(base + U_EVENTS_DMA_RX_END) == 0U) {
@@ -490,11 +538,7 @@ void HardwareSerial::processRxDmaEvents() {
     }
 
     reg32(base + U_EVENTS_DMA_RX_END) = 0U;
-    uint32_t amount = reg32(base + U_DMA_RX_AMOUNT);
-    if (amount > kRxDmaChunkSize) {
-        amount = kRxDmaChunkSize;
-    }
-    commitRxBytes(_rxDmaBuffer[_rxDmaActive], amount);
+    flushPartialRxDma(base);
     memset(_rxDmaBuffer[_rxDmaActive], 0, kRxDmaChunkSize);
     _rxDmaRunning = false;
     _rxDmaObservedAmount = 0U;
@@ -507,6 +551,7 @@ void HardwareSerial::serviceRxDma() {
         return;
     }
 
+    const uintptr_t base = reinterpret_cast<uintptr_t>(_uart);
     const uint32_t primask = __get_PRIMASK();
     __disable_irq();
     if (!_rxDmaRunning) {
@@ -515,6 +560,13 @@ void HardwareSerial::serviceRxDma() {
         return;
     }
     processRxDmaEvents();
+    // Do NOT call flushPartialRxDma unconditionally here.  On nRF54L15,
+    // DMA_RX_AMOUNT only reflects the last *completed* DMA transfer, not the
+    // in-progress byte count.  Calling it with a stale AMOUNT would commit
+    // zeros from the freshly memset buffer and pin _rxDmaObservedAmount at
+    // the stale value, preventing future partial flushes.  Byte delivery is
+    // handled by the DMA_RX_END path in processRxDmaEvents, which is reached
+    // after the FRAMETIMEOUT→DMA_RX_STOP shortcut fires.
     __set_PRIMASK(primask);
 }
 
@@ -571,8 +623,10 @@ size_t HardwareSerial::write(uint8_t value) {
 
     reg32(base + U_EVENTS_DMA_TX_END) = 0U;
     reg32(base + U_EVENTS_TXSTOPPED) = 0U;
-    reg32(base + U_EVENTS_ERROR) = 0U;
-    reg32(base + U_ERRORSRC) = 0xFFFFFFFFUL;
+    // Do NOT clear EVENTS_ERROR or ERRORSRC here: those registers are shared
+    // with the RX path (ERRORSRC holds only RX error bits on nRF54L15).
+    // Clearing them races with a pending RX OVERRUN IRQ and can hide the error
+    // from processRxDmaEvents, leaving DMA in an unrecovered state.
     reg32(base + U_DMA_TX_PTR) = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&_txByte));
     reg32(base + U_DMA_TX_MAXCNT) = 1U;
 
@@ -581,12 +635,6 @@ size_t HardwareSerial::write(uint8_t value) {
         // Recover on timeout to prevent partial-frame stream corruption.
         reg32(base + U_TASKS_DMA_TX_STOP) = UARTE_TASKS_DMA_TX_STOP_STOP_Trigger;
         wait_event_timeout_us(base, U_EVENTS_TXSTOPPED, 2000UL);
-        reg32(base + U_ERRORSRC) = 0xFFFFFFFFUL;
-        return 0;
-    }
-
-    if (reg32(base + U_EVENTS_ERROR) != 0U) {
-        reg32(base + U_ERRORSRC) = 0xFFFFFFFFUL;
         return 0;
     }
 

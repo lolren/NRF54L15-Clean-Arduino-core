@@ -9,6 +9,8 @@
 extern uint32_t SystemCoreClock;
 extern void SystemCoreClockUpdate(void);
 extern void nrf54l15_clean_idle_service(void);
+extern void nrf54l15_ble_grtc_irq_service(void) __attribute__((weak));
+extern uint32_t nrf54l15_ble_grtc_reserved_cc_mask(void) __attribute__((weak));
 extern uint8_t nrf54l15_bridge_serial_active(void);
 void nrf54l15_core_prepare_system_off_wake_timebase(void);
 void nrf54l15_core_prepare_system_off(void);
@@ -310,8 +312,16 @@ static void initLowPowerTimebase(void)
     // Clear the whole interrupt/event group before using the low-power delay
     // channel, or a stale compare event on another channel can trap the CPU in
     // the IRQ.
-    NRF54L15_GRTC_INTENCLR_REG(g_low_power_grtc) = 0xFFFFFFFFUL;
+    const uint32_t bleReservedMask =
+        (nrf54l15_ble_grtc_reserved_cc_mask != 0)
+            ? nrf54l15_ble_grtc_reserved_cc_mask()
+            : 0U;
+    NRF54L15_GRTC_INTENCLR_REG(g_low_power_grtc) =
+        0xFFFFFFFFUL & ~bleReservedMask;
     for (uint8_t channel = 0; channel < GRTC_CC_MaxCount; ++channel) {
+        if ((bleReservedMask & (1UL << channel)) != 0U) {
+            continue;
+        }
         g_low_power_grtc->CC[channel].CCEN =
             (GRTC_CC_CCEN_ACTIVE_Disable << GRTC_CC_CCEN_ACTIVE_Pos);
         g_low_power_grtc->EVENTS_COMPARE[channel] = 0U;
@@ -351,6 +361,7 @@ static void delayUntilLowPowerCounterUs(uint64_t targetUs)
         lowPowerDisarmDelayWake();
     }
 }
+#endif
 
 #if NRF54L15_GRTC_IRQ_GROUP == 2U
 void GRTC_2_IRQHandler(void)
@@ -360,6 +371,7 @@ void GRTC_1_IRQHandler(void)
 void GRTC_0_IRQHandler(void)
 #endif
 {
+#if defined(NRF54L15_CLEAN_POWER_LOW)
     if (g_low_power_grtc->EVENTS_COMPARE[kLowPowerDelayChannel] != 0U) {
         g_low_power_grtc->EVENTS_COMPARE[kLowPowerDelayChannel] = 0U;
         g_low_power_grtc->CC[kLowPowerDelayChannel].CCEN =
@@ -368,8 +380,11 @@ void GRTC_0_IRQHandler(void)
             (1UL << kLowPowerDelayChannel);
         g_low_power_delay_fired = 1U;
     }
-}
 #endif
+    if (nrf54l15_ble_grtc_irq_service != 0) {
+        nrf54l15_ble_grtc_irq_service();
+    }
+}
 
 static uint8_t delayBoardStateEnter(xiao_nrf54l15_board_state_t* state)
 {
