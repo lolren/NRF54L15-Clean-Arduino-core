@@ -48,8 +48,12 @@ def render_header(version, major, minor, patch):
 def main():
     args = parse_args()
     major, minor, patch = parse_version(args.version)
-    output_path = args.out.resolve()
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    # Path.resolve() on Python 3.5 raises FileNotFoundError when the target
+    # file does not yet exist. Resolve only the parent (which must exist or be
+    # created), then re-attach the filename. This is compatible with Python >= 3.4.
+    parent = args.out.parent
+    parent.mkdir(parents=True, exist_ok=True)
+    output_path = parent.resolve() / args.out.name
     output_path.write_text(
         render_header(args.version, major, minor, patch),
         encoding="utf-8",
