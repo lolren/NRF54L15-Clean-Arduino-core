@@ -129,6 +129,16 @@ static inline volatile uint32_t* regptr(uintptr_t base, uintptr_t off)
     return (volatile uint32_t*)(base + off);
 }
 
+#if defined(NRF54L15_CLEAN_POWER_LOW)
+static const uint16_t kSaadcLowPowerSettleUs = 250U;
+static const uint16_t kSaadcLowPowerRetrySettleUs = 750U;
+static const uint8_t kSaadcLowPowerAttempts = 3U;
+#endif
+static const uint32_t kSaadcCalibrateSpinLimit = 200000UL;
+static const uint32_t kSaadcStartSpinLimit = 200000UL;
+static const uint32_t kSaadcSampleSpinLimit = 400000UL;
+static const uint32_t kSaadcStopSpinLimit = 200000UL;
+
 static inline uint32_t make_psel(uint8_t port, uint8_t pin)
 {
     return ((uint32_t)(pin & 0x1FU) << SAADC_CH_PSELP_PIN_Pos) |
@@ -315,6 +325,25 @@ static void gpio_prepare_analog_input(uint8_t port, uint8_t pin)
     cnf |= GPIO_PIN_CNF_SENSE_Disabled;
     gpio->DIRCLR = bit;
     gpio->PIN_CNF[pin] = cnf;
+}
+
+static uint8_t saadc_wait_event(uintptr_t base, uintptr_t event_off, uint32_t spin_limit)
+{
+    while (spin_limit-- > 0U) {
+        if (*regptr(base, event_off) != 0U) {
+            return 1U;
+        }
+        __NOP();
+    }
+
+    return (*regptr(base, event_off) != 0U) ? 1U : 0U;
+}
+
+static void saadc_stop_and_disable(uintptr_t base)
+{
+    *regptr(base, SAADC_TASKS_STOP) = 1UL;
+    (void)saadc_wait_event(base, SAADC_EVENTS_STOPPED, kSaadcStopSpinLimit);
+    *regptr(base, SAADC_ENABLE) = SAADC_ENABLE_DISABLED;
 }
 
 static void gpio_write_raw(uint8_t port, uint8_t pin, uint8_t high)
@@ -1217,7 +1246,7 @@ static uint32_t scale_resolution(uint32_t value, uint8_t from_bits, uint8_t to_b
     return shifted;
 }
 
-static int saadc_sample_pin(uint8_t port, uint8_t pin, uint8_t resolution_bits)
+static int saadc_sample_pin_once(uint8_t port, uint8_t pin, uint8_t resolution_bits)
 {
     const uintptr_t base = (uintptr_t)NRF_SAADC;
 
@@ -1272,40 +1301,39 @@ static int saadc_sample_pin(uint8_t port, uint8_t pin, uint8_t resolution_bits)
     *regptr(base, SAADC_EVENTS_STOPPED) = 0;
     *regptr(base, SAADC_EVENTS_CALDONE) = 0;
 
+#if defined(NRF54L15_CLEAN_POWER_LOW)
+    delayMicroseconds(kSaadcLowPowerSettleUs);
+#endif
     *regptr(base, SAADC_ENABLE) = SAADC_ENABLE_ENABLED;
     *regptr(base, SAADC_TASKS_CALIBRATE) = 1UL;
-    for (uint32_t guard = 0; guard < 200000UL; ++guard) {
-        if (*regptr(base, SAADC_EVENTS_CALDONE) != 0U) {
-            break;
-        }
+    if (!saadc_wait_event(base, SAADC_EVENTS_CALDONE, kSaadcCalibrateSpinLimit)) {
+        saadc_stop_and_disable(base);
+        return -1;
     }
     *regptr(base, SAADC_EVENTS_CALDONE) = 0;
 
     *regptr(base, SAADC_TASKS_START) = 1UL;
-    for (uint32_t guard = 0; guard < 200000UL; ++guard) {
-        if (*regptr(base, SAADC_EVENTS_STARTED) != 0U) {
-            break;
-        }
+    if (!saadc_wait_event(base, SAADC_EVENTS_STARTED, kSaadcStartSpinLimit)) {
+        saadc_stop_and_disable(base);
+        return -1;
     }
 
     *regptr(base, SAADC_TASKS_SAMPLE) = 1UL;
-    for (uint32_t guard = 0; guard < 400000UL; ++guard) {
-        if (*regptr(base, SAADC_EVENTS_END) != 0U) {
-            break;
-        }
+    if (!saadc_wait_event(base, SAADC_EVENTS_END, kSaadcSampleSpinLimit)) {
+        saadc_stop_and_disable(base);
+        return -1;
     }
 
     *regptr(base, SAADC_TASKS_STOP) = 1UL;
-    for (uint32_t guard = 0; guard < 200000UL; ++guard) {
-        if (*regptr(base, SAADC_EVENTS_STOPPED) != 0U) {
-            break;
-        }
+    if (!saadc_wait_event(base, SAADC_EVENTS_STOPPED, kSaadcStopSpinLimit)) {
+        *regptr(base, SAADC_ENABLE) = SAADC_ENABLE_DISABLED;
+        return -1;
     }
 
     *regptr(base, SAADC_ENABLE) = SAADC_ENABLE_DISABLED;
 
     if (*regptr(base, SAADC_RESULT_AMOUNT) < 2UL) {
-        return 0;
+        return -1;
     }
 
     int32_t value = (int32_t)g_saadc_sample;
@@ -1313,6 +1341,25 @@ static int saadc_sample_pin(uint8_t port, uint8_t pin, uint8_t resolution_bits)
         value = 0;
     }
     return (int)value;
+}
+
+static int saadc_sample_pin(uint8_t port, uint8_t pin, uint8_t resolution_bits)
+{
+#if defined(NRF54L15_CLEAN_POWER_LOW)
+    for (uint8_t attempt = 0U; attempt < kSaadcLowPowerAttempts; ++attempt) {
+        if (attempt != 0U) {
+            delayMicroseconds(kSaadcLowPowerRetrySettleUs);
+        }
+
+        const int value = saadc_sample_pin_once(port, pin, resolution_bits);
+        if (value >= 0) {
+            return value;
+        }
+    }
+    return -1;
+#else
+    return saadc_sample_pin_once(port, pin, resolution_bits);
+#endif
 }
 
 void analogReference(uint8_t mode)
@@ -1490,7 +1537,7 @@ int analogRead(uint8_t pin)
     // Take a second sample after channel setup/calibration to avoid stale first-read artifacts.
     const int first_raw = saadc_sample_pin(d.port, d.pin, hw_bits);
     const int second_raw = saadc_sample_pin(d.port, d.pin, hw_bits);
-    const int raw = (second_raw > 0) ? second_raw : first_raw;
+    const int raw = (second_raw >= 0) ? second_raw : first_raw;
     if (raw <= 0) {
         return 0;
     }
