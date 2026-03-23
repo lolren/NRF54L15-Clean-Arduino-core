@@ -9516,6 +9516,9 @@ bool BleRadio::advertiseOncePrepared(BleAdvertisingChannel channel,
   if (!initialized_ || radio_ == nullptr || connected_) {
     return false;
   }
+  if (pduType_ != BleAdvPduType::kAdvNonConnInd) {
+    return false;
+  }
   if (!setAdvertisingChannel(channel)) {
     return false;
   }
@@ -9940,6 +9943,10 @@ bool BleRadio::advertiseInteractOncePrepared(BleAdvertisingChannel channel,
   }
 
   if (!initialized_ || radio_ == nullptr || connected_) {
+    return false;
+  }
+  if (pduType_ != BleAdvPduType::kAdvInd &&
+      pduType_ != BleAdvPduType::kAdvScanInd) {
     return false;
   }
   if (!setAdvertisingChannel(channel)) {

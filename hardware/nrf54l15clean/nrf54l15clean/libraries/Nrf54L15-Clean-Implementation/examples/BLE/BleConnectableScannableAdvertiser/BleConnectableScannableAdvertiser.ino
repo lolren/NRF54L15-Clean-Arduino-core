@@ -80,13 +80,15 @@ void setup() {
   Gpio::configure(kPinUserLed, GpioDirection::kOutput, GpioPull::kDisabled);
   Gpio::write(kPinUserLed, true);
 
-  g_power.setLatencyMode(PowerLatencyMode::kLowPower);
-
   // Make the antenna path explicit in the example. Use kExternal only if an
   // external antenna is attached.
   bool ok = BoardControl::setAntennaPath(kAntennaPath);
   if (ok) {
     ok = g_ble.begin(kAdvertiserTxPowerDbm);
+  }
+  if (ok) {
+    // Set after begin() so the radio subsystem is already configured.
+    g_power.setLatencyMode(PowerLatencyMode::kLowPower);
   }
   static const uint8_t kAddress[6] = {0x11, 0x00, 0x15, 0x54, 0xDE, 0xC0};
 

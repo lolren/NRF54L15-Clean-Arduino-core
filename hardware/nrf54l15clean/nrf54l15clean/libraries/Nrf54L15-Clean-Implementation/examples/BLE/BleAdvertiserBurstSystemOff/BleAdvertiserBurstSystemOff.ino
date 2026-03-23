@@ -10,7 +10,7 @@ namespace {
  *
  * Battery-optimised beacon pattern using true SYSTEM OFF between bursts:
  *   1. Wake from reset (cold boot via RTC timer after SYSTEM OFF).
- *   2. Initialise BLE and emit kBurstEvents ADV_IND packets.
+ *   2. Initialise BLE and emit kBurstEvents ADV_NONCONN_IND packets.
  *   3. Collapse the RF switch path (removes switch quiescent current).
  *   4. Call systemOffTimedWakeMsNoRetention() → enters SYSTEM OFF.
  *   5. After kSystemOffIntervalMs the RTC fires and the board cold-boots again.
@@ -109,15 +109,17 @@ void sendBurst() {
 
 void setup() {
   configureBoardForBleBurst();
-  // Variable-latency low-power System ON mode before we drop into SYSTEM OFF.
-  gPower.setLatencyMode(PowerLatencyMode::kLowPower);
 
   enableCeramicRfPath();
   bool ok = gBle.begin(kTxPowerDbm);
   if (ok) {
-    // ADV_IND keeps the advertiser scannable/connectable-capable in the legacy
-    // PDU format, even though this sketch is using only brief burst windows.
-    ok = gBle.setAdvertisingPduType(BleAdvPduType::kAdvInd);
+    // Variable-latency low-power System ON mode before we drop into SYSTEM OFF.
+    // Set after begin() so the radio subsystem is already configured.
+    gPower.setLatencyMode(PowerLatencyMode::kLowPower);
+  }
+  if (ok) {
+    // advertiseEvent() is TX-only on this HAL, so use a non-connectable PDU.
+    ok = gBle.setAdvertisingPduType(BleAdvPduType::kAdvNonConnInd);
   }
   if (ok) {
     ok = gBle.setAdvertisingName("X54-BURST-OFF", true);

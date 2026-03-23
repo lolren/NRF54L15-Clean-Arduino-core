@@ -8,9 +8,8 @@
  *
  * Unlike BleNordicUartBridge, this version:
  *   - Always logs connect/disconnect and periodic stats to Serial.
- *   - Does NOT arm the background GRTC service (background service is disabled
- *     in setup). The main loop must spin tightly so pollConnectionEvent() lands
- *     on anchors — avoid adding any delay() in loop().
+ *   - Arms the background GRTC service on connect (same as BleNordicUartBridge)
+ *     so ATT/SMP responses land even when the main loop is briefly delayed.
  *   - The NUS UUID is embedded in the ad packet by ble_nus.begin(); the short
  *     device name fits alongside it so passive scanners see the name directly.
  *
@@ -216,10 +215,6 @@ void setup() {
   delay(350);
   Serial.print("\r\nBleNordicUartBridge start\r\n");
 
-  // kConstantLatency: keeps the CPU clock and radio wake timing deterministic.
-  // Required here because the main loop drives all connection servicing with no
-  // background GRTC interrupt — consistent timing prevents missed anchors.
-  g_power.setLatencyMode(PowerLatencyMode::kConstantLatency);
   Gpio::configure(kPinUserLed, GpioDirection::kOutput, GpioPull::kDisabled);
   Gpio::write(kPinUserLed, true);
 
@@ -237,9 +232,11 @@ void setup() {
          g_ble.setGattDeviceName(kDeviceName) &&
          // Remove any leftover custom GATT services from a previous sketch.
          g_ble.clearCustomGatt() && g_nus.begin();
-    // Background service disabled: this sketch services connections from the main
-    // loop only. pollConnectionEvent() must run tight (< connection interval).
-    g_ble.setBackgroundConnectionServiceEnabled(false);
+  }
+  if (ok) {
+    // kConstantLatency: keeps the CPU clock and radio wake timing deterministic.
+    // Set after BLE init so the radio subsystem is already configured.
+    g_power.setLatencyMode(PowerLatencyMode::kConstantLatency);
   }
 
   Serial.print("BLE NUS init: ");
@@ -281,6 +278,13 @@ void loop() {
     g_connSessionRxDropped = g_nus.rxDroppedBytes();
     g_connSessionTxDropped = g_nus.txDroppedBytes();
     resetBridgeBuffers();
+    // Arm the background GRTC service so ATT/SMP responses are handled even if
+    // the main loop is briefly delayed by Serial.print() calls.
+    g_ble.setBackgroundConnectionServiceEnabled(true);
+    // Ask Android to initiate pairing. Without this, Android may connect
+    // without encrypting, and NUS-capable apps refuse to write the CCCD on
+    // an unencrypted link (seen as "cccd descriptor not writable" in the app).
+    g_ble.sendSmpSecurityRequest();
     Gpio::write(kPinUserLed, false);
     Serial.print("\r\nBLE client connected\r\n");
   }

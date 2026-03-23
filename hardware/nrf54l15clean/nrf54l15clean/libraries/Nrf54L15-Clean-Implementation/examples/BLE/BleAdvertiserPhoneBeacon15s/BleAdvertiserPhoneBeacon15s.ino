@@ -3,7 +3,7 @@
  *
  * Produces the highest phone-detection probability at very low average current
  * by combining two strategies:
- *   1. A "burst" of 14 ADV_IND events spaced 70 ms apart.
+ *   1. A "burst" of 14 ADV_NONCONN_IND events spaced 70 ms apart.
  *   2. A 14-second timed SYSTEM OFF sleep between bursts.
  *
  * Why burst? Phones scan with a ~5-10 s window. Sending several events 70 ms
@@ -39,7 +39,7 @@ constexpr BoardAntennaPath kAntennaPath = BoardAntennaPath::kCeramic;
 constexpr char kName[] = "X54-15S";
 
 // Tuned for phone visibility first, while keeping average current low:
-// - legacy ADV_IND (ADV_NONCONN_IND was not reliably discovered in testing)
+// - legacy ADV_NONCONN_IND
 // - no scan response
 // - no RX listen window
 // - RF path enabled only while emitting an event
@@ -95,9 +95,8 @@ void setup() {
   BoardControl::enableRfPath(kAntennaPath);
   bool ok = gBle.begin(kTxPowerDbm);
   if (ok) {
-    // ADV_IND is used here: ADV_NONCONN_IND was not reliably discovered by
-    // phones in testing (see BleAdvertiserLowestPowerContinuous for context).
-    ok = gBle.setAdvertisingPduType(BleAdvPduType::kAdvInd);
+    // advertiseEvent() is TX-only on this HAL, so use a non-connectable PDU.
+    ok = gBle.setAdvertisingPduType(BleAdvPduType::kAdvNonConnInd);
   }
   if (ok) {
     ok = gBle.setAdvertisingName(kName, true);

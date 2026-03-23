@@ -80,14 +80,17 @@ void sendBurst() {
 
 void setup() {
   configureBoardForHybridDutyCycle();
-  // Keep the core in the low-power latency path while we remain in System ON.
-  gPower.setLatencyMode(PowerLatencyMode::kLowPower);
 
   BoardControl::enableRfPath(kAntennaPath);
   bool ok = gBle.begin(kTxPowerDbm);
   if (ok) {
-    // ADV_IND is the practical default for easy scanner interoperability.
-    ok = gBle.setAdvertisingPduType(BleAdvPduType::kAdvInd);
+    // Keep the core in the low-power latency path while we remain in System ON.
+    // Set after begin() so the radio subsystem is already configured.
+    gPower.setLatencyMode(PowerLatencyMode::kLowPower);
+  }
+  if (ok) {
+    // advertiseEvent() is TX-only on this HAL, so use a non-connectable PDU.
+    ok = gBle.setAdvertisingPduType(BleAdvPduType::kAdvNonConnInd);
   }
   if (ok) {
     ok = gBle.setAdvertisingName("X54-HYBRID", true);

@@ -413,6 +413,11 @@ void loop() {
     g_wasConnected = true;
     Gpio::write(kPinUserLed, false);
     beginSession();
+    // Background GRTC service handles ATT/SMP even when the main loop is briefly
+    // delayed by bridge I/O. sendSmpSecurityRequest() asks Android to initiate
+    // pairing so it encrypts before writing the CCCD (required by NUS apps).
+    g_ble.setBackgroundConnectionServiceEnabled(true);
+    g_ble.sendSmpSecurityRequest();
   }
 
   BleConnectionEvent evt{};
@@ -421,6 +426,12 @@ void loop() {
   if (!eventStarted) {
     g_nus.service();
     return;
+  }
+
+  // Guard against a stale terminateInd from the previous connection that the
+  // HAL event queue may return on the first poll of a new connection.
+  if (evt.terminateInd && g_ble.isConnected()) {
+    evt.terminateInd = false;
   }
 
   g_nus.service(&evt);

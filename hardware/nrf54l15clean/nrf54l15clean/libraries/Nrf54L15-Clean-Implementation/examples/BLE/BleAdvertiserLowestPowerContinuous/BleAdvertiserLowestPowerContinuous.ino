@@ -7,7 +7,7 @@
  *
  * Key constraints that were validated (others caused non-discoverability):
  *   - Default FICR-derived address (no setDeviceAddress).
- *   - ADV_IND PDU type (ADV_NONCONN_IND was not reliably found in testing).
+ *   - ADV_NONCONN_IND PDU type (advertiseEvent() is TX-only on this HAL).
  *   - 3 s advertising interval.
  *   - -10 dBm TX power.
  *
@@ -23,10 +23,10 @@ using namespace xiao_nrf54l15;
 
 namespace {
 // Lowest validated continuous-advertising baseline for the current raw BLE path.
-// This is not yet Zephyr-controller parity. The combinations below were not
-// discoverable in local validation and are intentionally avoided here:
+// This is not yet Zephyr-controller parity. The combinations below are
+// intentionally avoided here:
 // - setDeviceAddress(...)
-// - ADV_NONCONN_IND
+// - connectable/scannable PDUs with advertiseEvent()
 // - 4 s interval at -10 dBm was not discoverable in the same practical scan window
 // - manual HFXO stop/start between events
 //
@@ -35,7 +35,7 @@ namespace {
 // - 3 s interval
 // - -10 dBm
 // - default FICR-derived address
-// - ADV_IND
+// - ADV_NONCONN_IND
 //
 // This example stays continuously discoverable. It does not use SYSTEM OFF.
 // kCeramic: use the on-board patch antenna (validated for this configuration).
@@ -73,16 +73,19 @@ void configureBoardForBleLowPower() {
 
 void setup() {
   configureBoardForBleLowPower();
-  // Low-power latency mode matters here because delay() is part of the idle
-  // path between advertising events.
-  gPower.setLatencyMode(PowerLatencyMode::kLowPower);
 
   bool ok = gBle.begin(kTxPowerDbm);
   if (ok) {
-    ok = gBle.setAdvertisingName("X54-LP-3S", true);
+    // Low-power latency mode matters here because delay() is part of the idle
+    // path between advertising events. Set after begin() so the radio subsystem
+    // is already configured.
+    gPower.setLatencyMode(PowerLatencyMode::kLowPower);
   }
   if (ok) {
-    ok = gBle.buildAdvertisingPacket();
+    ok = gBle.setAdvertisingPduType(BleAdvPduType::kAdvNonConnInd);
+  }
+  if (ok) {
+    ok = gBle.setAdvertisingName("X54-LP-3S", true);
   }
   if (!ok) {
     failStop();

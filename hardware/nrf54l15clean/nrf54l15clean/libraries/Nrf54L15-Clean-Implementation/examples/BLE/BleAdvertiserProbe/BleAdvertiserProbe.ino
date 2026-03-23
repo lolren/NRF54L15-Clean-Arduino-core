@@ -7,9 +7,10 @@
  *
  * Stage map:
  *   failStage(2): g_ble.begin() failed  – BLE radio or HFXO issue.
- *   failStage(3): setAdvertisingName() failed.
- *   failStage(4): buildAdvertisingPacket() failed.
- *   failStage(5): advertiseEvent() failed in loop() – radio timing issue.
+ *   failStage(3): setAdvertisingPduType() failed.
+ *   failStage(4): setAdvertisingName() failed.
+ *   failStage(5): buildAdvertisingPacket() failed.
+ *   failStage(6): advertiseEvent() failed in loop() – radio timing issue.
  *
  * The LED pulses briefly every 200 ms during normal advertising to show
  * liveness. Use BlePassiveScanner on a second board to confirm packets are
@@ -76,23 +77,28 @@ void setup() {
   configureBoard();
   pulse(1, 40U, 120U);
 
-  gPower.setLatencyMode(PowerLatencyMode::kLowPower);
-
   // 0 dBm is chosen here as a practical default for bring-up. The point of
   // this sketch is stage-by-stage diagnostics, not minimum current.
   bool ok = gBle.begin(kTxPowerDbm);
   if (!ok) {
     failStage(2);
   }
+  // Set after begin() so the radio subsystem is already configured.
+  gPower.setLatencyMode(PowerLatencyMode::kLowPower);
 
-  ok = gBle.setAdvertisingName("X54-BLE-BASE", true);
+  ok = gBle.setAdvertisingPduType(BleAdvPduType::kAdvNonConnInd);
   if (!ok) {
     failStage(3);
   }
 
-  ok = gBle.buildAdvertisingPacket();
+  ok = gBle.setAdvertisingName("X54-BLE-BASE", true);
   if (!ok) {
     failStage(4);
+  }
+
+  ok = gBle.buildAdvertisingPacket();
+  if (!ok) {
+    failStage(5);
   }
 
   pulse(2, 35U, 100U);
@@ -101,7 +107,7 @@ void setup() {
 void loop() {
   const bool ok = gBle.advertiseEvent(350U, 700000UL);
   if (!ok) {
-    failStage(5);
+    failStage(6);
   }
 
   // The short LED pulse is just a liveness cue. It is not part of the BLE path.

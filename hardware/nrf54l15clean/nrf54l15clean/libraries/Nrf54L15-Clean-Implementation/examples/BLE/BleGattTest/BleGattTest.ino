@@ -66,8 +66,6 @@ void setup() {
   Gpio::configure(kPinUserLed, GpioDirection::kOutput, GpioPull::kDisabled);
   Gpio::write(kPinUserLed, true);
 
-  g_power.setLatencyMode(PowerLatencyMode::kLowPower);
-
   // setAntennaPath() routes the radio to the selected antenna and powers the
   // RF switch. Must be called before begin() on boards with an RF switch.
   bool ok = BoardControl::setAntennaPath(kAntennaPath);
@@ -77,28 +75,19 @@ void setup() {
 
   static const uint8_t kAddress[6] = {0x11, 0x00, 0x15, 0x54, 0xDE, 0xC0};
 
-  static const uint8_t kAdvPayload[] = {
-      2, 0x01, 0x06,                                   // Flags
-      17, 0x09, 'G', 'A', 'T', 'T', '-', 'T', 'E', 'S',
-      'T', '-', '5', '4', '-', 'N', 'U', 'S'           // Name
-  };
-
   if (ok) {
-    ok = g_ble.setDeviceAddress(kAddress, BleAddressType::kRandomStatic);
+    ok = g_ble.setDeviceAddress(kAddress, BleAddressType::kRandomStatic) &&
+         g_ble.setAdvertisingPduType(BleAdvPduType::kAdvInd) &&
+         // Name ≤ 8 chars fits alongside the NUS UUID in the 31-byte ad payload.
+         g_ble.setGattDeviceName("X54-GATT") &&
+         // clearCustomGatt() removes any GATT services left by a previous sketch.
+         g_ble.clearCustomGatt() &&
+         // g_nus.begin() registers NUS TX/RX characteristics and sets the ad UUID.
+         g_nus.begin();
   }
   if (ok) {
-    ok = g_ble.setAdvertisingPduType(BleAdvPduType::kAdvInd);
-  }
-  if (ok) {
-    ok = g_ble.setAdvertisingData(kAdvPayload, sizeof(kAdvPayload));
-  }
-  if (ok) {
-    ok = g_ble.buildAdvertisingPacket();
-  }
-  if (ok) {
-    // g_nus.begin() registers the NUS service in the GATT table (TX + RX
-    // characteristics with their CCCDs). Must be called after g_ble.begin().
-    ok = g_nus.begin();
+    // Set latency mode after BLE init so the radio subsystem is already configured.
+    g_power.setLatencyMode(PowerLatencyMode::kLowPower);
   }
 
   Serial.print("BLE init: ");
@@ -117,11 +106,23 @@ void loop() {
     if (!g_wasConnected) {
       Serial.println("\r\n*** CONNECTED ***");
       g_wasConnected = true;
+      // Background GRTC service handles ATT/SMP even when the main loop is
+      // briefly delayed. Must be called after connect so the connection handle
+      // is valid. sendSmpSecurityRequest() asks Android to initiate pairing so
+      // it encrypts the link before writing the CCCD (required by NUS apps).
+      g_ble.setBackgroundConnectionServiceEnabled(true);
+      g_ble.sendSmpSecurityRequest();
     }
 
     // Service connection events
     BleConnectionEvent evt{};
     const bool eventProcessed = g_ble.pollConnectionEvent(&evt, 450000UL);
+
+    // Guard against a stale terminateInd from the previous connection that the
+    // HAL event queue may return on the first poll of a new connection.
+    if (evt.terminateInd && g_ble.isConnected()) {
+      evt.terminateInd = false;
+    }
 
     // Service NUS (handles notifications)
     g_nus.service(&evt);
@@ -174,7 +175,6 @@ void loop() {
     if (evt.terminateInd) {
       Serial.println("\r\n*** DISCONNECTED ***");
       g_wasConnected = false;
-      g_nus.service(&evt);  // Clear any pending state
     }
   } else {
     // Not connected - advertise

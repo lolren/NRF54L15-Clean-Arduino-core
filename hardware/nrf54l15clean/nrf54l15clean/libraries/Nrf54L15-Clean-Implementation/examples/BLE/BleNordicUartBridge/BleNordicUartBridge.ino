@@ -80,6 +80,10 @@ static constexpr uint16_t kBleChunkBytes = 20U;
 static constexpr uint32_t kStatusPeriodMs = 2000UL;
 static constexpr uint32_t kDebugPeriodMs = 1000UL;
 static const uint8_t kAddress[6] = {0x38, 0x00, 0x15, 0x54, 0xDE, 0xC0};
+// Device name ≤ 8 chars so it fits alongside the 128-bit NUS UUID in the ad
+// payload (3 flags + 18 UUID + 9 name = 30 bytes). Passive scanners see it
+// without a SCAN_RSP exchange. Must match the name embedded in kNusAdvPayload.
+static constexpr char kDeviceName[] = "X54-NUS";
 static const uint8_t kNusAdvPayload[] = {
     2, 0x01, 0x06,  // Flags: LE General Discoverable + BR/EDR not supported.
     8, 0x09, 'X', '5', '4', '-', 'N', 'U', 'S',  // Complete local name.
@@ -309,7 +313,7 @@ void setup() {
          g_ble.setAdvertisingPduType(BleAdvPduType::kAdvInd) &&
          g_ble.setAdvertisingData(kNusAdvPayload, sizeof(kNusAdvPayload)) &&
          g_ble.setScanResponseData(nullptr, 0U) &&
-         g_ble.setGattDeviceName("X54 NUS Bridge") &&
+         g_ble.setGattDeviceName(kDeviceName) &&
          g_ble.clearCustomGatt() && g_nus.begin();
   }
 
@@ -375,6 +379,10 @@ void loop() {
     if (kEnableBleBgService) {
       g_ble.setBackgroundConnectionServiceEnabled(true);
     }
+    // Ask Android to initiate pairing. Without this, Android may connect
+    // without encrypting, and NUS-capable apps refuse to write the CCCD on
+    // an unencrypted link (seen as "cccd descriptor not writable" in the app).
+    g_ble.sendSmpSecurityRequest();
     Gpio::write(kPinUserLed, false);
     if (kEnableBridgeLogs) {
       Serial.print("\r\nBLE client connected\r\n");

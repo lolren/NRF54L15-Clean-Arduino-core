@@ -10,13 +10,18 @@ using namespace xiao_nrf54l15;
  * BleAdvertiser
  *
  * General-purpose legacy BLE advertiser. More explicit than minimal examples:
- *   - Custom static-random address so it does not clash with other sketches.
  *   - Raw advertising payload (Flags + Complete Name + Manufacturer Data).
  *   - Periodic Serial logging of event count.
  *   - Low-power latency mode between events.
  *
- * This sketch does not gate the RF switch and does not connect – it is a
- * pure TX-only non-connectable advertiser (no ADV_SCAN_IND, no CONNECT_IND).
+ * This sketch uses the per-event enable/collapse RF pattern which is required
+ * for phone discoverability on XIAO nRF54L15. The RF switch is powered only
+ * during each advertiseEvent() call and collapsed during the idle delay.
+ *
+ * Note: setDeviceAddress() is intentionally omitted. Validation on this HAL
+ * showed that calling setDeviceAddress() before advertiseEvent() causes the
+ * device to not be discoverable by phones/scanners. Use the default
+ * FICR-derived address for reliable discoverability.
  *
  * To receive and decode this sketch's packets, use BlePassiveScanner or
  * BleActiveScanner on a second board.
@@ -25,26 +30,14 @@ using namespace xiao_nrf54l15;
  * learn the AD-structure format. Each field is: [length, type, data...].
  */
 
-// General-purpose legacy advertiser example.
-//
-// This sketch is intentionally more explicit than BleBeaconMinimal:
-// - custom static-random address
-// - raw advertising payload
-// - periodic serial logging
-// - low-power latency mode enabled
-//
-// It does not duty-cycle the XIAO RF switch path. Use the dedicated low-power
-// BLE examples if you care about average current.
-
 static BleRadio g_ble;
 static PowerManager g_power;
 
 static uint32_t g_lastLogMs = 0;
 static uint32_t g_advEvents = 0;
 
-// Custom advertising cadence for the raw advertiseEvent() loop.
-// kTxPowerDbm: -8 dBm is a sensible indoor default. Range: -40 to +8 dBm.
-static constexpr int8_t kTxPowerDbm = -8;
+// kTxPowerDbm: 0 dBm for reliable phone discoverability.
+static constexpr int8_t kTxPowerDbm = 0;
 // kAdvertisingIntervalMs: delay() between advertising events (milliseconds).
 static constexpr uint32_t kAdvertisingIntervalMs = 100UL;
 // kInterChannelDelayUs: pause between ch37/38/39 transmissions (microseconds).
@@ -59,31 +52,36 @@ void setup() {
 
   Serial.print("\r\nBleAdvertiser start\r\n");
 
+  BoardControl::setBatterySenseEnabled(false);
+  BoardControl::setImuMicEnabled(false);
   Gpio::configure(kPinUserLed, GpioDirection::kOutput, GpioPull::kDisabled);
   Gpio::write(kPinUserLed, true);
-
-  g_power.setLatencyMode(PowerLatencyMode::kLowPower);
 
   // The name is carried inside the raw advertising payload, not by
   // setAdvertisingName(...), so the payload layout is fully visible here.
   static const uint8_t kAdvPayload[] = {
-      2, 0x01, 0x06,                                // Flags
+      2, 0x01, 0x06,                                 // Flags
       12, 0x09, 'X', 'I', 'A', 'O', '-', '5', '4',  // Complete name
       '-', 'C', 'L', 'N',
-      5, 0xFF, 0x34, 0x12, 0x54, 0x15               // MFG data
+      5, 0xFF, 0x34, 0x12, 0x54, 0x15                // MFG data
   };
-  static const uint8_t kAddress[6] = {0x01, 0x00, 0x15, 0x54, 0xDE, 0xC0};
 
+  // Enable RF path for init, then collapse. The loop re-enables it around
+  // each advertiseEvent() call — required for phone discoverability.
+  BoardControl::enableRfPath(BoardAntennaPath::kCeramic);
   bool ok = g_ble.begin(kTxPowerDbm);
   if (ok) {
-    ok = g_ble.setDeviceAddress(kAddress, BleAddressType::kRandomStatic);
+    // Set after begin() so the radio subsystem is already configured.
+    g_power.setLatencyMode(PowerLatencyMode::kLowPower);
+  }
+  if (ok) {
+    // advertiseEvent() is TX-only on this HAL, so use a non-connectable PDU.
+    ok = g_ble.setAdvertisingPduType(BleAdvPduType::kAdvNonConnInd);
   }
   if (ok) {
     ok = g_ble.setAdvertisingData(kAdvPayload, sizeof(kAdvPayload));
   }
-  if (ok) {
-    ok = g_ble.buildAdvertisingPacket();
-  }
+  BoardControl::collapseRfPathIdle();
 
   Serial.print("BLE init: ");
   Serial.print(ok ? "OK" : "FAIL");
@@ -91,7 +89,11 @@ void setup() {
 }
 
 void loop() {
+  // Per-event enable/collapse required for phone discoverability on XIAO nRF54L15.
+  BoardControl::enableRfPath(BoardAntennaPath::kCeramic);
   const bool txOk = g_ble.advertiseEvent(kInterChannelDelayUs, kAdvertisingSpinLimit);
+  BoardControl::collapseRfPathIdle();
+
   ++g_advEvents;
 
   // User LED is active-low on XIAO.
@@ -110,7 +112,5 @@ void loop() {
     Serial.print(line);
   }
 
-  // This is a plain System ON cadence, not a System OFF beacon pattern.
   delay(kAdvertisingIntervalMs);
-  delay(1);
 }

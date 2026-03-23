@@ -193,6 +193,10 @@ void loop() {
     g_wasConnected = true;
     g_bannerSent = false;
     g_lineLength = 0U;
+    // Ask Android to initiate pairing. Without this, Android may connect
+    // without encrypting, and NUS-capable apps refuse to write the CCCD on
+    // an unencrypted link (seen as "cccd descriptor not writable" in the app).
+    g_ble.sendSmpSecurityRequest();
     Serial.print("BLE console connected\r\n");
   }
 

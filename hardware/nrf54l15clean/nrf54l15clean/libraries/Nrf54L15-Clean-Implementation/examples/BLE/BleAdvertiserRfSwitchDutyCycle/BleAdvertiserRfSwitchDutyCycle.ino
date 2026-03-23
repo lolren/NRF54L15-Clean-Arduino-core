@@ -1,7 +1,7 @@
 /*
  * BleAdvertiserRfSwitchDutyCycle
  *
- * Continuously advertises using legacy ADV_IND but gates the XIAO RF switch
+ * Continuously advertises using legacy ADV_NONCONN_IND but gates the XIAO RF switch
  * path: the switch is powered only during each advertiseEvent() call, then
  * collapsed to high-impedance during the idle delay. This eliminates the
  * RF switch quiescent current between advertising events.
@@ -73,14 +73,17 @@ void configureBoardForBleLowPower() {
 
 void setup() {
   configureBoardForBleLowPower();
-  // This keeps the core on the low-power System ON path between events.
-  gPower.setLatencyMode(PowerLatencyMode::kLowPower);
 
   enableCeramicRfPath();
   bool ok = gBle.begin(kTxPowerDbm);
   if (ok) {
-    // ADV_IND remains the most interoperable choice on the current raw BLE path.
-    ok = gBle.setAdvertisingPduType(BleAdvPduType::kAdvInd);
+    // This keeps the core on the low-power System ON path between events.
+    // Set after begin() so the radio subsystem is already configured.
+    gPower.setLatencyMode(PowerLatencyMode::kLowPower);
+  }
+  if (ok) {
+    // advertiseEvent() is TX-only on this HAL, so use a non-connectable PDU.
+    ok = gBle.setAdvertisingPduType(BleAdvPduType::kAdvNonConnInd);
   }
   if (ok) {
     ok = gBle.setAdvertisingName("X54-RF-GATE", true);

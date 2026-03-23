@@ -256,9 +256,6 @@ void setup() {
   delay(350);
   Serial.print("\r\nBleBackgroundStressProbe start\r\n");
 
-  // kLowPower: CPU scales down between events; compatible with the stress test
-  // because the foreground burn itself provides the load, not the idle policy.
-  g_power.setLatencyMode(PowerLatencyMode::kLowPower);
   Gpio::configure(kPinUserLed, GpioDirection::kOutput, GpioPull::kDisabled);
   Gpio::write(kPinUserLed, true);
 
@@ -267,6 +264,12 @@ void setup() {
   static const uint8_t kAddress[6] = {0x91, 0x00, 0x15, 0x54, 0xDE, 0xC0};
 
   bool ok = g_ble.begin(kTxPowerDbm);
+  if (ok) {
+    // kLowPower: CPU scales down between events; compatible with the stress test
+    // because the foreground burn itself provides the load, not the idle policy.
+    // Set after begin() so the radio subsystem is already configured.
+    g_power.setLatencyMode(PowerLatencyMode::kLowPower);
+  }
   if (ok) {
     ok = g_ble.setDeviceAddress(kAddress, BleAddressType::kRandomStatic) &&
          g_ble.setAdvertisingPduType(BleAdvPduType::kAdvInd) &&

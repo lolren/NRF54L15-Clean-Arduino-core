@@ -1648,6 +1648,8 @@ class BleRadio {
   // device name to the scan response if no scan-response data has been set yet.
   bool setAdvertisingServiceUuid128(const uint8_t uuid128[kCustomGattUuid128Length]);
 
+  // TX-only legacy advertising helpers. These do not listen for SCAN_REQ or
+  // CONNECT_IND, so they require kAdvNonConnInd.
   bool advertiseOnce(BleAdvertisingChannel channel,
                      uint32_t spinLimit = 600000UL);
   bool advertiseEvent(uint32_t interChannelDelayUs = 350U,
@@ -1661,6 +1663,8 @@ class BleRadio {
                                        uint32_t spinLimit = 600000UL);
 
   // Advertise and listen for SCAN_REQ / CONNECT_IND on a single channel.
+  // Use kAdvInd or kAdvScanInd. Directed legacy advertising is not supported
+  // by this helper.
   bool advertiseInteractOnce(BleAdvertisingChannel channel,
                              BleAdvInteraction* interaction,
                              uint32_t requestListenSpinLimit = 250000UL,

@@ -37,8 +37,9 @@ static PowerManager g_power;
 static uint32_t g_nextBurstMs = 0;
 static uint32_t g_bursts = 0;
 
-// -20 dBm: minimum power; change to 0 for more typical discoverability.
-static constexpr int8_t kTxPowerDbm = -20;
+// 0 dBm: use 0 dBm for typical discoverability.
+// Reduce to -10 or -20 dBm to measure lower TX power consumption.
+static constexpr int8_t kTxPowerDbm = 0;
 // kBurstEvents: number of advertising events emitted before sleeping.
 static constexpr uint8_t kBurstEvents = 3U;
 // kBurstGapMs: delay between consecutive events in one burst (milliseconds).
@@ -58,15 +59,24 @@ void setup() {
   Gpio::configure(kPinUserLed, GpioDirection::kOutput, GpioPull::kDisabled);
   Gpio::write(kPinUserLed, true);
 
-  // Keep System ON in low-power latency mode.
-  g_power.setLatencyMode(PowerLatencyMode::kLowPower);
-
   // Lowering the CPU clock from 128 MHz to 64 MHz reduces dynamic current
   // during active TX. The BLE radio timing is unaffected because it uses its
   // own clock source.
   NRF_OSCILLATORS->PLL.FREQ = OSCILLATORS_PLL_FREQ_FREQ_CK64M;
 
+  // enableRfPath() powers and routes the RF switch to the on-board ceramic
+  // antenna. Required before begin() on XIAO nRF54L15; without it no signal
+  // is transmitted and the device will not appear in any scanner.
+  BoardControl::enableRfPath(BoardAntennaPath::kCeramic);
   bool ok = g_ble.begin(kTxPowerDbm);
+  if (ok) {
+    // Keep System ON in low-power latency mode.
+    // Set after begin() so the radio subsystem is already configured.
+    g_power.setLatencyMode(PowerLatencyMode::kLowPower);
+  }
+  if (ok) {
+    ok = g_ble.setAdvertisingPduType(BleAdvPduType::kAdvNonConnInd);
+  }
   if (ok) {
     ok = g_ble.setAdvertisingName("XIAO54-LP", true);
   }
