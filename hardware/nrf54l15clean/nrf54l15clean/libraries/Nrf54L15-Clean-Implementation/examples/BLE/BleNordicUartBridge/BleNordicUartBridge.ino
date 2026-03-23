@@ -385,6 +385,16 @@ void loop() {
   BleConnectionEvent evt{};
   const bool eventStarted =
       g_ble.pollConnectionEvent(&evt, kConnectionPollTimeoutUs) && evt.eventStarted;
+
+  // The HAL deferred event queue is not flushed on disconnect. The first
+  // pollConnectionEvent() of a new connection may return the previous
+  // connection's terminateInd=true. Passing that stale event to
+  // g_nus.service() resets the NUS CCCD state, forcing Android to re-discover
+  // and re-write it — causing the "serial not connected" symptom.
+  if (evt.terminateInd && g_ble.isConnected()) {
+    evt.terminateInd = false;
+  }
+
   if (!eventStarted) {
     g_nus.service();
     stageUsbToBle(kEventNoopStageBytes);
