@@ -11,8 +11,8 @@
  *   - Does NOT arm the background GRTC service (background service is disabled
  *     in setup). The main loop must spin tightly so pollConnectionEvent() lands
  *     on anchors — avoid adding any delay() in loop().
- *   - Holds the NUS UUID in the scan response rather than the ad packet, so the
- *     ad packet carries only the short device name.
+ *   - The NUS UUID is embedded in the ad packet by ble_nus.begin(); the short
+ *     device name fits alongside it so passive scanners see the name directly.
  *
  * Use with any NUS-capable BLE app (nRF Toolbox, Serial Bluetooth Terminal, etc.).
  *
@@ -62,12 +62,10 @@ uint8_t g_usbToBleBuffer[kUsbToBleBufferSize] = {0};
 constexpr int8_t kTxPowerDbm = 0;
 // Unique address — avoids Android reusing a stale GATT cache from another sketch.
 constexpr uint8_t kAddress[6] = {0x35, 0x00, 0x15, 0x54, 0xDE, 0xC0};
-// Scan response carries the full NUS 128-bit UUID so UUID-based scan filters work.
-// Format: [length, type=0x07, uuid_bytes_little_endian...]
-constexpr uint8_t kNusScanResponse[] = {
-    17, 0x07,
-    0x9E, 0xCA, 0xDC, 0x24, 0x0E, 0xE5, 0xA9, 0xE0,
-    0x93, 0xF3, 0xA3, 0xB5, 0x01, 0x00, 0x40, 0x6E};
+// Device name ≤ 8 chars so it fits alongside the 128-bit NUS UUID in the 31-byte
+// ad payload (3 flags + 18 UUID + 9 name = 30 bytes). Passive scanners (e.g.
+// Windows) see the name without needing an active-scan SCAN_RSP exchange.
+constexpr char kDeviceName[] = "X54-NUS";
 
 static const char* disconnectReasonLabel(uint8_t reason) {
   switch (reason) {
@@ -233,12 +231,10 @@ void setup() {
          g_ble.setDeviceAddress(kAddress, BleAddressType::kRandomStatic) &&
          // kAdvInd: connectable + scannable undirected (standard advertising mode).
          g_ble.setAdvertisingPduType(BleAdvPduType::kAdvInd) &&
-         // Short name in ad packet; true = prepend AD Flags (required by BT spec).
-         g_ble.setAdvertisingName("X54-NUS", true) &&
-         // NUS UUID goes in scan response so UUID-based filters work on centrals.
-         g_ble.setScanResponseData(kNusScanResponse, sizeof(kNusScanResponse)) &&
-         // GATT Device Name characteristic (readable by central via ATT handle 0x03).
-         g_ble.setGattDeviceName("X54 NUS Bridge") &&
+         // Name ≤ 8 chars embeds in the ad packet by setAdvertisingServiceUuid128
+         // (called inside g_nus.begin()) alongside the NUS UUID, so passive
+         // scanners see it without a SCAN_RSP exchange.
+         g_ble.setGattDeviceName(kDeviceName) &&
          // Remove any leftover custom GATT services from a previous sketch.
          g_ble.clearCustomGatt() && g_nus.begin();
     // Background service disabled: this sketch services connections from the main

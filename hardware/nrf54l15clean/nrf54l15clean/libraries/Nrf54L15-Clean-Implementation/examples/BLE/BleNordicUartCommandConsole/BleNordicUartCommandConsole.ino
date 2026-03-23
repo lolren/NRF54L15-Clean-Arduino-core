@@ -18,8 +18,8 @@
  * commands; TX characteristic (notify) sends responses to the central.
  * Commands must end with CR or LF (\r or \n).
  *
- * Tip: the NUS service UUID in the scan response (kNusScanResponse) allows
- * NUS-aware apps to identify and connect to this device automatically.
+ * Tip: the NUS service UUID is embedded in the ad packet by ble_nus.begin(),
+ * and the short device name fits alongside it for passive-scanner visibility.
  */
 
 #include <Arduino.h>
@@ -44,10 +44,9 @@ static uint8_t g_lineLength = 0U;
 static constexpr int8_t kTxPowerDbm = 0;
 // Unique address per sketch to avoid Android GATT cache collisions.
 static const uint8_t kAddress[6] = {0x36, 0x00, 0x15, 0x54, 0xDE, 0xC0};
-static const uint8_t kNusScanResponse[] = {
-    17, 0x07,
-    0x9E, 0xCA, 0xDC, 0x24, 0x0E, 0xE5, 0xA9, 0xE0,
-    0x93, 0xF3, 0xA3, 0xB5, 0x01, 0x00, 0x40, 0x6E};
+// Name ≤ 8 chars so it embeds alongside the 128-bit NUS UUID in the 31-byte ad
+// payload (3 flags + 18 UUID + 9 name = 30 bytes). See BleNusBridge for details.
+static constexpr char kDeviceName[] = "X54-CMD";
 
 static void setLed(bool on) {
   g_ledOn = on;
@@ -163,9 +162,7 @@ void setup() {
     ok = g_ble.begin(kTxPowerDbm) &&
          g_ble.setDeviceAddress(kAddress, BleAddressType::kRandomStatic) &&
          g_ble.setAdvertisingPduType(BleAdvPduType::kAdvInd) &&
-         g_ble.setAdvertisingName("X54-NUS-CMD", true) &&
-         g_ble.setScanResponseData(kNusScanResponse, sizeof(kNusScanResponse)) &&
-         g_ble.setGattDeviceName("X54 NUS Console") &&
+         g_ble.setGattDeviceName(kDeviceName) &&
          g_ble.clearCustomGatt() && g_nus.begin();
   }
 

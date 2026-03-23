@@ -9174,14 +9174,25 @@ bool BleRadio::setAdvertisingServiceUuid128(
     payload[used++] = uuid128[kCustomGattUuid128Length - 1U - i];
   }
 
-  if (!setAdvertisingData(payload, used)) {
-    return false;
+  // After flags(3) + UUID(18) = 21 bytes, up to 10 bytes remain in the 31-byte ad payload.
+  // A name ≤ 8 chars fits (2 bytes overhead + N name bytes ≤ 10).
+  // Embedding the name here makes it visible to passive scanners (e.g. Windows
+  // Bluetooth settings) that never send a SCAN_REQ to fetch the scan response.
+  if (gapDeviceNameLen_ > 0U) {
+    const size_t remaining = sizeof(payload) - used;
+    if (gapDeviceNameLen_ + 2U <= remaining) {
+      payload[used++] = static_cast<uint8_t>(gapDeviceNameLen_ + 1U);
+      payload[used++] = 0x09U;  // Complete local name.
+      memcpy(&payload[used], gapDeviceName_, gapDeviceNameLen_);
+      used += gapDeviceNameLen_;
+    } else if (scanRspDataLen_ == 0U) {
+      // Name too long to embed; move to scan response as active-scan fallback.
+      setScanResponseName(reinterpret_cast<const char*>(gapDeviceName_));
+    }
   }
 
-  // Move the GAP device name to scan response so scanners that request more
-  // info (active scan) will still see the human-readable name.
-  if (scanRspDataLen_ == 0U && gapDeviceNameLen_ > 0U) {
-    setScanResponseName(reinterpret_cast<const char*>(gapDeviceName_));
+  if (!setAdvertisingData(payload, used)) {
+    return false;
   }
 
   return true;
