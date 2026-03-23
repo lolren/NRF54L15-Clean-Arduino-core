@@ -23,9 +23,9 @@ MEMORY
     RAM (rwx)       : ORIGIN = 0x20000000, LENGTH = 0x3FE00
 }
 
-/* Stack and Heap Sizes */
+/* Stack size. Heap is not given a fixed size; it fills all RAM between
+ * the end of static sections (.bss, .noinit) and the bottom of the stack. */
 __stack_size__ = 4K;
-__heap_size__ = 4K;
 
 /* Section Definitions */
 SECTIONS
@@ -209,7 +209,11 @@ SECTIONS
     } >RAM
 
     /*
-     * User stack and heap
+     * Heap: grows upward from end of static sections to the bottom of the stack.
+     * __heap_end__ is placed at (top of RAM - stack), so getFreeHeap() reports
+     * the true available dynamic memory instead of a fixed 4 KB ceiling.
+     * Stack: the startup code sets SP to __stack_start__ (top of RAM); the
+     * linker symbol __stack_end__ marks the lowest safe stack address.
      */
     ._user_heap_stack :
     {
@@ -217,9 +221,8 @@ SECTIONS
         PROVIDE ( __heap_start__ = . );
         PROVIDE ( end = . );
         PROVIDE ( _end = . );
-        . = . + __heap_size__;
+        . = ORIGIN(RAM) + LENGTH(RAM) - __stack_size__;
         PROVIDE ( __heap_end__ = . );
-        . = . + __stack_size__;
         . = ALIGN(8);
     } >RAM
     /*

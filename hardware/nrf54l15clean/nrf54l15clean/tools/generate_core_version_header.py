@@ -54,10 +54,15 @@ def main():
     parent = args.out.parent
     parent.mkdir(parents=True, exist_ok=True)
     output_path = parent.resolve() / args.out.name
-    output_path.write_text(
-        render_header(args.version, major, minor, patch),
-        encoding="utf-8",
-    )
+    new_content = render_header(args.version, major, minor, patch)
+    if output_path.exists():
+        try:
+            existing = output_path.read_text(encoding="utf-8")
+            if existing == new_content:
+                return 0
+        except IOError:
+            pass
+    output_path.write_text(new_content, encoding="utf-8")
     return 0
 
 

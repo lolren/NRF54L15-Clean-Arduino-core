@@ -28,7 +28,11 @@ static const uint32_t kSystemOffMinimumLatencyGuardUs = 1000UL;
 static const uint32_t kGrtcStartSettleUs = 93UL;
 #if defined(NRF54L15_CLEAN_POWER_LOW)
 static const uint16_t kLowPowerDelayTimeoutLfclk = 5U;
-static const uint8_t kLowPowerDelayWakeLfclk = 4U;
+/* WAKETIME must cover worst-case HFXO startup (~700 µs) + PLL relock (~200 µs).
+ * 32 LFXO cycles = 32/32768 s ≈ 976 µs, which exceeds the 900 µs worst case.
+ * Too small a value (e.g. 4 cycles ≈ 122 µs) causes SAADC calibration to fail
+ * immediately after delay() because HFXO/PLL has not yet stabilised. */
+static const uint8_t kLowPowerDelayWakeLfclk = 32U;
 static const unsigned long kLowPowerDelayBoardCollapseThresholdMs = 30UL;
 #if NRF54L15_GRTC_IRQ_GROUP == 2U
 static const IRQn_Type kLowPowerTickIrq = GRTC_2_IRQn;
