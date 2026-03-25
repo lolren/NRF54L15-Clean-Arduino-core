@@ -28,11 +28,11 @@ static const uint32_t kSystemOffMinimumLatencyGuardUs = 1000UL;
 static const uint32_t kGrtcStartSettleUs = 93UL;
 #if defined(NRF54L15_CLEAN_POWER_LOW)
 static const uint16_t kLowPowerDelayTimeoutLfclk = 5U;
-/* WAKETIME must cover worst-case HFXO startup (~700 µs) + PLL relock (~200 µs).
- * 32 LFXO cycles = 32/32768 s ≈ 976 µs, which exceeds the 900 µs worst case.
- * Too small a value (e.g. 4 cycles ≈ 122 µs) causes SAADC calibration to fail
- * immediately after delay() because HFXO/PLL has not yet stabilised. */
-static const uint8_t kLowPowerDelayWakeLfclk = 32U;
+/* Keep the hardware wake lead at the last known-good value on Sense hardware.
+ * Leave the final ~1 ms of delay() in active CPU time so post-delay code sees
+ * settled clocks without stretching the requested delay duration. */
+static const uint8_t kLowPowerDelayWakeLfclk = 4U;
+static const uint32_t kLowPowerDelayPostWakeSettleUs = 1000UL;
 #if NRF54L15_GRTC_IRQ_GROUP == 2U
 static const IRQn_Type kLowPowerTickIrq = GRTC_2_IRQn;
 #elif NRF54L15_GRTC_IRQ_GROUP == 1U
@@ -344,6 +344,11 @@ void nrf54l15_core_bootstrap_low_power_timebase(void)
 
 static void delayUntilLowPowerCounterUs(uint64_t targetUs)
 {
+    const uint64_t sleepTargetUs =
+        (targetUs > (uint64_t)kLowPowerDelayPostWakeSettleUs)
+            ? (targetUs - (uint64_t)kLowPowerDelayPostWakeSettleUs)
+            : 0ULL;
+
     if ((__get_PRIMASK() & 1U) != 0U) {
         while ((int64_t)(targetUs - readLowPowerCounterUs()) > 0) {
             nrf54l15_clean_idle_service();
@@ -352,17 +357,22 @@ static void delayUntilLowPowerCounterUs(uint64_t targetUs)
         return;
     }
 
-    while ((int64_t)(targetUs - readLowPowerCounterUs()) > 0) {
+    while ((int64_t)(sleepTargetUs - readLowPowerCounterUs()) > 0) {
         nrf54l15_clean_idle_service();
-        lowPowerArmDelayWake(targetUs);
+        lowPowerArmDelayWake(sleepTargetUs);
         nrf54l15_serial_prepare_idle_sleep();
         const uint32_t restoreRaw = beginIdleSleep();
         while ((g_low_power_delay_fired == 0U) &&
-               ((int64_t)(targetUs - readLowPowerCounterUs()) > 0)) {
+               ((int64_t)(sleepTargetUs - readLowPowerCounterUs()) > 0)) {
             __asm volatile("wfi");
         }
         endIdleSleep(restoreRaw);
         lowPowerDisarmDelayWake();
+    }
+
+    while ((int64_t)(targetUs - readLowPowerCounterUs()) > 0) {
+        nrf54l15_clean_idle_service();
+        __NOP();
     }
 }
 #endif
