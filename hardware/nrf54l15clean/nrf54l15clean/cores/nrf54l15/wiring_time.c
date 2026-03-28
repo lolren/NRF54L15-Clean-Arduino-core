@@ -10,7 +10,6 @@ extern uint32_t SystemCoreClock;
 extern void SystemCoreClockUpdate(void);
 extern void nrf54l15_clean_idle_service(void);
 extern void nrf54l15_serial_prepare_idle_sleep(void);
-extern uint8_t nrf54l15_bridge_serial_active(void) __attribute__((weak));
 extern void nrf54l15_ble_grtc_irq_service(void) __attribute__((weak));
 extern uint32_t nrf54l15_ble_grtc_reserved_cc_mask(void) __attribute__((weak));
 void nrf54l15_core_prepare_system_off_wake_timebase(void);
@@ -428,16 +427,6 @@ static void delayBoardStateExit(const xiao_nrf54l15_board_state_t* state, uint8_
 #endif
 }
 
-static uint8_t delayAutoBoardStateEnabled(void)
-{
-#if defined(ARDUINO_XIAO_NRF54L15)
-    return (nrf54l15_bridge_serial_active == 0 ||
-            nrf54l15_bridge_serial_active() == 0U) ? 1U : 0U;
-#else
-    return 0U;
-#endif
-}
-
 static uint8_t systemOffWakeChannel(void)
 {
 #if defined(ARDUINO_XIAO_NRF54L15)
@@ -682,16 +671,13 @@ void delay(unsigned long ms)
         return;
     }
 
-    xiao_nrf54l15_board_state_t boardState;
-    const uint8_t boardStateActive =
-        delayAutoBoardStateEnabled() ? delayBoardStateEnter(&boardState) : 0U;
     initLowPowerTimebase();
     const uint64_t targetUs = readLowPowerCounterUs() + ((uint64_t)ms * 1000ULL);
-    // Collapse XIAO board state only when the SAMD11 bridge UART is inactive.
-    // That matches the low-power measurement examples without breaking sketches
-    // that expect bridge-backed Serial or other board-control rails to persist.
+    // Keep plain delay() Arduino-compatible. Sketches may hold board-control
+    // rails such as VBAT_EN or RF switch power high across the delay and
+    // expect that state to remain asserted. delayLowPowerIdle() is the
+    // explicit low-power helper that collapses and restores board state.
     delayUntilLowPowerCounterUs(targetUs);
-    delayBoardStateExit(&boardState, boardStateActive);
 #else
     const unsigned long start = millis();
     while ((millis() - start) < ms) {
