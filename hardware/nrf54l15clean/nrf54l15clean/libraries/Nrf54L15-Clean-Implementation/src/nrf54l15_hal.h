@@ -12,6 +12,7 @@ namespace xiao_nrf54l15 {
 
 extern "C" void nrf54l15_ble_idle_service(void);
 extern "C" void nrf54l15_ble_grtc_irq_service(void);
+extern "C" void nrf54l15_ble_clock_irq_service(void);
 extern "C" uint32_t nrf54l15_ble_grtc_reserved_cc_mask(void);
 extern "C" void PendSV_Handler(void);
 
@@ -291,6 +292,7 @@ class Dppic {
 
   bool enableChannel(uint8_t channel, bool enable = true);
   bool channelEnabled(uint8_t channel) const;
+  bool configureChannelGroup(uint8_t group, uint32_t channelMask) const;
   bool configurePublish(volatile uint32_t* publishRegister,
                         uint8_t channel,
                         bool enable = true) const;
@@ -314,9 +316,11 @@ class CracenRng {
                      uint32_t coreBase = nrf54l15::CRACENCORE_BASE);
 
   bool begin(uint32_t spinLimit = 400000UL);
+  bool beginNonBlocking();
   void end();
   bool fill(void* data, size_t length, uint32_t spinLimit = 400000UL);
   bool randomWord(uint32_t* outWord, uint32_t spinLimit = 400000UL);
+  bool tryRandomWord(uint32_t* outWord);
   uint32_t availableWords() const;
   uint32_t status() const;
   bool healthy() const;
@@ -693,10 +697,13 @@ enum class BoardAntennaPath : uint8_t {
 
 class BoardControl {
  public:
-  // Control RF switch path on P2.05:
+  // Control the desired active RF switch path on P2.05:
   // - ceramic/external actively drive RF_SW_CTL
   // - control-high-impedance releases control pin (no active drive)
   static bool setAntennaPath(BoardAntennaPath path);
+
+  // Returns the observed current RF switch route on the board without
+  // changing the remembered desired active path.
   static BoardAntennaPath antennaPath();
 
   // Controls the shared IMU + microphone power/enable rail on XIAO nRF54L15.
@@ -1552,6 +1559,50 @@ struct BleEncryptionDebugCounters {
   uint8_t reserved2;
 };
 
+struct BleBackgroundAdvertisingDebugCounters {
+  uint32_t irqCompareCount;
+  uint32_t serviceRunCount;
+  uint32_t idleFallbackCount;
+  uint32_t randomHardwareCount;
+  uint32_t randomFallbackCount;
+  uint32_t eventArmCount;
+  uint32_t eventCompleteCount;
+  uint32_t stageAdvanceCount;
+  uint32_t rfPathPrewarmRestoreCount;
+  uint32_t rfPathIdleCollapseCount;
+  uint32_t constlatServiceObservedCount;
+  uint32_t lowPowerReleaseCount;
+  uint32_t constlatPrewarmHardwareCount;
+  uint32_t constlatPrewarmFallbackCount;
+  uint32_t txReadyCount;
+  uint32_t txStartKickCount;
+  uint32_t txKickRetryCount;
+  uint32_t txKickFallbackCount;
+  uint32_t clockIrqCount;
+  uint32_t clockXotunedCount;
+  uint32_t clockXotuneErrorCount;
+  uint32_t clockXotuneFailedCount;
+  uint32_t txSettleTimeoutCount;
+  uint32_t txPhyendCount;
+  uint32_t txDisabledCount;
+  uint32_t lastEventStartUs;
+  uint32_t lastCompletedEventStartUs;
+  uint32_t lastServiceUs;
+  uint32_t lastRandomDelayUs;
+  uint8_t lastChannel;
+  uint8_t currentStage;
+  uint8_t enabled;
+  uint8_t threeChannel;
+  uint8_t rfPathManaged;
+  uint8_t rfPathActive;
+  uint8_t latencyManaged;
+  uint8_t constlatActive;
+  uint8_t lastRadioState;
+  uint8_t lastTxReadySeen;
+  uint8_t lastTxPhyendSeen;
+  uint8_t lastTxDisabledSeen;
+};
+
 struct BleBondRecord {
   uint8_t peerAddress[6];
   uint8_t peerAddressRandom;
@@ -1669,6 +1720,27 @@ class BleRadio {
                      uint32_t spinLimit = 600000UL);
   bool advertiseEvent(uint32_t interChannelDelayUs = 350U,
                       uint32_t spinLimit = 600000UL);
+  // First controller-offload milestone: one legacy non-connectable advertising
+  // packet on one primary advertising channel with fixed interval scheduling.
+  // Optional Bluetooth random advertising delay is applied inside the
+  // background scheduler when requested. Software still owns interval
+  // programming and packet state; GRTC/DPPI/PPIB own the exact HFXO/RADIO
+  // launch path for each event.
+  bool beginBackgroundAdvertising(
+      uint32_t intervalMs,
+      BleAdvertisingChannel channel = BleAdvertisingChannel::k37,
+      uint32_t hfxoLeadUs = 1200U,
+      bool addRandomDelay = false);
+  bool beginBackgroundAdvertising3Channel(uint32_t intervalMs,
+                                          uint32_t interChannelDelayUs = 350U,
+                                          uint32_t hfxoLeadUs = 1200U,
+                                          bool addRandomDelay = false);
+  void stopBackgroundAdvertising();
+  bool isBackgroundAdvertisingEnabled() const;
+  uint8_t getBackgroundAdvertisingLastStopReason() const;
+  void getBackgroundAdvertisingDebugCounters(
+      BleBackgroundAdvertisingDebugCounters* out) const;
+  void clearBackgroundAdvertisingDebugCounters();
   bool advertiseExtendedEvent(uint32_t auxOffsetUs = 3000U,
                               uint32_t interPrimaryDelayUs = 350U,
                               uint32_t spinLimit = 600000UL);
@@ -1786,17 +1858,49 @@ class BleRadio {
     uint8_t value[kCustomGattMaxValueLength];
   };
 
+  struct BleLegacyAdvertisingConfigSnapshot {
+    BleAddressType addressType;
+    BleAdvPduType pduType;
+    bool useChSel2;
+    uint8_t address[6];
+    uint8_t advData[kBleLegacyAdDataMaxLength];
+    size_t advDataLen;
+    uint8_t scanRspData[kBleLegacyAdDataMaxLength];
+    size_t scanRspDataLen;
+  };
+
+  struct BleBackgroundAdvertisingRestartState {
+    bool active;
+    bool threeChannel;
+    bool randomDelay;
+    BleAdvertisingChannel channel;
+    uint32_t intervalMs;
+    uint32_t interChannelDelayUs;
+    uint32_t hfxoLeadUs;
+  };
+
   bool configureBle1M();
   bool beginUnconnectedRadioActivity(uint32_t spinLimit = 1500000UL);
   void endUnconnectedRadioActivity();
   bool ensureRfPathActiveForBle();
   void releaseRfPathForBle();
+  void captureLegacyAdvertisingConfigSnapshot(
+      BleLegacyAdvertisingConfigSnapshot* out) const;
+  void restoreLegacyAdvertisingConfigSnapshot(
+      const BleLegacyAdvertisingConfigSnapshot& snapshot);
+  void captureBackgroundAdvertisingRestartState(
+      BleBackgroundAdvertisingRestartState* out) const;
+  bool restartBackgroundAdvertisingFromState(
+      const BleBackgroundAdvertisingRestartState& state);
+  void snapshotBackgroundAdvertisingRfPathRestoreState();
+  void restoreBackgroundAdvertisingRfPathRestoreState();
   bool buildExtendedAdvertisingPackets(uint32_t auxOffsetUs,
                                        uint32_t* actualAuxOffsetUs = nullptr);
   bool buildExtendedScannableAdvertisingPackets(
       uint32_t auxOffsetUs,
       uint32_t* actualAuxOffsetUs = nullptr,
       uint32_t* actualScanRspChainOffsetUs = nullptr);
+  bool kickPreparedPacketOnCurrentChannel(const uint8_t* packet);
   bool transmitPreparedPacketOnCurrentChannel(const uint8_t* packet,
                                               uint32_t spinLimit,
                                               uint32_t* txReadyUs = nullptr);
@@ -1886,6 +1990,21 @@ class BleRadio {
   void emitBleTrace(const char* message) const;
   void rememberDisconnectReason(uint8_t reason, bool remote);
   bool pollConnectionEventCore(BleConnectionEvent* event, uint32_t spinLimit);
+  bool prepareBackgroundAdvertisingEvent();
+  bool configureBackgroundAdvertisingHardware(bool enable);
+  bool armBackgroundAdvertising(uint32_t targetTxUs, bool prewarmHfxo,
+                                bool stopHfxoAfterTx);
+  bool rescheduleBackgroundAdvertisingTxCompare(uint8_t compareChannel);
+  bool rescheduleBackgroundAdvertisingService(uint8_t compareChannel);
+  bool reconfigureBackgroundAdvertisingTxKick(bool useIrqKick);
+  bool handleBackgroundAdvertisingPrewarmEvent();
+  bool settleBackgroundAdvertisingRadioBeforeService(uint32_t waitBudgetUs);
+  void collapseBackgroundAdvertisingRfPathIfManaged();
+  bool backgroundAdvertisingConsumePendingPrewarmFromFallback();
+  bool backgroundAdvertisingNeedsIdleService() const;
+  bool backgroundAdvertisingConsumePendingCompareFromFallback();
+  bool serviceBackgroundAdvertising();
+  bool backgroundServicesActive() const;
   bool armBackgroundConnectionService();
   void stopBackgroundConnectionService();
   bool consumeDeferredConnectionEvent(BleConnectionEvent* event);
@@ -1905,6 +2024,7 @@ class BleRadio {
   static uint32_t txPowerRegFromDbm(int8_t dbm);
   friend void nrf54l15_ble_idle_service(void);
   friend void nrf54l15_ble_grtc_irq_service(void);
+  friend void nrf54l15_ble_clock_irq_service(void);
   friend uint32_t nrf54l15_ble_grtc_reserved_cc_mask(void);
 
   NRF_RADIO_Type* radio_;
@@ -1939,6 +2059,9 @@ class BleRadio {
 
   bool connected_;
   bool rfPathOwnedByBle_;
+  bool backgroundAdvertisingRestoreRfPathValid_;
+  bool backgroundAdvertisingRestoreRfPathPowerEnabled_;
+  BoardAntennaPath backgroundAdvertisingRestoreRfPath_;
   uint8_t connectionPeerAddress_[6];
   bool connectionPeerAddressRandom_;
   uint32_t connectionAccessAddress_;
@@ -1996,6 +2119,32 @@ class BleRadio {
   uint8_t connectionPreparedWriteValue_[2];
   uint8_t connectionPreparedWriteMask_;
   static constexpr uint8_t kDeferredConnectionEventDepth = 8U;
+  bool backgroundAdvertisingEnabled_;
+  bool backgroundAdvertisingArmed_;
+  bool backgroundAdvertisingInProgress_;
+  bool backgroundAdvertisingDue_;
+  bool backgroundAdvertisingThreeChannel_;
+  bool backgroundAdvertisingRandomDelay_;
+  bool backgroundAdvertisingManageRfPath_;
+  bool backgroundAdvertisingRfPathCollapsed_;
+  bool backgroundAdvertisingUseIrqTxKick_;
+  bool backgroundAdvertisingManageLatency_;
+  bool backgroundAdvertisingConstlatHardwareVerified_;
+  bool backgroundAdvertisingAwaitingHfxoTuned_;
+  BleAdvertisingChannel backgroundAdvertisingChannel_;
+  uint32_t backgroundAdvertisingIntervalUs_;
+  uint32_t backgroundAdvertisingInterChannelDelayUs_;
+  uint32_t backgroundAdvertisingHfxoLeadUs_;
+  uint32_t backgroundAdvertisingNextTxUs_;
+  uint32_t backgroundAdvertisingServiceUs_;
+  uint32_t backgroundAdvertisingEventStartTxUs_;
+  uint32_t backgroundAdvertisingRandomState_;
+  uint8_t backgroundAdvertisingPrimaryStage_;
+  uint8_t backgroundAdvertisingLastStopReason_;
+  uint8_t backgroundAdvertisingTxKickRetryCountCurrent_;
+  uint8_t backgroundAdvertisingPendingTxCompareChannel_;
+  uint8_t backgroundAdvertisingPendingServiceCompareChannel_;
+  BleBackgroundAdvertisingDebugCounters backgroundAdvertisingDebug_;
   bool backgroundConnectionServiceEnabled_;
   bool backgroundConnectionServiceArmed_;
   bool backgroundConnectionServiceInProgress_;

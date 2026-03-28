@@ -40,14 +40,19 @@ PowerManager g_power;
 constexpr uint16_t kUsbToBleBufferSize = 1024U;   // Staging buffer for USB→BLE direction.
 constexpr uint8_t kUsbToBleChunkBytes = 20U;       // Max bytes per NUS TX notification.
 constexpr uint16_t kUsbStageBudgetBytes = 128U;    // Bytes drained from USB per event.
+constexpr bool kEnableBleBgService = false;
 // pollConnectionEvent spin limit in µs. Keep short so we don't miss 7.5 ms anchors.
 constexpr uint32_t kConnectionPollTimeoutUs = 3000UL;
+constexpr uint32_t kBridgeWarmupMs = 500UL;
+constexpr bool kRequestLinkSecurity = false;
 constexpr uint32_t kStatusPeriodMs = 2000UL;       // How often to print streaming stats.
 constexpr uint8_t kNoBytes = 0U;
 
 bool g_wasConnected = false;
 bool g_bannerSent = false;
+bool g_securityRequested = false;
 uint32_t g_lastStatusMs = 0U;
+uint32_t g_connectedAtMs = 0U;
 uint32_t g_connSessionRxDropped = 0U;
 uint32_t g_connSessionTxDropped = 0U;
 uint16_t g_usbToBleHead = 0U;
@@ -192,6 +197,21 @@ static void printStreamingStats() {
   Serial.print("\r\n");
 }
 
+static bool bridgeWarmupElapsed(uint32_t nowMs) {
+  return (nowMs - g_connectedAtMs) >= kBridgeWarmupMs;
+}
+
+static void maybeRequestLinkSecurity(uint32_t nowMs) {
+  if (!kRequestLinkSecurity || g_securityRequested || !g_ble.isConnected()) {
+    return;
+  }
+  if (!bridgeWarmupElapsed(nowMs)) {
+    return;
+  }
+  g_securityRequested = true;
+  g_ble.sendSmpSecurityRequest();
+}
+
 static void pumpUsbToBleWhenReady(int maxBytes) {
   stageUsbToBle(maxBytes);
   if (g_nus.isNotifyEnabled() && g_usbToBleCount > 0U) {
@@ -257,6 +277,7 @@ void loop() {
     if (g_wasConnected) {
       g_wasConnected = false;
       g_bannerSent = false;
+      g_securityRequested = false;
       resetBridgeBuffers();
       printDropCounters();
       printStreamingStats();
@@ -276,16 +297,16 @@ void loop() {
   if (!g_wasConnected) {
     g_wasConnected = true;
     g_bannerSent = false;
+    g_securityRequested = false;
+    g_connectedAtMs = millis();
     g_connSessionRxDropped = g_nus.rxDroppedBytes();
     g_connSessionTxDropped = g_nus.txDroppedBytes();
     resetBridgeBuffers();
     // Arm the background GRTC service so ATT/SMP responses are handled even if
     // the main loop is briefly delayed by Serial.print() calls.
-    g_ble.setBackgroundConnectionServiceEnabled(true);
-    // Ask Android to initiate pairing. Without this, Android may connect
-    // without encrypting, and NUS-capable apps refuse to write the CCCD on
-    // an unencrypted link (seen as "cccd descriptor not writable" in the app).
-    g_ble.sendSmpSecurityRequest();
+    if (kEnableBleBgService) {
+      g_ble.setBackgroundConnectionServiceEnabled(true);
+    }
     Gpio::write(kPinUserLed, false);
     Serial.print("\r\nBLE client connected\r\n");
   }
@@ -306,12 +327,19 @@ void loop() {
 
   if (!eventStarted) {
     g_nus.service();
+    const uint32_t nowMs = millis();
+    maybeRequestLinkSecurity(nowMs);
+    if (!bridgeWarmupElapsed(nowMs)) {
+      return;
+    }
     stageUsbToBle(2);
     pumpUsbToBleWhenReady(2);
     return;
   }
 
   g_nus.service(&evt);
+  const uint32_t nowMs = millis();
+  maybeRequestLinkSecurity(nowMs);
   if (evt.terminateInd) {
     Serial.print("BLE link terminated");
     if (evt.disconnectReasonValid) {
@@ -328,6 +356,10 @@ void loop() {
     }
     Serial.print("\r\n");
     printDropCounters();
+  }
+
+  if (!bridgeWarmupElapsed(nowMs)) {
+    return;
   }
 
   // Only pump UART after a real connection event.

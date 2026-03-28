@@ -31,7 +31,13 @@ constexpr uint32_t FICR_BASE = 0x00FFC000UL;
 #ifdef NRF_TRUSTZONE_NONSECURE
 constexpr uint32_t COMP_BASE = 0x40106000UL;
 constexpr uint32_t LPCOMP_BASE = 0x40106000UL;
+constexpr uint32_t DPPIC10_BASE = 0x40082000UL;
 constexpr uint32_t DPPIC20_BASE = 0x400C2000UL;
+constexpr uint32_t DPPIC30_BASE = 0x40102000UL;
+constexpr uint32_t PPIB11_BASE = 0x40084000UL;
+constexpr uint32_t PPIB21_BASE = 0x400C4000UL;
+constexpr uint32_t PPIB22_BASE = 0x400C5000UL;
+constexpr uint32_t PPIB30_BASE = 0x40103000UL;
 constexpr uint32_t AAR00_BASE = 0x40046000UL;
 constexpr uint32_t CCM00_BASE = 0x40046000UL;
 constexpr uint32_t ECB00_BASE = 0x40047000UL;
@@ -60,7 +66,13 @@ constexpr uint32_t REGULATORS_BASE = 0x40120000UL;
 #else
 constexpr uint32_t COMP_BASE = 0x50106000UL;
 constexpr uint32_t LPCOMP_BASE = 0x50106000UL;
+constexpr uint32_t DPPIC10_BASE = 0x50082000UL;
 constexpr uint32_t DPPIC20_BASE = 0x500C2000UL;
+constexpr uint32_t DPPIC30_BASE = 0x50102000UL;
+constexpr uint32_t PPIB11_BASE = 0x50084000UL;
+constexpr uint32_t PPIB21_BASE = 0x500C4000UL;
+constexpr uint32_t PPIB22_BASE = 0x500C5000UL;
+constexpr uint32_t PPIB30_BASE = 0x50103000UL;
 constexpr uint32_t AAR00_BASE = 0x50046000UL;
 constexpr uint32_t CCM00_BASE = 0x50046000UL;
 constexpr uint32_t ECB00_BASE = 0x50047000UL;

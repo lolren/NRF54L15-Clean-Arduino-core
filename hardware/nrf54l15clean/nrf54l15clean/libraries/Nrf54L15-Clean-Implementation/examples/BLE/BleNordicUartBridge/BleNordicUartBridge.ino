@@ -43,9 +43,11 @@ static PowerManager g_power;
 
 static bool g_wasConnected = false;
 static bool g_bannerSent = false;
+static bool g_securityRequested = false;
 static uint32_t g_lastStatusMs = 0U;
 static uint32_t g_lastSelfTestMs = 0U;
 static uint32_t g_lastBleDbgMs = 0U;
+static uint32_t g_connectedAtMs = 0U;
 static uint32_t g_usbDroppedBytes = 0U;
 static uint32_t g_bleDroppedBytes = 0U;
 
@@ -70,7 +72,9 @@ static constexpr bool kUseFixedAddress = true;
 // Debug aid: when enabled, the sketch generates a known ASCII stream internally
 // (no USB input) to help isolate BLE TX corruption vs. USB-UART bridge issues.
 static constexpr bool kEnableSelfTestTx = false;
-static constexpr bool kEnableBleBgService = true;
+static constexpr bool kEnableBleBgService = false;
+static constexpr uint32_t kBridgeWarmupMs = 500UL;
+static constexpr bool kRequestLinkSecurity = false;
 static constexpr uint32_t kConnectionPollTimeoutUs = 2000UL;
 static constexpr uint16_t kEventNoopStageBytes = 256U;
 static constexpr uint16_t kEventPumpBytes = 64U;
@@ -174,6 +178,21 @@ static void printBleDebug(uint32_t nowMs) {
   Serial.print("/");
   Serial.print(g_bleToUsbCount);
   Serial.print("\r\n");
+}
+
+static bool bridgeWarmupElapsed(uint32_t nowMs) {
+  return (nowMs - g_connectedAtMs) >= kBridgeWarmupMs;
+}
+
+static void maybeRequestLinkSecurity(uint32_t nowMs) {
+  if (!kRequestLinkSecurity || g_securityRequested || !g_ble.isConnected()) {
+    return;
+  }
+  if (!bridgeWarmupElapsed(nowMs)) {
+    return;
+  }
+  g_securityRequested = true;
+  g_ble.sendSmpSecurityRequest();
 }
 
 static void stageUsbToBle(int maxBytes) {
@@ -352,6 +371,7 @@ void loop() {
     if (g_wasConnected) {
       g_wasConnected = false;
       g_bannerSent = false;
+      g_securityRequested = false;
       clearBridgeBuffers();
       Gpio::write(kPinUserLed, true);
       g_lastBleDbgMs = 0U;
@@ -374,15 +394,13 @@ void loop() {
   if (!g_wasConnected) {
     g_wasConnected = true;
     g_bannerSent = false;
+    g_securityRequested = false;
+    g_connectedAtMs = millis();
     g_lastBleDbgMs = 0U;
     g_ble.clearEncryptionDebugCounters();
     if (kEnableBleBgService) {
       g_ble.setBackgroundConnectionServiceEnabled(true);
     }
-    // Ask Android to initiate pairing. Without this, Android may connect
-    // without encrypting, and NUS-capable apps refuse to write the CCCD on
-    // an unencrypted link (seen as "cccd descriptor not writable" in the app).
-    g_ble.sendSmpSecurityRequest();
     Gpio::write(kPinUserLed, false);
     if (kEnableBridgeLogs) {
       Serial.print("\r\nBLE client connected\r\n");
@@ -405,6 +423,11 @@ void loop() {
 
   if (!eventStarted) {
     g_nus.service();
+    const uint32_t nowMs = millis();
+    maybeRequestLinkSecurity(nowMs);
+    if (!bridgeWarmupElapsed(nowMs)) {
+      return;
+    }
     stageUsbToBle(kEventNoopStageBytes);
     stageBleToUsb(kEventNoopStageBytes);
     pumpUsbToBle(kEventPumpBytes);
@@ -413,8 +436,10 @@ void loop() {
   }
 
   g_nus.service(&evt);
+  const uint32_t nowMs = millis();
+  maybeRequestLinkSecurity(nowMs);
   if (kEnableBridgeLogs) {
-    printBleDebug(millis());
+    printBleDebug(nowMs);
   }
   if (evt.terminateInd) {
     if (kEnableBridgeLogs) {
@@ -435,6 +460,10 @@ void loop() {
     }
   }
 
+  if (!bridgeWarmupElapsed(nowMs)) {
+    return;
+  }
+
   // Only pump UART after a real connection event.
   selfTestTx();
   if (!kEnableSelfTestTx) {
@@ -449,7 +478,6 @@ void loop() {
     g_nus.print("X54 Nordic UART bridge ready\r\n");
   }
 
-  const uint32_t nowMs = millis();
   if (kEnableBridgeLogs && (nowMs - g_lastStatusMs) >= kStatusPeriodMs) {
     g_lastStatusMs = nowMs;
     Serial.print("notify=");

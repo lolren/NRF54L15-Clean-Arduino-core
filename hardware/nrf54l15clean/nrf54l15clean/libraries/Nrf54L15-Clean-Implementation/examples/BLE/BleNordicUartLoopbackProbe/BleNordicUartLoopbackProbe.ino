@@ -40,7 +40,9 @@ static PowerManager g_power;
 
 static bool g_wasConnected = false;
 static bool g_bannerSent = false;  // True once welcome banner has been sent.
+static bool g_securityRequested = false;
 static uint32_t g_lastStatusMs = 0U;
+static uint32_t g_connectedAtMs = 0U;
 static uint32_t g_echoedBytes = 0U;   // Bytes echoed this connection.
 static uint32_t g_droppedBytes = 0U;  // Bytes dropped this connection (TX full).
 
@@ -58,7 +60,11 @@ static constexpr uint8_t kPollBudgetBytes = 20U;
 static constexpr int kTxFreeMin =
     static_cast<int>(BleNordicUart::kTxBufferSize) -
     2 * static_cast<int>(kPollBudgetBytes);
+static constexpr bool kEnableBleBgService = false;
 static constexpr uint32_t kStatusPeriodMs = 2000UL;
+static constexpr uint32_t kConnectionPollTimeoutUs = 2000UL;
+static constexpr uint32_t kConnectionWarmupMs = 500UL;
+static constexpr bool kRequestLinkSecurity = false;
 // Unique address prevents Android GATT cache collisions across sketches.
 static constexpr uint8_t kAddress[6] = {0x37, 0x00, 0x15, 0x54, 0xDE, 0xC0};
 static constexpr char kGattName[] = "X54 NUS Loopback";
@@ -95,6 +101,21 @@ static void queueBanner() {
   }
   g_nus.write(reinterpret_cast<const uint8_t*>(kBanner), sizeof(kBanner) - 1U);
   g_bannerSent = true;
+}
+
+static bool connectionWarmupElapsed(uint32_t nowMs) {
+  return (nowMs - g_connectedAtMs) >= kConnectionWarmupMs;
+}
+
+static void maybeRequestLinkSecurity(uint32_t nowMs) {
+  if (!kRequestLinkSecurity || g_securityRequested || !g_ble.isConnected()) {
+    return;
+  }
+  if (!connectionWarmupElapsed(nowMs)) {
+    return;
+  }
+  g_securityRequested = true;
+  g_ble.sendSmpSecurityRequest();
 }
 
 static void pumpLoopback(uint8_t maxBytes) {
@@ -162,6 +183,11 @@ static void printTerminateStats(const BleConnectionEvent& evt) {
   //   freshTxAllowed=1, which can temporarily stall txNotificationInFlight_.
   Serial.print(" cb_drop=");        Serial.print(dbg.connDeferredCallbackDropCount);
   Serial.print(" evt_overwrite=");  Serial.print(dbg.connDeferredEventOverwriteCount);
+  Serial.print(" bg_isr=");         Serial.print(dbg.connBgServiceIsrCount);
+  Serial.print(" bg_thr=");         Serial.print(dbg.connBgServiceThreadCount);
+  Serial.print(" bg_due=");         Serial.print(dbg.connBgDueCount);
+  Serial.print(" bg_wake_max=");    Serial.print(dbg.connBgWakeLagMaxUs);
+  Serial.print(" late_poll=");      Serial.print(dbg.connLatePollCount);
   Serial.print("\r\n");
 }
 
@@ -219,6 +245,7 @@ void loop() {
     if (g_wasConnected) {
       g_wasConnected = false;
       g_bannerSent = false;
+      g_securityRequested = false;
       Gpio::write(kPinUserLed, true);
       Serial.print("BLE client disconnected\r\n");
     }
@@ -232,17 +259,20 @@ void loop() {
   if (!g_wasConnected) {
     g_wasConnected = true;
     g_bannerSent = false;
+    g_securityRequested = false;
+    g_connectedAtMs = millis();
     g_echoedBytes = 0U;
     g_droppedBytes = 0U;
     Gpio::write(kPinUserLed, false);
-    g_ble.setBackgroundConnectionServiceEnabled(true);
-    g_ble.sendSmpSecurityRequest();
+    if (kEnableBleBgService) {
+      g_ble.setBackgroundConnectionServiceEnabled(true);
+    }
     Serial.print("BLE client connected\r\n");
   }
 
   BleConnectionEvent evt{};
   const bool eventStarted =
-      g_ble.pollConnectionEvent(&evt, 300000UL) && evt.eventStarted;
+      g_ble.pollConnectionEvent(&evt, kConnectionPollTimeoutUs) && evt.eventStarted;
 
   // The HAL deferred event queue is not flushed on disconnect. The first
   // pollConnectionEvent() of a new connection may return the previous
@@ -256,6 +286,11 @@ void loop() {
 
   if (!eventStarted) {
     g_nus.service();
+    const uint32_t nowMs = millis();
+    maybeRequestLinkSecurity(nowMs);
+    if (!connectionWarmupElapsed(nowMs)) {
+      return;
+    }
     queueBanner();
     pumpLoopback(2U);
     // terminateInd can arrive without a full event in the background-service
@@ -267,6 +302,14 @@ void loop() {
   }
 
   g_nus.service(&evt);
+  const uint32_t nowMs = millis();
+  maybeRequestLinkSecurity(nowMs);
+  if (!connectionWarmupElapsed(nowMs)) {
+    if (evt.terminateInd) {
+      printTerminateStats(evt);
+    }
+    return;
+  }
   queueBanner();
   pumpLoopback(kPollBudgetBytes);
 
@@ -274,7 +317,6 @@ void loop() {
     printTerminateStats(evt);
   }
 
-  const uint32_t nowMs = millis();
   if ((nowMs - g_lastStatusMs) >= kStatusPeriodMs) {
     g_lastStatusMs = nowMs;
     Serial.print("notify=");

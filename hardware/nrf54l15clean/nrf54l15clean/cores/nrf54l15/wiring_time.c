@@ -158,15 +158,17 @@ static void busyWaitApproxUs(uint32_t us)
 
 static void ensureGrtcReady(NRF_GRTC_Type* grtc)
 {
-    grtc->TASKS_START = GRTC_TASKS_START_TASKS_START_Trigger;
-    __asm volatile("dsb 0xF" ::: "memory");
-    delayMicroseconds(kGrtcStartSettleUs);
-
     const uint32_t active =
         NRF54L15_GRTC_SYSCOUNTER(grtc).ACTIVE & GRTC_SYSCOUNTER_ACTIVE_ACTIVE_Msk;
     const bool restoreActive =
         active == (GRTC_SYSCOUNTER_ACTIVE_ACTIVE_NotActive
                    << GRTC_SYSCOUNTER_ACTIVE_ACTIVE_Pos);
+    if (!restoreActive && grtcSyscounterReady(grtc)) {
+        return;
+    }
+
+    grtc->TASKS_START = GRTC_TASKS_START_TASKS_START_Trigger;
+    __asm volatile("dsb 0xF" ::: "memory");
     if (restoreActive) {
         NRF54L15_GRTC_SYSCOUNTER(grtc).ACTIVE =
             (GRTC_SYSCOUNTER_ACTIVE_ACTIVE_Active <<

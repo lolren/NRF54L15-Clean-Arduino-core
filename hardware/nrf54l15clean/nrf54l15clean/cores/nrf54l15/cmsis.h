@@ -32,17 +32,17 @@ extern "C" {
 // ============================================================================
 
 typedef struct {
-    volatile uint32_t ISER[8U];           /*!< Interrupt Set Enable Register */
+    volatile uint32_t ISER[9U];           /*!< Interrupt Set Enable Register */
     uint32_t RESERVED0[24U];
-    volatile uint32_t ICER[8U];           /*!< Interrupt Clear Enable Register */
+    volatile uint32_t ICER[9U];           /*!< Interrupt Clear Enable Register */
     uint32_t RESERVED1[24U];
-    volatile uint32_t ISPR[8U];           /*!< Interrupt Set Pending Register */
+    volatile uint32_t ISPR[9U];           /*!< Interrupt Set Pending Register */
     uint32_t RESERVED2[24U];
-    volatile uint32_t ICPR[8U];           /*!< Interrupt Clear Pending Register */
+    volatile uint32_t ICPR[9U];           /*!< Interrupt Clear Pending Register */
     uint32_t RESERVED3[24U];
-    volatile uint32_t IABR[8U];           /*!< Interrupt Active Bit Register */
+    volatile uint32_t IABR[9U];           /*!< Interrupt Active Bit Register */
     uint32_t RESERVED4[56U];
-    volatile uint8_t  IP[240U];           /*!< Interrupt Priority Register */
+    volatile uint8_t  IP[270U];           /*!< Interrupt Priority Register */
     uint32_t RESERVED5[644U];
     volatile uint32_t STIR;               /*!< Software Trigger Interrupt Register */
 } NVIC_Type;
@@ -109,10 +109,14 @@ typedef enum IRQn {
     GRTC_0_IRQn            = 226,
     GRTC_1_IRQn            = 227,
     GRTC_2_IRQn            = 228,
+    GRTC_3_IRQn            = 229,
+    CLOCK_POWER_IRQn       = 261,
 } IRQn_Type;
 
 #define AAR00_IRQn AAR00_CCM00_IRQn
 #define CCM00_IRQn AAR00_CCM00_IRQn
+#define CLOCK_IRQn CLOCK_POWER_IRQn
+#define POWER_IRQn CLOCK_POWER_IRQn
 
 // ============================================================================
 // Core Function Helpers

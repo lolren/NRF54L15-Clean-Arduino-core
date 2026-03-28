@@ -38,12 +38,14 @@ constexpr uint16_t kBleToUsbBufferSize = 1024U;
 // NUS payload limit. Standard BLE 4.x MTU yields 20 bytes of usable payload.
 // Larger MTU can be negotiated with BLE 5 centrals, but 20 is a safe default.
 constexpr uint8_t kBleChunkBytes = 20U;
+constexpr bool kEnableBleBgService = false;
 // How long to wait for a BLE connection event anchor before giving up (us).
 // 2000 us is very short; the main loop spins tightly to avoid missed anchors.
 constexpr uint32_t kConnectionPollTimeoutUs = 2000UL;
 // Delay after connection before pumping data. Gives the phone time to finish
 // GATT service discovery before the first NUS notification is queued.
 constexpr uint32_t kBridgeWarmupMs = 500UL;
+constexpr bool kRequestLinkSecurity = false;
 // Unique address per sketch to prevent Android GATT cache collisions.
 constexpr uint8_t kAddress[6] = {0x39, 0x00, 0x15, 0x54, 0xDE, 0xC0};
 constexpr char kGattName[] = "X54 Quiet Bridge";
@@ -82,6 +84,7 @@ struct SessionStats {
 
 bool g_wasConnected = false;
 bool g_summaryPending = false;
+bool g_securityRequested = false;
 uint16_t g_usbToBleHead = 0U;
 uint16_t g_usbToBleTail = 0U;
 uint16_t g_usbToBleCount = 0U;
@@ -224,6 +227,17 @@ void printSummary() {
   Serial.print("\r\n");
   Serial.print(kSummaryEnd);
   Serial.print("\r\n");
+}
+
+void maybeRequestLinkSecurity(uint32_t nowMs) {
+  if (!kRequestLinkSecurity || g_securityRequested || !g_ble.isConnected()) {
+    return;
+  }
+  if ((nowMs - g_stats.connectedAtMs) < kBridgeWarmupMs) {
+    return;
+  }
+  g_securityRequested = true;
+  g_ble.sendSmpSecurityRequest();
 }
 
 uint16_t advanceBridgeIndex(uint16_t index, uint16_t capacity) {
@@ -413,11 +427,12 @@ void loop() {
     g_wasConnected = true;
     Gpio::write(kPinUserLed, false);
     beginSession();
+    g_securityRequested = false;
     // Background GRTC service handles ATT/SMP even when the main loop is briefly
-    // delayed by bridge I/O. sendSmpSecurityRequest() asks Android to initiate
-    // pairing so it encrypts before writing the CCCD (required by NUS apps).
-    g_ble.setBackgroundConnectionServiceEnabled(true);
-    g_ble.sendSmpSecurityRequest();
+    // delayed by bridge I/O.
+    if (kEnableBleBgService) {
+      g_ble.setBackgroundConnectionServiceEnabled(true);
+    }
   }
 
   BleConnectionEvent evt{};
@@ -425,6 +440,7 @@ void loop() {
       g_ble.pollConnectionEvent(&evt, kConnectionPollTimeoutUs) && evt.eventStarted;
   if (!eventStarted) {
     g_nus.service();
+    maybeRequestLinkSecurity(millis());
     return;
   }
 
@@ -435,13 +451,15 @@ void loop() {
   }
 
   g_nus.service(&evt);
+  const uint32_t nowMs = millis();
+  maybeRequestLinkSecurity(nowMs);
   if (evt.terminateInd) {
     g_stats.disconnectReasonValid = evt.disconnectReasonValid;
     g_stats.disconnectReason = evt.disconnectReason;
     g_stats.disconnectReasonRemote = evt.disconnectReasonRemote;
   }
 
-  if ((millis() - g_stats.connectedAtMs) < kBridgeWarmupMs) {
+  if ((nowMs - g_stats.connectedAtMs) < kBridgeWarmupMs) {
     return;
   }
 

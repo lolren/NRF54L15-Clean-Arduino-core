@@ -11,6 +11,7 @@ extern "C" void nrf54l15_core_prepare_system_off_wake_timebase(void)
 extern "C" void nrf54l15_core_prepare_system_off(void) __attribute__((weak));
 extern "C" void nrf54l15_core_disable_system_off_retention(void)
     __attribute__((weak));
+extern "C" uint8_t nrf54l15_constlat_users_active(void) __attribute__((weak));
 namespace xiao_nrf54l15 {
 class I2sTx;
 class I2sRx;
@@ -27,7 +28,6 @@ static constexpr uint8_t kSystemOffWakeLeadLfclk = 4U;
 static constexpr uint32_t kLfclkFrequencyHz = 32768UL;
 static constexpr uint32_t kMaxCcLatchWaitUs = 77UL;
 static constexpr uint32_t kSystemOffMinimumLatencyGuardUs = 1000UL;
-static constexpr uint32_t kGrtcStartSettleUs = 93UL;
 #if defined(ARDUINO_XIAO_NRF54L15)
 static constexpr uint32_t kZephyrAllowedCcMaskXiao = 0x67UL;
 static constexpr uint8_t kZephyrMainCcChannelXiao = 1U;
@@ -38,6 +38,65 @@ xiao_nrf54l15::I2sDuplex* g_activeI2sDuplex = nullptr;
 // Reserve one GRTC compare channel for BLE connection anchors so the custom LL
 // can arm itself independently of sketch polling.
 static constexpr uint8_t kBleBackgroundCompareChannel = 2U;
+static constexpr uint8_t kBleBackgroundAdvPrewarmCompareChannel = 3U;
+static constexpr uint8_t kBleBackgroundAdvTxCompareChannel = 4U;
+static constexpr uint8_t kBleBackgroundAdvCleanupCompareChannel = 6U;
+static constexpr uint8_t kBleBackgroundAdvStage1ServiceCompareChannel = 7U;
+static constexpr uint8_t kBleBackgroundAdvStage1TxCompareChannel = 8U;
+static constexpr uint8_t kBleBackgroundAdvStage2ServiceCompareChannel = 9U;
+static constexpr uint8_t kBleBackgroundAdvStage2TxCompareChannel = 10U;
+static constexpr uint8_t kBleBackgroundAdvFinalCleanupCompareChannel = 11U;
+#if !defined(NRF54L15_CLEAN_BLE_BACKGROUND_LP_TX_DPPI_CHANNEL)
+#define NRF54L15_CLEAN_BLE_BACKGROUND_LP_TX_DPPI_CHANNEL 1
+#endif
+#if !defined(NRF54L15_CLEAN_BLE_BACKGROUND_PERI_TX_DPPI_CHANNEL)
+#define NRF54L15_CLEAN_BLE_BACKGROUND_PERI_TX_DPPI_CHANNEL 5
+#endif
+#if !defined(NRF54L15_CLEAN_BLE_BACKGROUND_RADIO_TX_DPPI_CHANNEL)
+#define NRF54L15_CLEAN_BLE_BACKGROUND_RADIO_TX_DPPI_CHANNEL 0
+#endif
+static constexpr uint8_t kBleBackgroundAdvLpPrewarmDppiChannel = 0U;
+static constexpr uint8_t kBleBackgroundAdvLpTxDppiChannel =
+    static_cast<uint8_t>(NRF54L15_CLEAN_BLE_BACKGROUND_LP_TX_DPPI_CHANNEL);
+static constexpr uint8_t kBleBackgroundAdvLpStopDppiChannel = 2U;
+static constexpr uint8_t kBleBackgroundAdvLpStopEnableDppiChannel = 3U;
+static constexpr uint8_t kBleBackgroundAdvPeriTxDppiChannel =
+    static_cast<uint8_t>(NRF54L15_CLEAN_BLE_BACKGROUND_PERI_TX_DPPI_CHANNEL);
+static constexpr uint8_t kBleBackgroundAdvPeriStopDppiChannel = 1U;
+static constexpr uint8_t kBleBackgroundAdvPeriStopEnableDppiChannel = 2U;
+static constexpr uint8_t kBleBackgroundAdvPeriLatencyDppiChannel = 3U;
+static constexpr uint8_t kBleBackgroundAdvRadioPllenDppiChannel = 1U;
+static constexpr uint8_t kBleBackgroundAdvRadioTxDppiChannel =
+    static_cast<uint8_t>(NRF54L15_CLEAN_BLE_BACKGROUND_RADIO_TX_DPPI_CHANNEL);
+static constexpr uint8_t kBleBackgroundAdvRadioStopDppiChannel = 1U;
+static constexpr uint8_t kBleBackgroundAdvRadioStopEnableDppiChannel = 2U;
+static constexpr uint8_t kBleBackgroundAdvLpToPeriBridgeIndex = 0U;
+static constexpr uint8_t kBleBackgroundAdvRadioToLpBridgeIndex = 1U;
+static constexpr uint8_t kBleBackgroundAdvStopEnableBridgeIndex = 2U;
+static constexpr uint8_t kBleBackgroundAdvLatencyBridgeIndex = 3U;
+static constexpr uint8_t kBleBackgroundAdvStopPathGroup = 0U;
+static constexpr uint32_t kBleBackgroundAdvEventWindowUs = 1000U;
+static constexpr uint32_t kBleBackgroundAdvDefaultHfxoLeadUs = 1200U;
+static constexpr uint32_t kBleBackgroundAdvFirstEventGuardUs = 1000U;
+static constexpr uint32_t kBleBackgroundAdvMinIntervalUs = 5000U;
+static constexpr uint32_t kBleBackgroundAdvTxRampUpUs = 40U;
+static constexpr uint32_t kBleBackgroundAdvDisableGuardUs = 320U;
+static constexpr uint32_t kBleBackgroundAdvStageServiceLeadUs = 250U;
+static constexpr uint32_t kBleBackgroundAdvStageSettleBudgetUs = 320U;
+static constexpr uint32_t kBleBackgroundAdvEventSettleBudgetUs = 3000U;
+static constexpr uint32_t kBleBackgroundAdvTxKickRetryUs = 50U;
+static constexpr uint8_t kBleBackgroundAdvTxKickRetryLimit = 64U;
+static constexpr uint8_t kBleBackgroundInvalidCompareChannel = 0xFFU;
+static constexpr uint32_t kBleBackgroundAdvMinInterChannelDelayUs =
+    kBleBackgroundAdvStageServiceLeadUs;
+static constexpr uint8_t kBleBackgroundAdvStopReasonNone = 0U;
+static constexpr uint8_t kBleBackgroundAdvStopReasonExplicit = 1U;
+static constexpr uint8_t kBleBackgroundAdvStopReasonSettleTimeout = 2U;
+static constexpr uint8_t kBleBackgroundAdvStopReasonPrepareFailed = 3U;
+static constexpr uint8_t kBleBackgroundAdvStopReasonArmFailed = 4U;
+static constexpr uint8_t kBleBackgroundAdvStopReasonPrewarmFailed = 5U;
+static constexpr uint8_t kBleBackgroundAdvStopReasonInvalidState = 6U;
+static constexpr uint8_t kBleBackgroundAdvStopReasonTxCompareFailed = 7U;
 #if NRF54L15_GRTC_IRQ_GROUP == 2U
 static constexpr IRQn_Type kBleBackgroundGrtcIrq = GRTC_2_IRQn;
 #elif NRF54L15_GRTC_IRQ_GROUP == 1U
@@ -45,6 +104,7 @@ static constexpr IRQn_Type kBleBackgroundGrtcIrq = GRTC_1_IRQn;
 #else
 static constexpr IRQn_Type kBleBackgroundGrtcIrq = GRTC_0_IRQn;
 #endif
+static constexpr IRQn_Type kBleBackgroundClockIrq = CLOCK_POWER_IRQn;
 xiao_nrf54l15::BleRadio* volatile g_bleBackgroundRadio = nullptr;
 
 #if !defined(NRF54L15_CLEAN_BLE_BACKGROUND_SERVICE)
@@ -59,7 +119,221 @@ xiao_nrf54l15::BleRadio* volatile g_bleBackgroundRadio = nullptr;
 #define NRF54L15_CLEAN_BLE_BACKGROUND_PENDSV_HANDOFF 1
 #endif
 
+#if !defined(NRF54L15_CLEAN_BLE_BACKGROUND_MANAGED_CONSTLAT)
+#define NRF54L15_CLEAN_BLE_BACKGROUND_MANAGED_CONSTLAT 0
+#endif
+
+#if !defined(NRF54L15_CLEAN_BLE_BACKGROUND_MANAGE_RF_PATH)
+#if defined(ARDUINO_XIAO_NRF54L15)
+#define NRF54L15_CLEAN_BLE_BACKGROUND_MANAGE_RF_PATH 1
+#else
+#define NRF54L15_CLEAN_BLE_BACKGROUND_MANAGE_RF_PATH 0
+#endif
+#endif
+
+#if !defined(NRF54L15_CLEAN_BLE_BACKGROUND_FORCE_IRQ_TXEN)
+#if defined(ARDUINO_XIAO_NRF54L15)
+#define NRF54L15_CLEAN_BLE_BACKGROUND_FORCE_IRQ_TXEN 1
+#else
+#define NRF54L15_CLEAN_BLE_BACKGROUND_FORCE_IRQ_TXEN 0
+#endif
+#endif
+
 static volatile uint8_t g_bleBackgroundPendSvPending = 0U;
+static volatile uint8_t g_bleBackgroundAdvDirectTxKickBlacklisted = 0U;
+
+static inline NRF_DPPIC_Type* bleDppic10() {
+  return reinterpret_cast<NRF_DPPIC_Type*>(
+      static_cast<uintptr_t>(nrf54l15::DPPIC10_BASE));
+}
+
+static inline NRF_DPPIC_Type* bleDppic20() {
+  return reinterpret_cast<NRF_DPPIC_Type*>(
+      static_cast<uintptr_t>(nrf54l15::DPPIC20_BASE));
+}
+
+static inline NRF_DPPIC_Type* bleDppic30() {
+  return reinterpret_cast<NRF_DPPIC_Type*>(
+      static_cast<uintptr_t>(nrf54l15::DPPIC30_BASE));
+}
+
+static inline NRF_PPIB_Type* blePpib11() {
+  return reinterpret_cast<NRF_PPIB_Type*>(
+      static_cast<uintptr_t>(nrf54l15::PPIB11_BASE));
+}
+
+static inline NRF_PPIB_Type* blePpib21() {
+  return reinterpret_cast<NRF_PPIB_Type*>(
+      static_cast<uintptr_t>(nrf54l15::PPIB21_BASE));
+}
+
+static inline NRF_PPIB_Type* blePpib22() {
+  return reinterpret_cast<NRF_PPIB_Type*>(
+      static_cast<uintptr_t>(nrf54l15::PPIB22_BASE));
+}
+
+static inline NRF_PPIB_Type* blePpib30() {
+  return reinterpret_cast<NRF_PPIB_Type*>(
+      static_cast<uintptr_t>(nrf54l15::PPIB30_BASE));
+}
+
+static inline bool bleBackgroundAdvertisingInitialUseIrqTxKick() {
+  return (NRF54L15_CLEAN_BLE_BACKGROUND_FORCE_IRQ_TXEN != 0) ||
+         (g_bleBackgroundAdvDirectTxKickBlacklisted != 0U);
+}
+
+uint32_t bleDataPduAirTimeUs(uint8_t payloadLength);
+
+static inline BleAdvertisingChannel bleBackgroundAdvertisingStageChannel(uint8_t stage) {
+  switch (stage % 3U) {
+    case 1U:
+      return BleAdvertisingChannel::k38;
+    case 2U:
+      return BleAdvertisingChannel::k39;
+    default:
+      return BleAdvertisingChannel::k37;
+  }
+}
+
+static inline uint8_t bleBackgroundAdvertisingServiceCompareChannelForTxCompare(
+    bool threeChannel, uint8_t txCompareChannel) {
+  if (!threeChannel) {
+    return (txCompareChannel == kBleBackgroundAdvTxCompareChannel)
+               ? kBleBackgroundAdvCleanupCompareChannel
+               : kBleBackgroundInvalidCompareChannel;
+  }
+
+  switch (txCompareChannel) {
+    case kBleBackgroundAdvTxCompareChannel:
+      return kBleBackgroundAdvStage1ServiceCompareChannel;
+    case kBleBackgroundAdvStage1TxCompareChannel:
+      return kBleBackgroundAdvStage2ServiceCompareChannel;
+    case kBleBackgroundAdvStage2TxCompareChannel:
+      return kBleBackgroundAdvFinalCleanupCompareChannel;
+    default:
+      return kBleBackgroundInvalidCompareChannel;
+  }
+}
+
+static inline bool bleBackgroundAdvertisingSetStopPathEnabled(bool enable) {
+  if (bleDppic30() == nullptr) {
+    return false;
+  }
+
+  Dppic lpDomain(nrf54l15::DPPIC30_BASE);
+  return lpDomain.enableChannel(kBleBackgroundAdvLpStopDppiChannel, enable);
+}
+
+extern "C" uint8_t __attribute__((weak)) nrf54l15_constlat_users_active(void) {
+  return 0U;
+}
+
+static inline bool bleBackgroundAdvertisingConstlatActive() {
+  return (NRF_POWER->CONSTLATSTAT & POWER_CONSTLATSTAT_STATUS_Msk) != 0U;
+}
+
+static inline bool bleBackgroundAdvertisingShouldManageLatency() {
+#if NRF54L15_CLEAN_BLE_BACKGROUND_MANAGED_CONSTLAT != 0
+  return !bleBackgroundAdvertisingConstlatActive();
+#else
+  return false;
+#endif
+}
+
+static inline bool bleBackgroundAdvertisingShouldManageRfPath() {
+#if NRF54L15_CLEAN_BLE_BACKGROUND_MANAGE_RF_PATH != 0
+  return true;
+#else
+  return false;
+#endif
+}
+
+static inline bool bleBackgroundAdvertisingReleaseManagedLatency(bool managed) {
+  if (!managed || !bleBackgroundAdvertisingConstlatActive()) {
+    return false;
+  }
+  if (nrf54l15_constlat_users_active() != 0U) {
+    return false;
+  }
+  NRF_POWER->TASKS_LOWPWR = POWER_TASKS_LOWPWR_TASKS_LOWPWR_Trigger;
+  return true;
+}
+
+static inline bool bleBackgroundAdvertisingAssertManagedLatency(bool managed,
+                                                               bool* alreadyActive) {
+  if (alreadyActive != nullptr) {
+    *alreadyActive = false;
+  }
+  if (!managed) {
+    return false;
+  }
+  if (bleBackgroundAdvertisingConstlatActive()) {
+    if (alreadyActive != nullptr) {
+      *alreadyActive = true;
+    }
+    return true;
+  }
+  NRF_POWER->TASKS_CONSTLAT = POWER_TASKS_CONSTLAT_TASKS_CONSTLAT_Trigger;
+  return bleBackgroundAdvertisingConstlatActive();
+}
+
+static inline uint32_t bleBackgroundAdvertisingPacketWindowUs(uint8_t payloadLength) {
+  return kBleBackgroundAdvTxRampUpUs + bleDataPduAirTimeUs(payloadLength) +
+         kBleBackgroundAdvDisableGuardUs;
+}
+
+static inline uint32_t bleBackgroundAdvertisingServiceLeadUs(uint32_t interChannelDelayUs) {
+  return (interChannelDelayUs < kBleBackgroundAdvStageServiceLeadUs)
+             ? interChannelDelayUs
+             : kBleBackgroundAdvStageServiceLeadUs;
+}
+
+static inline CracenRng& bleBackgroundAdvertisingRng() {
+  static CracenRng rng;
+  return rng;
+}
+
+static inline void bleBackgroundAdvertisingConfigureRandomSource(bool enable) {
+  CracenRng& rng = bleBackgroundAdvertisingRng();
+  if (!enable) {
+    if (rng.active()) {
+      rng.end();
+    }
+    return;
+  }
+  if (!rng.active()) {
+    (void)rng.beginNonBlocking();
+  }
+}
+
+static inline uint32_t bleBackgroundAdvertisingRandomDelayUs(uint32_t* state,
+                                                             uint8_t addressSeed,
+                                                             bool* usedHardware) {
+  CracenRng& rng = bleBackgroundAdvertisingRng();
+  uint32_t randomWord = 0U;
+  if (rng.tryRandomWord(&randomWord)) {
+    if (usedHardware != nullptr) {
+      *usedHardware = true;
+    }
+    if (state != nullptr) {
+      *state = randomWord;
+    }
+    return randomWord % 10001U;
+  }
+  if (usedHardware != nullptr) {
+    *usedHardware = false;
+  }
+
+  uint32_t fallbackState = (state != nullptr) ? *state : 0U;
+  if (fallbackState == 0U) {
+    fallbackState = micros() ^ (static_cast<uint32_t>(addressSeed) << 24U);
+  }
+  fallbackState = fallbackState * 1103515245U + 12345U;
+  if (state != nullptr) {
+    *state = fallbackState;
+  }
+  return fallbackState % 10001U;
+}
 
 static inline void blePendSvSetPending() {
   constexpr uintptr_t kIcsrAddress = 0xE000ED04UL;
@@ -218,6 +492,11 @@ bool lfclkStartAlreadyRequested(NRF_CLOCK_Type* clock, uint32_t src) {
   return (run == CLOCK_LFCLK_RUN_STATUS_Triggered) && (requestedSrc == src);
 }
 
+bool bleHfxoRunning() {
+  return (((NRF_CLOCK->XO.STAT & CLOCK_XO_STAT_STATE_Msk) >>
+           CLOCK_XO_STAT_STATE_Pos) == CLOCK_XO_STAT_STATE_Running);
+}
+
 bool grtcSyscounterReady(NRF_GRTC_Type* grtc) {
   if (grtc == nullptr) {
     return false;
@@ -236,15 +515,17 @@ void ensureGrtcReady(NRF_GRTC_Type* grtc) {
     return;
   }
 
-  grtc->TASKS_START = GRTC_TASKS_START_TASKS_START_Trigger;
-  __asm volatile("dsb 0xF" ::: "memory");
-  delayMicroseconds(kGrtcStartSettleUs);
-
   const uint32_t active =
       NRF54L15_GRTC_SYSCOUNTER(grtc).ACTIVE & GRTC_SYSCOUNTER_ACTIVE_ACTIVE_Msk;
   const bool restoreActive =
       active == (GRTC_SYSCOUNTER_ACTIVE_ACTIVE_NotActive
                  << GRTC_SYSCOUNTER_ACTIVE_ACTIVE_Pos);
+  if (!restoreActive && grtcSyscounterReady(grtc)) {
+    return;
+  }
+
+  grtc->TASKS_START = GRTC_TASKS_START_TASKS_START_Trigger;
+  __asm volatile("dsb 0xF" ::: "memory");
   if (restoreActive) {
     NRF54L15_GRTC_SYSCOUNTER(grtc).ACTIVE =
         (GRTC_SYSCOUNTER_ACTIVE_ACTIVE_Active << GRTC_SYSCOUNTER_ACTIVE_ACTIVE_Pos);
@@ -834,7 +1115,8 @@ constexpr xiao_nrf54l15::BoardAntennaPath kDefaultBoardAntennaPath =
     xiao_nrf54l15::BoardAntennaPath::kCeramic;
 #endif
 
-xiao_nrf54l15::BoardAntennaPath g_boardAntennaPath = kDefaultBoardAntennaPath;
+xiao_nrf54l15::BoardAntennaPath g_boardDesiredAntennaPath =
+    kDefaultBoardAntennaPath;
 
 constexpr uint32_t kBleAccessAddress = 0x8E89BED6UL;
 constexpr uint32_t kBleAdvertisingCrcInit = 0x555555UL;
@@ -1033,19 +1315,17 @@ constexpr uint8_t kBleLlErrorConnectionTimeout = 0x08U;
 constexpr uint8_t kBleLlErrorCommandDisallowed = 0x0CU;
 constexpr uint8_t kBleLlErrorLlProcedureCollision = 0x23U;
 constexpr uint8_t kBleLlErrorMicFailure = 0x3DU;
-constexpr uint8_t kBleLlFeatureMaskOctet0 = 0x3FU;  // bits 0-5: encryption, conn-param-req, ext-reject, slave-features, ping, DLE
+constexpr uint8_t kBleLlFeatureMaskOctet0 = 0x1FU;  // bits 0-4: encryption, conn-param-req, ext-reject, slave-features, ping
 constexpr uint64_t kBleEncPacketCounterMask = 0x7FFFFFFFFFULL;
 
 constexpr uint16_t kBleL2capCidAtt = 0x0004U;
 constexpr uint16_t kBleL2capCidLeSignaling = 0x0005U;
 constexpr uint16_t kBleL2capCidSmp = 0x0006U;
 constexpr uint8_t kBleL2capHeaderLen = 4U;
-constexpr uint8_t kBleDataPduMaxPayload = 251U;  // BLE 4.2+ Data Length Extension max
+constexpr uint8_t kBleDataPduMaxPayload = 27U;
 constexpr uint8_t kBleMicLen = 4U;
 constexpr uint16_t kBleDefaultAttMtu = 23U;
-// Maximum ATT MTU the server will negotiate; derived from DLE payload minus L2CAP header.
-constexpr uint16_t kBleServerPreferredMtu =
-    static_cast<uint16_t>(kBleDataPduMaxPayload - kBleL2capHeaderLen);  // 247
+constexpr uint16_t kBleServerPreferredMtu = kBleDefaultAttMtu;
 constexpr uint8_t kL2capSigCodeCommandRejectRsp = 0x01U;
 constexpr uint8_t kL2capSigCodeConnParamUpdateReq = 0x12U;
 constexpr uint8_t kL2capSigCodeConnParamUpdateRsp = 0x13U;
@@ -1098,6 +1378,10 @@ void initBleGrtc() {
 }
 
 static inline uint32_t bleTimingUs() {
+  // Connection-event hot paths call this inside tight pre-anchor / T_IFS
+  // loops. Keep that local timestamp path on the direct low counter read and
+  // reserve readGrtcCounter() for places that actually need a coherent 64-bit
+  // absolute time.
   return NRF54L15_GRTC_SYSCOUNTER(NRF_GRTC).SYSCOUNTERL;
 }
 
@@ -1111,12 +1395,26 @@ static inline bool bleBackgroundCompareEnabled() {
           GRTC_CC_CCEN_ACTIVE_Pos) == GRTC_CC_CCEN_ACTIVE_Enable;
 }
 
-static inline void bleBackgroundDisableCompare() {
-  NRF54L15_GRTC_INTENCLR_REG(NRF_GRTC) =
-      (1UL << static_cast<uint32_t>(kBleBackgroundCompareChannel));
-  NRF_GRTC->CC[kBleBackgroundCompareChannel].CCEN =
+static inline bool bleCompareEventPending(uint8_t channel) {
+  return NRF_GRTC->EVENTS_COMPARE[channel] != 0U;
+}
+
+static inline bool bleCompareEnabled(uint8_t channel) {
+  return ((NRF_GRTC->CC[channel].CCEN & GRTC_CC_CCEN_ACTIVE_Msk) >>
+          GRTC_CC_CCEN_ACTIVE_Pos) == GRTC_CC_CCEN_ACTIVE_Enable;
+}
+
+static inline void bleDisableCompare(uint8_t channel, bool clearInterruptEnable) {
+  if (clearInterruptEnable) {
+    NRF54L15_GRTC_INTENCLR_REG(NRF_GRTC) = (1UL << static_cast<uint32_t>(channel));
+  }
+  NRF_GRTC->CC[channel].CCEN =
       (GRTC_CC_CCEN_ACTIVE_Disable << GRTC_CC_CCEN_ACTIVE_Pos);
-  NRF_GRTC->EVENTS_COMPARE[kBleBackgroundCompareChannel] = 0U;
+  NRF_GRTC->EVENTS_COMPARE[channel] = 0U;
+}
+
+static inline void bleBackgroundDisableCompare() {
+  bleDisableCompare(kBleBackgroundCompareChannel, true);
 }
 
 static inline void bleBackgroundEnableIrq() {
@@ -1127,6 +1425,32 @@ static inline void bleBackgroundEnableIrq() {
   NVIC_SetPriority(PendSV_IRQn, 7U);
 }
 
+static inline uint32_t bleBackgroundClockTuneInterruptMask() {
+  return CLOCK_INTENSET_XOTUNED_Msk | CLOCK_INTENSET_XOTUNEERROR_Msk |
+         CLOCK_INTENSET_XOTUNEFAILED_Msk;
+}
+
+static inline void bleBackgroundEnableClockIrq() {
+  NVIC->ICPR[static_cast<uint32_t>(kBleBackgroundClockIrq) >> 5U] =
+      (1UL << (static_cast<uint32_t>(kBleBackgroundClockIrq) & 0x1FUL));
+  NVIC_SetPriority(kBleBackgroundClockIrq, 3U);
+  NVIC_EnableIRQ(kBleBackgroundClockIrq);
+}
+
+static inline void bleBackgroundDisableClockIrq() {
+  NRF_CLOCK->INTENCLR = bleBackgroundClockTuneInterruptMask();
+  NVIC_DisableIRQ(kBleBackgroundClockIrq);
+  NVIC->ICPR[static_cast<uint32_t>(kBleBackgroundClockIrq) >> 5U] =
+      (1UL << (static_cast<uint32_t>(kBleBackgroundClockIrq) & 0x1FUL));
+}
+
+static inline void bleBackgroundEnableClockTuneInterrupts() {
+  const uint32_t mask = bleBackgroundClockTuneInterruptMask();
+  NRF_CLOCK->INTENCLR = mask;
+  NRF_CLOCK->INTENSET = mask;
+  bleBackgroundEnableClockIrq();
+}
+
 static inline uint64_t bleAbsoluteTimeFromLowCounter(uint32_t targetUs) {
   const uint64_t nowAbs = readGrtcCounter(NRF_GRTC);
   const uint32_t nowUs = static_cast<uint32_t>(nowAbs & 0xFFFFFFFFULL);
@@ -1135,6 +1459,27 @@ static inline uint64_t bleAbsoluteTimeFromLowCounter(uint32_t targetUs) {
   const uint32_t deltaUs =
       targetAlreadyReached ? 0U : static_cast<uint32_t>(targetUs - nowUs);
   return nowAbs + static_cast<uint64_t>(deltaUs);
+}
+
+static inline void bleProgramCompare(uint8_t channel, uint32_t targetUs,
+                                     bool enableInterrupt) {
+  const uint64_t targetAbs = bleAbsoluteTimeFromLowCounter(targetUs);
+  const uint32_t lo = static_cast<uint32_t>(targetAbs & 0xFFFFFFFFULL);
+  const uint32_t hi = static_cast<uint32_t>((targetAbs >> 32U) & 0xFFFFFUL);
+
+  NRF_GRTC->EVENTS_COMPARE[channel] = 0U;
+  NRF_GRTC->CC[channel].CCEN =
+      (GRTC_CC_CCEN_ACTIVE_Disable << GRTC_CC_CCEN_ACTIVE_Pos);
+  if (enableInterrupt) {
+    NRF54L15_GRTC_INTENSET_REG(NRF_GRTC) = (1UL << static_cast<uint32_t>(channel));
+  } else {
+    NRF54L15_GRTC_INTENCLR_REG(NRF_GRTC) = (1UL << static_cast<uint32_t>(channel));
+  }
+  NRF_GRTC->CC[channel].CCL = lo;
+  NRF_GRTC->CC[channel].CCH =
+      (hi << GRTC_CC_CCH_CCH_Pos) & GRTC_CC_CCH_CCH_Msk;
+  NRF_GRTC->CC[channel].CCEN =
+      (GRTC_CC_CCEN_ACTIVE_Enable << GRTC_CC_CCEN_ACTIVE_Pos);
 }
 
 static inline bool bleRunningInIsr() {
@@ -1175,6 +1520,16 @@ static inline uint32_t bleRadioShortsTxOnly() {
           RADIO_SHORTS_TXREADY_START_Msk) |
          ((RADIO_SHORTS_PHYEND_DISABLE_Enabled << RADIO_SHORTS_PHYEND_DISABLE_Pos) &
           RADIO_SHORTS_PHYEND_DISABLE_Msk);
+}
+
+static inline uint32_t bleRadioShortsBackgroundAdvDirectTx() {
+  // The nRF54L15 RADIO exposes both READY->START and TXREADY->START. The
+  // direct DPPI/PPIB background-advertising kickoff is more reliable on the
+  // connected XIAO when the generic READY path is enabled alongside the TX
+  // specific shortcut.
+  return bleRadioShortsTxOnly() |
+         ((RADIO_SHORTS_READY_START_Enabled << RADIO_SHORTS_READY_START_Pos) &
+          RADIO_SHORTS_READY_START_Msk);
 }
 
 static inline uint32_t bleRadioShortsTxThenRxAtTifs() {
@@ -1238,13 +1593,13 @@ constexpr uint16_t kBlePreferredConnIntervalMaxUnits = 80U;
 constexpr uint16_t kBlePreferredConnLatency = 0U;
 constexpr uint16_t kBlePreferredConnTimeoutUnits = 500U;
 #else
-constexpr uint32_t kBleConnAnchorPrewaitUs = 500U;
+constexpr uint32_t kBleConnAnchorPrewaitUs = 360U;
 constexpr uint32_t kBleConnRxStartLeadUs = 1200U;
-constexpr uint32_t kBleConnRxListenBaseUs = 1800U;
-constexpr uint32_t kBleConnRxListenMaxUs = 8000U;
+constexpr uint32_t kBleConnRxListenBaseUs = 900U;
+constexpr uint32_t kBleConnRxListenMaxUs = 4500U;
 constexpr uint32_t kBleConnDisableWaitUs = 750U;
 constexpr uint32_t kBleConnTxDisableWaitUs = 750U;
-constexpr uint32_t kBleConnFirstEventFallbackUs = 2000U;
+constexpr uint32_t kBleConnFirstEventFallbackUs = 1500U;
 constexpr uint16_t kBlePreferredConnIntervalMinUnits = 24U;
 constexpr uint16_t kBlePreferredConnIntervalMaxUnits = 40U;
 constexpr uint16_t kBlePreferredConnLatency = 0U;
@@ -2635,6 +2990,7 @@ void clearRadioCoreEvents(NRF_RADIO_Type* radio) {
   radio->EVENTS_END = 0U;
   radio->EVENTS_PHYEND = 0U;
   radio->EVENTS_DISABLED = 0U;
+  radio->EVENTS_PLLREADY = 0U;
   radio->EVENTS_CRCOK = 0U;
   radio->EVENTS_CRCERROR = 0U;
   radio->EVENTS_RXADDRESS = 0U;
@@ -4082,6 +4438,14 @@ bool Dppic::channelEnabled(uint8_t channel) const {
   return (dppic_->CHEN & (1UL << channel)) != 0U;
 }
 
+bool Dppic::configureChannelGroup(uint8_t group, uint32_t channelMask) const {
+  if (group >= DPPIC_CHG_MaxCount || dppic_ == nullptr) {
+    return false;
+  }
+  dppic_->CHG[group] = channelMask;
+  return true;
+}
+
 bool Dppic::configurePublish(volatile uint32_t* publishRegister, uint8_t channel,
                              bool enable) const {
   if (publishRegister == nullptr || channel >= 24U) {
@@ -4237,7 +4601,7 @@ CracenRng::CracenRng(uint32_t controlBase, uint32_t coreBase)
           static_cast<uintptr_t>(coreBase))),
       active_(false) {}
 
-bool CracenRng::begin(uint32_t spinLimit) {
+bool CracenRng::beginNonBlocking() {
   if (cracen_ == nullptr || core_ == nullptr) {
     return false;
   }
@@ -4256,6 +4620,13 @@ bool CracenRng::begin(uint32_t spinLimit) {
   __asm volatile("dsb 0xF" ::: "memory");
 
   active_ = true;
+  return healthy();
+}
+
+bool CracenRng::begin(uint32_t spinLimit) {
+  if (!beginNonBlocking()) {
+    return false;
+  }
   return ensureDataAvailable(spinLimit);
 }
 
@@ -4318,6 +4689,27 @@ bool CracenRng::randomWord(uint32_t* outWord, uint32_t spinLimit) {
   }
 
   const bool ready = ensureDataAvailable(spinLimit);
+  if (ready) {
+    *outWord = core_->RNGCONTROL.FIFO[0];
+  }
+
+  if (temporaryBegin) {
+    end();
+  }
+  return ready;
+}
+
+bool CracenRng::tryRandomWord(uint32_t* outWord) {
+  if (outWord == nullptr) {
+    return false;
+  }
+
+  const bool temporaryBegin = !active_;
+  if (temporaryBegin && !beginNonBlocking()) {
+    return false;
+  }
+
+  const bool ready = (availableWords() != 0U) && healthy();
   if (ready) {
     *outWord = core_->RNGCONTROL.FIFO[0];
   }
@@ -5630,7 +6022,7 @@ bool Saadc::sampleMilliVoltsSigned(int32_t* outMilliVolts,
   return true;
 }
 
-bool BoardControl::setAntennaPath(BoardAntennaPath path) {
+xiao_nrf54l15_antenna_t boardAntennaSelectionFromPath(BoardAntennaPath path) {
   xiao_nrf54l15_antenna_t selection = XIAO_NRF54L15_ANTENNA_CERAMIC;
   switch (path) {
     case BoardAntennaPath::kExternal:
@@ -5644,25 +6036,26 @@ bool BoardControl::setAntennaPath(BoardAntennaPath path) {
       selection = XIAO_NRF54L15_ANTENNA_CERAMIC;
       break;
   }
+  return selection;
+}
+
+bool BoardControl::setAntennaPath(BoardAntennaPath path) {
+  const xiao_nrf54l15_antenna_t selection = boardAntennaSelectionFromPath(path);
   xiaoNrf54l15SetAntenna(selection);
-  g_boardAntennaPath = path;
+  g_boardDesiredAntennaPath = path;
   return true;
 }
 
 BoardAntennaPath BoardControl::antennaPath() {
   switch (xiaoNrf54l15GetAntenna()) {
     case XIAO_NRF54L15_ANTENNA_EXTERNAL:
-      g_boardAntennaPath = BoardAntennaPath::kExternal;
-      break;
+      return BoardAntennaPath::kExternal;
     case XIAO_NRF54L15_ANTENNA_CONTROL_HIZ:
-      g_boardAntennaPath = BoardAntennaPath::kControlHighImpedance;
-      break;
+      return BoardAntennaPath::kControlHighImpedance;
     case XIAO_NRF54L15_ANTENNA_CERAMIC:
     default:
-      g_boardAntennaPath = BoardAntennaPath::kCeramic;
-      break;
+      return BoardAntennaPath::kCeramic;
   }
-  return g_boardAntennaPath;
 }
 
 bool BoardControl::setImuMicEnabled(bool enable) {
@@ -5687,7 +6080,8 @@ bool BoardControl::enableRfPath(BoardAntennaPath path) {
 
 bool BoardControl::collapseRfPathIdle(BoardAntennaPath idlePath,
                                       bool disablePower) {
-  const bool pathOk = setAntennaPath(idlePath);
+  xiaoNrf54l15SetAntenna(boardAntennaSelectionFromPath(idlePath));
+  const bool pathOk = true;
   if (!disablePower) {
     return pathOk;
   }
@@ -7951,6 +8345,9 @@ BleRadio::BleRadio(uint32_t radioBase, uint32_t ficrBase)
       connectionTxPayload_{0},
       connected_(false),
       rfPathOwnedByBle_(false),
+      backgroundAdvertisingRestoreRfPathValid_(false),
+      backgroundAdvertisingRestoreRfPathPowerEnabled_(false),
+      backgroundAdvertisingRestoreRfPath_(kDefaultBoardAntennaPath),
       connectionPeerAddress_{0},
       connectionPeerAddressRandom_(false),
       connectionAccessAddress_(0),
@@ -8004,6 +8401,32 @@ BleRadio::BleRadio(uint32_t radioBase, uint32_t ficrBase)
       connectionPreparedWriteHandle_(0U),
       connectionPreparedWriteValue_{0},
       connectionPreparedWriteMask_(0U),
+      backgroundAdvertisingEnabled_(false),
+      backgroundAdvertisingArmed_(false),
+      backgroundAdvertisingInProgress_(false),
+      backgroundAdvertisingDue_(false),
+      backgroundAdvertisingThreeChannel_(false),
+      backgroundAdvertisingRandomDelay_(false),
+      backgroundAdvertisingManageRfPath_(false),
+      backgroundAdvertisingRfPathCollapsed_(false),
+      backgroundAdvertisingUseIrqTxKick_(bleBackgroundAdvertisingInitialUseIrqTxKick()),
+      backgroundAdvertisingManageLatency_(false),
+      backgroundAdvertisingConstlatHardwareVerified_(false),
+      backgroundAdvertisingAwaitingHfxoTuned_(false),
+      backgroundAdvertisingChannel_(BleAdvertisingChannel::k37),
+      backgroundAdvertisingIntervalUs_(0U),
+      backgroundAdvertisingInterChannelDelayUs_(0U),
+      backgroundAdvertisingHfxoLeadUs_(kBleBackgroundAdvDefaultHfxoLeadUs),
+      backgroundAdvertisingNextTxUs_(0U),
+      backgroundAdvertisingServiceUs_(0U),
+      backgroundAdvertisingEventStartTxUs_(0U),
+      backgroundAdvertisingRandomState_(0U),
+      backgroundAdvertisingPrimaryStage_(0U),
+      backgroundAdvertisingLastStopReason_(kBleBackgroundAdvStopReasonNone),
+      backgroundAdvertisingTxKickRetryCountCurrent_(0U),
+      backgroundAdvertisingPendingTxCompareChannel_(kBleBackgroundInvalidCompareChannel),
+      backgroundAdvertisingPendingServiceCompareChannel_(kBleBackgroundInvalidCompareChannel),
+      backgroundAdvertisingDebug_{0},
       backgroundConnectionServiceEnabled_(false),
       backgroundConnectionServiceArmed_(false),
       backgroundConnectionServiceInProgress_(false),
@@ -8111,16 +8534,115 @@ BleRadio::BleRadio(uint32_t radioBase, uint32_t ficrBase)
 bool BleRadio::ensureRfPathActiveForBle() {
   const bool rfPowerEnabled = BoardControl::rfSwitchPowerEnabled();
   const BoardAntennaPath currentPath = BoardControl::antennaPath();
-  if (rfPowerEnabled && currentPath == g_boardAntennaPath) {
+  if (rfPowerEnabled && currentPath == g_boardDesiredAntennaPath) {
     return true;
   }
-  if (!BoardControl::enableRfPath(g_boardAntennaPath)) {
+  if (!BoardControl::enableRfPath(g_boardDesiredAntennaPath)) {
     return false;
   }
   if (!rfPowerEnabled) {
     rfPathOwnedByBle_ = true;
   }
   return true;
+}
+
+void BleRadio::captureLegacyAdvertisingConfigSnapshot(
+    BleLegacyAdvertisingConfigSnapshot* out) const {
+  if (out == nullptr) {
+    return;
+  }
+
+  out->addressType = addressType_;
+  out->pduType = pduType_;
+  out->useChSel2 = useChSel2_;
+  memcpy(out->address, address_, sizeof(address_));
+  out->advDataLen = advDataLen_;
+  if (advDataLen_ > 0U) {
+    memcpy(out->advData, advData_, advDataLen_);
+  }
+  out->scanRspDataLen = scanRspDataLen_;
+  if (scanRspDataLen_ > 0U) {
+    memcpy(out->scanRspData, scanRspData_, scanRspDataLen_);
+  }
+}
+
+void BleRadio::restoreLegacyAdvertisingConfigSnapshot(
+    const BleLegacyAdvertisingConfigSnapshot& snapshot) {
+  addressType_ = snapshot.addressType;
+  pduType_ = snapshot.pduType;
+  useChSel2_ = snapshot.useChSel2;
+  memcpy(address_, snapshot.address, sizeof(address_));
+  advDataLen_ = snapshot.advDataLen;
+  if (snapshot.advDataLen > 0U) {
+    memcpy(advData_, snapshot.advData, snapshot.advDataLen);
+  }
+  scanRspDataLen_ = snapshot.scanRspDataLen;
+  if (snapshot.scanRspDataLen > 0U) {
+    memcpy(scanRspData_, snapshot.scanRspData, snapshot.scanRspDataLen);
+  }
+  (void)buildAdvertisingPacket();
+  (void)buildScanResponsePacket();
+}
+
+void BleRadio::captureBackgroundAdvertisingRestartState(
+    BleBackgroundAdvertisingRestartState* out) const {
+  if (out == nullptr) {
+    return;
+  }
+
+  out->active = backgroundAdvertisingEnabled_;
+  out->threeChannel = backgroundAdvertisingThreeChannel_;
+  out->randomDelay = backgroundAdvertisingRandomDelay_;
+  out->channel = backgroundAdvertisingChannel_;
+  out->intervalMs = backgroundAdvertisingIntervalUs_ / 1000UL;
+  out->interChannelDelayUs = backgroundAdvertisingInterChannelDelayUs_;
+  out->hfxoLeadUs = backgroundAdvertisingHfxoLeadUs_;
+}
+
+bool BleRadio::restartBackgroundAdvertisingFromState(
+    const BleBackgroundAdvertisingRestartState& state) {
+  if (!state.active) {
+    return true;
+  }
+  if (state.threeChannel) {
+    return beginBackgroundAdvertising3Channel(state.intervalMs,
+                                              state.interChannelDelayUs,
+                                              state.hfxoLeadUs,
+                                              state.randomDelay);
+  }
+  return beginBackgroundAdvertising(state.intervalMs, state.channel,
+                                    state.hfxoLeadUs,
+                                    state.randomDelay);
+}
+
+void BleRadio::snapshotBackgroundAdvertisingRfPathRestoreState() {
+  backgroundAdvertisingRestoreRfPathValid_ = true;
+  backgroundAdvertisingRestoreRfPathPowerEnabled_ =
+      BoardControl::rfSwitchPowerEnabled();
+  backgroundAdvertisingRestoreRfPath_ = BoardControl::antennaPath();
+}
+
+void BleRadio::restoreBackgroundAdvertisingRfPathRestoreState() {
+  if (!backgroundAdvertisingRestoreRfPathValid_) {
+    return;
+  }
+
+  if (backgroundAdvertisingRestoreRfPathPowerEnabled_) {
+    if (backgroundAdvertisingRestoreRfPath_ ==
+        BoardAntennaPath::kControlHighImpedance) {
+      (void)BoardControl::collapseRfPathIdle(
+          backgroundAdvertisingRestoreRfPath_, false);
+    } else {
+      (void)BoardControl::enableRfPath(backgroundAdvertisingRestoreRfPath_);
+    }
+  } else {
+    (void)BoardControl::collapseRfPathIdle(backgroundAdvertisingRestoreRfPath_,
+                                           true);
+  }
+
+  g_boardDesiredAntennaPath = backgroundAdvertisingRestoreRfPath_;
+  rfPathOwnedByBle_ = false;
+  backgroundAdvertisingRestoreRfPathValid_ = false;
 }
 
 void BleRadio::releaseRfPathForBle() {
@@ -8135,25 +8657,20 @@ bool BleRadio::beginUnconnectedRadioActivity(uint32_t spinLimit) {
   if (connected_) {
     return true;
   }
-  if (!ensureRfPathActiveForBle()) {
-    return false;
-  }
-  if (ClockControl::startHfxo(true, spinLimit)) {
-    return true;
-  }
-  releaseRfPathForBle();
-  return false;
+  // Keep the generic connectable path lean here. Extra RF-path/background
+  // housekeeping in this boundary regressed CONNECT_IND -> first-anchor sync.
+  return ClockControl::startHfxo(true, spinLimit);
 }
 
 void BleRadio::endUnconnectedRadioActivity() {
   if (!connected_) {
     ClockControl::stopHfxo();
-    releaseRfPathForBle();
   }
 }
 
 bool BleRadio::begin(int8_t txPowerDbm) {
   connected_ = false;
+  stopBackgroundAdvertising();
   stopBackgroundConnectionService();
   advCycleStartIndex_ = 0U;
   scanCycleStartIndex_ = 0U;
@@ -8167,8 +8684,9 @@ bool BleRadio::begin(int8_t txPowerDbm) {
 
   // Observe the current RF switch routing without overriding sketch-managed
   // GPIO state. Tools > Antenna still sets the startup default in initVariant().
-  g_boardAntennaPath = BoardControl::antennaPath();
-  externalAntenna_ = (g_boardAntennaPath == BoardAntennaPath::kExternal);
+  g_boardDesiredAntennaPath = BoardControl::antennaPath();
+  externalAntenna_ =
+      (g_boardDesiredAntennaPath == BoardAntennaPath::kExternal);
   initBleGrtc();
 
   if (!beginUnconnectedRadioActivity(1500000UL)) {
@@ -8228,6 +8746,7 @@ bool BleRadio::begin(int8_t txPowerDbm) {
 void BleRadio::end() {
   if (radio_ == nullptr) {
     connected_ = false;
+    stopBackgroundAdvertising();
     stopBackgroundConnectionService();
     initialized_ = false;
     clearCustomGattConnectionState();
@@ -8240,6 +8759,7 @@ void BleRadio::end() {
   waitDisabled(120000UL);
   clearRadioCoreEvents(radio_);
   connected_ = false;
+  stopBackgroundAdvertising();
   stopBackgroundConnectionService();
   initialized_ = false;
   clearCustomGattConnectionState();
@@ -8300,12 +8820,32 @@ bool BleRadio::setDeviceAddress(const uint8_t address[6], BleAddressType type) {
     return false;
   }
 
+  BleLegacyAdvertisingConfigSnapshot configSnapshot{};
+  BleBackgroundAdvertisingRestartState restartState{};
+  captureLegacyAdvertisingConfigSnapshot(&configSnapshot);
+  captureBackgroundAdvertisingRestartState(&restartState);
+  if (restartState.active) {
+    stopBackgroundAdvertising();
+  }
+
   memcpy(address_, address, sizeof(address_));
   if (type == BleAddressType::kRandomStatic) {
     address_[5] = static_cast<uint8_t>((address_[5] & 0x3FU) | 0xC0U);
   }
   addressType_ = type;
-  return buildAdvertisingPacket() && buildScanResponsePacket();
+  const bool packetsOk = buildAdvertisingPacket() && buildScanResponsePacket();
+  if (!packetsOk) {
+    restoreLegacyAdvertisingConfigSnapshot(configSnapshot);
+    (void)restartBackgroundAdvertisingFromState(restartState);
+    return false;
+  }
+  if (restartBackgroundAdvertisingFromState(restartState)) {
+    return true;
+  }
+
+  restoreLegacyAdvertisingConfigSnapshot(configSnapshot);
+  (void)restartBackgroundAdvertisingFromState(restartState);
+  return false;
 }
 
 bool BleRadio::setDeviceAddressString(const char* addressText, BleAddressType type) {
@@ -8340,13 +8880,54 @@ bool BleRadio::setAdvertisingPduType(BleAdvPduType type) {
   if (raw > 0x0FU) {
     return false;
   }
+
+  BleLegacyAdvertisingConfigSnapshot configSnapshot{};
+  BleBackgroundAdvertisingRestartState restartState{};
+  captureLegacyAdvertisingConfigSnapshot(&configSnapshot);
+  captureBackgroundAdvertisingRestartState(&restartState);
+  if (restartState.active) {
+    stopBackgroundAdvertising();
+  }
+
   pduType_ = type;
-  return buildAdvertisingPacket();
+  const bool packetOk = buildAdvertisingPacket();
+  if (!packetOk) {
+    restoreLegacyAdvertisingConfigSnapshot(configSnapshot);
+    (void)restartBackgroundAdvertisingFromState(restartState);
+    return false;
+  }
+  if (restartBackgroundAdvertisingFromState(restartState)) {
+    return true;
+  }
+
+  restoreLegacyAdvertisingConfigSnapshot(configSnapshot);
+  (void)restartBackgroundAdvertisingFromState(restartState);
+  return false;
 }
 
 bool BleRadio::setAdvertisingChannelSelectionAlgorithm2(bool enabled) {
+  BleLegacyAdvertisingConfigSnapshot configSnapshot{};
+  BleBackgroundAdvertisingRestartState restartState{};
+  captureLegacyAdvertisingConfigSnapshot(&configSnapshot);
+  captureBackgroundAdvertisingRestartState(&restartState);
+  if (restartState.active) {
+    stopBackgroundAdvertising();
+  }
+
   useChSel2_ = enabled;
-  return buildAdvertisingPacket();
+  const bool packetOk = buildAdvertisingPacket();
+  if (!packetOk) {
+    restoreLegacyAdvertisingConfigSnapshot(configSnapshot);
+    (void)restartBackgroundAdvertisingFromState(restartState);
+    return false;
+  }
+  if (restartBackgroundAdvertisingFromState(restartState)) {
+    return true;
+  }
+
+  restoreLegacyAdvertisingConfigSnapshot(configSnapshot);
+  (void)restartBackgroundAdvertisingFromState(restartState);
+  return false;
 }
 
 bool BleRadio::setAdvertisingData(const uint8_t* data, size_t len) {
@@ -8357,11 +8938,31 @@ bool BleRadio::setAdvertisingData(const uint8_t* data, size_t len) {
     return false;
   }
 
+  BleLegacyAdvertisingConfigSnapshot configSnapshot{};
+  BleBackgroundAdvertisingRestartState restartState{};
+  captureLegacyAdvertisingConfigSnapshot(&configSnapshot);
+  captureBackgroundAdvertisingRestartState(&restartState);
+  if (restartState.active) {
+    stopBackgroundAdvertising();
+  }
+
   if (len > 0U) {
     memcpy(advData_, data, len);
   }
   advDataLen_ = len;
-  return buildAdvertisingPacket();
+  const bool packetOk = buildAdvertisingPacket();
+  if (!packetOk) {
+    restoreLegacyAdvertisingConfigSnapshot(configSnapshot);
+    (void)restartBackgroundAdvertisingFromState(restartState);
+    return false;
+  }
+  if (restartBackgroundAdvertisingFromState(restartState)) {
+    return true;
+  }
+
+  restoreLegacyAdvertisingConfigSnapshot(configSnapshot);
+  (void)restartBackgroundAdvertisingFromState(restartState);
+  return false;
 }
 
 bool BleRadio::setAdvertisingName(const char* name, bool includeFlags) {
@@ -9198,11 +9799,30 @@ bool BleRadio::setScanResponseData(const uint8_t* data, size_t len) {
     return false;
   }
 
+  BleLegacyAdvertisingConfigSnapshot configSnapshot{};
+  BleBackgroundAdvertisingRestartState restartState{};
+  captureLegacyAdvertisingConfigSnapshot(&configSnapshot);
+  captureBackgroundAdvertisingRestartState(&restartState);
+  if (restartState.active) {
+    stopBackgroundAdvertising();
+  }
+
   if (len > 0U) {
     memcpy(scanRspData_, data, len);
   }
   scanRspDataLen_ = len;
-  return buildScanResponsePacket();
+  if (!buildScanResponsePacket()) {
+    restoreLegacyAdvertisingConfigSnapshot(configSnapshot);
+    (void)restartBackgroundAdvertisingFromState(restartState);
+    return false;
+  }
+  if (restartBackgroundAdvertisingFromState(restartState)) {
+    return true;
+  }
+
+  restoreLegacyAdvertisingConfigSnapshot(configSnapshot);
+  (void)restartBackgroundAdvertisingFromState(restartState);
+  return false;
 }
 
 bool BleRadio::setScanResponseName(const char* name) {
@@ -9279,6 +9899,9 @@ bool BleRadio::setAdvertisingServiceUuid128(
   // A name ≤ 8 chars fits (2 bytes overhead + N name bytes ≤ 10).
   // Embedding the name here makes it visible to passive scanners (e.g. Windows
   // Bluetooth settings) that never send a SCAN_REQ to fetch the scan response.
+  bool updateScanResponseName = false;
+  uint8_t scanRspPayload[kBleLegacyAdDataMaxLength];
+  size_t scanRspUsed = 0U;
   if (gapDeviceNameLen_ > 0U) {
     const size_t remaining = sizeof(payload) - used;
     if (gapDeviceNameLen_ + 2U <= remaining) {
@@ -9287,16 +9910,49 @@ bool BleRadio::setAdvertisingServiceUuid128(
       memcpy(&payload[used], gapDeviceName_, gapDeviceNameLen_);
       used += gapDeviceNameLen_;
     } else if (scanRspDataLen_ == 0U) {
-      // Name too long to embed; move to scan response as active-scan fallback.
-      setScanResponseName(reinterpret_cast<const char*>(gapDeviceName_));
+      updateScanResponseName = true;
+      size_t copyLen = gapDeviceNameLen_;
+      uint8_t adType = 0x09U;  // Complete local name.
+      if (copyLen + 2U > sizeof(scanRspPayload)) {
+        copyLen = sizeof(scanRspPayload) - 2U;
+        adType = 0x08U;  // Shortened local name.
+      }
+      scanRspPayload[scanRspUsed++] = static_cast<uint8_t>(copyLen + 1U);
+      scanRspPayload[scanRspUsed++] = adType;
+      memcpy(&scanRspPayload[scanRspUsed], gapDeviceName_, copyLen);
+      scanRspUsed += copyLen;
     }
   }
 
-  if (!setAdvertisingData(payload, used)) {
-    return false;
+  BleLegacyAdvertisingConfigSnapshot configSnapshot{};
+  BleBackgroundAdvertisingRestartState restartState{};
+  captureLegacyAdvertisingConfigSnapshot(&configSnapshot);
+  captureBackgroundAdvertisingRestartState(&restartState);
+  if (restartState.active) {
+    stopBackgroundAdvertising();
   }
 
-  return true;
+  memcpy(advData_, payload, used);
+  advDataLen_ = used;
+  if (updateScanResponseName) {
+    memcpy(scanRspData_, scanRspPayload, scanRspUsed);
+    scanRspDataLen_ = scanRspUsed;
+  }
+  const bool packetsOk =
+      buildAdvertisingPacket() &&
+      (!updateScanResponseName || buildScanResponsePacket());
+  if (!packetsOk) {
+    restoreLegacyAdvertisingConfigSnapshot(configSnapshot);
+    (void)restartBackgroundAdvertisingFromState(restartState);
+    return false;
+  }
+  if (restartBackgroundAdvertisingFromState(restartState)) {
+    return true;
+  }
+
+  restoreLegacyAdvertisingConfigSnapshot(configSnapshot);
+  (void)restartBackgroundAdvertisingFromState(restartState);
+  return false;
 }
 
 bool BleRadio::buildExtendedAdvertisingPackets(uint32_t auxOffsetUs,
@@ -9612,6 +10268,18 @@ bool BleRadio::transmitPreparedPacketOnCurrentChannel(const uint8_t* packet,
   return disabledSeen;
 }
 
+bool BleRadio::kickPreparedPacketOnCurrentChannel(const uint8_t* packet) {
+  if (!initialized_ || radio_ == nullptr || connected_ || packet == nullptr) {
+    return false;
+  }
+
+  clearRadioCoreEvents(radio_);
+  radio_->PACKETPTR = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(packet));
+  radio_->SHORTS = bleRadioShortsTxOnly();
+  radio_->TASKS_TXEN = RADIO_TASKS_TXEN_TASKS_TXEN_Trigger;
+  return true;
+}
+
 bool BleRadio::advertiseOncePrepared(BleAdvertisingChannel channel,
                                      uint32_t spinLimit) {
   if (!initialized_ || radio_ == nullptr || connected_) {
@@ -9673,6 +10341,1072 @@ bool BleRadio::advertiseEvent(uint32_t interChannelDelayUs, uint32_t spinLimit) 
   const bool ok = advertiseOncePrepared(BleAdvertisingChannel::k39, spinLimit);
   endUnconnectedRadioActivity();
   return ok;
+}
+
+bool BleRadio::prepareBackgroundAdvertisingEvent() {
+  if (!initialized_ || radio_ == nullptr || connected_ ||
+      !backgroundAdvertisingEnabled_) {
+    return false;
+  }
+  if (pduType_ != BleAdvPduType::kAdvNonConnInd) {
+    return false;
+  }
+
+  BleAdvertisingChannel channel = backgroundAdvertisingChannel_;
+  if (backgroundAdvertisingThreeChannel_) {
+    channel = bleBackgroundAdvertisingStageChannel(backgroundAdvertisingPrimaryStage_);
+    backgroundAdvertisingChannel_ = channel;
+    backgroundAdvertisingDebug_.lastChannel = static_cast<uint8_t>(channel);
+  }
+
+  if (!setAdvertisingChannel(channel)) {
+    return false;
+  }
+
+  clearRadioCoreEvents(radio_);
+  radio_->PACKETPTR =
+      static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&txPacket_[0]));
+  radio_->SHORTS = backgroundAdvertisingUseIrqTxKick_
+                       ? bleRadioShortsTxOnly()
+                       : bleRadioShortsBackgroundAdvDirectTx();
+  backgroundAdvertisingTxKickRetryCountCurrent_ = 0U;
+  return true;
+}
+
+bool BleRadio::configureBackgroundAdvertisingHardware(bool enable) {
+  if (radio_ == nullptr) {
+    return false;
+  }
+
+  Dppic radioDomain(nrf54l15::DPPIC10_BASE);
+  Dppic periDomain(nrf54l15::DPPIC20_BASE);
+  Dppic lpDomain(nrf54l15::DPPIC30_BASE);
+  NRF_PPIB_Type* const ppib11 = blePpib11();
+  NRF_PPIB_Type* const ppib21 = blePpib21();
+  NRF_PPIB_Type* const ppib22 = blePpib22();
+  NRF_PPIB_Type* const ppib30 = blePpib30();
+  if (ppib11 == nullptr || ppib21 == nullptr || ppib22 == nullptr ||
+      ppib30 == nullptr) {
+    return false;
+  }
+
+  ppib30->EVENTS_RECEIVE[kBleBackgroundAdvLpToPeriBridgeIndex] = 0U;
+  ppib22->EVENTS_RECEIVE[kBleBackgroundAdvLpToPeriBridgeIndex] = 0U;
+  ppib21->EVENTS_RECEIVE[kBleBackgroundAdvLpToPeriBridgeIndex] = 0U;
+  ppib11->EVENTS_RECEIVE[kBleBackgroundAdvLpToPeriBridgeIndex] = 0U;
+  *reinterpret_cast<volatile uint32_t*>(reinterpret_cast<uintptr_t>(ppib30) + 0x400U) =
+      0U;
+  *reinterpret_cast<volatile uint32_t*>(reinterpret_cast<uintptr_t>(ppib21) + 0x400U) =
+      0U;
+
+  if (!enable) {
+    (void)lpDomain.disconnectPublish(&NRF_GRTC->PUBLISH_COMPARE[kBleBackgroundAdvPrewarmCompareChannel]);
+    (void)lpDomain.disconnectPublish(&NRF_GRTC->PUBLISH_COMPARE[kBleBackgroundAdvTxCompareChannel]);
+    (void)lpDomain.disconnectPublish(
+        &NRF_GRTC->PUBLISH_COMPARE[kBleBackgroundAdvStage1TxCompareChannel]);
+    (void)lpDomain.disconnectPublish(
+        &NRF_GRTC->PUBLISH_COMPARE[kBleBackgroundAdvStage2TxCompareChannel]);
+    (void)lpDomain.disconnectPublish(
+        &NRF_GRTC->PUBLISH_COMPARE[kBleBackgroundAdvCleanupCompareChannel]);
+    (void)lpDomain.disconnectPublish(
+        &NRF_GRTC->PUBLISH_COMPARE[kBleBackgroundAdvFinalCleanupCompareChannel]);
+    (void)lpDomain.disconnectSubscribe(&NRF_CLOCK->SUBSCRIBE_XOSTART);
+    (void)lpDomain.disconnectSubscribe(&NRF_CLOCK->SUBSCRIBE_XOSTOP);
+    (void)lpDomain.disconnectSubscribe(
+        &ppib30->SUBSCRIBE_SEND[kBleBackgroundAdvLpToPeriBridgeIndex]);
+    (void)lpDomain.disconnectSubscribe(
+        &ppib30->SUBSCRIBE_SEND[kBleBackgroundAdvLatencyBridgeIndex]);
+    (void)lpDomain.enableChannel(kBleBackgroundAdvLpPrewarmDppiChannel, false);
+    (void)lpDomain.enableChannel(kBleBackgroundAdvLpTxDppiChannel, false);
+    (void)lpDomain.enableChannel(kBleBackgroundAdvLpStopDppiChannel, false);
+
+    (void)periDomain.disconnectPublish(
+        &ppib22->PUBLISH_RECEIVE[kBleBackgroundAdvLpToPeriBridgeIndex]);
+    (void)periDomain.disconnectPublish(
+        &ppib22->PUBLISH_RECEIVE[kBleBackgroundAdvLatencyBridgeIndex]);
+    (void)periDomain.disconnectSubscribe(&NRF_POWER->SUBSCRIBE_CONSTLAT);
+    (void)periDomain.disconnectSubscribe(
+        &ppib21->SUBSCRIBE_SEND[kBleBackgroundAdvLpToPeriBridgeIndex]);
+    (void)periDomain.enableChannel(kBleBackgroundAdvPeriTxDppiChannel, false);
+    (void)periDomain.enableChannel(kBleBackgroundAdvPeriLatencyDppiChannel, false);
+
+    (void)radioDomain.disconnectPublish(
+        &ppib11->PUBLISH_RECEIVE[kBleBackgroundAdvLpToPeriBridgeIndex]);
+    (void)radioDomain.disconnectPublish(&radio_->PUBLISH_PLLREADY);
+    (void)radioDomain.disconnectSubscribe(&radio_->SUBSCRIBE_PLLEN);
+    (void)radioDomain.disconnectSubscribe(&radio_->SUBSCRIBE_TXEN);
+    (void)radioDomain.enableChannel(kBleBackgroundAdvRadioPllenDppiChannel, false);
+    (void)radioDomain.enableChannel(kBleBackgroundAdvRadioTxDppiChannel, false);
+    return true;
+  }
+
+  if (!lpDomain.connect(&NRF_GRTC->PUBLISH_COMPARE[kBleBackgroundAdvPrewarmCompareChannel],
+                        &NRF_CLOCK->SUBSCRIBE_XOSTART,
+                        kBleBackgroundAdvLpPrewarmDppiChannel)) {
+    return false;
+  }
+  if (backgroundAdvertisingManageLatency_ &&
+      (!lpDomain.configureSubscribe(
+           &ppib30->SUBSCRIBE_SEND[kBleBackgroundAdvLatencyBridgeIndex],
+           kBleBackgroundAdvLpPrewarmDppiChannel, true) ||
+       !periDomain.configurePublish(
+           &ppib22->PUBLISH_RECEIVE[kBleBackgroundAdvLatencyBridgeIndex],
+           kBleBackgroundAdvPeriLatencyDppiChannel, true) ||
+       !periDomain.configureSubscribe(&NRF_POWER->SUBSCRIBE_CONSTLAT,
+                                      kBleBackgroundAdvPeriLatencyDppiChannel,
+                                      true) ||
+       !periDomain.enableChannel(kBleBackgroundAdvPeriLatencyDppiChannel,
+                                 true))) {
+    return false;
+  }
+  if (!backgroundAdvertisingUseIrqTxKick_) {
+    if (!lpDomain.configurePublish(
+            &NRF_GRTC->PUBLISH_COMPARE[kBleBackgroundAdvTxCompareChannel],
+            kBleBackgroundAdvLpTxDppiChannel, true) ||
+        !lpDomain.configurePublish(
+            &NRF_GRTC->PUBLISH_COMPARE[kBleBackgroundAdvStage1TxCompareChannel],
+            kBleBackgroundAdvLpTxDppiChannel, true) ||
+        !lpDomain.configurePublish(
+            &NRF_GRTC->PUBLISH_COMPARE[kBleBackgroundAdvStage2TxCompareChannel],
+            kBleBackgroundAdvLpTxDppiChannel, true) ||
+        !lpDomain.configureSubscribe(
+            &ppib30->SUBSCRIBE_SEND[kBleBackgroundAdvLpToPeriBridgeIndex],
+            kBleBackgroundAdvLpTxDppiChannel, true) ||
+        !lpDomain.enableChannel(kBleBackgroundAdvLpTxDppiChannel, true)) {
+      return false;
+    }
+  }
+  if (!lpDomain.configurePublish(
+          &NRF_GRTC->PUBLISH_COMPARE[kBleBackgroundAdvCleanupCompareChannel],
+          kBleBackgroundAdvLpStopDppiChannel, true) ||
+      !lpDomain.configurePublish(
+          &NRF_GRTC->PUBLISH_COMPARE[kBleBackgroundAdvFinalCleanupCompareChannel],
+          kBleBackgroundAdvLpStopDppiChannel, true) ||
+      !lpDomain.configureSubscribe(&NRF_CLOCK->SUBSCRIBE_XOSTOP,
+                                   kBleBackgroundAdvLpStopDppiChannel, true) ||
+      !lpDomain.enableChannel(kBleBackgroundAdvLpStopDppiChannel, true)) {
+    return false;
+  }
+
+  if (!backgroundAdvertisingUseIrqTxKick_) {
+    if (!periDomain.configurePublish(
+            &ppib22->PUBLISH_RECEIVE[kBleBackgroundAdvLpToPeriBridgeIndex],
+            kBleBackgroundAdvPeriTxDppiChannel, true) ||
+        !periDomain.configureSubscribe(
+            &ppib21->SUBSCRIBE_SEND[kBleBackgroundAdvLpToPeriBridgeIndex],
+            kBleBackgroundAdvPeriTxDppiChannel, true) ||
+        !periDomain.enableChannel(kBleBackgroundAdvPeriTxDppiChannel, true)) {
+      return false;
+    }
+  }
+  if (!backgroundAdvertisingUseIrqTxKick_) {
+    radio_->EVENTS_PLLREADY = 0U;
+    if (!radioDomain.configurePublish(
+            &ppib11->PUBLISH_RECEIVE[kBleBackgroundAdvLpToPeriBridgeIndex],
+            kBleBackgroundAdvRadioPllenDppiChannel, true) ||
+        !radioDomain.configureSubscribe(&radio_->SUBSCRIBE_PLLEN,
+                                        kBleBackgroundAdvRadioPllenDppiChannel,
+                                        true) ||
+        !radioDomain.enableChannel(kBleBackgroundAdvRadioPllenDppiChannel, true) ||
+        !radioDomain.configurePublish(&radio_->PUBLISH_PLLREADY,
+                                      kBleBackgroundAdvRadioTxDppiChannel, true) ||
+        !radioDomain.configureSubscribe(&radio_->SUBSCRIBE_TXEN,
+                                        kBleBackgroundAdvRadioTxDppiChannel,
+                                        true) ||
+        !radioDomain.enableChannel(kBleBackgroundAdvRadioTxDppiChannel, true)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool BleRadio::armBackgroundAdvertising(uint32_t targetTxUs, bool prewarmHfxo,
+                                        bool stopHfxoAfterTx) {
+  if (!initialized_ || radio_ == nullptr || connected_ ||
+      !backgroundAdvertisingEnabled_) {
+    return false;
+  }
+
+  uint8_t payloadLength = static_cast<uint8_t>(txPacket_[1] & 0x3FU);
+  if (payloadLength > kBleLegacyRawPayloadMaxLength) {
+    payloadLength = kBleLegacyRawPayloadMaxLength;
+  }
+  const uint32_t txWindowUs = bleBackgroundAdvertisingPacketWindowUs(payloadLength);
+  const bool prewarmInterrupt =
+      (backgroundAdvertisingManageLatency_ &&
+       !backgroundAdvertisingConstlatHardwareVerified_) ||
+      backgroundAdvertisingManageRfPath_ ||
+      backgroundAdvertisingUseIrqTxKick_;
+  const bool txInterrupt = backgroundAdvertisingUseIrqTxKick_;
+
+  ensureGrtcReady(NRF_GRTC);
+  bleBackgroundEnableIrq();
+  bleBackgroundDisableClockIrq();
+
+  if (backgroundAdvertisingThreeChannel_) {
+    if (!prewarmHfxo || (targetTxUs <= backgroundAdvertisingHfxoLeadUs_)) {
+      return false;
+    }
+
+    const uint32_t prewarmUs = targetTxUs - backgroundAdvertisingHfxoLeadUs_;
+    const uint32_t serviceLeadUs = bleBackgroundAdvertisingServiceLeadUs(
+        backgroundAdvertisingInterChannelDelayUs_);
+    const uint32_t stage1TxUs =
+        targetTxUs + txWindowUs + backgroundAdvertisingInterChannelDelayUs_;
+    const uint32_t stage1ServiceUs = stage1TxUs - serviceLeadUs;
+    const uint32_t stage2TxUs =
+        stage1TxUs + txWindowUs + backgroundAdvertisingInterChannelDelayUs_;
+    const uint32_t stage2ServiceUs = stage2TxUs - serviceLeadUs;
+    const uint32_t finalCleanupUs = stage2TxUs + txWindowUs;
+
+    NRF_CLOCK->EVENTS_XOTUNED = 0U;
+    NRF_CLOCK->EVENTS_XOTUNEFAILED = 0U;
+    bleProgramCompare(kBleBackgroundAdvPrewarmCompareChannel, prewarmUs,
+                      prewarmInterrupt);
+    bleProgramCompare(kBleBackgroundAdvTxCompareChannel, targetTxUs, txInterrupt);
+    bleProgramCompare(kBleBackgroundAdvStage1ServiceCompareChannel,
+                      stage1ServiceUs, true);
+    bleProgramCompare(kBleBackgroundAdvStage1TxCompareChannel, stage1TxUs,
+                      txInterrupt);
+    bleProgramCompare(kBleBackgroundAdvStage2ServiceCompareChannel,
+                      stage2ServiceUs, true);
+    bleProgramCompare(kBleBackgroundAdvStage2TxCompareChannel, stage2TxUs,
+                      txInterrupt);
+    bleProgramCompare(kBleBackgroundAdvFinalCleanupCompareChannel,
+                      finalCleanupUs, true);
+    bleDisableCompare(kBleBackgroundAdvCleanupCompareChannel, true);
+
+    const uint32_t irqState = bleEnterCritical();
+    backgroundAdvertisingDue_ = false;
+    backgroundAdvertisingArmed_ = true;
+    backgroundAdvertisingNextTxUs_ = targetTxUs;
+    backgroundAdvertisingServiceUs_ = stage1ServiceUs;
+    backgroundAdvertisingAwaitingHfxoTuned_ = !bleHfxoRunning();
+    backgroundAdvertisingPendingTxCompareChannel_ = kBleBackgroundInvalidCompareChannel;
+    backgroundAdvertisingPendingServiceCompareChannel_ =
+        kBleBackgroundInvalidCompareChannel;
+    ++backgroundAdvertisingDebug_.eventArmCount;
+    backgroundAdvertisingDebug_.lastEventStartUs = targetTxUs;
+    backgroundAdvertisingDebug_.lastChannel =
+        static_cast<uint8_t>(backgroundAdvertisingChannel_);
+    backgroundAdvertisingDebug_.currentStage = 0U;
+    g_bleBackgroundRadio = this;
+    bleExitCritical(irqState);
+    return true;
+  }
+
+  uint32_t serviceUs = targetTxUs + txWindowUs;
+  if (!bleBackgroundAdvertisingSetStopPathEnabled(stopHfxoAfterTx)) {
+    return false;
+  }
+  if (prewarmHfxo) {
+    if (targetTxUs <= backgroundAdvertisingHfxoLeadUs_) {
+      return false;
+    }
+    const uint32_t prewarmUs = targetTxUs - backgroundAdvertisingHfxoLeadUs_;
+    NRF_CLOCK->EVENTS_XOTUNED = 0U;
+    NRF_CLOCK->EVENTS_XOTUNEFAILED = 0U;
+    bleProgramCompare(kBleBackgroundAdvPrewarmCompareChannel, prewarmUs,
+                      prewarmInterrupt);
+  } else {
+    bleDisableCompare(kBleBackgroundAdvPrewarmCompareChannel, true);
+  }
+  bleProgramCompare(kBleBackgroundAdvTxCompareChannel, targetTxUs, txInterrupt);
+  bleDisableCompare(kBleBackgroundAdvStage1ServiceCompareChannel, true);
+  bleDisableCompare(kBleBackgroundAdvStage1TxCompareChannel, false);
+  bleDisableCompare(kBleBackgroundAdvStage2ServiceCompareChannel, true);
+  bleDisableCompare(kBleBackgroundAdvStage2TxCompareChannel, false);
+  bleDisableCompare(kBleBackgroundAdvFinalCleanupCompareChannel, true);
+  bleProgramCompare(kBleBackgroundAdvCleanupCompareChannel, serviceUs, true);
+
+  const uint32_t irqState = bleEnterCritical();
+  backgroundAdvertisingDue_ = false;
+  backgroundAdvertisingArmed_ = true;
+  backgroundAdvertisingNextTxUs_ = targetTxUs;
+  backgroundAdvertisingServiceUs_ = serviceUs;
+  backgroundAdvertisingAwaitingHfxoTuned_ = prewarmHfxo && !bleHfxoRunning();
+  backgroundAdvertisingPendingTxCompareChannel_ = kBleBackgroundInvalidCompareChannel;
+  backgroundAdvertisingPendingServiceCompareChannel_ =
+      kBleBackgroundInvalidCompareChannel;
+  ++backgroundAdvertisingDebug_.eventArmCount;
+  backgroundAdvertisingDebug_.lastEventStartUs = targetTxUs;
+  backgroundAdvertisingDebug_.lastChannel =
+      static_cast<uint8_t>(backgroundAdvertisingChannel_);
+  backgroundAdvertisingDebug_.currentStage = 0U;
+  g_bleBackgroundRadio = this;
+  bleExitCritical(irqState);
+  return true;
+}
+
+bool BleRadio::handleBackgroundAdvertisingPrewarmEvent() {
+  if (!ClockControl::startHfxo(false, 0U)) {
+    return false;
+  }
+
+  if (backgroundAdvertisingManageRfPath_ && backgroundAdvertisingRfPathCollapsed_) {
+    if (!ensureRfPathActiveForBle()) {
+      return false;
+    }
+    backgroundAdvertisingRfPathCollapsed_ = false;
+    ++backgroundAdvertisingDebug_.rfPathPrewarmRestoreCount;
+  }
+
+  bool alreadyActive = false;
+  if (bleBackgroundAdvertisingAssertManagedLatency(
+          backgroundAdvertisingManageLatency_, &alreadyActive)) {
+    backgroundAdvertisingDebug_.constlatActive = 1U;
+    if (alreadyActive) {
+      backgroundAdvertisingConstlatHardwareVerified_ = true;
+      ++backgroundAdvertisingDebug_.constlatPrewarmHardwareCount;
+    } else {
+      ++backgroundAdvertisingDebug_.constlatPrewarmFallbackCount;
+    }
+  }
+
+  backgroundAdvertisingDebug_.rfPathActive =
+      BoardControl::rfSwitchPowerEnabled() ? 1U : 0U;
+  const bool awaitingTune = !bleHfxoRunning();
+  const uint32_t irqState = bleEnterCritical();
+  backgroundAdvertisingAwaitingHfxoTuned_ = awaitingTune;
+  bleExitCritical(irqState);
+  if (awaitingTune) {
+    bleBackgroundEnableClockTuneInterrupts();
+  } else {
+    bleBackgroundDisableClockIrq();
+  }
+  return true;
+}
+
+bool BleRadio::rescheduleBackgroundAdvertisingTxCompare(uint8_t compareChannel) {
+  if (!initialized_ || radio_ == nullptr || connected_ ||
+      !backgroundAdvertisingEnabled_) {
+    return false;
+  }
+
+  if (backgroundAdvertisingTxKickRetryCountCurrent_ >=
+      kBleBackgroundAdvTxKickRetryLimit) {
+    return false;
+  }
+
+  const uint32_t retryTxUs = bleTimingUs() + kBleBackgroundAdvTxKickRetryUs;
+  bleProgramCompare(compareChannel, retryTxUs, true);
+
+  const uint32_t irqState = bleEnterCritical();
+  ++backgroundAdvertisingTxKickRetryCountCurrent_;
+  ++backgroundAdvertisingDebug_.txKickRetryCount;
+  backgroundAdvertisingNextTxUs_ = retryTxUs;
+  bleExitCritical(irqState);
+  return true;
+}
+
+bool BleRadio::rescheduleBackgroundAdvertisingService(uint8_t compareChannel) {
+  if (!initialized_ || radio_ == nullptr || connected_ ||
+      !backgroundAdvertisingEnabled_) {
+    return false;
+  }
+
+  uint8_t payloadLength = static_cast<uint8_t>(txPacket_[1] & 0x3FU);
+  if (payloadLength > kBleLegacyRawPayloadMaxLength) {
+    payloadLength = kBleLegacyRawPayloadMaxLength;
+  }
+
+  const uint32_t serviceUs =
+      bleTimingUs() + bleBackgroundAdvertisingPacketWindowUs(payloadLength);
+  bleProgramCompare(compareChannel, serviceUs, true);
+
+  const uint32_t irqState = bleEnterCritical();
+  backgroundAdvertisingDue_ = false;
+  backgroundAdvertisingArmed_ = true;
+  backgroundAdvertisingServiceUs_ = serviceUs;
+  bleExitCritical(irqState);
+  return true;
+}
+
+bool BleRadio::reconfigureBackgroundAdvertisingTxKick(bool useIrqKick) {
+  if (!initialized_ || radio_ == nullptr || connected_ ||
+      !backgroundAdvertisingEnabled_) {
+    return false;
+  }
+
+  if (backgroundAdvertisingUseIrqTxKick_ == useIrqKick) {
+    return true;
+  }
+
+  backgroundAdvertisingUseIrqTxKick_ = useIrqKick;
+  backgroundAdvertisingTxKickRetryCountCurrent_ = 0U;
+  if (!configureBackgroundAdvertisingHardware(false) ||
+      !configureBackgroundAdvertisingHardware(true)) {
+    return false;
+  }
+  return true;
+}
+
+bool BleRadio::settleBackgroundAdvertisingRadioBeforeService(uint32_t waitBudgetUs) {
+  if (radio_ == nullptr) {
+    return false;
+  }
+
+  const uint32_t initialState =
+      (radio_->STATE & RADIO_STATE_STATE_Msk) >> RADIO_STATE_STATE_Pos;
+  if ((radio_->EVENTS_DISABLED != 0U) ||
+      (initialState == RADIO_STATE_STATE_Disabled)) {
+    return true;
+  }
+
+  if ((initialState == RADIO_STATE_STATE_TxIdle) &&
+      (radio_->EVENTS_READY != 0U || radio_->EVENTS_TXREADY != 0U) &&
+      (radio_->EVENTS_PHYEND == 0U) && (radio_->EVENTS_END == 0U)) {
+    radio_->TASKS_START = RADIO_TASKS_START_TASKS_START_Trigger;
+    ++backgroundAdvertisingDebug_.txStartKickCount;
+  }
+
+  bool endSeen = ((radio_->EVENTS_PHYEND != 0U) || (radio_->EVENTS_END != 0U));
+  if (!endSeen) {
+    endSeen = waitRadioEndBudgeted(radio_, waitBudgetUs, 240000UL);
+  }
+  if (!endSeen) {
+    ++backgroundAdvertisingDebug_.txSettleTimeoutCount;
+    radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
+    (void)waitRadioDisabledBudgeted(radio_, waitBudgetUs, 240000UL);
+    return false;
+  }
+
+  bool disabledSeen = ((radio_->EVENTS_DISABLED != 0U) ||
+                       (((radio_->STATE & RADIO_STATE_STATE_Msk) >>
+                         RADIO_STATE_STATE_Pos) == RADIO_STATE_STATE_Disabled));
+  if (!disabledSeen) {
+    disabledSeen = waitRadioDisabledBudgeted(radio_, waitBudgetUs, 240000UL);
+  }
+  if (!disabledSeen) {
+    ++backgroundAdvertisingDebug_.txSettleTimeoutCount;
+    radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
+    disabledSeen = waitRadioDisabledBudgeted(radio_, waitBudgetUs, 240000UL);
+  }
+
+  return disabledSeen;
+}
+
+void BleRadio::collapseBackgroundAdvertisingRfPathIfManaged() {
+  if (!backgroundAdvertisingManageRfPath_ || backgroundAdvertisingRfPathCollapsed_) {
+    backgroundAdvertisingDebug_.rfPathActive =
+        BoardControl::rfSwitchPowerEnabled() ? 1U : 0U;
+    return;
+  }
+
+  if (BoardControl::collapseRfPathIdle()) {
+    rfPathOwnedByBle_ = true;
+    backgroundAdvertisingRfPathCollapsed_ = true;
+    ++backgroundAdvertisingDebug_.rfPathIdleCollapseCount;
+  }
+
+  backgroundAdvertisingDebug_.rfPathActive =
+      BoardControl::rfSwitchPowerEnabled() ? 1U : 0U;
+}
+
+bool BleRadio::beginBackgroundAdvertising(uint32_t intervalMs,
+                                          BleAdvertisingChannel channel,
+                                          uint32_t hfxoLeadUs,
+                                          bool addRandomDelay) {
+  if (!initialized_ || radio_ == nullptr || connected_) {
+    return false;
+  }
+  if ((channel != BleAdvertisingChannel::k37) &&
+      (channel != BleAdvertisingChannel::k38) &&
+      (channel != BleAdvertisingChannel::k39)) {
+    return false;
+  }
+  if (pduType_ != BleAdvPduType::kAdvNonConnInd) {
+    return false;
+  }
+  if ((intervalMs == 0U) || (intervalMs > (0xFFFFFFFFUL / 1000UL))) {
+    return false;
+  }
+
+  if (hfxoLeadUs == 0U) {
+    hfxoLeadUs = kBleBackgroundAdvDefaultHfxoLeadUs;
+  }
+
+  const uint32_t intervalUs = intervalMs * 1000UL;
+  if ((intervalUs < kBleBackgroundAdvMinIntervalUs) ||
+      (intervalUs <= (hfxoLeadUs + kBleBackgroundAdvEventWindowUs))) {
+    return false;
+  }
+
+  stopBackgroundConnectionService();
+  stopBackgroundAdvertising();
+  snapshotBackgroundAdvertisingRfPathRestoreState();
+  if (!ensureRfPathActiveForBle()) {
+    backgroundAdvertisingRestoreRfPathValid_ = false;
+    return false;
+  }
+  if (!buildAdvertisingPacket()) {
+    releaseRfPathForBle();
+    restoreBackgroundAdvertisingRfPathRestoreState();
+    return false;
+  }
+
+  const uint32_t irqState = bleEnterCritical();
+  backgroundAdvertisingEnabled_ = true;
+  backgroundAdvertisingArmed_ = false;
+  backgroundAdvertisingInProgress_ = false;
+  backgroundAdvertisingDue_ = false;
+  backgroundAdvertisingThreeChannel_ = false;
+  backgroundAdvertisingRandomDelay_ = addRandomDelay;
+  backgroundAdvertisingManageRfPath_ = bleBackgroundAdvertisingShouldManageRfPath();
+  backgroundAdvertisingRfPathCollapsed_ = false;
+  backgroundAdvertisingUseIrqTxKick_ = bleBackgroundAdvertisingInitialUseIrqTxKick();
+  backgroundAdvertisingManageLatency_ =
+      bleBackgroundAdvertisingShouldManageLatency();
+  backgroundAdvertisingConstlatHardwareVerified_ = false;
+  backgroundAdvertisingAwaitingHfxoTuned_ = false;
+  backgroundAdvertisingChannel_ = channel;
+  backgroundAdvertisingIntervalUs_ = intervalUs;
+  backgroundAdvertisingInterChannelDelayUs_ = 0U;
+  backgroundAdvertisingHfxoLeadUs_ = hfxoLeadUs;
+  backgroundAdvertisingNextTxUs_ = 0U;
+  backgroundAdvertisingServiceUs_ = 0U;
+  backgroundAdvertisingEventStartTxUs_ = 0U;
+  backgroundAdvertisingRandomState_ = 0U;
+  backgroundAdvertisingPrimaryStage_ = 0U;
+  backgroundAdvertisingLastStopReason_ = kBleBackgroundAdvStopReasonNone;
+  backgroundAdvertisingTxKickRetryCountCurrent_ = 0U;
+  backgroundAdvertisingPendingTxCompareChannel_ = kBleBackgroundInvalidCompareChannel;
+  backgroundAdvertisingPendingServiceCompareChannel_ =
+      kBleBackgroundInvalidCompareChannel;
+  memset(&backgroundAdvertisingDebug_, 0, sizeof(backgroundAdvertisingDebug_));
+  backgroundAdvertisingDebug_.enabled = 1U;
+  backgroundAdvertisingDebug_.threeChannel = 0U;
+  backgroundAdvertisingDebug_.rfPathManaged =
+      backgroundAdvertisingManageRfPath_ ? 1U : 0U;
+  backgroundAdvertisingDebug_.rfPathActive =
+      BoardControl::rfSwitchPowerEnabled() ? 1U : 0U;
+  backgroundAdvertisingDebug_.latencyManaged =
+      backgroundAdvertisingManageLatency_ ? 1U : 0U;
+  backgroundAdvertisingDebug_.constlatActive =
+      bleBackgroundAdvertisingConstlatActive() ? 1U : 0U;
+  backgroundAdvertisingDebug_.lastChannel = static_cast<uint8_t>(channel);
+  bleExitCritical(irqState);
+
+  bleBackgroundAdvertisingConfigureRandomSource(addRandomDelay);
+
+  if (!prepareBackgroundAdvertisingEvent() ||
+      !configureBackgroundAdvertisingHardware(true)) {
+    stopBackgroundAdvertising();
+    return false;
+  }
+
+  const uint32_t firstTxUs =
+      bleTimingUs() + hfxoLeadUs + kBleBackgroundAdvFirstEventGuardUs;
+  backgroundAdvertisingEventStartTxUs_ = firstTxUs;
+  if (!armBackgroundAdvertising(firstTxUs, true, true)) {
+    stopBackgroundAdvertising();
+    return false;
+  }
+  collapseBackgroundAdvertisingRfPathIfManaged();
+
+  return true;
+}
+
+bool BleRadio::beginBackgroundAdvertising3Channel(uint32_t intervalMs,
+                                                  uint32_t interChannelDelayUs,
+                                                  uint32_t hfxoLeadUs,
+                                                  bool addRandomDelay) {
+  if (!initialized_ || radio_ == nullptr || connected_) {
+    return false;
+  }
+  if (pduType_ != BleAdvPduType::kAdvNonConnInd) {
+    return false;
+  }
+  if ((intervalMs == 0U) || (intervalMs > (0xFFFFFFFFUL / 1000UL))) {
+    return false;
+  }
+  if (interChannelDelayUs < kBleBackgroundAdvMinInterChannelDelayUs) {
+    return false;
+  }
+
+  if (hfxoLeadUs == 0U) {
+    hfxoLeadUs = kBleBackgroundAdvDefaultHfxoLeadUs;
+  }
+
+  const uint32_t intervalUs = intervalMs * 1000UL;
+  const uint32_t maxPacketWindowUs =
+      kBleBackgroundAdvTxRampUpUs +
+      bleDataPduAirTimeUs(kBleLegacyRawPayloadMaxLength) +
+      kBleBackgroundAdvDisableGuardUs;
+  const uint32_t eventDurationUs =
+      3U * maxPacketWindowUs + 2U * interChannelDelayUs;
+  if ((intervalUs < kBleBackgroundAdvMinIntervalUs) ||
+      (intervalUs <= eventDurationUs)) {
+    return false;
+  }
+
+  stopBackgroundConnectionService();
+  stopBackgroundAdvertising();
+  snapshotBackgroundAdvertisingRfPathRestoreState();
+  if (!ensureRfPathActiveForBle()) {
+    backgroundAdvertisingRestoreRfPathValid_ = false;
+    return false;
+  }
+  if (!buildAdvertisingPacket()) {
+    releaseRfPathForBle();
+    restoreBackgroundAdvertisingRfPathRestoreState();
+    return false;
+  }
+
+  const uint32_t irqState = bleEnterCritical();
+  backgroundAdvertisingEnabled_ = true;
+  backgroundAdvertisingArmed_ = false;
+  backgroundAdvertisingInProgress_ = false;
+  backgroundAdvertisingDue_ = false;
+  backgroundAdvertisingThreeChannel_ = true;
+  backgroundAdvertisingRandomDelay_ = addRandomDelay;
+  backgroundAdvertisingManageRfPath_ = bleBackgroundAdvertisingShouldManageRfPath();
+  backgroundAdvertisingRfPathCollapsed_ = false;
+  backgroundAdvertisingUseIrqTxKick_ = bleBackgroundAdvertisingInitialUseIrqTxKick();
+  backgroundAdvertisingManageLatency_ =
+      bleBackgroundAdvertisingShouldManageLatency();
+  backgroundAdvertisingConstlatHardwareVerified_ = false;
+  backgroundAdvertisingAwaitingHfxoTuned_ = false;
+  backgroundAdvertisingChannel_ = BleAdvertisingChannel::k37;
+  backgroundAdvertisingIntervalUs_ = intervalUs;
+  backgroundAdvertisingInterChannelDelayUs_ = interChannelDelayUs;
+  backgroundAdvertisingHfxoLeadUs_ = hfxoLeadUs;
+  backgroundAdvertisingNextTxUs_ = 0U;
+  backgroundAdvertisingServiceUs_ = 0U;
+  backgroundAdvertisingEventStartTxUs_ = 0U;
+  backgroundAdvertisingPrimaryStage_ = 0U;
+  backgroundAdvertisingLastStopReason_ = kBleBackgroundAdvStopReasonNone;
+  backgroundAdvertisingTxKickRetryCountCurrent_ = 0U;
+  backgroundAdvertisingPendingTxCompareChannel_ = kBleBackgroundInvalidCompareChannel;
+  backgroundAdvertisingPendingServiceCompareChannel_ =
+      kBleBackgroundInvalidCompareChannel;
+  memset(&backgroundAdvertisingDebug_, 0, sizeof(backgroundAdvertisingDebug_));
+  backgroundAdvertisingDebug_.enabled = 1U;
+  backgroundAdvertisingDebug_.threeChannel = 1U;
+  backgroundAdvertisingDebug_.rfPathManaged =
+      backgroundAdvertisingManageRfPath_ ? 1U : 0U;
+  backgroundAdvertisingDebug_.rfPathActive =
+      BoardControl::rfSwitchPowerEnabled() ? 1U : 0U;
+  backgroundAdvertisingDebug_.latencyManaged =
+      backgroundAdvertisingManageLatency_ ? 1U : 0U;
+  backgroundAdvertisingDebug_.constlatActive =
+      bleBackgroundAdvertisingConstlatActive() ? 1U : 0U;
+  backgroundAdvertisingDebug_.lastChannel =
+      static_cast<uint8_t>(BleAdvertisingChannel::k37);
+  bleExitCritical(irqState);
+
+  bleBackgroundAdvertisingConfigureRandomSource(addRandomDelay);
+
+  if (!prepareBackgroundAdvertisingEvent() ||
+      !configureBackgroundAdvertisingHardware(true)) {
+    stopBackgroundAdvertising();
+    return false;
+  }
+
+  const uint32_t firstTxUs =
+      bleTimingUs() + hfxoLeadUs + kBleBackgroundAdvFirstEventGuardUs;
+  backgroundAdvertisingEventStartTxUs_ = firstTxUs;
+  if (!armBackgroundAdvertising(firstTxUs, true, false)) {
+    stopBackgroundAdvertising();
+    return false;
+  }
+  collapseBackgroundAdvertisingRfPathIfManaged();
+
+  return true;
+}
+
+void BleRadio::stopBackgroundAdvertising() {
+  if (backgroundAdvertisingEnabled_ &&
+      backgroundAdvertisingLastStopReason_ == kBleBackgroundAdvStopReasonNone) {
+    backgroundAdvertisingLastStopReason_ = kBleBackgroundAdvStopReasonExplicit;
+  }
+  if (backgroundAdvertisingManageLatency_) {
+    (void)bleBackgroundAdvertisingReleaseManagedLatency(true);
+  }
+  bleBackgroundDisableClockIrq();
+  NRF_CLOCK->EVENTS_XOTUNED = 0U;
+  NRF_CLOCK->EVENTS_XOTUNEERROR = 0U;
+  NRF_CLOCK->EVENTS_XOTUNEFAILED = 0U;
+  bleBackgroundAdvertisingConfigureRandomSource(false);
+  bleDisableCompare(kBleBackgroundAdvPrewarmCompareChannel, true);
+  bleDisableCompare(kBleBackgroundAdvTxCompareChannel, false);
+  bleDisableCompare(kBleBackgroundAdvCleanupCompareChannel, true);
+  bleDisableCompare(kBleBackgroundAdvStage1ServiceCompareChannel, true);
+  bleDisableCompare(kBleBackgroundAdvStage1TxCompareChannel, false);
+  bleDisableCompare(kBleBackgroundAdvStage2ServiceCompareChannel, true);
+  bleDisableCompare(kBleBackgroundAdvStage2TxCompareChannel, false);
+  bleDisableCompare(kBleBackgroundAdvFinalCleanupCompareChannel, true);
+  (void)configureBackgroundAdvertisingHardware(false);
+
+  if (radio_ != nullptr) {
+    radio_->SHORTS = 0U;
+    radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
+    waitDisabled(120000UL);
+    clearRadioCoreEvents(radio_);
+  }
+  NRF_CLOCK->TASKS_XOSTOP = CLOCK_TASKS_XOSTOP_TASKS_XOSTOP_Trigger;
+
+  const uint32_t irqState = bleEnterCritical();
+  backgroundAdvertisingEnabled_ = false;
+  backgroundAdvertisingArmed_ = false;
+  backgroundAdvertisingInProgress_ = false;
+  backgroundAdvertisingDue_ = false;
+  backgroundAdvertisingThreeChannel_ = false;
+  backgroundAdvertisingRandomDelay_ = false;
+  backgroundAdvertisingManageRfPath_ = false;
+  backgroundAdvertisingRfPathCollapsed_ = false;
+  backgroundAdvertisingUseIrqTxKick_ = bleBackgroundAdvertisingInitialUseIrqTxKick();
+  backgroundAdvertisingManageLatency_ = false;
+  backgroundAdvertisingConstlatHardwareVerified_ = false;
+  backgroundAdvertisingAwaitingHfxoTuned_ = false;
+  backgroundAdvertisingChannel_ = BleAdvertisingChannel::k37;
+  backgroundAdvertisingIntervalUs_ = 0U;
+  backgroundAdvertisingInterChannelDelayUs_ = 0U;
+  backgroundAdvertisingHfxoLeadUs_ = kBleBackgroundAdvDefaultHfxoLeadUs;
+  backgroundAdvertisingNextTxUs_ = 0U;
+  backgroundAdvertisingServiceUs_ = 0U;
+  backgroundAdvertisingEventStartTxUs_ = 0U;
+  backgroundAdvertisingRandomState_ = 0U;
+  backgroundAdvertisingPrimaryStage_ = 0U;
+  backgroundAdvertisingTxKickRetryCountCurrent_ = 0U;
+  backgroundAdvertisingPendingTxCompareChannel_ = kBleBackgroundInvalidCompareChannel;
+  backgroundAdvertisingPendingServiceCompareChannel_ =
+      kBleBackgroundInvalidCompareChannel;
+  backgroundAdvertisingDebug_.enabled = 0U;
+  backgroundAdvertisingDebug_.threeChannel = 0U;
+  backgroundAdvertisingDebug_.rfPathManaged = 0U;
+  backgroundAdvertisingDebug_.rfPathActive =
+      BoardControl::rfSwitchPowerEnabled() ? 1U : 0U;
+  backgroundAdvertisingDebug_.latencyManaged = 0U;
+  backgroundAdvertisingDebug_.constlatActive =
+      bleBackgroundAdvertisingConstlatActive() ? 1U : 0U;
+  backgroundAdvertisingDebug_.currentStage = 0U;
+  if (!backgroundConnectionServiceEnabled_) {
+    g_bleBackgroundPendSvPending = 0U;
+    blePendSvClearPending();
+  }
+  if (g_bleBackgroundRadio == this && !backgroundServicesActive() &&
+      deferredConnectionEventCount_ == 0U &&
+      deferredGattWriteCount_ == 0U && deferredTraceCount_ == 0U) {
+    g_bleBackgroundRadio = nullptr;
+  }
+  bleExitCritical(irqState);
+
+  restoreBackgroundAdvertisingRfPathRestoreState();
+  releaseRfPathForBle();
+}
+
+bool BleRadio::isBackgroundAdvertisingEnabled() const {
+  return backgroundAdvertisingEnabled_;
+}
+
+uint8_t BleRadio::getBackgroundAdvertisingLastStopReason() const {
+  return backgroundAdvertisingLastStopReason_;
+}
+
+void BleRadio::getBackgroundAdvertisingDebugCounters(
+    BleBackgroundAdvertisingDebugCounters* out) const {
+  if (out == nullptr) {
+    return;
+  }
+  const uint32_t irqState = bleEnterCritical();
+  *out = backgroundAdvertisingDebug_;
+  bleExitCritical(irqState);
+}
+
+void BleRadio::clearBackgroundAdvertisingDebugCounters() {
+  const uint32_t irqState = bleEnterCritical();
+  const uint8_t enabled = backgroundAdvertisingEnabled_ ? 1U : 0U;
+  const uint8_t threeChannel = backgroundAdvertisingThreeChannel_ ? 1U : 0U;
+  const uint8_t rfPathManaged = backgroundAdvertisingManageRfPath_ ? 1U : 0U;
+  const uint8_t rfPathActive =
+      BoardControl::rfSwitchPowerEnabled() ? 1U : 0U;
+  const uint8_t latencyManaged = backgroundAdvertisingManageLatency_ ? 1U : 0U;
+  const uint8_t constlatActive =
+      bleBackgroundAdvertisingConstlatActive() ? 1U : 0U;
+  const uint8_t lastChannel = static_cast<uint8_t>(backgroundAdvertisingChannel_);
+  const uint8_t currentStage = backgroundAdvertisingPrimaryStage_;
+  memset(&backgroundAdvertisingDebug_, 0, sizeof(backgroundAdvertisingDebug_));
+  backgroundAdvertisingDebug_.enabled = enabled;
+  backgroundAdvertisingDebug_.threeChannel = threeChannel;
+  backgroundAdvertisingDebug_.rfPathManaged = rfPathManaged;
+  backgroundAdvertisingDebug_.rfPathActive = rfPathActive;
+  backgroundAdvertisingDebug_.latencyManaged = latencyManaged;
+  backgroundAdvertisingDebug_.constlatActive = constlatActive;
+  backgroundAdvertisingDebug_.lastChannel = lastChannel;
+  backgroundAdvertisingDebug_.currentStage = currentStage;
+  bleExitCritical(irqState);
+}
+
+bool BleRadio::backgroundAdvertisingConsumePendingPrewarmFromFallback() {
+  if (!backgroundAdvertisingEnabled_ || radio_ == nullptr || connected_ ||
+      backgroundAdvertisingInProgress_) {
+    return false;
+  }
+  if ((__get_PRIMASK() & 1U) == 0U &&
+      NRF54L15_CLEAN_BLE_BACKGROUND_GRTC_IRQ_RUN != 0) {
+    return false;
+  }
+
+  const uint32_t irqState = bleEnterCritical();
+  const bool pending = bleCompareEventPending(kBleBackgroundAdvPrewarmCompareChannel);
+  if (pending) {
+    bleDisableCompare(kBleBackgroundAdvPrewarmCompareChannel, true);
+  }
+  bleExitCritical(irqState);
+  if (!pending) {
+    return false;
+  }
+  if (!handleBackgroundAdvertisingPrewarmEvent()) {
+    backgroundAdvertisingLastStopReason_ = kBleBackgroundAdvStopReasonPrewarmFailed;
+    stopBackgroundAdvertising();
+  }
+  return true;
+}
+
+bool BleRadio::backgroundAdvertisingNeedsIdleService() const {
+  if (!backgroundAdvertisingEnabled_ || radio_ == nullptr || connected_ ||
+      backgroundAdvertisingInProgress_) {
+    return false;
+  }
+  if (backgroundAdvertisingDue_) {
+    return true;
+  }
+  if ((__get_PRIMASK() & 1U) == 0U &&
+      NRF54L15_CLEAN_BLE_BACKGROUND_GRTC_IRQ_RUN != 0) {
+    return false;
+  }
+  if (bleCompareEventPending(kBleBackgroundAdvCleanupCompareChannel) ||
+      bleCompareEventPending(kBleBackgroundAdvStage1ServiceCompareChannel) ||
+      bleCompareEventPending(kBleBackgroundAdvStage2ServiceCompareChannel) ||
+      bleCompareEventPending(kBleBackgroundAdvFinalCleanupCompareChannel)) {
+    return true;
+  }
+  return false;
+}
+
+bool BleRadio::backgroundAdvertisingConsumePendingCompareFromFallback() {
+  if (!backgroundAdvertisingEnabled_ || radio_ == nullptr || connected_ ||
+      backgroundAdvertisingInProgress_) {
+    return false;
+  }
+  if ((__get_PRIMASK() & 1U) == 0U &&
+      NRF54L15_CLEAN_BLE_BACKGROUND_GRTC_IRQ_RUN != 0) {
+    return false;
+  }
+
+  const uint32_t irqState = bleEnterCritical();
+  bool consumed = false;
+  if (bleCompareEventPending(kBleBackgroundAdvCleanupCompareChannel)) {
+    bleDisableCompare(kBleBackgroundAdvCleanupCompareChannel, true);
+    backgroundAdvertisingArmed_ = false;
+    backgroundAdvertisingDue_ = true;
+    consumed = true;
+  } else if (bleCompareEventPending(kBleBackgroundAdvStage1ServiceCompareChannel)) {
+    bleDisableCompare(kBleBackgroundAdvStage1ServiceCompareChannel, true);
+    backgroundAdvertisingArmed_ = false;
+    backgroundAdvertisingDue_ = true;
+    consumed = true;
+  } else if (bleCompareEventPending(kBleBackgroundAdvStage2ServiceCompareChannel)) {
+    bleDisableCompare(kBleBackgroundAdvStage2ServiceCompareChannel, true);
+    backgroundAdvertisingArmed_ = false;
+    backgroundAdvertisingDue_ = true;
+    consumed = true;
+  } else if (bleCompareEventPending(kBleBackgroundAdvFinalCleanupCompareChannel)) {
+    bleDisableCompare(kBleBackgroundAdvFinalCleanupCompareChannel, true);
+    backgroundAdvertisingArmed_ = false;
+    backgroundAdvertisingDue_ = true;
+    consumed = true;
+  }
+  bleExitCritical(irqState);
+  return consumed;
+}
+
+bool BleRadio::serviceBackgroundAdvertising() {
+  if (NRF54L15_CLEAN_BLE_BACKGROUND_SERVICE == 0) {
+    return false;
+  }
+
+  const uint32_t irqState = bleEnterCritical();
+  if (!backgroundAdvertisingEnabled_ || radio_ == nullptr || connected_) {
+    bleExitCritical(irqState);
+    backgroundAdvertisingLastStopReason_ = kBleBackgroundAdvStopReasonInvalidState;
+    stopBackgroundAdvertising();
+    return false;
+  }
+  if (backgroundAdvertisingInProgress_) {
+    bleExitCritical(irqState);
+    return false;
+  }
+
+  const bool cleanupDue = backgroundAdvertisingDue_;
+  if (!cleanupDue) {
+    if (!backgroundAdvertisingArmed_ ||
+        static_cast<int32_t>(bleTimingUs() - backgroundAdvertisingServiceUs_) < 0) {
+      bleExitCritical(irqState);
+      return false;
+    }
+  }
+
+  backgroundAdvertisingInProgress_ = true;
+  backgroundAdvertisingDue_ = false;
+  backgroundAdvertisingArmed_ = false;
+  ++backgroundAdvertisingDebug_.serviceRunCount;
+  backgroundAdvertisingDebug_.latencyManaged =
+      backgroundAdvertisingManageLatency_ ? 1U : 0U;
+  backgroundAdvertisingDebug_.constlatActive =
+      bleBackgroundAdvertisingConstlatActive() ? 1U : 0U;
+  const uint8_t radioState = static_cast<uint8_t>(
+      (radio_->STATE & RADIO_STATE_STATE_Msk) >> RADIO_STATE_STATE_Pos);
+  const bool txReadySeen = (radio_->EVENTS_READY != 0U);
+  const bool txPhyendSeen = (radio_->EVENTS_PHYEND != 0U) ||
+                            (radio_->EVENTS_END != 0U);
+  const bool txDisabledSeen = (radio_->EVENTS_DISABLED != 0U);
+  if (backgroundAdvertisingManageLatency_ && bleBackgroundAdvertisingConstlatActive()) {
+    ++backgroundAdvertisingDebug_.constlatServiceObservedCount;
+  }
+  backgroundAdvertisingDebug_.lastServiceUs = backgroundAdvertisingServiceUs_;
+  bleExitCritical(irqState);
+
+  const uint32_t settleBudgetUs =
+      (backgroundAdvertisingThreeChannel_ && backgroundAdvertisingPrimaryStage_ < 2U)
+          ? kBleBackgroundAdvStageSettleBudgetUs
+          : kBleBackgroundAdvEventSettleBudgetUs;
+  if (!settleBackgroundAdvertisingRadioBeforeService(settleBudgetUs)) {
+    const uint32_t exitIrqState = bleEnterCritical();
+    backgroundAdvertisingInProgress_ = false;
+    bleExitCritical(exitIrqState);
+    backgroundAdvertisingLastStopReason_ = kBleBackgroundAdvStopReasonSettleTimeout;
+    stopBackgroundAdvertising();
+    return false;
+  }
+
+  {
+    const uint32_t settleIrqState = bleEnterCritical();
+    const uint8_t finalRadioState = static_cast<uint8_t>(
+        (radio_->STATE & RADIO_STATE_STATE_Msk) >> RADIO_STATE_STATE_Pos);
+    const bool finalTxReadySeen =
+        txReadySeen || (radio_->EVENTS_READY != 0U) || (radio_->EVENTS_TXREADY != 0U);
+    const bool finalTxPhyendSeen =
+        txPhyendSeen || (radio_->EVENTS_PHYEND != 0U) || (radio_->EVENTS_END != 0U);
+    const bool finalTxDisabledSeen =
+        txDisabledSeen || (radio_->EVENTS_DISABLED != 0U) ||
+        (finalRadioState == RADIO_STATE_STATE_Disabled);
+    if (finalTxReadySeen) {
+      ++backgroundAdvertisingDebug_.txReadyCount;
+    }
+    if (finalTxPhyendSeen) {
+      ++backgroundAdvertisingDebug_.txPhyendCount;
+    }
+    if (finalTxDisabledSeen) {
+      ++backgroundAdvertisingDebug_.txDisabledCount;
+    }
+    backgroundAdvertisingDebug_.lastRadioState = finalRadioState;
+    backgroundAdvertisingDebug_.lastTxReadySeen = finalTxReadySeen ? 1U : 0U;
+    backgroundAdvertisingDebug_.lastTxPhyendSeen = finalTxPhyendSeen ? 1U : 0U;
+    backgroundAdvertisingDebug_.lastTxDisabledSeen = finalTxDisabledSeen ? 1U : 0U;
+    bleExitCritical(settleIrqState);
+
+    if (!backgroundAdvertisingUseIrqTxKick_ &&
+        !finalTxReadySeen && !finalTxPhyendSeen) {
+      g_bleBackgroundAdvDirectTxKickBlacklisted = 1U;
+      if (!reconfigureBackgroundAdvertisingTxKick(true)) {
+        const uint32_t exitIrqState = bleEnterCritical();
+        backgroundAdvertisingInProgress_ = false;
+        bleExitCritical(exitIrqState);
+        backgroundAdvertisingLastStopReason_ =
+            kBleBackgroundAdvStopReasonTxCompareFailed;
+        stopBackgroundAdvertising();
+        return false;
+      }
+      ++backgroundAdvertisingDebug_.txKickFallbackCount;
+      radio_->SHORTS = bleRadioShortsTxOnly();
+    }
+  }
+
+  uint8_t payloadLength = static_cast<uint8_t>(txPacket_[1] & 0x3FU);
+  if (payloadLength > kBleLegacyRawPayloadMaxLength) {
+    payloadLength = kBleLegacyRawPayloadMaxLength;
+  }
+  const uint32_t txWindowUs = bleBackgroundAdvertisingPacketWindowUs(payloadLength);
+
+  bool prepared = false;
+  bool armed = false;
+  if (backgroundAdvertisingThreeChannel_ &&
+      backgroundAdvertisingPrimaryStage_ < 2U) {
+    ++backgroundAdvertisingPrimaryStage_;
+    ++backgroundAdvertisingDebug_.stageAdvanceCount;
+    backgroundAdvertisingDebug_.currentStage = backgroundAdvertisingPrimaryStage_;
+    prepared = prepareBackgroundAdvertisingEvent();
+    if (prepared) {
+      const uint32_t serviceLeadUs = bleBackgroundAdvertisingServiceLeadUs(
+          backgroundAdvertisingInterChannelDelayUs_);
+      if (backgroundAdvertisingPrimaryStage_ >= 2U) {
+        const uint32_t stage2TxUs =
+            backgroundAdvertisingEventStartTxUs_ +
+            2U * (txWindowUs + backgroundAdvertisingInterChannelDelayUs_);
+        backgroundAdvertisingServiceUs_ = stage2TxUs + txWindowUs;
+      } else {
+        const uint32_t stage2TxUs =
+            backgroundAdvertisingEventStartTxUs_ +
+            2U * (txWindowUs + backgroundAdvertisingInterChannelDelayUs_);
+        backgroundAdvertisingServiceUs_ = stage2TxUs - serviceLeadUs;
+      }
+      armed = prepared;
+    }
+  } else {
+    ++backgroundAdvertisingDebug_.eventCompleteCount;
+    backgroundAdvertisingDebug_.lastCompletedEventStartUs =
+        backgroundAdvertisingEventStartTxUs_;
+    if (bleHfxoRunning()) {
+      ClockControl::stopHfxo();
+    }
+    uint32_t nextEventStartUs =
+        backgroundAdvertisingEventStartTxUs_ + backgroundAdvertisingIntervalUs_;
+    if (backgroundAdvertisingRandomDelay_) {
+      bool usedHardware = false;
+      const uint32_t randomDelayUs = bleBackgroundAdvertisingRandomDelayUs(
+          &backgroundAdvertisingRandomState_, address_[0], &usedHardware);
+      backgroundAdvertisingDebug_.lastRandomDelayUs = randomDelayUs;
+      if (usedHardware) {
+        ++backgroundAdvertisingDebug_.randomHardwareCount;
+      } else {
+        ++backgroundAdvertisingDebug_.randomFallbackCount;
+      }
+      nextEventStartUs += randomDelayUs;
+    } else {
+      backgroundAdvertisingDebug_.lastRandomDelayUs = 0U;
+    }
+    backgroundAdvertisingPrimaryStage_ = 0U;
+    backgroundAdvertisingDebug_.currentStage = 0U;
+    backgroundAdvertisingEventStartTxUs_ = nextEventStartUs;
+    prepared = prepareBackgroundAdvertisingEvent();
+    if (prepared) {
+      armed = armBackgroundAdvertising(nextEventStartUs, true,
+                                       !backgroundAdvertisingThreeChannel_);
+      if (armed && bleBackgroundAdvertisingReleaseManagedLatency(
+                       backgroundAdvertisingManageLatency_)) {
+        ++backgroundAdvertisingDebug_.lowPowerReleaseCount;
+      }
+      if (armed) {
+        collapseBackgroundAdvertisingRfPathIfManaged();
+      }
+    }
+  }
+
+  const uint32_t exitIrqState = bleEnterCritical();
+  backgroundAdvertisingInProgress_ = false;
+  bleExitCritical(exitIrqState);
+
+  if (!prepared || !armed) {
+    backgroundAdvertisingLastStopReason_ =
+        prepared ? kBleBackgroundAdvStopReasonArmFailed
+                 : kBleBackgroundAdvStopReasonPrepareFailed;
+    stopBackgroundAdvertising();
+    return false;
+  }
+
+  return true;
 }
 
 bool BleRadio::advertiseExtendedEvent(uint32_t auxOffsetUs,
@@ -10687,6 +12421,10 @@ void BleRadio::dispatchDeferredTraces() {
 #endif
 }
 
+bool BleRadio::backgroundServicesActive() const {
+  return backgroundAdvertisingEnabled_ || backgroundConnectionServiceEnabled_;
+}
+
 void BleRadio::serviceDeferredApplicationWork() {
   if (bleRunningInIsr()) {
     return;
@@ -10694,7 +12432,7 @@ void BleRadio::serviceDeferredApplicationWork() {
   dispatchDeferredGattWrites();
   dispatchDeferredTraces();
   const uint32_t irqState = bleEnterCritical();
-  if (!backgroundConnectionServiceEnabled_ && g_bleBackgroundRadio == this &&
+  if (!backgroundServicesActive() && g_bleBackgroundRadio == this &&
       deferredConnectionEventCount_ == 0U &&
       deferredGattWriteCount_ == 0U && deferredTraceCount_ == 0U) {
     g_bleBackgroundRadio = nullptr;
@@ -10715,7 +12453,8 @@ void BleRadio::stopBackgroundConnectionService() {
   blePendSvClearPending();
   if (g_bleBackgroundRadio == this) {
     bleBackgroundDisableCompare();
-    if (deferredConnectionEventCount_ == 0U &&
+    if (!backgroundServicesActive() &&
+        deferredConnectionEventCount_ == 0U &&
         deferredGattWriteCount_ == 0U && deferredTraceCount_ == 0U) {
       g_bleBackgroundRadio = nullptr;
     }
@@ -10837,39 +12576,7 @@ bool BleRadio::serviceBackgroundConnectionEvent() {
 }
 
 bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit) {
-  serviceDeferredApplicationWork();
-  if (consumeDeferredConnectionEvent(event)) {
-    return true;
-  }
-
-  const uint32_t irqState = bleEnterCritical();
-  const bool backgroundEnabled =
-      (NRF54L15_CLEAN_BLE_BACKGROUND_SERVICE != 0) &&
-      backgroundConnectionServiceEnabled_ && (g_bleBackgroundRadio == this);
-  const bool backgroundBusy = backgroundConnectionServiceInProgress_;
-  const bool backgroundArmed = backgroundConnectionServiceArmed_;
-  bleExitCritical(irqState);
-
-  if (backgroundBusy) {
-    return false;
-  }
-
-  if (backgroundEnabled) {
-    if (!backgroundArmed && connected_) {
-      armBackgroundConnectionService();
-    }
-    (void)serviceBackgroundConnectionEvent();
-    serviceDeferredApplicationWork();
-    if (consumeDeferredConnectionEvent(event)) {
-      return true;
-    }
-    return false;
-  }
-
-  const bool ran = pollConnectionEventCore(event, spinLimit);
-
-  serviceDeferredApplicationWork();
-  return ran;
+  return pollConnectionEventCore(event, spinLimit);
 }
 
 void BleRadio::setBackgroundConnectionServiceEnabled(bool enabled) {
@@ -12749,6 +14456,16 @@ extern "C" void nrf54l15_ble_idle_service(void) {
   if (radio == nullptr) {
     return;
   }
+  const bool fallbackAdvertisingPrewarm =
+      radio->backgroundAdvertisingConsumePendingPrewarmFromFallback();
+  const bool fallbackAdvertising =
+      radio->backgroundAdvertisingConsumePendingCompareFromFallback();
+  if (fallbackAdvertisingPrewarm || fallbackAdvertising) {
+    ++radio->backgroundAdvertisingDebug_.idleFallbackCount;
+  }
+  if (fallbackAdvertising || radio->backgroundAdvertisingNeedsIdleService()) {
+    (void)radio->serviceBackgroundAdvertising();
+  }
   (void)radio->serviceBackgroundConnectionEvent();
   radio->serviceDeferredApplicationWork();
 }
@@ -12765,22 +14482,277 @@ extern "C" void nrf54l15_ble_grtc_irq_service(void) {
     return;
   }
   const uint32_t irqState = bleEnterCritical();
-  if (!radio->backgroundConnectionServiceEnabled_ || !radio->connected_ ||
-      radio->backgroundConnectionServiceInProgress_ ||
-      !bleBackgroundCompareEventPending()) {
+  bool runConnectionInIrq = false;
+  bool runAdvertisingInIrq = false;
+  bool runAdvertisingPrewarm = false;
+  bool runAdvertisingTx0 = false;
+  bool runAdvertisingTx1 = false;
+  bool runAdvertisingTx2 = false;
+  uint8_t advertisingTxCompareChannel = 0xFFU;
+  uint8_t advertisingServiceCompareChannel = 0xFFU;
+  if (radio->backgroundConnectionServiceEnabled_ && radio->connected_ &&
+      !radio->backgroundConnectionServiceInProgress_ &&
+      bleBackgroundCompareEventPending()) {
+    bleBackgroundDisableCompare();
+    radio->backgroundConnectionServiceArmed_ = false;
+    radio->backgroundConnectionServiceDue_ = true;
+    runConnectionInIrq = true;
+  }
+  if (radio->backgroundAdvertisingEnabled_ &&
+      !radio->backgroundAdvertisingInProgress_) {
+    if (bleCompareEventPending(kBleBackgroundAdvPrewarmCompareChannel)) {
+      bleDisableCompare(kBleBackgroundAdvPrewarmCompareChannel, true);
+      runAdvertisingPrewarm = true;
+    }
+    if (bleCompareEventPending(kBleBackgroundAdvTxCompareChannel)) {
+      bleDisableCompare(kBleBackgroundAdvTxCompareChannel, false);
+      if (radio->backgroundAdvertisingUseIrqTxKick_ &&
+          radio->radio_ != nullptr) {
+        runAdvertisingTx0 = true;
+        advertisingTxCompareChannel = kBleBackgroundAdvTxCompareChannel;
+      }
+    }
+    if (bleCompareEventPending(kBleBackgroundAdvStage1TxCompareChannel)) {
+      bleDisableCompare(kBleBackgroundAdvStage1TxCompareChannel, false);
+      if (radio->backgroundAdvertisingUseIrqTxKick_ &&
+          radio->radio_ != nullptr) {
+        runAdvertisingTx1 = true;
+        advertisingTxCompareChannel = kBleBackgroundAdvStage1TxCompareChannel;
+      }
+    }
+    if (bleCompareEventPending(kBleBackgroundAdvStage2TxCompareChannel)) {
+      bleDisableCompare(kBleBackgroundAdvStage2TxCompareChannel, false);
+      if (radio->backgroundAdvertisingUseIrqTxKick_ &&
+          radio->radio_ != nullptr) {
+        runAdvertisingTx2 = true;
+        advertisingTxCompareChannel = kBleBackgroundAdvStage2TxCompareChannel;
+      }
+    }
+    if (bleCompareEventPending(kBleBackgroundAdvCleanupCompareChannel)) {
+      bleDisableCompare(kBleBackgroundAdvCleanupCompareChannel, true);
+      radio->backgroundAdvertisingArmed_ = false;
+      radio->backgroundAdvertisingDue_ = true;
+      ++radio->backgroundAdvertisingDebug_.irqCompareCount;
+      runAdvertisingInIrq = true;
+      advertisingServiceCompareChannel = kBleBackgroundAdvCleanupCompareChannel;
+    }
+    if (bleCompareEventPending(kBleBackgroundAdvStage1ServiceCompareChannel)) {
+      bleDisableCompare(kBleBackgroundAdvStage1ServiceCompareChannel, true);
+      radio->backgroundAdvertisingArmed_ = false;
+      radio->backgroundAdvertisingDue_ = true;
+      ++radio->backgroundAdvertisingDebug_.irqCompareCount;
+      runAdvertisingInIrq = true;
+      advertisingServiceCompareChannel = kBleBackgroundAdvStage1ServiceCompareChannel;
+    }
+    if (bleCompareEventPending(kBleBackgroundAdvStage2ServiceCompareChannel)) {
+      bleDisableCompare(kBleBackgroundAdvStage2ServiceCompareChannel, true);
+      radio->backgroundAdvertisingArmed_ = false;
+      radio->backgroundAdvertisingDue_ = true;
+      ++radio->backgroundAdvertisingDebug_.irqCompareCount;
+      runAdvertisingInIrq = true;
+      advertisingServiceCompareChannel = kBleBackgroundAdvStage2ServiceCompareChannel;
+    }
+    if (bleCompareEventPending(kBleBackgroundAdvFinalCleanupCompareChannel)) {
+      bleDisableCompare(kBleBackgroundAdvFinalCleanupCompareChannel, true);
+      radio->backgroundAdvertisingArmed_ = false;
+      radio->backgroundAdvertisingDue_ = true;
+      ++radio->backgroundAdvertisingDebug_.irqCompareCount;
+      runAdvertisingInIrq = true;
+      advertisingServiceCompareChannel = kBleBackgroundAdvFinalCleanupCompareChannel;
+    }
+  }
+  if (!runConnectionInIrq && !runAdvertisingInIrq && !runAdvertisingPrewarm &&
+      !runAdvertisingTx0 && !runAdvertisingTx1 && !runAdvertisingTx2) {
     bleExitCritical(irqState);
     return;
   }
-  bleBackgroundDisableCompare();
-  radio->backgroundConnectionServiceArmed_ = false;
-  radio->backgroundConnectionServiceDue_ = true;
-  if (NRF54L15_CLEAN_BLE_BACKGROUND_PENDSV_HANDOFF == 0) {
-    bleExitCritical(irqState);
-    return;
-  }
-  g_bleBackgroundPendSvPending = 1U;
   bleExitCritical(irqState);
-  blePendSvSetPending();
+  if (runAdvertisingPrewarm && !radio->handleBackgroundAdvertisingPrewarmEvent()) {
+    radio->backgroundAdvertisingLastStopReason_ = kBleBackgroundAdvStopReasonPrewarmFailed;
+    radio->stopBackgroundAdvertising();
+    return;
+  }
+  if ((runAdvertisingTx0 || runAdvertisingTx1 || runAdvertisingTx2) &&
+      radio->backgroundAdvertisingUseIrqTxKick_) {
+    // Keep the compare schedule hardware-owned. If HFXO is not tuned yet,
+    // re-arm the same TX compare a few microseconds later instead of spinning.
+    if (!radio->ensureRfPathActiveForBle()) {
+      radio->backgroundAdvertisingLastStopReason_ =
+          kBleBackgroundAdvStopReasonTxCompareFailed;
+      radio->stopBackgroundAdvertising();
+      return;
+    }
+    if (!bleHfxoRunning()) {
+      if ((NRF_CLOCK->EVENTS_XOTUNEFAILED != 0U) ||
+          advertisingTxCompareChannel == kBleBackgroundInvalidCompareChannel) {
+        radio->backgroundAdvertisingLastStopReason_ =
+            kBleBackgroundAdvStopReasonTxCompareFailed;
+        radio->stopBackgroundAdvertising();
+        return;
+      }
+      if (radio->backgroundAdvertisingAwaitingHfxoTuned_) {
+        const uint8_t delayedServiceCompareChannel =
+            bleBackgroundAdvertisingServiceCompareChannelForTxCompare(
+                radio->backgroundAdvertisingThreeChannel_,
+                advertisingTxCompareChannel);
+        if (delayedServiceCompareChannel != kBleBackgroundInvalidCompareChannel) {
+          bleDisableCompare(delayedServiceCompareChannel, true);
+        }
+        const uint32_t txIrqState = bleEnterCritical();
+        radio->backgroundAdvertisingDue_ = false;
+        radio->backgroundAdvertisingArmed_ = false;
+        radio->backgroundAdvertisingPendingTxCompareChannel_ =
+            advertisingTxCompareChannel;
+        radio->backgroundAdvertisingPendingServiceCompareChannel_ =
+            delayedServiceCompareChannel;
+        bleExitCritical(txIrqState);
+        bleBackgroundEnableClockTuneInterrupts();
+        runAdvertisingInIrq = false;
+        advertisingServiceCompareChannel = kBleBackgroundInvalidCompareChannel;
+      } else if (!radio->rescheduleBackgroundAdvertisingTxCompare(
+                     advertisingTxCompareChannel)) {
+        radio->backgroundAdvertisingLastStopReason_ =
+            kBleBackgroundAdvStopReasonTxCompareFailed;
+        radio->stopBackgroundAdvertising();
+        return;
+      }
+    } else if (!radio->kickPreparedPacketOnCurrentChannel(&radio->txPacket_[0])) {
+      radio->backgroundAdvertisingLastStopReason_ =
+          kBleBackgroundAdvStopReasonTxCompareFailed;
+      radio->stopBackgroundAdvertising();
+      return;
+    } else {
+      const uint32_t txIrqState = bleEnterCritical();
+      radio->backgroundAdvertisingAwaitingHfxoTuned_ = false;
+      radio->backgroundAdvertisingPendingTxCompareChannel_ =
+          kBleBackgroundInvalidCompareChannel;
+      radio->backgroundAdvertisingPendingServiceCompareChannel_ =
+          kBleBackgroundInvalidCompareChannel;
+      bleExitCritical(txIrqState);
+      bleBackgroundDisableClockIrq();
+    }
+  }
+  if (runAdvertisingInIrq && (runAdvertisingTx0 || runAdvertisingTx1 || runAdvertisingTx2) &&
+      advertisingServiceCompareChannel != 0xFFU) {
+    if (!radio->rescheduleBackgroundAdvertisingService(
+            advertisingServiceCompareChannel)) {
+      radio->backgroundAdvertisingLastStopReason_ =
+          kBleBackgroundAdvStopReasonArmFailed;
+      radio->stopBackgroundAdvertising();
+      return;
+    }
+    runAdvertisingInIrq = false;
+  }
+  if (runAdvertisingInIrq) {
+    (void)radio->serviceBackgroundAdvertising();
+  }
+  if (runConnectionInIrq) {
+    (void)radio->serviceBackgroundConnectionEvent();
+    return;
+  }
+}
+
+extern "C" void nrf54l15_ble_clock_irq_service(void) {
+  if (NRF54L15_CLEAN_BLE_BACKGROUND_SERVICE == 0) {
+    return;
+  }
+
+  BleRadio* const radio = g_bleBackgroundRadio;
+  if (radio == nullptr || !radio->backgroundAdvertisingUseIrqTxKick_) {
+    NRF_CLOCK->EVENTS_XOTUNED = 0U;
+    NRF_CLOCK->EVENTS_XOTUNEERROR = 0U;
+    NRF_CLOCK->EVENTS_XOTUNEFAILED = 0U;
+    bleBackgroundDisableClockIrq();
+    return;
+  }
+
+  const bool tuned = (NRF_CLOCK->EVENTS_XOTUNED != 0U);
+  const bool tuneError = (NRF_CLOCK->EVENTS_XOTUNEERROR != 0U);
+  const bool tuneFailed = (NRF_CLOCK->EVENTS_XOTUNEFAILED != 0U);
+  if (tuned) {
+    NRF_CLOCK->EVENTS_XOTUNED = 0U;
+  }
+  if (tuneError) {
+    NRF_CLOCK->EVENTS_XOTUNEERROR = 0U;
+  }
+  if (tuneFailed) {
+    NRF_CLOCK->EVENTS_XOTUNEFAILED = 0U;
+  }
+
+  const uint32_t irqState = bleEnterCritical();
+  ++radio->backgroundAdvertisingDebug_.clockIrqCount;
+  if (tuned) {
+    ++radio->backgroundAdvertisingDebug_.clockXotunedCount;
+  }
+  if (tuneError) {
+    ++radio->backgroundAdvertisingDebug_.clockXotuneErrorCount;
+  }
+  if (tuneFailed) {
+    ++radio->backgroundAdvertisingDebug_.clockXotuneFailedCount;
+  }
+  const bool advertisingEnabled = radio->backgroundAdvertisingEnabled_;
+  const bool awaitingTune = radio->backgroundAdvertisingAwaitingHfxoTuned_;
+  const uint8_t txCompareChannel =
+      radio->backgroundAdvertisingPendingTxCompareChannel_;
+  const uint8_t serviceCompareChannel =
+      radio->backgroundAdvertisingPendingServiceCompareChannel_;
+  bleExitCritical(irqState);
+
+  if (!advertisingEnabled || radio->radio_ == nullptr || radio->connected_) {
+    bleBackgroundDisableClockIrq();
+    return;
+  }
+
+  if (tuneFailed) {
+    radio->backgroundAdvertisingLastStopReason_ = kBleBackgroundAdvStopReasonPrewarmFailed;
+    radio->stopBackgroundAdvertising();
+    return;
+  }
+
+  if (!tuned && !bleHfxoRunning()) {
+    return;
+  }
+
+  if (!awaitingTune && txCompareChannel == kBleBackgroundInvalidCompareChannel) {
+    bleBackgroundDisableClockIrq();
+    return;
+  }
+
+  if (txCompareChannel == kBleBackgroundInvalidCompareChannel) {
+    const uint32_t tunedIrqState = bleEnterCritical();
+    radio->backgroundAdvertisingAwaitingHfxoTuned_ = false;
+    bleExitCritical(tunedIrqState);
+    bleBackgroundDisableClockIrq();
+    return;
+  }
+
+  if (!radio->ensureRfPathActiveForBle() ||
+      !radio->kickPreparedPacketOnCurrentChannel(&radio->txPacket_[0])) {
+    radio->backgroundAdvertisingLastStopReason_ =
+        kBleBackgroundAdvStopReasonTxCompareFailed;
+    radio->stopBackgroundAdvertising();
+    return;
+  }
+
+  if ((serviceCompareChannel != kBleBackgroundInvalidCompareChannel) &&
+      !radio->rescheduleBackgroundAdvertisingService(serviceCompareChannel)) {
+    radio->backgroundAdvertisingLastStopReason_ = kBleBackgroundAdvStopReasonArmFailed;
+    radio->stopBackgroundAdvertising();
+    return;
+  }
+
+  const uint32_t doneIrqState = bleEnterCritical();
+  radio->backgroundAdvertisingAwaitingHfxoTuned_ = false;
+  radio->backgroundAdvertisingPendingTxCompareChannel_ =
+      kBleBackgroundInvalidCompareChannel;
+  radio->backgroundAdvertisingPendingServiceCompareChannel_ =
+      kBleBackgroundInvalidCompareChannel;
+  bleExitCritical(doneIrqState);
+  bleBackgroundDisableClockIrq();
+}
+
+extern "C" void CLOCK_POWER_IRQHandler(void) {
+  nrf54l15_ble_clock_irq_service();
 }
 
 extern "C" uint32_t nrf54l15_ble_grtc_reserved_cc_mask(void) {
@@ -12788,11 +14760,26 @@ extern "C" uint32_t nrf54l15_ble_grtc_reserved_cc_mask(void) {
     return 0U;
   }
   BleRadio* const radio = g_bleBackgroundRadio;
-  if (radio == nullptr || !radio->backgroundConnectionServiceEnabled_ ||
-      !radio->connected_) {
+  if (radio == nullptr) {
     return 0U;
   }
-  return (1UL << static_cast<uint32_t>(kBleBackgroundCompareChannel));
+  uint32_t mask = 0U;
+  if (radio->backgroundConnectionServiceEnabled_ && radio->connected_) {
+    mask |= (1UL << static_cast<uint32_t>(kBleBackgroundCompareChannel));
+  }
+  if (radio->backgroundAdvertisingEnabled_) {
+    mask |= (1UL << static_cast<uint32_t>(kBleBackgroundAdvPrewarmCompareChannel));
+    mask |= (1UL << static_cast<uint32_t>(kBleBackgroundAdvTxCompareChannel));
+    mask |= (1UL << static_cast<uint32_t>(kBleBackgroundAdvCleanupCompareChannel));
+    if (radio->backgroundAdvertisingThreeChannel_) {
+      mask |= (1UL << static_cast<uint32_t>(kBleBackgroundAdvStage1ServiceCompareChannel));
+      mask |= (1UL << static_cast<uint32_t>(kBleBackgroundAdvStage1TxCompareChannel));
+      mask |= (1UL << static_cast<uint32_t>(kBleBackgroundAdvStage2ServiceCompareChannel));
+      mask |= (1UL << static_cast<uint32_t>(kBleBackgroundAdvStage2TxCompareChannel));
+      mask |= (1UL << static_cast<uint32_t>(kBleBackgroundAdvFinalCleanupCompareChannel));
+    }
+  }
+  return mask;
 }
 
 extern "C" void PendSV_Handler(void) {
@@ -12808,6 +14795,13 @@ extern "C" void PendSV_Handler(void) {
   BleRadio* const radio = g_bleBackgroundRadio;
   if (radio == nullptr) {
     return;
+  }
+  if (radio->backgroundAdvertisingConsumePendingPrewarmFromFallback()) {
+    ++radio->backgroundAdvertisingDebug_.idleFallbackCount;
+  }
+  if (radio->backgroundAdvertisingConsumePendingCompareFromFallback() ||
+      radio->backgroundAdvertisingNeedsIdleService()) {
+    (void)radio->serviceBackgroundAdvertising();
   }
   (void)radio->serviceBackgroundConnectionEvent();
 }
@@ -13975,7 +15969,7 @@ bool BleRadio::startConnectionFromConnectInd(const uint8_t* payload, uint8_t len
   memset(connectionPendingChannelMap_, 0, sizeof(connectionPendingChannelMap_));
   connectionPendingChannelCount_ = 0U;
   connectionServiceChangedIndicationsEnabled_ = false;
-  connectionServiceChangedIndicationPending_ = false;
+  connectionServiceChangedIndicationPending_ = true;
   connectionServiceChangedIndicationAwaitingConfirm_ = false;
   connectionBatteryNotificationsEnabled_ = false;
   connectionBatteryNotificationPending_ = false;
@@ -14012,11 +16006,9 @@ bool BleRadio::startConnectionFromConnectInd(const uint8_t* payload, uint8_t len
       static_cast<uint32_t>(static_cast<uint32_t>(winOffset) + 1U) * 1250UL;
   connectionNextEventUs_ = nowUs + ((offsetUs > 0U) ? offsetUs : kBleConnFirstEventFallbackUs);
 
-  if (!ensureRfPathActiveForBle()) {
-    return false;
-  }
+  // Do not add extra background-advertising or RF-path work here unless it is
+  // proven safe against the first connection-event anchor on hardware.
   connected_ = true;
-  armBackgroundConnectionService();
   emitBleTrace("CONNECTED");
   return true;
 }
@@ -16408,6 +18400,7 @@ bool BleRadio::configureBle1M() {
   }
 
   connected_ = false;
+  stopBackgroundAdvertising();
   stopBackgroundConnectionService();
 
   radio_->SHORTS = 0U;

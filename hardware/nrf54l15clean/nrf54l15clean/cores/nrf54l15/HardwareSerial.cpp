@@ -718,6 +718,10 @@ extern "C" void nrf54l15_serial_prepare_idle_sleep(void) {
     }
 }
 
+extern "C" uint8_t nrf54l15_constlat_users_active(void) {
+    return (g_ownedConstlatUsers != 0U) ? 1U : 0U;
+}
+
 #if defined(NRF54L15_CLEAN_SERIAL_ROUTE_HEADER)
 HardwareSerial Serial(NRF_UARTE21, PIN_SERIAL_TX, PIN_SERIAL_RX);
 HardwareSerial Serial1(NRF_UARTE20, PIN_SAMD11_RX, PIN_SAMD11_TX);

@@ -86,8 +86,14 @@ g_pfnVectors:
     .word   GRTC_0_IRQHandler
     .word   GRTC_1_IRQHandler
     .word   GRTC_2_IRQHandler
-    /* IRQ 229..239 */
-    .rept 11
+    /* IRQ 229..260 */
+    .rept 32
+    .word   Default_Handler
+    .endr
+    /* IRQ 261: CLOCK_POWER */
+    .word   CLOCK_POWER_IRQHandler
+    /* IRQ 262..269 */
+    .rept 8
     .word   Default_Handler
     .endr
 
@@ -256,6 +262,12 @@ GRTC_1_IRQHandler:
 GRTC_2_IRQHandler:
     b .
     .size GRTC_2_IRQHandler, .-GRTC_2_IRQHandler
+
+    .weak CLOCK_POWER_IRQHandler
+    .type CLOCK_POWER_IRQHandler, %function
+CLOCK_POWER_IRQHandler:
+    b .
+    .size CLOCK_POWER_IRQHandler, .-CLOCK_POWER_IRQHandler
 
     .weak Default_Handler
     .type Default_Handler, %function
