@@ -395,6 +395,10 @@ BLE examples:
 - `examples/BLE/BleCustomGattRuntime/BleCustomGattRuntime.ino`
   - Demonstrates runtime registration of custom 16-bit GATT service/characteristics.
   - Includes writable characteristic, CCCD-backed notification characteristic, and serial command hooks.
+- `examples/BLE/BleNotifyEchoPeripheral/BleNotifyEchoPeripheral.ino`
+  - Minimal notify-oriented custom GATT example for issue-driven bring-up and debugging.
+  - Exposes writable `0xFFF1` and notify `0xFFF2` characteristics under service `0xFFF0`.
+  - Pairs with `scripts/ble_notify_echo_central.py` for a simple host-side central that writes text and prints notifications.
 - `examples/BLE/BleNordicUartBridge/BleNordicUartBridge.ino`
   - Exposes the standard Nordic UART Service peripheral and bridges BLE RX/TX to USB `Serial`.
   - Good first smoke test with nRF Connect or any NUS-capable phone/desktop client.
@@ -543,6 +547,7 @@ Examples:
     - Retention-backed bond record in `.noinit` RAM
     - Optional callback hooks for flash-backed load/save/clear policies
 - Not implemented yet:
+  - Central-initiated BLE connections on the in-tree Arduino controller path. The notify companion for `BleNotifyEchoPeripheral` is host-side (`scripts/ble_notify_echo_central.py`) for that reason.
   - Bluetooth Channel Sounding LL procedure and HCI/host control plane (full spec feature).
   - Full LL procedure/state-machine compliance (full control procedure matrix and deep corner-cases)
   - Full security feature set (LE Secure Connections, full key distribution matrix, signing)
