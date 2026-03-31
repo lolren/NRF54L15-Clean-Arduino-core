@@ -19,6 +19,12 @@ using namespace xiao_nrf54l15;
  *
  * Pair with BleExtendedScanner to verify the full chain is received.
  * The scanner will report chain_pkts=2 for a correctly received event.
+ *
+ * Power note:
+ *   begin() / end() are called every advertising cycle so that end() clears
+ *   the GRTC ACTIVE flag before the WFI sleep window. Without this, the GRTC
+ *   keeps the CPU domain active and WFI only reaches ~90 µA instead of the
+ *   2–3 µA achievable with the flag cleared.
  */
 
 // Chained extended advertising example.
@@ -124,22 +130,11 @@ static void printAddress(const uint8_t* addr) {
   }
 }
 
-void setup() {
-  Serial.begin(115200);
-  delay(350);
-
-  Serial.print("\r\nBleExtendedAdv499 start\r\n");
-  Gpio::configure(kPinUserLed, GpioDirection::kOutput, GpioPull::kDisabled);
-  Gpio::write(kPinUserLed, true);
-
-  configureBoardForBleLowPower();
-  g_power.setLatencyMode(PowerLatencyMode::kLowPower);
-
-  bool ok = buildExtendedPayload();
+static bool advertiseOnce() {
+  bool ok = enableRfPath();
+  bool bleBegun = false;
   if (ok) {
-    ok = enableRfPath();
-  }
-  if (ok) {
+    bleBegun = true;
     ok = g_ble.begin(kTxPowerDbm);
   }
   if (ok) {
@@ -154,12 +149,30 @@ void setup() {
   if (ok) {
     ok = g_ble.setExtendedAdvertisingData(g_extData, g_extDataLen);
   }
+  if (ok) {
+    ok = g_ble.advertiseExtendedEvent(kAuxOffsetUs, kInterPrimaryDelayUs,
+                                      kSpinLimit);
+  }
+  if (bleBegun) {
+    g_ble.end();  // clears GRTC ACTIVE → WFI reaches 2–3 µA
+  }
   collapseRfPathIdle();
+  return ok;
+}
 
-  Serial.print("BLE init: ");
-  Serial.print(ok ? "OK" : "FAIL");
-  Serial.print("\r\n");
-  if (!ok) {
+void setup() {
+  Serial.begin(115200);
+  delay(350);
+
+  Serial.print("\r\nBleExtendedAdv499 start\r\n");
+  Gpio::configure(kPinUserLed, GpioDirection::kOutput, GpioPull::kDisabled);
+  Gpio::write(kPinUserLed, true);
+
+  configureBoardForBleLowPower();
+  g_power.setLatencyMode(PowerLatencyMode::kLowPower);
+
+  if (!buildExtendedPayload()) {
+    Serial.print("payload build failed\r\n");
     return;
   }
 
@@ -174,26 +187,26 @@ void setup() {
   Serial.print(kAdvertisingSid);
   Serial.print(" aux_channel=");
   Serial.print(kAuxChannel);
-  Serial.print(" chain_expected=yes\r\n");
+  Serial.print(" chain_expected=yes interval_ms=");
+  Serial.print(kAdvertisingIntervalMs);
+  Serial.print("\r\n");
 }
 
 void loop() {
-  const bool ok = enableRfPath() &&
-                  g_ble.advertiseExtendedEvent(kAuxOffsetUs, kInterPrimaryDelayUs,
-                                               kSpinLimit);
-  collapseRfPathIdle();
+  const uint32_t cycleStart = millis();
+
+  const bool ok = advertiseOnce();
   ++g_extEvents;
 
   Gpio::write(kPinUserLed, (g_extEvents & 0x1U) == 0U);
 
-  const uint32_t now = millis();
-  if ((now - g_lastLogMs) >= 1000UL) {
-    g_lastLogMs = now;
+  if ((cycleStart - g_lastLogMs) >= 1000UL) {
+    g_lastLogMs = cycleStart;
 
     char line[176];
     snprintf(line, sizeof(line),
              "t=%lu ext_events=%lu last=%s ext_len=%u sid=%u aux_ch=%u chain=yes\r\n",
-             static_cast<unsigned long>(now),
+             static_cast<unsigned long>(cycleStart),
              static_cast<unsigned long>(g_extEvents),
              ok ? "OK" : "FAIL",
              static_cast<unsigned>(g_extDataLen),
@@ -202,5 +215,10 @@ void loop() {
     Serial.print(line);
   }
 
-  delay(kAdvertisingIntervalMs);
+  // Sleep until the next advertising window.
+  // GRTC ACTIVE is cleared by end() above so WFI reaches 2–3 µA here.
+  const uint32_t deadline = cycleStart + kAdvertisingIntervalMs;
+  while (static_cast<int32_t>(millis() - deadline) < 0) {
+    __asm volatile("wfi");
+  }
 }
