@@ -57,6 +57,7 @@
 #define PIN_A7          (27)  // P1.14: AIN7 / VBAT divider sense input
 #define PIN_PDM_DATA    (PIN_A6)
 #define PIN_VBAT_READ   (PIN_A7)  // P1.14: VBAT divider sense input
+#define PIN_VBAT        PIN_VBAT_READ
 
 // Compatibility aliases used by some sketches/docs.
 #define SAMD11_TX PIN_SAMD11_TX
