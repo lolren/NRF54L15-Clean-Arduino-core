@@ -1,0 +1,6 @@
+#ifndef BLUEFRUIT_COMPAT_BLESERVICE_H_
+#define BLUEFRUIT_COMPAT_BLESERVICE_H_
+
+#include "bluefruit.h"
+
+#endif  // BLUEFRUIT_COMPAT_BLESERVICE_H_

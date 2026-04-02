@@ -161,6 +161,13 @@ typedef uint8_t BitOrder;
 #define clockCyclesToMicroseconds(a) ((a) / clockCyclesPerMicrosecond())
 #define microsecondsToClockCycles(a) ((a) * clockCyclesPerMicrosecond())
 
+#ifndef ledOn
+#define ledOn(pin) digitalWrite((pin), LED_STATE_ON)
+#endif
+#ifndef ledOff
+#define ledOff(pin) digitalWrite((pin), (1 - LED_STATE_ON))
+#endif
+
 // Flash string macro
 #ifndef PROGMEM
 #define PROGMEM
@@ -183,11 +190,14 @@ class __FlashStringHelper;
 void init(void);
 void initVariant(void);
 void yield(void);
+void suspendLoop(void);
+void resumeLoop(void);
 
 // Pin I/O
 void pinMode(uint8_t pin, uint8_t mode);
 void digitalWrite(uint8_t pin, uint8_t val);
 int digitalRead(uint8_t pin);
+void digitalToggle(uint8_t pin);
 
 // Analog I/O
 int analogRead(uint8_t pin);

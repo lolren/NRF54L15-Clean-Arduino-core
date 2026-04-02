@@ -1,0 +1,6 @@
+#ifndef BLUEFRUIT_COMPAT_BLEPERIPH_H_
+#define BLUEFRUIT_COMPAT_BLEPERIPH_H_
+
+#include "bluefruit.h"
+
+#endif  // BLUEFRUIT_COMPAT_BLEPERIPH_H_

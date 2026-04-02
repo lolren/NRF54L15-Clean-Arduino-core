@@ -345,6 +345,15 @@ int digitalRead(uint8_t pin)
     return ((gpio->IN & bit) != 0U) ? HIGH : LOW;
 }
 
+void digitalToggle(uint8_t pin)
+{
+    if (digitalRead(pin) == HIGH) {
+        digitalWrite(pin, LOW);
+    } else {
+        digitalWrite(pin, HIGH);
+    }
+}
+
 void attachInterrupt(uint8_t pin, void (*userFunc)(void), int mode)
 {
     pin_desc_t d = resolve_pin(pin);

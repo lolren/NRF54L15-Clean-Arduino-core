@@ -7,6 +7,10 @@ extern "C" size_t nrf54l15_heap_free_bytes(void);
 extern "C" void nrf54l15_core_bootstrap_low_power_timebase(void);
 #endif
 
+namespace {
+volatile bool g_loop_suspended = false;
+}  // namespace
+
 extern "C" void __attribute__((weak)) init(void) {
 #if !defined(NRF54L15_CLEAN_LOWPOWER_BOOT_MINIMAL)
     initSysTick();
@@ -58,6 +62,14 @@ extern "C" void __attribute__((weak)) SoftReset(void) {
     softReset();
 }
 
+extern "C" void __attribute__((weak)) suspendLoop(void) {
+    g_loop_suspended = true;
+}
+
+extern "C" void __attribute__((weak)) resumeLoop(void) {
+    g_loop_suspended = false;
+}
+
 extern "C" uint32_t __attribute__((weak)) getFreeHeap(void) {
     return static_cast<uint32_t>(nrf54l15_heap_free_bytes());
 }
@@ -74,7 +86,7 @@ int __attribute__((weak)) main(void) {
     }
 
     while (true) {
-        if (loop != nullptr) {
+        if (!g_loop_suspended && loop != nullptr) {
             loop();
         }
         yield();

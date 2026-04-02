@@ -1,10 +1,10 @@
 # TODO: Nrf54L15-Clean-Implementation
 
-Last updated: 2026-02-25
+Last updated: 2026-04-02
 
 ## Priority 0: Release quality / packaging
 
-- [ ] Finalize `0.1.0` release commit with current BLE matrix artifacts and docs.
+- [ ] Finalize `0.2.0` release commit with Bluefruit compatibility artifacts and docs.
 - [ ] Tag and publish release assets (`dist/*.tar.bz2`, package index sync).
 - [ ] Keep CI matrix aligned with current BLE + low-power example set.
 
@@ -26,7 +26,7 @@ Last updated: 2026-02-25
 
 ## Priority 3: Feature breadth
 
-- [ ] Central role baseline (scan/initiate/minimal GATT client).
+- [x] Central role baseline (scan/initiate/minimal GATT client).
 - [ ] Extended/periodic advertising support where hardware path is practical.
 - [ ] Full Zigbee stack layers (commissioning + NWK/APS/ZCL/security profiles) on top of IEEE 802.15.4 PHY/MAC-lite + role-demo baseline.
 - [x] Optional dynamic GATT registration API (16-bit services/chars + CCCD + runtime notify/indicate path).
@@ -71,6 +71,8 @@ Last updated: 2026-02-25
 - [x] Added default flash-backed RRAM bond persistence backend with retention fallback and reserved linker storage region.
 - [x] Bond probe now exposes serial command hooks (`clear-bond`, `show-bond`) and uses constant-latency mode for tighter pairing timing.
 - [x] Added runtime custom 16-bit GATT registration API (service/characteristic/CCCD/value update/write callback) with `BleCustomGattRuntime` example.
+- [x] Added minimal BLE central baseline with `CONNECT_IND` initiate path, master-side connection events, ATT client request queueing, and notify demo examples.
+- [x] Added `Bluefruit52Lib` compatibility layer for common XIAO nRF52840 / Bluefruit peripheral sketches, plus Seeed-style board helpers such as `digitalToggle()`, `LED_STATE_ON`, `printf()`, `printBuffer()`, and beacon helpers.
 - [x] Added two-board BLE channel sounding examples:
   - `BleChannelSoundingReflector` (phase-tone reflector using `RADIO.CSTONES`/DFE capture and report replies).
   - `BleChannelSoundingInitiator` (per-channel phase sweep with phase-slope distance estimate and rolling median output).

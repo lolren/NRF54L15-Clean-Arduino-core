@@ -35,8 +35,7 @@ This package uses direct peripheral register access from the nRF54L15 datasheet 
 - `I2sTx`: reusable TX-only `I2S20` wrapper with buffer rotation, IRQ service, optional auto-restart, and callback-based buffer refill.
 - `I2sRx`: reusable RX-only `I2S20` wrapper with double-buffer capture, IRQ service, optional auto-restart, and callback-based buffer delivery.
 - `I2sDuplex`: reusable full-duplex `I2S20` wrapper with shared stop/restart handling, TX refill callback, and RX delivery callback.
-- `BleRadio`: register-level BLE 1M link layer + minimal ATT/GATT peripheral path via `RADIO`.
-- `BleNordicUart`: lightweight Arduino `Stream` wrapper for Nordic UART Service (NUS) peripheral mode on top of `BleRadio` custom GATT.
+- `BleRadio`: register-level BLE 1M link layer + minimal ATT/GATT peripheral path plus central-initiate/client baseline via `RADIO`.
 - `ZigbeeRadio`: IEEE 802.15.4 PHY/MAC-lite data-frame + MAC-command frame TX/RX helpers via `RADIO`.
 - `RawRadioLink`: proprietary 1 Mbit packet TX/RX helper via `RADIO`.
 
@@ -199,6 +198,50 @@ Arduino IDE organization:
 - `File -> Examples -> Nrf54L15-Clean-Implementation -> Board`
 - `File -> Examples -> Nrf54L15-Clean-Implementation -> Peripherals`
 - `File -> Examples -> Nrf54L15-Clean-Implementation -> Zigbee`
+
+## Bluefruit Compatibility
+
+`0.2.0` adds a `Bluefruit52Lib` compatibility layer intended to make common
+XIAO nRF52840 / Seeed Bluefruit sketches build against this core with minimal
+or no source changes.
+
+Current runtime target:
+
+- peripheral-oriented Bluefruit API subset
+- common services/helpers such as `BLEDfu`, `BLEDis`, `BLEBas`, `BLEUart`
+- advertising helpers including name/appearance/manufacturer data/service UUIDs
+- Seeed-style sketch helpers such as `digitalToggle()`, `LED_STATE_ON`,
+  `suspendLoop()`, `Print::printf()`, `printBuffer()`, and beacon helpers
+
+Current non-goal for this release:
+
+- full SoftDevice-equivalent central/client runtime parity
+- full HID/MIDI/ANCS/HomeKit service coverage
+
+Representative unchanged Seeed/Bluefruit examples compile with the local core:
+
+- `Peripheral/nrf_blinky`
+- `Peripheral/bleuart`
+- `Peripheral/bleuart_multi`
+- `Peripheral/throughput`
+- `Peripheral/custom_hrm`
+- `Peripheral/custom_htm`
+- `Peripheral/adv_advanced`
+- `Peripheral/adv_AdafruitColor`
+- `Peripheral/beacon`
+- `Peripheral/blinky_ota`
+- `Central/central_scan`
+- `Central/central_scan_advanced`
+- `Central/central_bleuart`
+- `Central/central_custom_hrm`
+
+Validation note:
+
+- peripheral advertising for unchanged upstream `bleuart` was confirmed over the
+  air on attached hardware
+- host-side Linux GATT connection validation for the Bluefruit wrapper is still
+  incomplete, so peripheral compatibility is stronger than central/client
+  compatibility in this release
 
 ## Example
 
@@ -408,6 +451,12 @@ BLE examples:
 - `examples/BLE/BleBatteryNotifyPeripheral/BleBatteryNotifyPeripheral.ino`
   - Connectable/scannable BLE peripheral focused on Battery Level notifications.
   - Periodically updates battery percentage and emits notifications when CCCD notify is enabled.
+- `examples/BLE/BleNotifyPeripheral/BleNotifyPeripheral.ino`
+  - Minimal custom notify peripheral using one runtime-registered 16-bit characteristic.
+  - Companion sketch for the central notify example.
+- `examples/BLE/BleNotifyCentral/BleNotifyCentral.ino`
+  - Minimal central role example that scans, sends `CONNECT_IND`, and runs a master-side connection loop.
+  - Discovers the custom primary service, characteristic, and CCCD over ATT before enabling notifications.
 - `examples/BLE/BlePairingEncryptionStatus/BlePairingEncryptionStatus.ino`
   - Shows LL control and encryption state transitions during pairing/encryption.
 - `examples/BLE/BleBondPersistenceProbe/BleBondPersistenceProbe.ino`

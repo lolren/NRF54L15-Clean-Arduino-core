@@ -6,9 +6,22 @@
 
 #include "Print.h"
 
+#include "Arduino.h"
+
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
+
+namespace {
+
+size_t printHexByte(Print &printer, uint8_t value)
+{
+    static const char kHex[] = "0123456789ABCDEF";
+    char text[2] = {kHex[(value >> 4) & 0x0F], kHex[value & 0x0F]};
+    return printer.write(text, sizeof(text));
+}
+
+}  // namespace
 
 size_t Print::write(const uint8_t *buffer, size_t size)
 {
@@ -19,6 +32,7 @@ size_t Print::write(const uint8_t *buffer, size_t size)
 
     for (size_t i = 0; i < size; ++i) {
         written += write(buffer[i]);
+        yield();
     }
 
     return written;
@@ -168,6 +182,80 @@ size_t Print::println(const Printable &value)
     size_t count = print(value);
     count += println();
     return count;
+}
+
+size_t Print::printf(const char *format, ...)
+{
+    va_list ap;
+    va_start(ap, format);
+    const size_t written = vprintf(format, ap);
+    va_end(ap);
+    return written;
+}
+
+size_t Print::vprintf(const char *format, va_list ap)
+{
+    if (format == nullptr) {
+        return 0;
+    }
+
+    va_list ap_copy;
+    va_copy(ap_copy, ap);
+    const int required = vsnprintf(nullptr, 0, format, ap_copy);
+    va_end(ap_copy);
+    if (required <= 0) {
+        return 0;
+    }
+
+    char stackBuffer[128];
+    if (static_cast<size_t>(required) < sizeof(stackBuffer)) {
+        vsnprintf(stackBuffer, sizeof(stackBuffer), format, ap);
+        return write(stackBuffer);
+    }
+
+    char *heapBuffer = static_cast<char *>(malloc(static_cast<size_t>(required) + 1U));
+    if (heapBuffer == nullptr) {
+        return 0;
+    }
+
+    vsnprintf(heapBuffer, static_cast<size_t>(required) + 1U, format, ap);
+    const size_t written = write(heapBuffer);
+    free(heapBuffer);
+    return written;
+}
+
+size_t Print::printBuffer(const uint8_t *buffer, int len, char delim, int byteline)
+{
+    if (buffer == nullptr || len <= 0) {
+        return 0;
+    }
+
+    size_t written = 0;
+    for (int i = 0; i < len; ++i) {
+        if (i > 0) {
+            written += write(static_cast<uint8_t>(
+                (byteline > 0 && (i % byteline) == 0) ? '\n' : delim));
+        }
+        written += printHexByte(*this, buffer[i]);
+    }
+    return written;
+}
+
+size_t Print::printBufferReverse(const uint8_t *buffer, int len, char delim, int byteline)
+{
+    if (buffer == nullptr || len <= 0) {
+        return 0;
+    }
+
+    size_t written = 0;
+    for (int i = len - 1, outIndex = 0; i >= 0; --i, ++outIndex) {
+        if (outIndex > 0) {
+            written += write(static_cast<uint8_t>(
+                (byteline > 0 && (outIndex % byteline) == 0) ? '\n' : delim));
+        }
+        written += printHexByte(*this, buffer[i]);
+    }
+    return written;
 }
 
 size_t Print::printNumber(unsigned long value, uint8_t base)

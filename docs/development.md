@@ -10,6 +10,7 @@
 - Timing/power: `millis`, `micros`, delays, optional low-power idle profile
 - Stream parser helpers: `setTimeout`, `find*`, `parseInt/parseFloat`, `readBytes*`, `readString*`
 - Print/Printable compatibility: `Printable`, `print(const Printable&)`, `println(const Printable&)`
+- Bluefruit/Seeed compatibility helpers: `digitalToggle`, `suspendLoop/resumeLoop`, `Print::printf`, `printBuffer`, `printBufferReverse`, `LED_STATE_ON`, `LED_RED/GREEN/BLUE`
 - Persistent storage: `Preferences` key/value API (flash-backed)
 - EEPROM compatibility: `EEPROM` (`begin/read/write/update/get/put/commit/end`)
 - Legacy compatibility hooks: `cli()/sei()`, `makeWord(...)`, AVR-like port access helpers
@@ -26,7 +27,7 @@ Implemented blocks:
 - `ClockControl`, `Gpio`, `Spim`, `Twim`, `Uarte`
 - `Saadc`, `Timer`, `Pwm`, `Gpiote`
 - `PowerManager`, `Grtc`, `TempSensor`, `Watchdog`, `Pdm`
-- `BleRadio` (custom peripheral LL + ATT/GATT subset)
+- `BleRadio` (custom peripheral LL + minimal central/initiate + ATT/GATT subset)
 - `ZigbeeRadio` (IEEE 802.15.4 PHY/MAC-lite data frame TX/RX helpers)
 - `BoardControl` (battery sense + antenna route control)
 
@@ -38,13 +39,16 @@ Validated and stable with host adapter + hardware:
 - Passive scanning
 - Active scanning (`SCAN_REQ` / `SCAN_RSP`)
 - Connect/disconnect
+- Central initiate + basic ATT client request flow
 - GATT discovery/read
 - Battery notify CCCD flow
 
 Current gap:
 
 - pairing/bond persistence is still partial
-- full Bluetooth Channel Sounding / AoA / AoD Link Layer parity is not implemented yet; the current baseline is a clean two-board phase-sounding path built directly on `RADIO.CSTONES`/DFE rather than controller-level BLE CS interop
+- central support is still intentionally minimal (fixed-handle client flows and basic ATT request queueing, not a full generic host stack)
+- `Bluefruit52Lib` currently targets the common peripheral/runtime subset first; central/client classes are primarily compile-compatibility shims today unless otherwise noted by specific example validation
+- full Bluetooth channel sounding / AoA / AoD parity is not implemented yet (RSSI-based two-board sounding examples are available)
 - full Zigbee stack layers (commissioning, NWK/APS/ZCL/security profiles) are not implemented yet; current support is IEEE 802.15.4 PHY/MAC-lite with coordinator/router/end-device role demos
 
 ## Validation Artifacts

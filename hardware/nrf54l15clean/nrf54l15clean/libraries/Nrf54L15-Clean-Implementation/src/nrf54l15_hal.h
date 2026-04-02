@@ -6,7 +6,7 @@
 #include "nrf54l15_regs.h"
 #include "xiao_nrf54l15_pins.h"
 
-extern "C" void PendSV_Handler(void);
+extern "C" void nrf54l15_clean_ble_idle_service(void);
 
 namespace xiao_nrf54l15 {
 
@@ -1279,23 +1279,11 @@ enum class BleAdvertisingChannel : uint8_t {
   k39 = 39,
 };
 
-constexpr uint8_t kBleLegacyAddressLength = 6U;
-constexpr size_t kBleAddressStringLength = 18U;
-
-// Parse a human-readable BLE address like "C0:DE:54:15:00:11" into the raw
-// 6-byte storage form used by the low-level radio helpers.
-bool parseBleAddressString(const char* text,
-                           uint8_t addressOut[kBleLegacyAddressLength]);
-
-// Format a raw BLE address into the usual "C0:DE:54:15:00:11" string form.
-// Returns the number of characters written, excluding the null terminator.
-size_t formatBleAddressString(const uint8_t address[kBleLegacyAddressLength],
-                              char* out, size_t outSize);
-constexpr uint8_t kBleLegacyAdDataMaxLength = 31U;
-constexpr uint8_t kBleLegacyRawPayloadMaxLength =
-    static_cast<uint8_t>(kBleLegacyAddressLength + kBleLegacyAdDataMaxLength);
-constexpr uint8_t kBleExtendedSecondaryPacketCountMax = 4U;
-constexpr uint16_t kBleExtendedAdvDataMaxLength = 995U;
+enum class BleConnectionRole : uint8_t {
+  kNone = 0,
+  kPeripheral = 1,
+  kCentral = 2,
+};
 
 enum BleGattCharacteristicProperty : uint8_t {
   kBleGattPropRead = 0x02U,
@@ -1434,6 +1422,43 @@ struct BleConnectionEvent {
   uint8_t txPayloadLength;
   const uint8_t* payload;
   const uint8_t* txPayload;
+};
+
+enum class BleDisconnectReason : uint8_t {
+  kNone = 0U,
+  kApi = 1U,
+  kSupervisionTimeout = 2U,
+  kPeerTerminate = 3U,
+  kMicFailure = 4U,
+  kInternalTerminate = 5U,
+};
+
+struct BleDisconnectDebug {
+  uint32_t sequence;
+  uint32_t nextEventUs;
+  uint16_t eventCounter;
+  uint16_t missedEventCount;
+  uint8_t valid;
+  uint8_t reason;
+  uint8_t role;
+  uint8_t errorCode;
+  uint8_t expectedRxSn;
+  uint8_t txSn;
+  uint8_t freshTxAllowed;
+  uint8_t txHistoryValid;
+  uint8_t pendingTxValid;
+  uint8_t pendingTxLlid;
+  uint8_t pendingTxLength;
+  uint8_t lastTxLlid;
+  uint8_t lastTxLength;
+  uint8_t lastTxOpcode;
+  uint8_t lastRxLlid;
+  uint8_t lastRxLength;
+  uint8_t lastRxOpcode;
+  uint8_t lastRxNesn;
+  uint8_t lastRxSn;
+  uint8_t lastPacketIsNew;
+  uint8_t lastPeerAckedLastTx;
 };
 
 // Debug counters for link-layer encryption (LL_ENC_REQ/RSP, LL_START_ENC_REQ/RSP).
@@ -1654,12 +1679,9 @@ using BleGattWriteCallback = void (*)(uint16_t valueHandle, const uint8_t* value
 // This class intentionally avoids a full host/controller stack.
 class BleRadio {
  public:
-  friend void PendSV_Handler(void);
-
-  static constexpr uint8_t kCustomGattMaxServices = 4U;
-  static constexpr uint8_t kCustomGattMaxCharacteristics = 8U;
-  static constexpr uint8_t kCustomGattMaxValueLength = 244U;
-  static constexpr uint8_t kCustomGattUuid128Length = 16U;
+  static constexpr uint8_t kCustomGattMaxServices = 8U;
+  static constexpr uint8_t kCustomGattMaxCharacteristics = 16U;
+  static constexpr uint8_t kCustomGattMaxValueLength = 20U;
 
   explicit BleRadio(uint32_t radioBase = nrf54l15::RADIO_BASE,
                     uint32_t ficrBase = nrf54l15::FICR_BASE);
@@ -1690,12 +1712,11 @@ class BleRadio {
   bool setExtendedScanResponseName(const char* name);
   bool buildAdvertisingPacket();
   bool setGattDeviceName(const char* name);
+  bool setGattAppearance(uint16_t appearance);
   bool setGattBatteryLevel(uint8_t percent);
   bool clearCustomGatt();
   bool addCustomGattService(uint16_t uuid16, uint16_t* outServiceHandle = nullptr);
-  // 128-bit UUID arrays are passed in canonical big-endian order
-  // (`00112233-4455-6677-8899-aabbccddeeff` -> `{0x00, 0x11, ... 0xff}`).
-  bool addCustomGattService128(const uint8_t uuid128[kCustomGattUuid128Length],
+  bool addCustomGattService128(const uint8_t uuid128[16],
                                uint16_t* outServiceHandle = nullptr);
   // Characteristics can only be appended to the most recently added custom
   // service, matching Zephyr's static service-table ordering model.
@@ -1705,14 +1726,13 @@ class BleRadio {
                                    uint8_t initialValueLength = 0U,
                                    uint16_t* outValueHandle = nullptr,
                                    uint16_t* outCccdHandle = nullptr);
-  bool addCustomGattCharacteristic128(
-      uint16_t serviceHandle,
-      const uint8_t uuid128[kCustomGattUuid128Length],
-      uint8_t properties,
-      const uint8_t* initialValue = nullptr,
-      uint8_t initialValueLength = 0U,
-      uint16_t* outValueHandle = nullptr,
-      uint16_t* outCccdHandle = nullptr);
+  bool addCustomGattCharacteristic128(uint16_t serviceHandle,
+                                      const uint8_t uuid128[16],
+                                      uint8_t properties,
+                                      const uint8_t* initialValue = nullptr,
+                                      uint8_t initialValueLength = 0U,
+                                      uint16_t* outValueHandle = nullptr,
+                                      uint16_t* outCccdHandle = nullptr);
   bool setCustomGattCharacteristicValue(uint16_t valueHandle,
                                         const uint8_t* value,
                                         uint8_t valueLength);
@@ -1788,7 +1808,19 @@ class BleRadio {
                               uint32_t requestListenSpinLimit = 250000UL,
                               uint32_t spinLimit = 700000UL);
 
+  bool initiateConnection(const uint8_t peerAddress[6], bool peerAddressRandom,
+                          uint16_t intervalUnits = 24U,
+                          uint16_t supervisionTimeoutUnits = 200U,
+                          uint8_t hopIncrement = 9U,
+                          uint32_t perChannelScanSpinLimit = 300000UL);
+  bool queueAttRequest(const uint8_t* attPayload, uint8_t attPayloadLength);
+  bool queueAttReadRequest(uint16_t handle);
+  bool queueAttWriteRequest(uint16_t handle, const uint8_t* value,
+                            uint8_t valueLength, bool withResponse = true);
+  bool queueAttCccdWrite(uint16_t cccdHandle, bool notify,
+                         bool indicate = false, bool withResponse = true);
   bool isConnected() const;
+  BleConnectionRole connectionRole() const;
   bool isConnectionEncrypted() const;
   // Send an SMP Security Request (peripheral → central) to prompt the central
   // to initiate LE legacy JustWorks pairing.  Call once after each connection
@@ -1798,6 +1830,8 @@ class BleRadio {
   bool getConnectionInfo(BleConnectionInfo* info) const;
   void getEncryptionDebugCounters(BleEncryptionDebugCounters* out) const;
   void clearEncryptionDebugCounters();
+  bool getDisconnectDebug(BleDisconnectDebug* out) const;
+  void clearDisconnectDebug();
   bool hasBondRecord() const;
   bool getBondRecord(BleBondRecord* outRecord) const;
   bool clearBondRecord(bool clearPersistentStorage = true);
@@ -1845,6 +1879,7 @@ class BleRadio {
                                uint32_t scanRspListenSpinLimit = 300000UL);
 
  private:
+  friend void ::nrf54l15_clean_ble_idle_service(void);
   static constexpr uint16_t kCustomGattHandleStart = 0x0020U;
   static constexpr uint16_t kCustomGattHandleEnd = 0x00FFU;
 
@@ -1854,14 +1889,16 @@ class BleRadio {
   };
 
   struct BleCustomServiceState {
-    BleCustomUuidState uuid;
+    uint8_t uuidSize;
+    uint8_t uuid[16];
     uint16_t serviceHandle;
     uint16_t endHandle;
   };
 
   struct BleCustomCharacteristicState {
     uint16_t serviceHandle;
-    BleCustomUuidState uuid;
+    uint8_t uuidSize;
+    uint8_t uuid[16];
     uint8_t properties;
     uint16_t declarationHandle;
     uint16_t valueHandle;
@@ -1952,13 +1989,38 @@ class BleRadio {
   bool waitForEnd(uint32_t spinLimit);
   bool setAdvertisingChannel(BleAdvertisingChannel channel);
   bool setDataChannel(uint8_t dataChannel);
+  bool initiateConnectionOnce(BleAdvertisingChannel channel,
+                              const uint8_t peerAddress[6],
+                              bool peerAddressRandom, uint16_t intervalUnits,
+                              uint16_t supervisionTimeoutUnits,
+                              uint8_t hopIncrement,
+                              uint32_t advListenSpinLimit,
+                              uint32_t spinLimit);
   bool handleRequestAndMaybeRespond(BleAdvertisingChannel channel,
                                     BleAdvInteraction* interaction,
                                     uint32_t requestListenSpinLimit,
                                     uint32_t spinLimit);
+  bool startCentralConnection(const uint8_t peerAddress[6],
+                              bool peerAddressRandom,
+                              uint32_t accessAddress, uint32_t crcInit,
+                              uint16_t intervalUnits,
+                              uint16_t supervisionTimeoutUnits,
+                              uint8_t hopIncrement, bool useChSel2,
+                              uint32_t connectIndEndUs);
   bool startConnectionFromConnectInd(const uint8_t* payload, uint8_t length,
                                      bool peerAddressRandom, bool useChSel2,
                                      uint32_t connectIndEndUs);
+  bool addCustomGattServiceCommon(const uint8_t* uuid, uint8_t uuidSize,
+                                  uint16_t* outServiceHandle);
+  bool addCustomGattCharacteristicCommon(uint16_t serviceHandle,
+                                         const uint8_t* uuid, uint8_t uuidSize,
+                                         uint8_t properties,
+                                         const uint8_t* initialValue,
+                                         uint8_t initialValueLength,
+                                         uint16_t* outValueHandle,
+                                         uint16_t* outCccdHandle);
+  bool pollCentralConnectionEvent(BleConnectionEvent* event,
+                                  uint32_t spinLimit);
   bool buildLlControlResponse(const uint8_t* payload, uint8_t length,
                               uint16_t currentEventCounter,
                               uint8_t* outPayload, uint8_t* outLength,
@@ -2020,37 +2082,22 @@ class BleRadio {
                                      uint16_t valueLength, bool withResponse,
                                      uint8_t* outErrorCode);
   void emitBleTrace(const char* message) const;
-  void rememberDisconnectReason(uint8_t reason, bool remote);
-  bool pollConnectionEventCore(BleConnectionEvent* event, uint32_t spinLimit);
-  bool prepareBackgroundAdvertisingEvent();
-  bool configureBackgroundAdvertisingHardware(bool enable);
-  bool armBackgroundAdvertising(uint32_t targetTxUs, bool prewarmHfxo,
-                                bool stopHfxoAfterTx);
-  bool rescheduleBackgroundAdvertisingTxCompare(uint8_t compareChannel);
-  bool rescheduleBackgroundAdvertisingService(uint8_t compareChannel);
-  bool reconfigureBackgroundAdvertisingTxKick(bool useIrqKick);
-  bool handleBackgroundAdvertisingPrewarmEvent();
-  bool settleBackgroundAdvertisingRadioBeforeService(uint32_t waitBudgetUs);
-  void collapseBackgroundAdvertisingRfPathIfManaged();
-  bool backgroundAdvertisingConsumePendingPrewarmFromFallback();
-  bool backgroundAdvertisingNeedsIdleService() const;
-  bool backgroundAdvertisingConsumePendingCompareFromFallback();
-  bool serviceBackgroundAdvertising();
-  bool backgroundServicesActive() const;
-  bool configureBackgroundConnectionHardware(bool enable);
-  bool previewBackgroundConnectionDataChannel(uint8_t* outDataChannel) const;
-  bool prepareBackgroundConnectionReceiveWindow(uint32_t rxStartUs);
-  bool armBackgroundConnectionService();
-  void stopBackgroundConnectionService();
-  void snapshotDeferredConnectionEvent(const BleConnectionEvent& event);
-  bool serviceBackgroundConnectionEvent();
-  bool enqueueDeferredGattWrite(BleGattWriteCallback callback, void* context,
-                                uint16_t valueHandle, const uint8_t* value,
-                                uint8_t valueLength, bool withResponse);
-  void dispatchDeferredGattWrites();
-  bool enqueueDeferredTrace(const char* message);
-  void dispatchDeferredTraces();
-  void serviceDeferredApplicationWork();
+  static void resetConnectionEventStruct(BleConnectionEvent* event);
+  bool disconnectWithReason(BleDisconnectReason reason, uint8_t errorCode,
+                            uint32_t spinLimit);
+  bool pollConnectionEventInternal(BleConnectionEvent* event,
+                                   uint32_t spinLimit);
+  void serviceBackgroundConnection();
+  void clearQueuedConnectionEvents();
+  bool enqueueConnectionEvent(const BleConnectionEvent& event);
+  bool dequeueConnectionEvent(BleConnectionEvent* event);
+  static bool shouldQueueConnectionEvent(const BleConnectionEvent& event);
+  void resetDisconnectDebugState();
+  void rememberConnectionRxDebug(uint8_t llid, uint8_t rxLength,
+                                 uint8_t protocolOpcode, uint8_t nesn,
+                                 uint8_t sn, bool packetIsNew,
+                                 bool peerAckedLastTx);
+  void recordDisconnectDebug(BleDisconnectReason reason, uint8_t errorCode);
   void updateNextConnectionEventTime();
   void armConnectionResyncWindow(uint32_t extraPostAnchorUs, uint8_t attempts);
   uint8_t selectNextDataChannel(bool useCurrentEventCounter);
@@ -2060,6 +2107,13 @@ class BleRadio {
   friend void nrf54l15_ble_grtc_irq_service(void);
   friend void nrf54l15_ble_clock_irq_service(void);
   friend uint32_t nrf54l15_ble_grtc_reserved_cc_mask(void);
+
+  static constexpr uint8_t kConnectionEventQueueDepth = 4U;
+  struct BleQueuedConnectionEvent {
+    BleConnectionEvent event;
+    uint8_t payload[255];
+    uint8_t txPayload[255];
+  };
 
   NRF_RADIO_Type* radio_;
   NRF_FICR_Type* ficr_;
@@ -2092,10 +2146,7 @@ class BleRadio {
   alignas(4) uint8_t connectionTxPayload_[255];
 
   bool connected_;
-  bool rfPathOwnedByBle_;
-  bool backgroundAdvertisingRestoreRfPathValid_;
-  bool backgroundAdvertisingRestoreRfPathPowerEnabled_;
-  BoardAntennaPath backgroundAdvertisingRestoreRfPath_;
+  BleConnectionRole connectionRole_;
   uint8_t connectionPeerAddress_[6];
   bool connectionPeerAddressRandom_;
   uint32_t connectionAccessAddress_;
@@ -2114,6 +2165,7 @@ class BleRadio {
   uint8_t connectionTxSn_;
   uint8_t connectionLastTxSn_;
   bool connectionTxHistoryValid_;
+  bool connectionFreshTxAllowed_;
   uint16_t connectionEventCounter_;
   uint16_t connectionMissedEventCount_;
   uint32_t connectionNextEventUs_;
@@ -2295,6 +2347,21 @@ class BleRadio {
   BleGattWriteCallback customGattWriteCallback_;
   void* customGattWriteContext_;
   BleEncryptionDebugCounters encDebug_;
+  BleQueuedConnectionEvent queuedConnectionEvents_[kConnectionEventQueueDepth];
+  uint8_t queuedConnectionEventPayloadScratch_[255];
+  uint8_t queuedConnectionEventTxPayloadScratch_[255];
+  uint8_t queuedConnectionEventHead_;
+  uint8_t queuedConnectionEventTail_;
+  uint8_t queuedConnectionEventCount_;
+  bool connectionServiceBusy_;
+  BleDisconnectDebug disconnectDebug_;
+  uint8_t lastObservedRxLlid_;
+  uint8_t lastObservedRxLength_;
+  uint8_t lastObservedRxOpcode_;
+  uint8_t lastObservedRxNesn_;
+  uint8_t lastObservedRxSn_;
+  bool lastObservedPacketIsNew_;
+  bool lastObservedPeerAckedLastTx_;
 };
 
 }  // namespace xiao_nrf54l15

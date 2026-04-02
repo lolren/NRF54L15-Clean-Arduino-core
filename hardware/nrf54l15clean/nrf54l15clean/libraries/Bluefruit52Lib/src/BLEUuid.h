@@ -1,0 +1,6 @@
+#ifndef BLUEFRUIT_COMPAT_BLEUUID_H_
+#define BLUEFRUIT_COMPAT_BLEUUID_H_
+
+#include "bluefruit.h"
+
+#endif  // BLUEFRUIT_COMPAT_BLEUUID_H_

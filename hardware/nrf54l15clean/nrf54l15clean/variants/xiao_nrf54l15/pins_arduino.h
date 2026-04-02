@@ -31,6 +31,13 @@
 #define PIN_LED_BUILTIN (16)
 #define PIN_BUTTON      (17)
 
+#define PIN_LED         PIN_LED_BUILTIN
+#define LED_BUILTIN     PIN_LED_BUILTIN
+#define LED_RED         PIN_LED_BUILTIN
+#define LED_GREEN       PIN_LED_BUILTIN
+#define LED_BLUE        PIN_LED_BUILTIN
+#define LED_STATE_ON    LOW
+
 // Routed to SAMD11 USB bridge on XIAO nRF54L15.
 // Net naming is from the SAMD11 perspective:
 // - SAMD11_TX drives nRF RX (P1.08)
@@ -65,8 +72,6 @@
 #define PDM_DATA PIN_PDM_DATA
 #define MIC_CLK PIN_PDM_CLK
 #define MIC_DATA PIN_PDM_DATA
-
-#define LED_BUILTIN PIN_LED_BUILTIN
 
 #define PIN_A0 (0)
 #define PIN_A1 (1)

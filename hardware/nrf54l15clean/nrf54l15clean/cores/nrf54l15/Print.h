@@ -8,6 +8,7 @@
 #define Print_h
 
 #include <stddef.h>
+#include <stdarg.h>
 #include <stdint.h>
 
 #include "WString.h"
@@ -59,6 +60,22 @@ public:
     size_t println(unsigned long value, int base = 10);
     size_t println(double value, int digits = 2);
     size_t println(const Printable &value);
+
+    size_t printf(const char *format, ...);
+    size_t vprintf(const char *format, va_list ap);
+
+    size_t printBuffer(const uint8_t *buffer, int len, char delim = ' ', int byteline = 0);
+    size_t printBuffer(const char *buffer, int size, char delim = ' ', int byteline = 0) {
+        return printBuffer(reinterpret_cast<const uint8_t *>(buffer), size, delim, byteline);
+    }
+
+    size_t printBufferReverse(const uint8_t *buffer, int len, char delim = ' ',
+                              int byteline = 0);
+    size_t printBufferReverse(const char *buffer, int size, char delim = ' ',
+                              int byteline = 0) {
+        return printBufferReverse(reinterpret_cast<const uint8_t *>(buffer), size, delim,
+                                  byteline);
+    }
 
 protected:
     void setWriteError(int error = 1) { _writeError = error; }

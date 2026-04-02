@@ -32,16 +32,18 @@ static PowerManager g_power;
 
 static uint8_t g_batteryLevel = 100U;
 static uint32_t g_lastBatteryUpdateMs = 0U;
-static uint32_t g_lastLogMs = 0U;
-static bool g_wasConnected = false;
-// -8 dBm: reduced range, suitable for bench testing without flooding the room.
-// Valid range: -40 to +8 dBm (hardware-dependent; 0 is standard default).
-static constexpr int8_t kTxPowerDbm = -8;
-// Set true to log every received ATT or LL-Control PDU — very verbose.
-static constexpr bool kLogConnectionPackets = false;
-// Set true to print per-event detail for Device Name reads, service browse,
-// and Battery/Service-Changed CCCD writes. Useful for GATT cache debugging.
-static constexpr bool kLogBatteryReadDebug = true;
+static uint32_t g_traceCount = 0U;
+static char g_lastTrace[24] = {0};
+
+static void onBleTrace(const char* message, void* context) {
+  (void)context;
+  ++g_traceCount;
+  memset(g_lastTrace, 0, sizeof(g_lastTrace));
+  if (message == nullptr) {
+    return;
+  }
+  strncpy(g_lastTrace, message, sizeof(g_lastTrace) - 1U);
+}
 
 void setup() {
   Serial.begin(115200);
@@ -73,6 +75,9 @@ void setup() {
          g_ble.setGattDeviceName("XIAO nRF54L15 Clean") &&
          // Battery Service (UUID 0x180F) with Battery Level (0x2A19) set to 100 %.
          g_ble.setGattBatteryLevel(g_batteryLevel);
+  }
+  if (ok) {
+    g_ble.setTraceCallback(onBleTrace, nullptr);
   }
 
   Serial.print("BLE GATT init: ");
@@ -157,122 +162,6 @@ void loop() {
   if (ran && evt.eventStarted) {
     Gpio::write(kPinUserLed, false);
 
-    if (kLogBatteryReadDebug && evt.attPacket &&
-        evt.payload != nullptr && evt.payloadLength >= 7U &&
-        ((evt.attOpcode == 0x0AU) || (evt.attOpcode == 0x10U) ||
-         (evt.attOpcode == 0x12U))) {
-      const uint16_t attHandle =
-          static_cast<uint16_t>(evt.payload[5]) |
-          static_cast<uint16_t>(static_cast<uint16_t>(evt.payload[6]) << 8U);
-      const bool logReadHandle =
-          (evt.attOpcode == 0x0AU) &&
-          ((attHandle == 0x0003U) || (attHandle == 0x0012U));
-      const bool logPrimaryServiceBrowse = (evt.attOpcode == 0x10U) && (attHandle == 0x0001U);
-      const bool logCccdWrite =
-          (evt.attOpcode == 0x12U) &&
-          ((attHandle == 0x000BU) || (attHandle == 0x0013U));
-      if (logReadHandle || logPrimaryServiceBrowse || logCccdWrite) {
-        if (evt.attOpcode == 0x0AU) {
-          Serial.print(attHandle == 0x0003U ? "devname-read ce=" : "batt-read ce=");
-        } else if (evt.attOpcode == 0x10U) {
-          Serial.print("svc-browse ce=");
-        } else {
-          Serial.print(attHandle == 0x000BU ? "svcchg-cccd ce=" : "batt-cccd ce=");
-        }
-        Serial.print(evt.eventCounter);
-        Serial.print(" ch=");
-        Serial.print(evt.dataChannel);
-        Serial.print(" new=");
-        Serial.print(evt.packetIsNew ? 1 : 0);
-        Serial.print(" ack=");
-        Serial.print(evt.peerAckedLastTx ? 1 : 0);
-        Serial.print(" fresh=");
-        Serial.print(evt.freshTxAllowed ? 1 : 0);
-        Serial.print(" iack=");
-        Serial.print(evt.implicitEmptyAck ? 1 : 0);
-        Serial.print(" rxsn=");
-        Serial.print(evt.rxSn);
-        Serial.print(" rxnesn=");
-        Serial.print(evt.rxNesn);
-        Serial.print(" txsn=");
-        Serial.print(evt.txSn);
-        Serial.print(" txnesn=");
-        Serial.print(evt.txNesn);
-        Serial.print(" tx_llid=");
-        Serial.print(evt.txLlid);
-        Serial.print(" tx_len=");
-        Serial.print(evt.txPayloadLength);
-        if (evt.txPayload != nullptr && evt.txPayloadLength >= 5U) {
-          Serial.print(" tx_att=0x");
-          if (evt.txPayload[4] < 16U) {
-            Serial.print('0');
-          }
-          Serial.print(evt.txPayload[4], HEX);
-          if (evt.txPayloadLength >= 7U) {
-            const uint16_t txHandle =
-                static_cast<uint16_t>(evt.txPayload[5]) |
-                static_cast<uint16_t>(static_cast<uint16_t>(evt.txPayload[6]) << 8U);
-            Serial.print(" tx_handle=0x");
-            if (txHandle < 0x1000U) {
-              Serial.print('0');
-            }
-            if (txHandle < 0x0100U) {
-              Serial.print('0');
-            }
-            if (txHandle < 0x0010U) {
-              Serial.print('0');
-            }
-            Serial.print(txHandle, HEX);
-          }
-        }
-        Serial.print("\r\n");
-      }
-    }
-
-    if (kLogConnectionPackets &&
-        evt.packetReceived && evt.crcOk &&
-        (evt.attPacket || evt.llControlPacket)) {
-      Serial.print("ce=");
-      Serial.print(evt.eventCounter);
-      Serial.print(" ch=");
-      Serial.print(evt.dataChannel);
-      Serial.print(" llid=");
-      Serial.print(evt.llid);
-      Serial.print(" rx_len=");
-      Serial.print(evt.payloadLength);
-      Serial.print(" tx_len=");
-      Serial.print(evt.txPayloadLength);
-      Serial.print(" new=");
-      Serial.print(evt.packetIsNew ? 1 : 0);
-      Serial.print(" ack=");
-      Serial.print(evt.peerAckedLastTx ? 1 : 0);
-      Serial.print(" iack=");
-      Serial.print(evt.implicitEmptyAck ? 1 : 0);
-      Serial.print(" rxsn=");
-      Serial.print(evt.rxSn);
-      Serial.print(" rxnesn=");
-      Serial.print(evt.rxNesn);
-      Serial.print(" txsn=");
-      Serial.print(evt.txSn);
-      Serial.print(" txnesn=");
-      Serial.print(evt.txNesn);
-      if (evt.llControlPacket) {
-        Serial.print(" ll_op=0x");
-        if (evt.llControlOpcode < 16U) {
-          Serial.print('0');
-        }
-        Serial.print(evt.llControlOpcode, HEX);
-      }
-      if (evt.attPacket) {
-        Serial.print(" att_op=0x");
-        if (evt.attOpcode < 16U) {
-          Serial.print('0');
-        }
-        Serial.print(evt.attOpcode, HEX);
-      }
-      Serial.print("\r\n");
-    }
-
     if (evt.terminateInd) {
       Serial.print("link terminated\r\n");
       Gpio::write(kPinUserLed, true);
@@ -280,13 +169,5 @@ void loop() {
     return;
   }
 
-  if ((nowMs - g_lastLogMs) >= 2000UL) {
-    g_lastLogMs = nowMs;
-    Serial.print("connected batt=");
-    Serial.print(g_batteryLevel);
-    Serial.print("%\r\n");
-  }
-
   Gpio::write(kPinUserLed, true);
-  delay(1);
 }

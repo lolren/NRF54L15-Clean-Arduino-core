@@ -35,332 +35,7 @@ static constexpr uint8_t kZephyrMainCcChannelXiao = 1U;
 xiao_nrf54l15::I2sTx* g_activeI2sTx = nullptr;
 xiao_nrf54l15::I2sRx* g_activeI2sRx = nullptr;
 xiao_nrf54l15::I2sDuplex* g_activeI2sDuplex = nullptr;
-// Reserve one GRTC compare channel for BLE connection anchors so the custom LL
-// can arm itself independently of sketch polling.
-static constexpr uint8_t kBleBackgroundCompareChannel = 2U;
-static constexpr uint8_t kBleBackgroundAdvPrewarmCompareChannel = 3U;
-static constexpr uint8_t kBleBackgroundAdvTxCompareChannel = 4U;
-static constexpr uint8_t kBleBackgroundConnPrewarmCompareChannel = 5U;
-static constexpr uint8_t kBleBackgroundAdvCleanupCompareChannel = 6U;
-static constexpr uint8_t kBleBackgroundAdvStage1ServiceCompareChannel = 7U;
-static constexpr uint8_t kBleBackgroundAdvStage1TxCompareChannel = 8U;
-static constexpr uint8_t kBleBackgroundAdvStage2ServiceCompareChannel = 9U;
-static constexpr uint8_t kBleBackgroundAdvStage2TxCompareChannel = 10U;
-static constexpr uint8_t kBleBackgroundAdvFinalCleanupCompareChannel = 11U;
-static constexpr uint8_t kBleBackgroundConnRxCompareChannel = 12U;
-#if !defined(NRF54L15_CLEAN_BLE_BACKGROUND_LP_TX_DPPI_CHANNEL)
-#define NRF54L15_CLEAN_BLE_BACKGROUND_LP_TX_DPPI_CHANNEL 1
-#endif
-#if !defined(NRF54L15_CLEAN_BLE_BACKGROUND_PERI_TX_DPPI_CHANNEL)
-#define NRF54L15_CLEAN_BLE_BACKGROUND_PERI_TX_DPPI_CHANNEL 5
-#endif
-#if !defined(NRF54L15_CLEAN_BLE_BACKGROUND_RADIO_TX_DPPI_CHANNEL)
-#define NRF54L15_CLEAN_BLE_BACKGROUND_RADIO_TX_DPPI_CHANNEL 0
-#endif
-static constexpr uint8_t kBleBackgroundAdvLpPrewarmDppiChannel = 0U;
-static constexpr uint8_t kBleBackgroundConnLpPrewarmDppiChannel =
-    kBleBackgroundAdvLpPrewarmDppiChannel;
-static constexpr uint8_t kBleBackgroundConnLpRxDppiChannel = 4U;
-static constexpr uint8_t kBleBackgroundAdvLpTxDppiChannel =
-    static_cast<uint8_t>(NRF54L15_CLEAN_BLE_BACKGROUND_LP_TX_DPPI_CHANNEL);
-static constexpr uint8_t kBleBackgroundAdvLpStopDppiChannel = 2U;
-static constexpr uint8_t kBleBackgroundAdvLpStopEnableDppiChannel = 3U;
-static constexpr uint8_t kBleBackgroundAdvPeriTxDppiChannel =
-    static_cast<uint8_t>(NRF54L15_CLEAN_BLE_BACKGROUND_PERI_TX_DPPI_CHANNEL);
-static constexpr uint8_t kBleBackgroundAdvPeriStopDppiChannel = 1U;
-static constexpr uint8_t kBleBackgroundAdvPeriStopEnableDppiChannel = 2U;
-static constexpr uint8_t kBleBackgroundAdvPeriLatencyDppiChannel = 3U;
-static constexpr uint8_t kBleBackgroundConnPeriRxDppiChannel = 4U;
-static constexpr uint8_t kBleBackgroundAdvRadioPllenDppiChannel = 1U;
-static constexpr uint8_t kBleBackgroundAdvRadioTxDppiChannel =
-    static_cast<uint8_t>(NRF54L15_CLEAN_BLE_BACKGROUND_RADIO_TX_DPPI_CHANNEL);
-static constexpr uint8_t kBleBackgroundAdvRadioStopDppiChannel = 1U;
-static constexpr uint8_t kBleBackgroundAdvRadioStopEnableDppiChannel = 2U;
-static constexpr uint8_t kBleBackgroundConnRadioRxDppiChannel = 3U;
-static constexpr uint8_t kBleBackgroundAdvLpToPeriBridgeIndex = 0U;
-static constexpr uint8_t kBleBackgroundAdvRadioToLpBridgeIndex = 1U;
-static constexpr uint8_t kBleBackgroundAdvStopEnableBridgeIndex = 2U;
-static constexpr uint8_t kBleBackgroundAdvLatencyBridgeIndex = 3U;
-static constexpr uint8_t kBleBackgroundConnRxBridgeIndex = 4U;
-static constexpr uint8_t kBleBackgroundAdvStopPathGroup = 0U;
-static constexpr uint32_t kBleBackgroundAdvEventWindowUs = 1000U;
-static constexpr uint32_t kBleBackgroundAdvDefaultHfxoLeadUs = 1200U;
-static constexpr uint32_t kBleBackgroundConnDefaultHfxoLeadUs = 3000U;
-static constexpr uint32_t kBleBackgroundConnHardwareWakeLeadUs = 40U;
-static constexpr uint32_t kBleBackgroundConnRxFallbackLeadUs = 16U;
-static constexpr uint32_t kBleBackgroundAdvFirstEventGuardUs = 1000U;
-static constexpr uint32_t kBleBackgroundAdvMinIntervalUs = 5000U;
-static constexpr uint32_t kBleBackgroundAdvTxRampUpUs = 40U;
-static constexpr uint32_t kBleBackgroundAdvDisableGuardUs = 320U;
-static constexpr uint32_t kBleBackgroundAdvStageServiceLeadUs = 250U;
-static constexpr uint32_t kBleBackgroundAdvStageSettleBudgetUs = 320U;
-static constexpr uint32_t kBleBackgroundAdvEventSettleBudgetUs = 3000U;
-static constexpr uint32_t kBleBackgroundAdvTxKickRetryUs = 50U;
-static constexpr uint8_t kBleBackgroundAdvTxKickRetryLimit = 64U;
-static constexpr uint8_t kBleBackgroundInvalidCompareChannel = 0xFFU;
-static constexpr uint32_t kBleBackgroundAdvMinInterChannelDelayUs =
-    kBleBackgroundAdvStageServiceLeadUs;
-static constexpr uint8_t kBleBackgroundAdvStopReasonNone = 0U;
-static constexpr uint8_t kBleBackgroundAdvStopReasonExplicit = 1U;
-static constexpr uint8_t kBleBackgroundAdvStopReasonSettleTimeout = 2U;
-static constexpr uint8_t kBleBackgroundAdvStopReasonPrepareFailed = 3U;
-static constexpr uint8_t kBleBackgroundAdvStopReasonArmFailed = 4U;
-static constexpr uint8_t kBleBackgroundAdvStopReasonPrewarmFailed = 5U;
-static constexpr uint8_t kBleBackgroundAdvStopReasonInvalidState = 6U;
-static constexpr uint8_t kBleBackgroundAdvStopReasonTxCompareFailed = 7U;
-#if NRF54L15_GRTC_IRQ_GROUP == 2U
-static constexpr IRQn_Type kBleBackgroundGrtcIrq = GRTC_2_IRQn;
-#elif NRF54L15_GRTC_IRQ_GROUP == 1U
-static constexpr IRQn_Type kBleBackgroundGrtcIrq = GRTC_1_IRQn;
-#else
-static constexpr IRQn_Type kBleBackgroundGrtcIrq = GRTC_0_IRQn;
-#endif
-static constexpr IRQn_Type kBleBackgroundClockIrq = CLOCK_POWER_IRQn;
-xiao_nrf54l15::BleRadio* volatile g_bleBackgroundRadio = nullptr;
-
-#if !defined(NRF54L15_CLEAN_BLE_BACKGROUND_SERVICE)
-#define NRF54L15_CLEAN_BLE_BACKGROUND_SERVICE 1
-#endif
-
-#if !defined(NRF54L15_CLEAN_BLE_BACKGROUND_GRTC_IRQ_RUN)
-#define NRF54L15_CLEAN_BLE_BACKGROUND_GRTC_IRQ_RUN 1
-#endif
-
-#if !defined(NRF54L15_CLEAN_BLE_BACKGROUND_PENDSV_HANDOFF)
-#define NRF54L15_CLEAN_BLE_BACKGROUND_PENDSV_HANDOFF 1
-#endif
-
-#if !defined(NRF54L15_CLEAN_BLE_BACKGROUND_MANAGED_CONSTLAT)
-#define NRF54L15_CLEAN_BLE_BACKGROUND_MANAGED_CONSTLAT 0
-#endif
-
-#if !defined(NRF54L15_CLEAN_BLE_BACKGROUND_MANAGE_RF_PATH)
-#if defined(ARDUINO_XIAO_NRF54L15)
-#define NRF54L15_CLEAN_BLE_BACKGROUND_MANAGE_RF_PATH 1
-#else
-#define NRF54L15_CLEAN_BLE_BACKGROUND_MANAGE_RF_PATH 0
-#endif
-#endif
-
-#if !defined(NRF54L15_CLEAN_BLE_BACKGROUND_FORCE_IRQ_TXEN)
-#if defined(ARDUINO_XIAO_NRF54L15)
-#define NRF54L15_CLEAN_BLE_BACKGROUND_FORCE_IRQ_TXEN 1
-#else
-#define NRF54L15_CLEAN_BLE_BACKGROUND_FORCE_IRQ_TXEN 0
-#endif
-#endif
-
-static volatile uint8_t g_bleBackgroundPendSvPending = 0U;
-static volatile uint8_t g_bleBackgroundAdvDirectTxKickBlacklisted = 0U;
-
-static inline NRF_DPPIC_Type* bleDppic10() {
-  return reinterpret_cast<NRF_DPPIC_Type*>(
-      static_cast<uintptr_t>(nrf54l15::DPPIC10_BASE));
-}
-
-static inline NRF_DPPIC_Type* bleDppic20() {
-  return reinterpret_cast<NRF_DPPIC_Type*>(
-      static_cast<uintptr_t>(nrf54l15::DPPIC20_BASE));
-}
-
-static inline NRF_DPPIC_Type* bleDppic30() {
-  return reinterpret_cast<NRF_DPPIC_Type*>(
-      static_cast<uintptr_t>(nrf54l15::DPPIC30_BASE));
-}
-
-static inline NRF_PPIB_Type* blePpib11() {
-  return reinterpret_cast<NRF_PPIB_Type*>(
-      static_cast<uintptr_t>(nrf54l15::PPIB11_BASE));
-}
-
-static inline NRF_PPIB_Type* blePpib21() {
-  return reinterpret_cast<NRF_PPIB_Type*>(
-      static_cast<uintptr_t>(nrf54l15::PPIB21_BASE));
-}
-
-static inline NRF_PPIB_Type* blePpib22() {
-  return reinterpret_cast<NRF_PPIB_Type*>(
-      static_cast<uintptr_t>(nrf54l15::PPIB22_BASE));
-}
-
-static inline NRF_PPIB_Type* blePpib30() {
-  return reinterpret_cast<NRF_PPIB_Type*>(
-      static_cast<uintptr_t>(nrf54l15::PPIB30_BASE));
-}
-
-static inline bool bleBackgroundAdvertisingInitialUseIrqTxKick() {
-  return (NRF54L15_CLEAN_BLE_BACKGROUND_FORCE_IRQ_TXEN != 0) ||
-         (g_bleBackgroundAdvDirectTxKickBlacklisted != 0U);
-}
-
-uint32_t bleDataPduAirTimeUs(uint8_t payloadLength);
-
-static inline BleAdvertisingChannel bleBackgroundAdvertisingStageChannel(uint8_t stage) {
-  switch (stage % 3U) {
-    case 1U:
-      return BleAdvertisingChannel::k38;
-    case 2U:
-      return BleAdvertisingChannel::k39;
-    default:
-      return BleAdvertisingChannel::k37;
-  }
-}
-
-static inline uint8_t bleBackgroundAdvertisingServiceCompareChannelForTxCompare(
-    bool threeChannel, uint8_t txCompareChannel) {
-  if (!threeChannel) {
-    return (txCompareChannel == kBleBackgroundAdvTxCompareChannel)
-               ? kBleBackgroundAdvCleanupCompareChannel
-               : kBleBackgroundInvalidCompareChannel;
-  }
-
-  switch (txCompareChannel) {
-    case kBleBackgroundAdvTxCompareChannel:
-      return kBleBackgroundAdvStage1ServiceCompareChannel;
-    case kBleBackgroundAdvStage1TxCompareChannel:
-      return kBleBackgroundAdvStage2ServiceCompareChannel;
-    case kBleBackgroundAdvStage2TxCompareChannel:
-      return kBleBackgroundAdvFinalCleanupCompareChannel;
-    default:
-      return kBleBackgroundInvalidCompareChannel;
-  }
-}
-
-static inline bool bleBackgroundAdvertisingSetStopPathEnabled(bool enable) {
-  if (bleDppic30() == nullptr) {
-    return false;
-  }
-
-  Dppic lpDomain(nrf54l15::DPPIC30_BASE);
-  return lpDomain.enableChannel(kBleBackgroundAdvLpStopDppiChannel, enable);
-}
-
-extern "C" uint8_t __attribute__((weak)) nrf54l15_constlat_users_active(void) {
-  return 0U;
-}
-
-static inline bool bleBackgroundAdvertisingConstlatActive() {
-  return (NRF_POWER->CONSTLATSTAT & POWER_CONSTLATSTAT_STATUS_Msk) != 0U;
-}
-
-static inline bool bleBackgroundAdvertisingShouldManageLatency() {
-#if NRF54L15_CLEAN_BLE_BACKGROUND_MANAGED_CONSTLAT != 0
-  return !bleBackgroundAdvertisingConstlatActive();
-#else
-  return false;
-#endif
-}
-
-static inline bool bleBackgroundAdvertisingShouldManageRfPath() {
-#if NRF54L15_CLEAN_BLE_BACKGROUND_MANAGE_RF_PATH != 0
-  return true;
-#else
-  return false;
-#endif
-}
-
-static inline bool bleBackgroundAdvertisingReleaseManagedLatency(bool managed) {
-  if (!managed || !bleBackgroundAdvertisingConstlatActive()) {
-    return false;
-  }
-  if (nrf54l15_constlat_users_active() != 0U) {
-    return false;
-  }
-  NRF_POWER->TASKS_LOWPWR = POWER_TASKS_LOWPWR_TASKS_LOWPWR_Trigger;
-  return true;
-}
-
-static inline bool bleBackgroundAdvertisingAssertManagedLatency(bool managed,
-                                                               bool* alreadyActive) {
-  if (alreadyActive != nullptr) {
-    *alreadyActive = false;
-  }
-  if (!managed) {
-    return false;
-  }
-  if (bleBackgroundAdvertisingConstlatActive()) {
-    if (alreadyActive != nullptr) {
-      *alreadyActive = true;
-    }
-    return true;
-  }
-  NRF_POWER->TASKS_CONSTLAT = POWER_TASKS_CONSTLAT_TASKS_CONSTLAT_Trigger;
-  return bleBackgroundAdvertisingConstlatActive();
-}
-
-static inline uint32_t bleBackgroundAdvertisingPacketWindowUs(uint8_t payloadLength) {
-  return kBleBackgroundAdvTxRampUpUs + bleDataPduAirTimeUs(payloadLength) +
-         kBleBackgroundAdvDisableGuardUs;
-}
-
-static inline uint32_t bleBackgroundAdvertisingServiceLeadUs(uint32_t interChannelDelayUs) {
-  return (interChannelDelayUs < kBleBackgroundAdvStageServiceLeadUs)
-             ? interChannelDelayUs
-             : kBleBackgroundAdvStageServiceLeadUs;
-}
-
-static inline CracenRng& bleBackgroundAdvertisingRng() {
-  static CracenRng rng;
-  return rng;
-}
-
-static inline void bleBackgroundAdvertisingConfigureRandomSource(bool enable) {
-  CracenRng& rng = bleBackgroundAdvertisingRng();
-  if (!enable) {
-    if (rng.active()) {
-      rng.end();
-    }
-    return;
-  }
-  if (!rng.active()) {
-    (void)rng.beginNonBlocking();
-  }
-}
-
-static inline uint32_t bleBackgroundAdvertisingRandomDelayUs(uint32_t* state,
-                                                             uint8_t addressSeed,
-                                                             bool* usedHardware) {
-  CracenRng& rng = bleBackgroundAdvertisingRng();
-  uint32_t randomWord = 0U;
-  if (rng.tryRandomWord(&randomWord)) {
-    if (usedHardware != nullptr) {
-      *usedHardware = true;
-    }
-    if (state != nullptr) {
-      *state = randomWord;
-    }
-    return randomWord % 10001U;
-  }
-  if (usedHardware != nullptr) {
-    *usedHardware = false;
-  }
-
-  uint32_t fallbackState = (state != nullptr) ? *state : 0U;
-  if (fallbackState == 0U) {
-    fallbackState = micros() ^ (static_cast<uint32_t>(addressSeed) << 24U);
-  }
-  fallbackState = fallbackState * 1103515245U + 12345U;
-  if (state != nullptr) {
-    *state = fallbackState;
-  }
-  return fallbackState % 10001U;
-}
-
-static inline void blePendSvSetPending() {
-  constexpr uintptr_t kIcsrAddress = 0xE000ED04UL;
-  constexpr uint32_t kPendSvSetMask = (1UL << 28U);
-  *reinterpret_cast<volatile uint32_t*>(kIcsrAddress) = kPendSvSetMask;
-  __DSB();
-  __ISB();
-}
-
-static inline void blePendSvClearPending() {
-  constexpr uintptr_t kIcsrAddress = 0xE000ED04UL;
-  constexpr uint32_t kPendSvClearMask = (1UL << 27U);
-  *reinterpret_cast<volatile uint32_t*>(kIcsrAddress) = kPendSvClearMask;
-  __DSB();
-  __ISB();
-}
+xiao_nrf54l15::BleRadio* g_activeBleRadio = nullptr;
 
 uint32_t gpioBaseForPort(uint8_t port) {
   switch (port) {
@@ -1852,6 +1527,8 @@ constexpr uint16_t kHandleBatteryLevelCccd = 0x0013U;
 constexpr uint8_t kGattCharacteristicPropRead = 0x02U;
 constexpr uint8_t kGattCharacteristicPropNotify = 0x10U;
 constexpr uint8_t kGattCharacteristicPropIndicate = 0x20U;
+constexpr uint8_t kBleUuid16Size = 2U;
+constexpr uint8_t kBleUuid128Size = 16U;
 constexpr uint8_t kAttrReadInvalidHandleLen = 0xFFU;
 constexpr uint8_t kAttrReadInvalidOffsetLen = 0xFEU;
 constexpr uint8_t kAttrReadNotPermittedLen = 0xFDU;
@@ -2116,6 +1793,47 @@ void writeLe16(uint8_t* p, uint16_t v) {
   }
   p[0] = static_cast<uint8_t>(v & 0xFFU);
   p[1] = static_cast<uint8_t>((v >> 8U) & 0xFFU);
+}
+
+uint8_t bleConnectionPayloadProtocolOpcode(uint8_t llid, const uint8_t* payload,
+                                           uint8_t length) {
+  if (payload == nullptr || length == 0U) {
+    return 0U;
+  }
+  if (llid == kBlePduLlControl) {
+    return payload[0];
+  }
+  if ((llid == kBlePduDataStartOrComplete) && (length >= 5U)) {
+    const uint16_t l2capLen = readLe16(&payload[0]);
+    const uint16_t cid = readLe16(&payload[2]);
+    const uint8_t availableAttLen =
+        (length > kBleL2capHeaderLen)
+            ? static_cast<uint8_t>(length - kBleL2capHeaderLen)
+            : 0U;
+    if ((cid == kBleL2capCidAtt) && (l2capLen > 0U) && (availableAttLen > 0U)) {
+      return payload[kBleL2capHeaderLen];
+    }
+  }
+  return payload[0];
+}
+
+void writeLe24(uint8_t* p, uint32_t v) {
+  if (p == nullptr) {
+    return;
+  }
+  p[0] = static_cast<uint8_t>(v & 0xFFU);
+  p[1] = static_cast<uint8_t>((v >> 8U) & 0xFFU);
+  p[2] = static_cast<uint8_t>((v >> 16U) & 0xFFU);
+}
+
+void writeLe32(uint8_t* p, uint32_t v) {
+  if (p == nullptr) {
+    return;
+  }
+  p[0] = static_cast<uint8_t>(v & 0xFFU);
+  p[1] = static_cast<uint8_t>((v >> 8U) & 0xFFU);
+  p[2] = static_cast<uint8_t>((v >> 16U) & 0xFFU);
+  p[3] = static_cast<uint8_t>((v >> 24U) & 0xFFU);
 }
 
 void fillPseudoRandomBytes(uint8_t* out, uint8_t len, uint32_t seed) {
@@ -3141,19 +2859,27 @@ uint32_t bleMasterScaPpmUpperBound(uint8_t scaCode) {
   }
 }
 
-uint32_t bleConnectionWindowWideningUs(uint16_t intervalUnits, uint8_t masterScaCode) {
-  if (intervalUnits == 0U) {
+uint32_t bleConnectionWindowWideningUs(uint16_t intervalUnits,
+                                       uint8_t masterScaCode,
+                                       uint16_t unsyncedEventCount = 1U) {
+  if (intervalUnits == 0U || unsyncedEventCount == 0U) {
     return 0U;
   }
 
   const uint32_t intervalUs = static_cast<uint32_t>(intervalUnits) * 1250UL;
   const uint32_t totalPpm =
       bleMasterScaPpmUpperBound(masterScaCode) + kBleConnSlaveScaPpm;
-  return (intervalUs * totalPpm + 999999UL) / 1000000UL;
+  const uint64_t wideningProduct =
+      static_cast<uint64_t>(intervalUs) * static_cast<uint64_t>(totalPpm) *
+      static_cast<uint64_t>(unsyncedEventCount);
+  return static_cast<uint32_t>((wideningProduct + 999999ULL) / 1000000ULL);
 }
 
-uint32_t bleConnectionRxListenUs(uint16_t intervalUnits, uint8_t masterScaCode) {
-  const uint32_t wideningUs = bleConnectionWindowWideningUs(intervalUnits, masterScaCode);
+uint32_t bleConnectionRxListenUs(uint16_t intervalUnits, uint8_t masterScaCode,
+                                 uint16_t unsyncedEventCount = 1U) {
+  const uint32_t wideningUs =
+      bleConnectionWindowWideningUs(intervalUnits, masterScaCode,
+                                    unsyncedEventCount);
   uint32_t postAnchorListenUs = kBleConnRxListenBaseUs + wideningUs;
   if (postAnchorListenUs > kBleConnRxListenMaxUs) {
     postAnchorListenUs = kBleConnRxListenMaxUs;
@@ -3195,7 +2921,7 @@ uint16_t bleCsa2PrnE(uint16_t eventCounter, uint16_t channelId) {
 }
 
 bool waitRadioEndBudgeted(NRF_RADIO_Type* radio, uint32_t budgetUs, uint32_t spinLimit,
-                          uint32_t* outEndTimestampUs = nullptr) {
+                          uint32_t* endTimestampUs = nullptr) {
   if (radio == nullptr || spinLimit == 0U) {
     return false;
   }
@@ -3204,8 +2930,8 @@ bool waitRadioEndBudgeted(NRF_RADIO_Type* radio, uint32_t budgetUs, uint32_t spi
   uint8_t divider = kBleConnMicrosPollDivider;
   while (spinLimit-- > 0U) {
     if (radio->EVENTS_PHYEND != 0U || radio->EVENTS_END != 0U) {
-      if (outEndTimestampUs != nullptr) {
-        *outEndTimestampUs = bleTimingUs();
+      if (endTimestampUs != nullptr) {
+        *endTimestampUs = micros();
       }
       return true;
     }
@@ -3220,8 +2946,8 @@ bool waitRadioEndBudgeted(NRF_RADIO_Type* radio, uint32_t budgetUs, uint32_t spi
   }
 
   const bool endSeen = (radio->EVENTS_PHYEND != 0U || radio->EVENTS_END != 0U);
-  if (endSeen && outEndTimestampUs != nullptr) {
-    *outEndTimestampUs = bleTimingUs();
+  if (endSeen && endTimestampUs != nullptr) {
+    *endTimestampUs = micros();
   }
   return endSeen;
 }
@@ -3363,7 +3089,69 @@ bool inHandleRange(uint16_t handle, uint16_t start, uint16_t end) {
   return (handle >= start) && (handle <= end);
 }
 
+void bleUuid16ToBytes(uint16_t uuid16, uint8_t out[16]) {
+  if (out == nullptr) {
+    return;
+  }
+  memset(out, 0, 16U);
+  writeLe16(out, uuid16);
+}
+
+bool bleUuidIs16(const uint8_t* uuid, uint8_t uuidSize) {
+  return (uuid != nullptr) && (uuidSize == kBleUuid16Size);
+}
+
+uint16_t bleUuidRead16(const uint8_t* uuid, uint8_t uuidSize) {
+  return bleUuidIs16(uuid, uuidSize) ? readLe16(uuid) : 0U;
+}
+
+bool bleUuidMatches16(const uint8_t* uuid, uint8_t uuidSize, uint16_t uuid16) {
+  return bleUuidRead16(uuid, uuidSize) == uuid16;
+}
+
+bool bleUuidEquals(const uint8_t* lhs, uint8_t lhsSize, const uint8_t* rhs,
+                   uint8_t rhsSize) {
+  if (lhs == nullptr || rhs == nullptr || lhsSize != rhsSize) {
+    return false;
+  }
+  return memcmp(lhs, rhs, lhsSize) == 0;
+}
+
+uint8_t bleCharacteristicDeclarationValueLen(uint8_t uuidSize) {
+  return (uuidSize == kBleUuid128Size) ? 19U : 5U;
+}
+
+void writeCharacteristicDeclarationValue(uint8_t* out,
+                                         uint8_t properties,
+                                         uint16_t valueHandle,
+                                         const uint8_t* uuid,
+                                         uint8_t uuidSize) {
+  if (out == nullptr || uuid == nullptr) {
+    return;
+  }
+
+  out[0] = properties;
+  writeLe16(&out[1], valueHandle);
+  if (uuidSize == kBleUuid128Size) {
+    memcpy(&out[3], uuid, kBleUuid128Size);
+  } else {
+    writeLe16(&out[3], bleUuidRead16(uuid, uuidSize));
+  }
+}
+
+extern "C" void nrf54l15_bluefruit_compat_idle_service(void)
+    __attribute__((weak));
+
 }  // namespace
+
+extern "C" void nrf54l15_clean_ble_idle_service(void) {
+  if (g_activeBleRadio != nullptr) {
+    g_activeBleRadio->serviceBackgroundConnection();
+  }
+  if (nrf54l15_bluefruit_compat_idle_service != nullptr) {
+    nrf54l15_bluefruit_compat_idle_service();
+  }
+}
 
 namespace xiao_nrf54l15 {
 
@@ -8672,10 +8460,7 @@ BleRadio::BleRadio(uint32_t radioBase, uint32_t ficrBase)
       rxPacket_{0},
       connectionTxPayload_{0},
       connected_(false),
-      rfPathOwnedByBle_(false),
-      backgroundAdvertisingRestoreRfPathValid_(false),
-      backgroundAdvertisingRestoreRfPathPowerEnabled_(false),
-      backgroundAdvertisingRestoreRfPath_(kDefaultBoardAntennaPath),
+      connectionRole_(BleConnectionRole::kNone),
       connectionPeerAddress_{0},
       connectionPeerAddressRandom_(false),
       connectionAccessAddress_(0),
@@ -8694,6 +8479,7 @@ BleRadio::BleRadio(uint32_t radioBase, uint32_t ficrBase)
       connectionTxSn_(0),
       connectionLastTxSn_(0),
       connectionTxHistoryValid_(false),
+      connectionFreshTxAllowed_(true),
       connectionEventCounter_(0),
       connectionMissedEventCount_(0U),
       connectionNextEventUs_(0),
@@ -8864,7 +8650,22 @@ BleRadio::BleRadio(uint32_t radioBase, uint32_t ficrBase)
       connectionSmpSecurityRequestPending_(false),
       customGattWriteCallback_(nullptr),
       customGattWriteContext_(nullptr),
-      encDebug_{} {}
+      encDebug_{},
+      queuedConnectionEvents_{},
+      queuedConnectionEventPayloadScratch_{0},
+      queuedConnectionEventTxPayloadScratch_{0},
+      queuedConnectionEventHead_(0U),
+      queuedConnectionEventTail_(0U),
+      queuedConnectionEventCount_(0U),
+      connectionServiceBusy_(false),
+      disconnectDebug_{},
+      lastObservedRxLlid_(0U),
+      lastObservedRxLength_(0U),
+      lastObservedRxOpcode_(0U),
+      lastObservedRxNesn_(0U),
+      lastObservedRxSn_(0U),
+      lastObservedPacketIsNew_(false),
+      lastObservedPeerAckedLastTx_(false) {}
 
 bool BleRadio::ensureRfPathActiveForBle() {
   const bool rfPowerEnabled = BoardControl::rfSwitchPowerEnabled();
@@ -9005,10 +8806,19 @@ void BleRadio::endUnconnectedRadioActivity() {
 
 bool BleRadio::begin(int8_t txPowerDbm) {
   connected_ = false;
-  stopBackgroundAdvertising();
-  stopBackgroundConnectionService();
+  connectionRole_ = BleConnectionRole::kNone;
+  connectionFreshTxAllowed_ = true;
+  lastObservedRxLlid_ = 0U;
+  lastObservedRxLength_ = 0U;
+  lastObservedRxOpcode_ = 0U;
+  lastObservedRxNesn_ = 0U;
+  lastObservedRxSn_ = 0U;
+  lastObservedPacketIsNew_ = false;
+  lastObservedPeerAckedLastTx_ = false;
   advCycleStartIndex_ = 0U;
   scanCycleStartIndex_ = 0U;
+  connectionServiceBusy_ = false;
+  clearQueuedConnectionEvents();
   clearCustomGattConnectionState();
 
 #if defined(NRF54L15_CLEAN_BLE_ENABLED) && (NRF54L15_CLEAN_BLE_ENABLED == 0)
@@ -9081,7 +8891,7 @@ bool BleRadio::begin(int8_t txPowerDbm) {
 
   loadBondRecordFromPersistence();
   initialized_ = true;
-  endUnconnectedRadioActivity();
+  g_activeBleRadio = this;
   return true;
 }
 
@@ -9091,15 +8901,11 @@ void BleRadio::end() {
     stopBackgroundAdvertising();
     stopBackgroundConnectionService();
     initialized_ = false;
+    connectionServiceBusy_ = false;
+    clearQueuedConnectionEvents();
     clearCustomGattConnectionState();
-    endUnconnectedRadioActivity();
-    // Release GRTC ACTIVE so the CPU domain can enter low-power sleep.
-    // initBleGrtc() set this to Active on the first begin(); leaving it set
-    // prevents deep sleep (20 uA -> 130 uA regression after first BLE use).
-    if (NRF_GRTC != nullptr) {
-      NRF54L15_GRTC_SYSCOUNTER(NRF_GRTC).ACTIVE =
-          (GRTC_SYSCOUNTER_ACTIVE_ACTIVE_NotActive
-           << GRTC_SYSCOUNTER_ACTIVE_ACTIVE_Pos);
+    if (g_activeBleRadio == this) {
+      g_activeBleRadio = nullptr;
     }
     return;
   }
@@ -9112,15 +8918,11 @@ void BleRadio::end() {
   stopBackgroundAdvertising();
   stopBackgroundConnectionService();
   initialized_ = false;
+  connectionServiceBusy_ = false;
+  clearQueuedConnectionEvents();
   clearCustomGattConnectionState();
-  endUnconnectedRadioActivity();
-  // Release GRTC ACTIVE so the CPU domain can enter low-power sleep.
-  // initBleGrtc() set this to Active on the first begin(); leaving it set
-  // prevents deep sleep (20 uA -> 130 uA regression after first BLE use).
-  if (NRF_GRTC != nullptr) {
-    NRF54L15_GRTC_SYSCOUNTER(NRF_GRTC).ACTIVE =
-        (GRTC_SYSCOUNTER_ACTIVE_ACTIVE_NotActive
-         << GRTC_SYSCOUNTER_ACTIVE_ACTIVE_Pos);
+  if (g_activeBleRadio == this) {
+    g_activeBleRadio = nullptr;
   }
 }
 
@@ -9499,6 +9301,11 @@ bool BleRadio::setGattDeviceName(const char* name) {
   return true;
 }
 
+bool BleRadio::setGattAppearance(uint16_t appearance) {
+  gapAppearance_ = appearance;
+  return true;
+}
+
 bool BleRadio::setGattBatteryLevel(uint8_t percent) {
   if (percent > 100U) {
     return false;
@@ -9624,23 +9431,23 @@ BleRadio::findCustomCharacteristicByCccdHandle(uint16_t cccdHandle) const {
 }
 
 bool BleRadio::addCustomGattService(uint16_t uuid16, uint16_t* outServiceHandle) {
-  uint8_t uuidBytes[kBleUuidLength16] = {0U, 0U};
-  writeLe16(uuidBytes, uuid16);
-  return addCustomGattServiceUuid(uuidBytes, kBleUuidLength16, outServiceHandle);
-}
-
-bool BleRadio::addCustomGattService128(
-    const uint8_t uuid128[kCustomGattUuid128Length], uint16_t* outServiceHandle) {
-  return addCustomGattServiceUuid(uuid128, kBleUuidLength128, outServiceHandle);
-}
-
-bool BleRadio::addCustomGattServiceUuid(const uint8_t* uuidBytes, uint8_t uuidLength,
-                                        uint16_t* outServiceHandle) {
-  if (connected_ || uuidBytes == nullptr ||
-      customGattServiceCount_ >= kCustomGattMaxServices) {
+  if (uuid16 == 0U) {
     return false;
   }
-  if (uuidLength != kBleUuidLength16 && uuidLength != kBleUuidLength128) {
+  uint8_t uuid[kBleUuid128Size] = {0};
+  bleUuid16ToBytes(uuid16, uuid);
+  return addCustomGattServiceCommon(uuid, kBleUuid16Size, outServiceHandle);
+}
+
+bool BleRadio::addCustomGattService128(const uint8_t uuid128[16],
+                                       uint16_t* outServiceHandle) {
+  return addCustomGattServiceCommon(uuid128, kBleUuid128Size, outServiceHandle);
+}
+
+bool BleRadio::addCustomGattServiceCommon(const uint8_t* uuid, uint8_t uuidSize,
+                                          uint16_t* outServiceHandle) {
+  if (connected_ || uuid == nullptr || customGattServiceCount_ >= kCustomGattMaxServices ||
+      (uuidSize != kBleUuid16Size && uuidSize != kBleUuid128Size)) {
     return false;
   }
   if (customGattNextHandle_ > kCustomGattHandleEnd) {
@@ -9649,14 +9456,8 @@ bool BleRadio::addCustomGattServiceUuid(const uint8_t* uuidBytes, uint8_t uuidLe
 
   BleCustomServiceState& service = customGattServices_[customGattServiceCount_];
   memset(&service, 0, sizeof(service));
-  if (uuidLength == kBleUuidLength16) {
-    if (readLe16(uuidBytes) == 0U) {
-      return false;
-    }
-    setCustomUuid16(&service.uuid.length, service.uuid.bytes, readLe16(uuidBytes));
-  } else if (!setCustomUuid128(&service.uuid.length, service.uuid.bytes, uuidBytes)) {
-    return false;
-  }
+  service.uuidSize = uuidSize;
+  memcpy(service.uuid, uuid, uuidSize);
   service.serviceHandle = customGattNextHandle_;
   service.endHandle = customGattNextHandle_;
   ++customGattNextHandle_;
@@ -9674,38 +9475,45 @@ bool BleRadio::addCustomGattCharacteristic(uint16_t serviceHandle, uint16_t uuid
                                            uint8_t initialValueLength,
                                            uint16_t* outValueHandle,
                                            uint16_t* outCccdHandle) {
-  uint8_t uuidBytes[kBleUuidLength16] = {0U, 0U};
-  writeLe16(uuidBytes, uuid16);
-  return addCustomGattCharacteristicUuid(serviceHandle, uuidBytes, kBleUuidLength16,
-                                         properties, initialValue,
-                                         initialValueLength, outValueHandle,
-                                         outCccdHandle);
+  if (uuid16 == 0U) {
+    return false;
+  }
+  uint8_t uuid[kBleUuid128Size] = {0};
+  bleUuid16ToBytes(uuid16, uuid);
+  return addCustomGattCharacteristicCommon(serviceHandle, uuid, kBleUuid16Size,
+                                           properties, initialValue,
+                                           initialValueLength, outValueHandle,
+                                           outCccdHandle);
 }
 
-bool BleRadio::addCustomGattCharacteristic128(
-    uint16_t serviceHandle, const uint8_t uuid128[kCustomGattUuid128Length],
-    uint8_t properties, const uint8_t* initialValue, uint8_t initialValueLength,
-    uint16_t* outValueHandle, uint16_t* outCccdHandle) {
-  return addCustomGattCharacteristicUuid(serviceHandle, uuid128,
-                                         kBleUuidLength128, properties,
-                                         initialValue, initialValueLength,
-                                         outValueHandle, outCccdHandle);
+bool BleRadio::addCustomGattCharacteristic128(uint16_t serviceHandle,
+                                              const uint8_t uuid128[16],
+                                              uint8_t properties,
+                                              const uint8_t* initialValue,
+                                              uint8_t initialValueLength,
+                                              uint16_t* outValueHandle,
+                                              uint16_t* outCccdHandle) {
+  return addCustomGattCharacteristicCommon(serviceHandle, uuid128,
+                                           kBleUuid128Size, properties,
+                                           initialValue, initialValueLength,
+                                           outValueHandle, outCccdHandle);
 }
 
-bool BleRadio::addCustomGattCharacteristicUuid(uint16_t serviceHandle,
-                                               const uint8_t* uuidBytes,
-                                               uint8_t uuidLength,
-                                               uint8_t properties,
-                                               const uint8_t* initialValue,
-                                               uint8_t initialValueLength,
-                                               uint16_t* outValueHandle,
-                                               uint16_t* outCccdHandle) {
+bool BleRadio::addCustomGattCharacteristicCommon(uint16_t serviceHandle,
+                                                 const uint8_t* uuid,
+                                                 uint8_t uuidSize,
+                                                 uint8_t properties,
+                                                 const uint8_t* initialValue,
+                                                 uint8_t initialValueLength,
+                                                 uint16_t* outValueHandle,
+                                                 uint16_t* outCccdHandle) {
   constexpr uint8_t kAllowedProps = static_cast<uint8_t>(
       kBleGattPropRead | kBleGattPropWriteNoRsp | kBleGattPropWrite |
       kBleGattPropNotify | kBleGattPropIndicate);
-  if (connected_ || uuidBytes == nullptr ||
+  if (connected_ || uuid == nullptr ||
       customGattCharacteristicCount_ >= kCustomGattMaxCharacteristics ||
-      (properties == 0U) || ((properties & ~kAllowedProps) != 0U)) {
+      (properties == 0U) || ((properties & ~kAllowedProps) != 0U) ||
+      (uuidSize != kBleUuid16Size && uuidSize != kBleUuid128Size)) {
     return false;
   }
   if (uuidLength != kBleUuidLength16 && uuidLength != kBleUuidLength128) {
@@ -9746,13 +9554,8 @@ bool BleRadio::addCustomGattCharacteristicUuid(uint16_t serviceHandle,
       customGattCharacteristics_[customGattCharacteristicCount_];
   memset(&characteristic, 0, sizeof(characteristic));
   characteristic.serviceHandle = serviceHandle;
-  if (uuidLength == kBleUuidLength16) {
-    setCustomUuid16(&characteristic.uuid.length, characteristic.uuid.bytes,
-                    readLe16(uuidBytes));
-  } else if (!setCustomUuid128(&characteristic.uuid.length, characteristic.uuid.bytes,
-                               uuidBytes)) {
-    return false;
-  }
+  characteristic.uuidSize = uuidSize;
+  memcpy(characteristic.uuid, uuid, uuidSize);
   characteristic.properties = properties;
   characteristic.declarationHandle = customGattNextHandle_++;
   characteristic.valueHandle = customGattNextHandle_++;
@@ -12406,7 +12209,116 @@ bool BleRadio::advertiseInteractEvent(BleAdvInteraction* interaction,
   return allOk;
 }
 
+bool BleRadio::initiateConnection(const uint8_t peerAddress[6],
+                                  bool peerAddressRandom,
+                                  uint16_t intervalUnits,
+                                  uint16_t supervisionTimeoutUnits,
+                                  uint8_t hopIncrement,
+                                  uint32_t perChannelScanSpinLimit) {
+  if (!initialized_ || radio_ == nullptr || connected_ || peerAddress == nullptr) {
+    return false;
+  }
+  if (intervalUnits < 6U || intervalUnits > 3200U ||
+      supervisionTimeoutUnits < 10U ||
+      hopIncrement < 5U || hopIncrement > 16U) {
+    return false;
+  }
+
+  static constexpr BleAdvertisingChannel kChannels[3] = {
+      BleAdvertisingChannel::k37,
+      BleAdvertisingChannel::k38,
+      BleAdvertisingChannel::k39,
+  };
+
+  const uint32_t firstPassSpin = perChannelScanSpinLimit;
+  const uint32_t secondPassSpin =
+      (perChannelScanSpinLimit > 1U)
+          ? (perChannelScanSpinLimit / 2U)
+          : perChannelScanSpinLimit;
+
+  for (uint8_t pass = 0U; pass < 2U; ++pass) {
+    const uint32_t dwell = (pass == 0U) ? firstPassSpin : secondPassSpin;
+    for (uint8_t i = 0U; i < 3U; ++i) {
+      const uint8_t idx = static_cast<uint8_t>((scanCycleStartIndex_ + i) % 3U);
+      if (initiateConnectionOnce(kChannels[idx], peerAddress, peerAddressRandom,
+                                 intervalUnits, supervisionTimeoutUnits,
+                                 hopIncrement, dwell, dwell + 250000UL)) {
+        scanCycleStartIndex_ = static_cast<uint8_t>((idx + 1U) % 3U);
+        return true;
+      }
+    }
+  }
+
+  scanCycleStartIndex_ = static_cast<uint8_t>((scanCycleStartIndex_ + 1U) % 3U);
+  return false;
+}
+
+bool BleRadio::queueAttRequest(const uint8_t* attPayload, uint8_t attPayloadLength) {
+  if (!connected_ || connectionRole_ != BleConnectionRole::kCentral ||
+      attPayload == nullptr || attPayloadLength == 0U ||
+      connectionPendingTxValid_) {
+    return false;
+  }
+
+  const uint16_t totalLength =
+      static_cast<uint16_t>(kBleL2capHeaderLen + attPayloadLength);
+  if (totalLength > sizeof(connectionPendingTxPayload_)) {
+    return false;
+  }
+
+  writeLe16(&connectionPendingTxPayload_[0], attPayloadLength);
+  writeLe16(&connectionPendingTxPayload_[2], kBleL2capCidAtt);
+  memcpy(&connectionPendingTxPayload_[4], attPayload, attPayloadLength);
+  connectionPendingTxLlid_ = kBlePduDataStartOrComplete;
+  connectionPendingTxLength_ = static_cast<uint8_t>(totalLength);
+  connectionPendingTxValid_ = true;
+  return true;
+}
+
+bool BleRadio::queueAttReadRequest(uint16_t handle) {
+  if (handle == 0U) {
+    return false;
+  }
+  uint8_t request[3] = {kAttOpReadReq, 0U, 0U};
+  writeLe16(&request[1], handle);
+  return queueAttRequest(request, sizeof(request));
+}
+
+bool BleRadio::queueAttWriteRequest(uint16_t handle, const uint8_t* value,
+                                    uint8_t valueLength, bool withResponse) {
+  if (handle == 0U || (valueLength > 0U && value == nullptr) ||
+      (static_cast<uint16_t>(3U + valueLength) > sizeof(connectionPendingTxPayload_))) {
+    return false;
+  }
+
+  uint8_t request[255] = {0};
+  request[0] = withResponse ? kAttOpWriteReq : kAttOpWriteCmd;
+  writeLe16(&request[1], handle);
+  if (valueLength > 0U) {
+    memcpy(&request[3], value, valueLength);
+  }
+  return queueAttRequest(request, static_cast<uint8_t>(3U + valueLength));
+}
+
+bool BleRadio::queueAttCccdWrite(uint16_t cccdHandle, bool notify,
+                                 bool indicate, bool withResponse) {
+  uint8_t value[2] = {0U, 0U};
+  uint16_t cccdValue = 0U;
+  if (notify) {
+    cccdValue |= 0x0001U;
+  }
+  if (indicate) {
+    cccdValue |= 0x0002U;
+  }
+  writeLe16(value, cccdValue);
+  return queueAttWriteRequest(cccdHandle, value, sizeof(value), withResponse);
+}
+
 bool BleRadio::isConnected() const { return connected_; }
+
+BleConnectionRole BleRadio::connectionRole() const {
+  return connected_ ? connectionRole_ : BleConnectionRole::kNone;
+}
 
 bool BleRadio::isConnectionEncrypted() const {
   const uint32_t irqState = bleEnterCritical();
@@ -12458,12 +12370,17 @@ void BleRadio::clearEncryptionDebugCounters() {
   bleExitCritical(irqState);
 }
 
-bool BleRadio::hasBondRecord() const {
-  const uint32_t irqState = bleEnterCritical();
-  const bool valid = bondRecordValid_;
-  bleExitCritical(irqState);
-  return valid;
+bool BleRadio::getDisconnectDebug(BleDisconnectDebug* out) const {
+  if (out == nullptr || disconnectDebug_.valid == 0U) {
+    return false;
+  }
+  *out = disconnectDebug_;
+  return true;
 }
+
+void BleRadio::clearDisconnectDebug() { resetDisconnectDebugState(); }
+
+bool BleRadio::hasBondRecord() const { return bondRecordValid_; }
 
 bool BleRadio::getBondRecord(BleBondRecord* outRecord) const {
   if (outRecord == nullptr) {
@@ -12540,20 +12457,191 @@ void BleRadio::rememberDisconnectReason(uint8_t reason, bool remote) {
   }
 }
 
+void BleRadio::resetConnectionEventStruct(BleConnectionEvent* event) {
+  if (event == nullptr) {
+    return;
+  }
+
+  memset(event, 0, sizeof(*event));
+  event->txLlid = 0x01U;
+}
+
+void BleRadio::resetDisconnectDebugState() {
+  memset(&disconnectDebug_, 0, sizeof(disconnectDebug_));
+  lastObservedRxLlid_ = 0U;
+  lastObservedRxLength_ = 0U;
+  lastObservedRxOpcode_ = 0U;
+  lastObservedRxNesn_ = 0U;
+  lastObservedRxSn_ = 0U;
+  lastObservedPacketIsNew_ = false;
+  lastObservedPeerAckedLastTx_ = false;
+}
+
+void BleRadio::rememberConnectionRxDebug(uint8_t llid, uint8_t rxLength,
+                                         uint8_t protocolOpcode, uint8_t nesn,
+                                         uint8_t sn, bool packetIsNew,
+                                         bool peerAckedLastTx) {
+  lastObservedRxLlid_ = llid;
+  lastObservedRxLength_ = rxLength;
+  lastObservedRxOpcode_ = protocolOpcode;
+  lastObservedRxNesn_ = nesn;
+  lastObservedRxSn_ = sn;
+  lastObservedPacketIsNew_ = packetIsNew;
+  lastObservedPeerAckedLastTx_ = peerAckedLastTx;
+}
+
+void BleRadio::recordDisconnectDebug(BleDisconnectReason reason, uint8_t errorCode) {
+  const uint32_t nextSequence = disconnectDebug_.sequence + 1U;
+  memset(&disconnectDebug_, 0, sizeof(disconnectDebug_));
+  disconnectDebug_.sequence = nextSequence;
+  disconnectDebug_.nextEventUs = connectionNextEventUs_;
+  disconnectDebug_.eventCounter = connectionEventCounter_;
+  disconnectDebug_.missedEventCount = connectionMissedEventCount_;
+  disconnectDebug_.valid = 1U;
+  disconnectDebug_.reason = static_cast<uint8_t>(reason);
+  disconnectDebug_.role = static_cast<uint8_t>(connectionRole_);
+  disconnectDebug_.errorCode = errorCode;
+  disconnectDebug_.expectedRxSn = connectionExpectedRxSn_;
+  disconnectDebug_.txSn = connectionTxSn_;
+  disconnectDebug_.freshTxAllowed = connectionFreshTxAllowed_ ? 1U : 0U;
+  disconnectDebug_.txHistoryValid = connectionTxHistoryValid_ ? 1U : 0U;
+  disconnectDebug_.pendingTxValid = connectionPendingTxValid_ ? 1U : 0U;
+  disconnectDebug_.pendingTxLlid = connectionPendingTxLlid_;
+  disconnectDebug_.pendingTxLength = connectionPendingTxLength_;
+  disconnectDebug_.lastTxLlid = connectionLastTxPlainLlid_;
+  disconnectDebug_.lastTxLength = connectionLastTxPlainLength_;
+  disconnectDebug_.lastTxOpcode = bleConnectionPayloadProtocolOpcode(
+      connectionLastTxPlainLlid_, &connectionLastTxPlainPayload_[0],
+      connectionLastTxPlainLength_);
+  disconnectDebug_.lastRxLlid = lastObservedRxLlid_;
+  disconnectDebug_.lastRxLength = lastObservedRxLength_;
+  disconnectDebug_.lastRxOpcode = lastObservedRxOpcode_;
+  disconnectDebug_.lastRxNesn = lastObservedRxNesn_;
+  disconnectDebug_.lastRxSn = lastObservedRxSn_;
+  disconnectDebug_.lastPacketIsNew = lastObservedPacketIsNew_ ? 1U : 0U;
+  disconnectDebug_.lastPeerAckedLastTx =
+      lastObservedPeerAckedLastTx_ ? 1U : 0U;
+}
+
+void BleRadio::clearQueuedConnectionEvents() {
+  queuedConnectionEventHead_ = 0U;
+  queuedConnectionEventTail_ = 0U;
+  queuedConnectionEventCount_ = 0U;
+}
+
+bool BleRadio::shouldQueueConnectionEvent(const BleConnectionEvent& event) {
+  if (!event.eventStarted) {
+    return false;
+  }
+  if (event.terminateInd) {
+    return true;
+  }
+  if (event.packetReceived && !event.crcOk) {
+    return true;
+  }
+  if (event.llControlPacket || event.attPacket) {
+    return true;
+  }
+  return event.packetReceived && (event.payloadLength > 0U);
+}
+
+bool BleRadio::enqueueConnectionEvent(const BleConnectionEvent& event) {
+  if (queuedConnectionEventCount_ >= kConnectionEventQueueDepth) {
+    queuedConnectionEventHead_ =
+        static_cast<uint8_t>((queuedConnectionEventHead_ + 1U) %
+                             kConnectionEventQueueDepth);
+    --queuedConnectionEventCount_;
+  }
+
+  BleQueuedConnectionEvent& queued =
+      queuedConnectionEvents_[queuedConnectionEventTail_];
+  resetConnectionEventStruct(&queued.event);
+  queued.event = event;
+  queued.event.payload = nullptr;
+  queued.event.txPayload = nullptr;
+
+  if (event.payload != nullptr && event.payloadLength > 0U) {
+    memcpy(queued.payload, event.payload, event.payloadLength);
+    queued.event.payload = &queued.payload[0];
+  }
+  if (event.txPayload != nullptr && event.txPayloadLength > 0U) {
+    memcpy(queued.txPayload, event.txPayload, event.txPayloadLength);
+    queued.event.txPayload = &queued.txPayload[0];
+  }
+
+  queuedConnectionEventTail_ =
+      static_cast<uint8_t>((queuedConnectionEventTail_ + 1U) %
+                           kConnectionEventQueueDepth);
+  ++queuedConnectionEventCount_;
+  return true;
+}
+
+bool BleRadio::dequeueConnectionEvent(BleConnectionEvent* event) {
+  if (event == nullptr || queuedConnectionEventCount_ == 0U) {
+    return false;
+  }
+
+  BleQueuedConnectionEvent& queued =
+      queuedConnectionEvents_[queuedConnectionEventHead_];
+  resetConnectionEventStruct(event);
+  *event = queued.event;
+  event->payload = nullptr;
+  event->txPayload = nullptr;
+
+  if (queued.event.payload != nullptr && queued.event.payloadLength > 0U) {
+    memcpy(queuedConnectionEventPayloadScratch_, queued.payload,
+           queued.event.payloadLength);
+    event->payload = &queuedConnectionEventPayloadScratch_[0];
+  }
+  if (queued.event.txPayload != nullptr && queued.event.txPayloadLength > 0U) {
+    memcpy(queuedConnectionEventTxPayloadScratch_, queued.txPayload,
+           queued.event.txPayloadLength);
+    event->txPayload = &queuedConnectionEventTxPayloadScratch_[0];
+  }
+
+  queuedConnectionEventHead_ =
+      static_cast<uint8_t>((queuedConnectionEventHead_ + 1U) %
+                           kConnectionEventQueueDepth);
+  --queuedConnectionEventCount_;
+  return true;
+}
+
+void BleRadio::serviceBackgroundConnection() {
+  if (!initialized_ || radio_ == nullptr || !connected_ || connectionServiceBusy_) {
+    return;
+  }
+
+  connectionServiceBusy_ = true;
+  BleConnectionEvent event{};
+  resetConnectionEventStruct(&event);
+  const bool ran = pollConnectionEventInternal(&event, 120000UL);
+  if (ran && shouldQueueConnectionEvent(event)) {
+    enqueueConnectionEvent(event);
+  }
+  connectionServiceBusy_ = false;
+}
+
 bool BleRadio::disconnect(uint32_t spinLimit) {
+  return disconnectWithReason(BleDisconnectReason::kApi, 0U, spinLimit);
+}
+
+bool BleRadio::disconnectWithReason(BleDisconnectReason reason, uint8_t errorCode,
+                                    uint32_t spinLimit) {
   if (!initialized_ || radio_ == nullptr) {
     return false;
   }
 
-  stopBackgroundConnectionService();
+  recordDisconnectDebug(reason, errorCode);
   radio_->SHORTS = 0U;
   radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
   waitDisabled(spinLimit);
   connected_ = false;
+  connectionRole_ = BleConnectionRole::kNone;
   connectionLastTxLlid_ = 0x01U;
   connectionLastTxLength_ = 0U;
   connectionLastTxSn_ = 0U;
   connectionTxHistoryValid_ = false;
+  connectionFreshTxAllowed_ = true;
   connectionLastTxPlainLlid_ = 0x01U;
   connectionLastTxPlainLength_ = 0U;
   memset(connectionLastTxPlainPayload_, 0, sizeof(connectionLastTxPlainPayload_));
@@ -12590,6 +12678,8 @@ bool BleRadio::disconnect(uint32_t spinLimit) {
   connectionPreparedWriteMask_ = 0U;
   clearCustomGattConnectionState();
   clearConnectionSecurityState();
+  connectionServiceBusy_ = false;
+  clearQueuedConnectionEvents();
   restoreAdvertisingLinkDefaults();
   clearRadioCoreEvents(radio_);
   endUnconnectedRadioActivity();
@@ -12597,631 +12687,369 @@ bool BleRadio::disconnect(uint32_t spinLimit) {
   return true;
 }
 
-bool BleRadio::consumeDeferredConnectionEvent(BleConnectionEvent* event) {
-  const uint32_t irqState = bleEnterCritical();
-  if (deferredConnectionEventCount_ == 0U) {
-    bleExitCritical(irqState);
+bool BleRadio::pollCentralConnectionEvent(BleConnectionEvent* event,
+                                          uint32_t spinLimit) {
+  if (!initialized_ || radio_ == nullptr || !connected_ ||
+      connectionRole_ != BleConnectionRole::kCentral) {
     return false;
   }
 
-  const uint8_t slot = deferredConnectionEventHead_;
-  const BleConnectionEvent deferredEvent = deferredConnectionEvents_[slot];
+  uint32_t nowUs = micros();
+  const uint32_t txAnchorUs = connectionNextEventUs_;
+  if (!timeReachedUs(nowUs, txAnchorUs)) {
+    const uint32_t prewaitStartUs =
+        (txAnchorUs > kBleConnAnchorPrewaitUs)
+            ? (txAnchorUs - kBleConnAnchorPrewaitUs)
+            : txAnchorUs;
+    if (!timeReachedUs(nowUs, prewaitStartUs)) {
+      uint32_t waitGuard = spinLimit;
+      while (waitGuard-- > 0U && !timeReachedUs(nowUs, prewaitStartUs)) {
+        nowUs = micros();
+      }
+      if (!timeReachedUs(nowUs, prewaitStartUs)) {
+        return false;
+      }
+    }
+    while (!timeReachedUs(nowUs, txAnchorUs)) {
+      nowUs = micros();
+    }
+  }
+
+  updateNextConnectionEventTime();
+
+  const uint16_t currentEventCounter =
+      (connectionEventCounter_ > 0U)
+          ? static_cast<uint16_t>(connectionEventCounter_ - 1U)
+          : 0U;
+  const uint8_t dataChannel = selectNextDataChannel(false);
+  if (!setDataChannel(dataChannel)) {
+    return false;
+  }
 
   if (event != nullptr) {
-    *event = deferredEvent;
-    if (deferredEvent.payload != nullptr && deferredEvent.payloadLength > 0U) {
-      memcpy(consumedDeferredConnectionPayload_, deferredConnectionPayload_[slot],
-             deferredEvent.payloadLength);
-      event->payload = &consumedDeferredConnectionPayload_[0];
-    } else {
-      event->payload = nullptr;
-    }
-    if (deferredEvent.txPayload != nullptr && deferredEvent.txPayloadLength > 0U) {
-      memcpy(consumedDeferredConnectionTxPayload_, deferredConnectionTxPayload_[slot],
-             deferredEvent.txPayloadLength);
-      event->txPayload = &consumedDeferredConnectionTxPayload_[0];
-    } else {
-      event->txPayload = nullptr;
-    }
-  }
-  deferredConnectionEventHead_ = static_cast<uint8_t>(
-      (deferredConnectionEventHead_ + 1U) % kDeferredConnectionEventDepth);
-  --deferredConnectionEventCount_;
-  bleExitCritical(irqState);
-  return true;
-}
-
-void BleRadio::snapshotDeferredConnectionEvent(const BleConnectionEvent& event) {
-  const uint32_t irqState = bleEnterCritical();
-  if (deferredConnectionEventCount_ >= kDeferredConnectionEventDepth) {
-    ++encDebug_.connDeferredEventOverwriteCount;
-    deferredConnectionEventHead_ = static_cast<uint8_t>(
-        (deferredConnectionEventHead_ + 1U) % kDeferredConnectionEventDepth);
-    --deferredConnectionEventCount_;
+    event->eventStarted = true;
+    event->eventCounter = currentEventCounter;
+    event->dataChannel = dataChannel;
   }
 
-  const uint8_t slot = deferredConnectionEventTail_;
-  deferredConnectionEvents_[slot] = event;
-  if (event.payload != nullptr && event.payloadLength > 0U) {
-    memcpy(deferredConnectionPayload_[slot], event.payload, event.payloadLength);
-    deferredConnectionEvents_[slot].payload = &deferredConnectionPayload_[slot][0];
+  const bool canSendNewPayloadThisEvent =
+      !connectionTxHistoryValid_ || connectionFreshTxAllowed_;
+  uint8_t txLlid = 0x01U;
+  uint8_t txLength = 0U;
+  if (canSendNewPayloadThisEvent) {
+    if (connectionPendingTxValid_) {
+      txLlid = connectionPendingTxLlid_;
+      txLength = connectionPendingTxLength_;
+      if (txLength > 0U) {
+        memcpy(connectionTxPayload_, connectionPendingTxPayload_, txLength);
+      }
+      connectionPendingTxLlid_ = 0x01U;
+      connectionPendingTxLength_ = 0U;
+      connectionPendingTxValid_ = false;
+    }
+    connectionLastTxLlid_ = txLlid;
+    connectionLastTxLength_ = txLength;
+    connectionLastTxPlainLlid_ = txLlid;
+    connectionLastTxPlainLength_ = txLength;
+    memset(connectionLastTxPlainPayload_, 0, sizeof(connectionLastTxPlainPayload_));
+    if (txLength > 0U) {
+      memcpy(connectionLastTxPlainPayload_, connectionTxPayload_, txLength);
+    }
   } else {
-    deferredConnectionEvents_[slot].payload = nullptr;
+    txLlid = connectionLastTxLlid_;
+    txLength = connectionLastTxLength_;
+    if (txLength > 0U) {
+      memcpy(connectionTxPayload_, connectionLastTxPlainPayload_, txLength);
+    }
   }
 
-  if (event.txPayload != nullptr && event.txPayloadLength > 0U) {
-    memcpy(deferredConnectionTxPayload_[slot], event.txPayload,
-           event.txPayloadLength);
-    deferredConnectionEvents_[slot].txPayload =
-        &deferredConnectionTxPayload_[slot][0];
-  } else {
-    deferredConnectionEvents_[slot].txPayload = nullptr;
+  txPacket_[0] = static_cast<uint8_t>((txLlid & 0x03U) |
+                                      ((connectionExpectedRxSn_ & 0x01U) << 2U) |
+                                      ((connectionTxSn_ & 0x01U) << 3U));
+  txPacket_[1] = txLength;
+  if (txLength > 0U) {
+    memcpy(&txPacket_[2], connectionTxPayload_, txLength);
   }
 
-  deferredConnectionEventTail_ = static_cast<uint8_t>(
-      (deferredConnectionEventTail_ + 1U) % kDeferredConnectionEventDepth);
-  ++deferredConnectionEventCount_;
-  g_bleBackgroundRadio = this;
-  bleExitCritical(irqState);
-}
+  const uint8_t txNesnBit = static_cast<uint8_t>((txPacket_[0] >> 2U) & 0x01U);
+  const uint8_t txSnBit = static_cast<uint8_t>((txPacket_[0] >> 3U) & 0x01U);
 
-bool BleRadio::enqueueDeferredGattWrite(BleGattWriteCallback callback, void* context,
-                                        uint16_t valueHandle, const uint8_t* value,
-                                        uint8_t valueLength, bool withResponse) {
-  if (callback == nullptr || (valueLength > 0U && value == nullptr)) {
+  clearRadioCoreEvents(radio_);
+  const size_t txCopyLen = 2U + static_cast<size_t>(txLength);
+  const size_t copyLen = (txCopyLen <= sizeof(rxPacket_)) ? txCopyLen : sizeof(rxPacket_);
+  memcpy(rxPacket_, txPacket_, copyLen);
+  radio_->PACKETPTR =
+      static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&rxPacket_[0]));
+  radio_->SHORTS =
+      ((RADIO_SHORTS_TXREADY_START_Enabled << RADIO_SHORTS_TXREADY_START_Pos) &
+       RADIO_SHORTS_TXREADY_START_Msk) |
+      ((RADIO_SHORTS_PHYEND_DISABLE_Enabled << RADIO_SHORTS_PHYEND_DISABLE_Pos) &
+       RADIO_SHORTS_PHYEND_DISABLE_Msk) |
+      ((RADIO_SHORTS_DISABLED_RXEN_Enabled << RADIO_SHORTS_DISABLED_RXEN_Pos) &
+       RADIO_SHORTS_DISABLED_RXEN_Msk) |
+      ((RADIO_SHORTS_RXREADY_START_Enabled << RADIO_SHORTS_RXREADY_START_Pos) &
+       RADIO_SHORTS_RXREADY_START_Msk) |
+      ((RADIO_SHORTS_ADDRESS_RSSISTART_Enabled
+        << RADIO_SHORTS_ADDRESS_RSSISTART_Pos) &
+       RADIO_SHORTS_ADDRESS_RSSISTART_Msk);
+
+  uint32_t txTriggerNowUs = micros();
+  while (!timeReachedUs(txTriggerNowUs, txAnchorUs)) {
+    txTriggerNowUs = micros();
+  }
+  radio_->TASKS_TXEN = RADIO_TASKS_TXEN_TASKS_TXEN_Trigger;
+
+  const uint32_t txEndBudgetUs = kBleConnTxDisableWaitUs + 1200U;
+  const bool txEndSeen =
+      waitRadioEndBudgeted(radio_, txEndBudgetUs, spinLimit / 2U + 1U);
+  bool txOk = false;
+  if (txEndSeen) {
+    radio_->EVENTS_END = 0U;
+    radio_->EVENTS_PHYEND = 0U;
+    txOk = waitRadioDisabledBudgeted(radio_, kBleConnTxDisableWaitUs,
+                                     spinLimit / 2U + 1U);
+  }
+  if (!txOk) {
+    radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
+    waitRadioDisabledBudgeted(radio_, kBleConnTxDisableWaitUs,
+                              spinLimit / 2U + 1U);
+    radio_->SHORTS = 0U;
+    clearRadioCoreEvents(radio_);
     return false;
   }
-  const uint8_t depth = static_cast<uint8_t>(
-      sizeof(deferredGattWrites_) / sizeof(deferredGattWrites_[0]));
-  const uint32_t irqState = bleEnterCritical();
-  if (deferredGattWriteCount_ >= depth) {
-    bleExitCritical(irqState);
-    ++encDebug_.connDeferredCallbackDropCount;
-    return false;
+  connectionTxHistoryValid_ = true;
+
+  // Clear TX completion state before waiting on follow-up RX; otherwise the
+  // stale TX END/PHYEND can be mistaken for a received packet.
+  radio_->EVENTS_END = 0U;
+  radio_->EVENTS_PHYEND = 0U;
+  radio_->EVENTS_DISABLED = 0U;
+  radio_->EVENTS_CRCOK = 0U;
+  radio_->EVENTS_CRCERROR = 0U;
+  radio_->SHORTS =
+      ((RADIO_SHORTS_RXREADY_START_Enabled << RADIO_SHORTS_RXREADY_START_Pos) &
+       RADIO_SHORTS_RXREADY_START_Msk) |
+      ((RADIO_SHORTS_ADDRESS_RSSISTART_Enabled
+        << RADIO_SHORTS_ADDRESS_RSSISTART_Pos) &
+       RADIO_SHORTS_ADDRESS_RSSISTART_Msk) |
+      ((RADIO_SHORTS_PHYEND_DISABLE_Enabled << RADIO_SHORTS_PHYEND_DISABLE_Pos) &
+       RADIO_SHORTS_PHYEND_DISABLE_Msk);
+
+  const uint32_t state =
+      (radio_->STATE & RADIO_STATE_STATE_Msk) >> RADIO_STATE_STATE_Pos;
+  if (state == RADIO_STATE_STATE_Disabled) {
+    radio_->TASKS_RXEN = RADIO_TASKS_RXEN_TASKS_RXEN_Trigger;
   }
 
-  BleDeferredGattWriteState& slot = deferredGattWrites_[deferredGattWriteTail_];
-  slot.callback = callback;
-  slot.context = context;
-  slot.valueHandle = valueHandle;
-  slot.valueLength = valueLength;
-  slot.withResponse = withResponse ? 1U : 0U;
-  if (valueLength > 0U) {
-    memcpy(slot.value, value, valueLength);
-  }
-  if (valueLength < sizeof(slot.value)) {
-    memset(&slot.value[valueLength], 0, sizeof(slot.value) - valueLength);
-  }
-
-  deferredGattWriteTail_ = static_cast<uint8_t>(
-      (deferredGattWriteTail_ + 1U) % depth);
-  ++deferredGattWriteCount_;
-  g_bleBackgroundRadio = this;
-  bleExitCritical(irqState);
-  return true;
-}
-
-void BleRadio::dispatchDeferredGattWrites() {
-  while (true) {
-    BleDeferredGattWriteState slot{};
-    const uint8_t depth = static_cast<uint8_t>(
-        sizeof(deferredGattWrites_) / sizeof(deferredGattWrites_[0]));
-    const uint32_t irqState = bleEnterCritical();
-    if (deferredGattWriteCount_ == 0U) {
-      bleExitCritical(irqState);
-      return;
-    }
-    slot = deferredGattWrites_[deferredGattWriteHead_];
-    memset(&deferredGattWrites_[deferredGattWriteHead_], 0,
-           sizeof(deferredGattWrites_[deferredGattWriteHead_]));
-    deferredGattWriteHead_ =
-        static_cast<uint8_t>((deferredGattWriteHead_ + 1U) % depth);
-    --deferredGattWriteCount_;
-    bleExitCritical(irqState);
-
-    BleGattWriteCallback callback = slot.callback;
-    if (callback != nullptr) {
-      callback(slot.valueHandle, slot.value, slot.valueLength,
-               slot.withResponse != 0U, slot.context);
+  uint32_t followListenUs = kBleConnFollowupRxListenMaxUs;
+  const uint32_t intervalUs =
+      (connectionIntervalUnits_ > 0U)
+          ? (static_cast<uint32_t>(connectionIntervalUnits_) * 1250UL)
+          : 1250UL;
+  if (intervalUs > 3000U) {
+    const uint32_t capUs = intervalUs - 3000U;
+    if (followListenUs > capUs) {
+      followListenUs = capUs;
     }
   }
-}
 
-bool BleRadio::enqueueDeferredTrace(const char* message) {
-  if (message == nullptr) {
-    return false;
-  }
-  const uint8_t depth =
-      static_cast<uint8_t>(sizeof(deferredTraces_) / sizeof(deferredTraces_[0]));
-  const uint32_t irqState = bleEnterCritical();
-  if (deferredTraceCount_ >= depth) {
-    bleExitCritical(irqState);
-    ++encDebug_.connDeferredTraceDropCount;
-    return false;
-  }
+  const bool rxDoneSeen = waitRadioRxDoneBudgeted(
+      radio_, followListenUs, spinLimit / 2U + 1U);
+  if (!rxDoneSeen) {
+    radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
+    waitRadioDisabledBudgeted(radio_, kBleConnDisableWaitUs, spinLimit / 2U + 1U);
+    radio_->SHORTS = 0U;
+    clearRadioCoreEvents(radio_);
+    connectionFreshTxAllowed_ = false;
+    ++connectionMissedEventCount_;
 
-  deferredTraces_[deferredTraceTail_] = message;
-  deferredTraceTail_ = static_cast<uint8_t>(
-      (deferredTraceTail_ + 1U) % depth);
-  ++deferredTraceCount_;
-  g_bleBackgroundRadio = this;
-  bleExitCritical(irqState);
-  return true;
-}
-
-void BleRadio::dispatchDeferredTraces() {
-#if defined(NRF54L15_CLEAN_BLE_TRACE) && (NRF54L15_CLEAN_BLE_TRACE == 1)
-  while (true) {
-    const uint8_t depth =
-        static_cast<uint8_t>(sizeof(deferredTraces_) / sizeof(deferredTraces_[0]));
-    const uint32_t irqState = bleEnterCritical();
-    if (deferredTraceCount_ == 0U) {
-      bleExitCritical(irqState);
-      return;
+    const uint32_t intervalUs =
+        (connectionIntervalUnits_ > 0U)
+            ? (static_cast<uint32_t>(connectionIntervalUnits_) * 1250UL)
+            : 1250UL;
+    const uint32_t timeoutUs =
+        static_cast<uint32_t>(connectionTimeoutUnits_) * 10000UL;
+    uint32_t supervisionEvents = timeoutUs / intervalUs;
+    if (supervisionEvents < 1U) {
+      supervisionEvents = 1U;
     }
-    const char* message = deferredTraces_[deferredTraceHead_];
-    deferredTraces_[deferredTraceHead_] = nullptr;
-    deferredTraceHead_ =
-        static_cast<uint8_t>((deferredTraceHead_ + 1U) % depth);
-    --deferredTraceCount_;
-    bleExitCritical(irqState);
-
-    if (message == nullptr) {
-      continue;
+    if (connectionMissedEventCount_ >= supervisionEvents) {
+      if (event != nullptr) {
+        event->terminateInd = true;
+      }
+      emitBleTrace("SUPERVISION_TIMEOUT");
+      disconnectWithReason(BleDisconnectReason::kSupervisionTimeout, 0U,
+                           spinLimit / 2U + 1U);
     }
-    if (traceCallback_ != nullptr) {
-      traceCallback_(message, traceCallbackContext_);
-      continue;
-    }
-    Serial.print(F("[BLE] "));
-    Serial.println(message);
-  }
-#endif
-}
 
-bool BleRadio::backgroundServicesActive() const {
-  return backgroundAdvertisingEnabled_ || backgroundConnectionServiceEnabled_;
-}
-
-void BleRadio::serviceDeferredApplicationWork() {
-  if (bleRunningInIsr()) {
-    return;
-  }
-  dispatchDeferredGattWrites();
-  dispatchDeferredTraces();
-  const uint32_t irqState = bleEnterCritical();
-  if (!backgroundServicesActive() && g_bleBackgroundRadio == this &&
-      deferredConnectionEventCount_ == 0U &&
-      deferredGattWriteCount_ == 0U && deferredTraceCount_ == 0U) {
-    g_bleBackgroundRadio = nullptr;
-  }
-  bleExitCritical(irqState);
-}
-
-bool BleRadio::configureBackgroundConnectionHardware(bool enable) {
-  if (radio_ == nullptr) {
-    return false;
-  }
-
-  Dppic radioDomain(nrf54l15::DPPIC10_BASE);
-  Dppic periDomain(nrf54l15::DPPIC20_BASE);
-  Dppic lpDomain(nrf54l15::DPPIC30_BASE);
-  NRF_PPIB_Type* const ppib11 = blePpib11();
-  NRF_PPIB_Type* const ppib21 = blePpib21();
-  NRF_PPIB_Type* const ppib22 = blePpib22();
-  NRF_PPIB_Type* const ppib30 = blePpib30();
-
-  if (!enable) {
-    bleDisableCompare(kBleBackgroundConnPrewarmCompareChannel, false);
-    bleDisableCompare(kBleBackgroundConnRxCompareChannel, false);
-    backgroundConnectionRxPrepared_ = false;
-    backgroundConnectionPreparedDataChannel_ = 0U;
-    (void)lpDomain.disconnectPublish(
-        &NRF_GRTC->PUBLISH_COMPARE[kBleBackgroundConnPrewarmCompareChannel]);
-    (void)lpDomain.disconnectPublish(
-        &NRF_GRTC->PUBLISH_COMPARE[kBleBackgroundConnRxCompareChannel]);
-    (void)lpDomain.disconnectSubscribe(&NRF_CLOCK->SUBSCRIBE_XOSTART);
-    if (ppib30 != nullptr) {
-      (void)lpDomain.disconnectSubscribe(
-          &ppib30->SUBSCRIBE_SEND[kBleBackgroundConnRxBridgeIndex]);
+    if (event != nullptr) {
+      event->txPacketSent = true;
+      event->txLlid = txLlid;
+      event->txNesn = txNesnBit;
+      event->txSn = txSnBit;
+      event->txPayloadLength = txLength;
+      event->txPayload =
+          (txLength > 0U) ? &connectionLastTxPlainPayload_[0] : nullptr;
+      event->emptyAckTransmitted = (txLlid == 0x01U) && (txLength == 0U);
+      event->freshTxAllowed = canSendNewPayloadThisEvent;
     }
-    (void)lpDomain.enableChannel(kBleBackgroundConnLpPrewarmDppiChannel, false);
-    (void)lpDomain.enableChannel(kBleBackgroundConnLpRxDppiChannel, false);
-    if (ppib22 != nullptr) {
-      (void)periDomain.disconnectPublish(
-          &ppib22->PUBLISH_RECEIVE[kBleBackgroundConnRxBridgeIndex]);
-    }
-    if (ppib21 != nullptr) {
-      (void)periDomain.disconnectSubscribe(
-          &ppib21->SUBSCRIBE_SEND[kBleBackgroundConnRxBridgeIndex]);
-    }
-    (void)periDomain.enableChannel(kBleBackgroundConnPeriRxDppiChannel, false);
-    if (ppib11 != nullptr) {
-      (void)radioDomain.disconnectPublish(
-          &ppib11->PUBLISH_RECEIVE[kBleBackgroundConnRxBridgeIndex]);
-    }
-    (void)radioDomain.disconnectSubscribe(&radio_->SUBSCRIBE_RXEN);
-    (void)radioDomain.enableChannel(kBleBackgroundConnRadioRxDppiChannel, false);
+    emitBleTrace("CENTRAL_EVT_RX_TIMEOUT");
     return true;
   }
 
-  if (ppib11 == nullptr || ppib21 == nullptr || ppib22 == nullptr ||
-      ppib30 == nullptr) {
+  bool rxDisabled = waitRadioDisabledBudgeted(radio_, kBleConnDisableWaitUs,
+                                              spinLimit / 2U + 1U);
+  if (!rxDisabled) {
+    radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
+    rxDisabled = waitRadioDisabledBudgeted(radio_, kBleConnDisableWaitUs,
+                                           spinLimit / 2U + 1U);
+  }
+  const uint32_t crcStatus =
+      (radio_->CRCSTATUS & RADIO_CRCSTATUS_CRCSTATUS_Msk) >>
+      RADIO_CRCSTATUS_CRCSTATUS_Pos;
+  const bool crcOk = (crcStatus == RADIO_CRCSTATUS_CRCSTATUS_CRCOk);
+  radio_->SHORTS = 0U;
+  if (!rxDisabled) {
+    clearRadioCoreEvents(radio_);
     return false;
   }
 
-  ppib30->EVENTS_RECEIVE[kBleBackgroundConnRxBridgeIndex] = 0U;
-  ppib22->EVENTS_RECEIVE[kBleBackgroundConnRxBridgeIndex] = 0U;
-  ppib21->EVENTS_RECEIVE[kBleBackgroundConnRxBridgeIndex] = 0U;
-  ppib11->EVENTS_RECEIVE[kBleBackgroundConnRxBridgeIndex] = 0U;
-
-  return lpDomain.configurePublish(
-             &NRF_GRTC->PUBLISH_COMPARE[kBleBackgroundConnPrewarmCompareChannel],
-             kBleBackgroundConnLpPrewarmDppiChannel, true) &&
-         lpDomain.configureSubscribe(&NRF_CLOCK->SUBSCRIBE_XOSTART,
-                                     kBleBackgroundConnLpPrewarmDppiChannel,
-                                     true) &&
-         lpDomain.enableChannel(kBleBackgroundConnLpPrewarmDppiChannel, true) &&
-         lpDomain.configurePublish(
-             &NRF_GRTC->PUBLISH_COMPARE[kBleBackgroundConnRxCompareChannel],
-             kBleBackgroundConnLpRxDppiChannel, true) &&
-         lpDomain.configureSubscribe(
-             &ppib30->SUBSCRIBE_SEND[kBleBackgroundConnRxBridgeIndex],
-             kBleBackgroundConnLpRxDppiChannel, true) &&
-         lpDomain.enableChannel(kBleBackgroundConnLpRxDppiChannel, true) &&
-         periDomain.configurePublish(
-             &ppib22->PUBLISH_RECEIVE[kBleBackgroundConnRxBridgeIndex],
-             kBleBackgroundConnPeriRxDppiChannel, true) &&
-         periDomain.configureSubscribe(
-             &ppib21->SUBSCRIBE_SEND[kBleBackgroundConnRxBridgeIndex],
-             kBleBackgroundConnPeriRxDppiChannel, true) &&
-         periDomain.enableChannel(kBleBackgroundConnPeriRxDppiChannel, true) &&
-         radioDomain.configurePublish(
-             &ppib11->PUBLISH_RECEIVE[kBleBackgroundConnRxBridgeIndex],
-             kBleBackgroundConnRadioRxDppiChannel, true) &&
-         radioDomain.configureSubscribe(&radio_->SUBSCRIBE_RXEN,
-                                        kBleBackgroundConnRadioRxDppiChannel,
-                                        true) &&
-         radioDomain.enableChannel(kBleBackgroundConnRadioRxDppiChannel, true);
-}
-
-bool BleRadio::previewBackgroundConnectionDataChannel(
-    uint8_t* outDataChannel) const {
-  if (outDataChannel == nullptr || radio_ == nullptr || !connected_ ||
-      connectionChannelCount_ < 2U) {
-    return false;
+  if (event != nullptr) {
+    event->packetReceived = true;
+    event->crcOk = crcOk;
+    event->rssiDbm = radioRssiDbm(radio_);
+    event->payload = &rxPacket_[2];
   }
 
-  const uint16_t currentEventCounter = connectionEventCounter_;
-  if (connectionUpdatePending_ &&
-      llEventInstantReached(currentEventCounter, connectionUpdateInstant_)) {
-    return false;
+  if (!crcOk) {
+    connectionFreshTxAllowed_ = false;
+    ++connectionMissedEventCount_;
+    clearRadioCoreEvents(radio_);
+    return true;
   }
-  if (connectionChannelMapPending_ &&
-      llEventInstantReached(currentEventCounter, connectionChannelMapInstant_)) {
-    return false;
-  }
+  connectionMissedEventCount_ = 0U;
 
-  uint8_t dataChannel = 0U;
-  if (connectionUseChSel2_) {
-    const uint16_t prnE = bleCsa2PrnE(currentEventCounter, connectionChannelId_);
-    dataChannel = static_cast<uint8_t>(prnE % 37U);
-    if ((connectionChannelMap_[dataChannel >> 3U] &
-         (1U << (dataChannel & 0x07U))) == 0U) {
-      const uint8_t remapIndex = static_cast<uint8_t>(
-          (static_cast<uint32_t>(connectionChannelCount_) *
-           static_cast<uint32_t>(prnE)) >>
-          16U);
-      dataChannel = remapChannelByIndex(connectionChannelMap_, remapIndex);
-    }
+  const uint8_t hdr0 = rxPacket_[0];
+  const uint8_t llid = hdr0 & 0x03U;
+  const uint8_t nesn = (hdr0 >> 2U) & 0x01U;
+  const uint8_t sn = (hdr0 >> 3U) & 0x01U;
+  const uint8_t rxLength = rxPacket_[1];
+
+  bool peerAckedLastTx =
+      connectionTxHistoryValid_ && (nesn != connectionTxSn_);
+  const bool packetIsNew = (sn == connectionExpectedRxSn_);
+  if (packetIsNew) {
+    connectionExpectedRxSn_ ^= 0x01U;
+  }
+  bool implicitEmptyAck = false;
+  if (!peerAckedLastTx &&
+      connectionTxHistoryValid_ &&
+      packetIsNew &&
+      (connectionLastTxLlid_ == 0x01U) &&
+      (connectionLastTxLength_ == 0U)) {
+    peerAckedLastTx = true;
+    implicitEmptyAck = true;
+  }
+  if (peerAckedLastTx) {
+    connectionTxSn_ ^= 0x01U;
+    connectionFreshTxAllowed_ = true;
   } else {
-    dataChannel =
-        static_cast<uint8_t>((connectionChanUse_ + connectionHop_) % 37U);
-    if ((connectionChannelMap_[dataChannel >> 3U] &
-         (1U << (dataChannel & 0x07U))) == 0U) {
-      const uint8_t remapIndex =
-          static_cast<uint8_t>(dataChannel % connectionChannelCount_);
-      dataChannel = remapChannelByIndex(connectionChannelMap_, remapIndex);
+    connectionFreshTxAllowed_ = false;
+  }
+
+  bool terminateInd = false;
+  bool peerTerminateIndReceived = false;
+  uint8_t peerTerminateErrorCode = 0U;
+  if ((llid == kBlePduLlControl) &&
+      (rxLength >= 2U) &&
+      (rxPacket_[2] == kBleLlCtrlTerminateInd)) {
+    terminateInd = true;
+    peerTerminateIndReceived = true;
+    peerTerminateErrorCode = rxPacket_[3];
+  }
+
+  rememberConnectionRxDebug(
+      llid, rxLength,
+      bleConnectionPayloadProtocolOpcode(llid, &rxPacket_[2], rxLength), nesn, sn,
+      packetIsNew, peerAckedLastTx);
+
+  if (event != nullptr) {
+    event->packetIsNew = packetIsNew;
+    event->peerAckedLastTx = peerAckedLastTx;
+    event->freshTxAllowed = (!connectionTxHistoryValid_ || peerAckedLastTx);
+    event->implicitEmptyAck = implicitEmptyAck;
+    event->llid = llid;
+    event->rxNesn = nesn;
+    event->rxSn = sn;
+    event->payloadLength = rxLength;
+    if (llid == kBlePduLlControl && rxLength >= 1U) {
+      event->llControlPacket = true;
+      event->llControlOpcode = rxPacket_[2];
+    }
+    if (llid == kBlePduDataStartOrComplete && rxLength >= 5U) {
+      const uint16_t l2capLen = readLe16(&rxPacket_[2]);
+      const uint16_t cid = readLe16(&rxPacket_[4]);
+      const uint8_t availableAttLen = (rxLength > kBleL2capHeaderLen)
+                                          ? static_cast<uint8_t>(rxLength - kBleL2capHeaderLen)
+                                          : 0U;
+      if (cid == kBleL2capCidAtt && l2capLen > 0U && availableAttLen > 0U) {
+        event->attPacket = true;
+        event->attOpcode = rxPacket_[2 + kBleL2capHeaderLen];
+      }
     }
   }
 
-  *outDataChannel = dataChannel;
-  return true;
-}
-
-bool BleRadio::prepareBackgroundConnectionReceiveWindow(uint32_t rxStartUs) {
-  backgroundConnectionRxPrepared_ = false;
-  backgroundConnectionPreparedDataChannel_ = 0U;
-  bleDisableCompare(kBleBackgroundConnRxCompareChannel, false);
-
-  if (!initialized_ || radio_ == nullptr || !connected_) {
-    return false;
+  if (packetIsNew &&
+      (llid == kBlePduDataStartOrComplete) &&
+      (rxLength >= 5U)) {
+    const uint16_t l2capLen = readLe16(&rxPacket_[2]);
+    const uint16_t cid = readLe16(&rxPacket_[4]);
+    const uint8_t attOpcode = (rxLength > kBleL2capHeaderLen)
+                                  ? rxPacket_[2 + kBleL2capHeaderLen]
+                                  : 0U;
+    if ((cid == kBleL2capCidAtt) &&
+        (l2capLen > 0U) &&
+        (attOpcode == kAttOpHandleValueInd) &&
+        !connectionPendingTxValid_) {
+      writeLe16(&connectionPendingTxPayload_[0], 1U);
+      writeLe16(&connectionPendingTxPayload_[2], kBleL2capCidAtt);
+      connectionPendingTxPayload_[4] = kAttOpHandleValueCfm;
+      connectionPendingTxLlid_ = kBlePduDataStartOrComplete;
+      connectionPendingTxLength_ = 5U;
+      connectionPendingTxValid_ = true;
+    }
   }
 
-  uint8_t dataChannel = 0U;
-  if (!previewBackgroundConnectionDataChannel(&dataChannel) ||
-      !setDataChannel(dataChannel)) {
-    return false;
+  if (event != nullptr) {
+    event->txPacketSent = true;
+    event->txLlid = txLlid;
+    event->txNesn = txNesnBit;
+    event->txSn = txSnBit;
+    event->txPayloadLength = txLength;
+    event->txPayload =
+        (txLength > 0U) ? &connectionLastTxPlainPayload_[0] : nullptr;
+    event->emptyAckTransmitted = (txLlid == 0x01U) && (txLength == 0U);
+    event->terminateInd = terminateInd;
+  }
+
+  if (terminateInd) {
+    emitBleTrace("CENTRAL_TERMINATE");
+    disconnectWithReason(BleDisconnectReason::kPeerTerminate,
+                         peerTerminateErrorCode, spinLimit / 2U + 1U);
   }
 
   clearRadioCoreEvents(radio_);
-  memset(rxPacket_, 0, sizeof(rxPacket_));
-  radio_->PACKETPTR =
-      static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&rxPacket_[0]));
-  radio_->SHORTS = bleRadioShortsRxListen();
-  bleProgramCompare(kBleBackgroundConnRxCompareChannel, rxStartUs, false);
-  backgroundConnectionPreparedDataChannel_ = dataChannel;
-  backgroundConnectionRxPrepared_ = true;
-  ++encDebug_.connBgRxHardwareArmCount;
   return true;
 }
 
-void BleRadio::stopBackgroundConnectionService() {
-  if (NRF54L15_CLEAN_BLE_BACKGROUND_SERVICE == 0) {
-    return;
-  }
-  const uint32_t irqState = bleEnterCritical();
-  backgroundConnectionServiceEnabled_ = false;
-  backgroundConnectionServiceArmed_ = false;
-  backgroundConnectionServiceInProgress_ = false;
-  backgroundConnectionServiceDue_ = false;
-  backgroundConnectionRxPrepared_ = false;
-  backgroundConnectionPreparedDataChannel_ = 0U;
-  g_bleBackgroundPendSvPending = 0U;
-  blePendSvClearPending();
-  bleDisableCompare(kBleBackgroundConnPrewarmCompareChannel, false);
-  bleDisableCompare(kBleBackgroundConnRxCompareChannel, false);
-  if (g_bleBackgroundRadio == this) {
-    bleBackgroundDisableCompare();
-    if (!backgroundServicesActive() &&
-        deferredConnectionEventCount_ == 0U &&
-        deferredGattWriteCount_ == 0U && deferredTraceCount_ == 0U) {
-      g_bleBackgroundRadio = nullptr;
-    }
-  }
-  bleExitCritical(irqState);
-  (void)configureBackgroundConnectionHardware(false);
-}
-
-bool BleRadio::armBackgroundConnectionService() {
-  if (NRF54L15_CLEAN_BLE_BACKGROUND_SERVICE == 0) {
-    return false;
-  }
-  if (!initialized_ || radio_ == nullptr || !connected_) {
-    stopBackgroundConnectionService();
-    return false;
-  }
-
-  ensureGrtcReady(NRF_GRTC);
-
-  const uint32_t rxStartUs = connectionNextEventUs_ - kBleConnRxStartLeadUs;
-  if (!configureBackgroundConnectionHardware(true)) {
-    stopBackgroundConnectionService();
-    return false;
-  }
-  const bool preparedRxWindow =
-      prepareBackgroundConnectionReceiveWindow(rxStartUs);
-  const uint32_t wakeLeadUsTarget = preparedRxWindow
-                                        ? kBleBackgroundConnHardwareWakeLeadUs
-                                        : kBleConnAnchorPrewaitUs;
-  const uint32_t wakeUs = rxStartUs - wakeLeadUsTarget;
-  const uint32_t nowUs = bleTimingUs();
-  const bool wakeAlreadyReached = timeReachedUs(nowUs, wakeUs);
-  const bool rxStartAlreadyReached = timeReachedUs(nowUs, rxStartUs);
-  const uint32_t rxStartLeadUs =
-      rxStartAlreadyReached ? 0U : static_cast<uint32_t>(rxStartUs - nowUs);
-  const bool prewarmHfxo =
-      rxStartLeadUs > kBleBackgroundConnDefaultHfxoLeadUs;
-  const uint32_t prewarmUs =
-      prewarmHfxo ? (rxStartUs - kBleBackgroundConnDefaultHfxoLeadUs) : 0U;
-
-  const uint64_t targetUs = bleAbsoluteTimeFromLowCounter(wakeUs);
-  const uint32_t lo = static_cast<uint32_t>(targetUs & 0xFFFFFFFFULL);
-  const uint32_t hi = static_cast<uint32_t>((targetUs >> 32U) & 0xFFFFFUL);
-
-  const uint32_t irqState = bleEnterCritical();
-  backgroundConnectionServiceEnabled_ = true;
-  g_bleBackgroundRadio = this;
-  backgroundConnectionWakeUs_ = wakeUs;
-  if (prewarmHfxo) {
-    NRF_CLOCK->EVENTS_XOSTARTED = 0U;
-    NRF_CLOCK->EVENTS_XOTUNED = 0U;
-    NRF_CLOCK->EVENTS_XOTUNEFAILED = 0U;
-    bleProgramCompare(kBleBackgroundConnPrewarmCompareChannel, prewarmUs, false);
-    ++encDebug_.connBgHfxoPrewarmArmCount;
-  } else {
-    bleDisableCompare(kBleBackgroundConnPrewarmCompareChannel, false);
-    if (!bleHfxoRunning()) {
-      NRF_CLOCK->EVENTS_XOSTARTED = 0U;
-      NRF_CLOCK->EVENTS_XOTUNED = 0U;
-      NRF_CLOCK->EVENTS_XOTUNEFAILED = 0U;
-      (void)ClockControl::startHfxo(false, 0U);
-      ++encDebug_.connBgHfxoFallbackStartCount;
-    }
-  }
-  NRF_GRTC->EVENTS_COMPARE[kBleBackgroundCompareChannel] = 0U;
-  NRF_GRTC->CC[kBleBackgroundCompareChannel].CCEN =
-      (GRTC_CC_CCEN_ACTIVE_Disable << GRTC_CC_CCEN_ACTIVE_Pos);
-  NRF_GRTC->CC[kBleBackgroundCompareChannel].CCL = lo;
-  NRF_GRTC->CC[kBleBackgroundCompareChannel].CCH =
-      (hi << GRTC_CC_CCH_CCH_Pos) & GRTC_CC_CCH_CCH_Msk;
-  bleBackgroundEnableIrq();
-  NRF54L15_GRTC_INTENSET_REG(NRF_GRTC) =
-      (1UL << static_cast<uint32_t>(kBleBackgroundCompareChannel));
-  NRF_GRTC->CC[kBleBackgroundCompareChannel].CCEN =
-      (GRTC_CC_CCEN_ACTIVE_Enable << GRTC_CC_CCEN_ACTIVE_Pos);
-  backgroundConnectionServiceArmed_ = true;
-  bleExitCritical(irqState);
-  return true;
-}
-
-bool BleRadio::serviceBackgroundConnectionEvent() {
-  if (NRF54L15_CLEAN_BLE_BACKGROUND_SERVICE == 0) {
-    return false;
-  }
-  const uint32_t serviceEntryUs = bleTimingUs();
-  if (bleRunningInIsr()) {
-    ++encDebug_.connBgServiceIsrCount;
-  } else {
-    ++encDebug_.connBgServiceThreadCount;
-  }
-  const uint32_t irqState = bleEnterCritical();
-  if (!backgroundConnectionServiceEnabled_ || radio_ == nullptr || !connected_) {
-    bleExitCritical(irqState);
-    stopBackgroundConnectionService();
-    return false;
-  }
-  if (backgroundConnectionServiceInProgress_) {
-    bleExitCritical(irqState);
-    return false;
-  }
-
-  const bool backgroundDue = backgroundConnectionServiceDue_;
-  if (backgroundDue) {
-    ++encDebug_.connBgDueCount;
-  }
-  const uint32_t wakeLagUs =
-      timeReachedUs(serviceEntryUs, backgroundConnectionWakeUs_)
-          ? static_cast<uint32_t>(serviceEntryUs - backgroundConnectionWakeUs_)
-          : 0U;
-  encDebug_.connBgWakeLagLastUs = wakeLagUs;
-  if (wakeLagUs > encDebug_.connBgWakeLagMaxUs) {
-    encDebug_.connBgWakeLagMaxUs = wakeLagUs;
-  }
-  const bool comparePending = bleBackgroundCompareEventPending();
-  if (backgroundDue) {
-    backgroundConnectionServiceDue_ = false;
-  } else if (!comparePending) {
-    if (!backgroundConnectionServiceArmed_ || !bleBackgroundCompareEnabled()) {
-      backgroundConnectionServiceArmed_ = false;
-      bleExitCritical(irqState);
-      return armBackgroundConnectionService();
-    }
-
-    if (static_cast<int32_t>(bleTimingUs() - backgroundConnectionWakeUs_) < 0) {
-      bleExitCritical(irqState);
-      return false;
-    }
-  }
-
-  backgroundConnectionServiceInProgress_ = true;
-  if (!backgroundDue) {
-    bleBackgroundDisableCompare();
-    backgroundConnectionServiceArmed_ = false;
-  }
-  bleExitCritical(irqState);
-
-  if (!bleHfxoRunning()) {
-    if (!ClockControl::startHfxo(true, kBleConnEventSpinFloor)) {
-      const uint32_t failIrqState = bleEnterCritical();
-      backgroundConnectionServiceInProgress_ = false;
-      bleExitCritical(failIrqState);
-      ++encDebug_.connBgHfxoFallbackStartCount;
-      stopBackgroundConnectionService();
-      return false;
-    }
-    ++encDebug_.connBgHfxoFallbackStartCount;
-  }
-
-  BleConnectionEvent deferredEvent{};
-  const bool ran = pollConnectionEventCore(&deferredEvent, kBleConnEventSpinFloor);
-
-  const uint32_t exitIrqState = bleEnterCritical();
-  backgroundConnectionServiceInProgress_ = false;
-  bleExitCritical(exitIrqState);
-  if (ran) {
-    snapshotDeferredConnectionEvent(deferredEvent);
-  }
-
-  const uint32_t radioState =
-      (radio_->STATE & RADIO_STATE_STATE_Msk) >> RADIO_STATE_STATE_Pos;
-  if ((radioState == RADIO_STATE_STATE_Disabled) && bleHfxoRunning()) {
-    ClockControl::stopHfxo();
-    ++encDebug_.connBgHfxoStopCount;
-  }
-
-  if (connected_ && backgroundConnectionServiceEnabled_) {
-    armBackgroundConnectionService();
-  } else {
-    stopBackgroundConnectionService();
-  }
-
-  return ran;
-}
-
-bool BleRadio::pollConnectionEvent(BleConnectionEvent* event, uint32_t spinLimit) {
-  return pollConnectionEventCore(event, spinLimit);
-}
-
-void BleRadio::setBackgroundConnectionServiceEnabled(bool enabled) {
-  if (NRF54L15_CLEAN_BLE_BACKGROUND_SERVICE == 0) {
-    return;
-  }
-
-  if (!enabled) {
-    stopBackgroundConnectionService();
-    return;
-  }
-
-  if (!initialized_ || radio_ == nullptr || !connected_) {
-    const uint32_t irqState = bleEnterCritical();
-    backgroundConnectionServiceEnabled_ = false;
-    backgroundConnectionServiceArmed_ = false;
-    backgroundConnectionServiceInProgress_ = false;
-    backgroundConnectionServiceDue_ = false;
-    backgroundConnectionRxPrepared_ = false;
-    backgroundConnectionPreparedDataChannel_ = 0U;
-    backgroundConnectionWakeUs_ = 0U;
-    bleExitCritical(irqState);
-    return;
-  }
-  (void)armBackgroundConnectionService();
-}
-
-bool BleRadio::isBackgroundConnectionServiceEnabled() const {
-  return backgroundConnectionServiceEnabled_;
-}
-
-bool BleRadio::pollConnectionEventCore(BleConnectionEvent* event,
-                                       uint32_t spinLimit) {
-  if (event != nullptr) {
-    event->eventStarted = false;
-    event->packetReceived = false;
-    event->crcOk = false;
-    event->emptyAckTransmitted = false;
-    event->packetIsNew = false;
-    event->peerAckedLastTx = false;
-    event->freshTxAllowed = false;
-    event->implicitEmptyAck = false;
-    event->terminateInd = false;
-    event->disconnectReasonValid = false;
-    event->disconnectReasonRemote = false;
-    event->llControlPacket = false;
-    event->attPacket = false;
-    event->txPacketSent = false;
-    event->eventCounter = connectionEventCounter_;
-    event->dataChannel = 0;
-    event->rssiDbm = 0;
-    event->llid = 0;
-    event->rxNesn = 0U;
-    event->rxSn = 0U;
-    event->disconnectReason = 0U;
-    event->llControlOpcode = 0;
-    event->attOpcode = 0;
-    event->payloadLength = 0;
-    event->txLlid = 0x01U;
-    event->txNesn = 0U;
-    event->txSn = 0U;
-    event->txPayloadLength = 0;
-    event->payload = nullptr;
-    event->txPayload = nullptr;
-  }
-
+bool BleRadio::pollConnectionEventInternal(BleConnectionEvent* event,
+                                           uint32_t spinLimit) {
+  resetConnectionEventStruct(event);
   if (!initialized_ || radio_ == nullptr || !connected_) {
     return false;
   }
-  if (spinLimit < kBleConnEventSpinFloor) {
-    spinLimit = kBleConnEventSpinFloor;
+  if (connectionRole_ == BleConnectionRole::kCentral) {
+    return pollCentralConnectionEvent(event, spinLimit);
   }
 
   const uint32_t intervalUsForListen =
@@ -13253,20 +13081,21 @@ bool BleRadio::pollConnectionEventCore(BleConnectionEvent* event,
   }
   const bool useCurrentEventCounterForChannel =
       timeReachedUs(nowUs, connectionNextEventUs_ + lateAllowanceUs);
-  if (useCurrentEventCounterForChannel) {
-    ++encDebug_.connLatePollCount;
-  }
-  if (backgroundConnectionRxPrepared_ && useCurrentEventCounterForChannel) {
-    backgroundConnectionRxPrepared_ = false;
-    backgroundConnectionPreparedDataChannel_ = 0U;
-    bleDisableCompare(kBleBackgroundConnRxCompareChannel, false);
-  }
 
   const uint32_t rxStartUs = connectionNextEventUs_ - kBleConnRxStartLeadUs;
   if (!timeReachedUs(nowUs, rxStartUs)) {
-    const uint32_t deltaUs = static_cast<uint32_t>(rxStartUs - nowUs);
-    if (deltaUs > kBleConnAnchorPrewaitUs) {
-      return false;
+    const uint32_t prewaitStartUs =
+        (rxStartUs > kBleConnAnchorPrewaitUs)
+            ? (rxStartUs - kBleConnAnchorPrewaitUs)
+            : rxStartUs;
+    if (!timeReachedUs(nowUs, prewaitStartUs)) {
+      uint32_t waitGuard = spinLimit;
+      while (waitGuard-- > 0U && !timeReachedUs(nowUs, prewaitStartUs)) {
+        nowUs = micros();
+      }
+      if (!timeReachedUs(nowUs, prewaitStartUs)) {
+        return false;
+      }
     }
     // Short, bounded pre-wait near anchor reduces event jitter while
     // allowing RX ramp-up before the nominal event anchor.
@@ -13367,7 +13196,7 @@ bool BleRadio::pollConnectionEventCore(BleConnectionEvent* event,
 
   if (event != nullptr) {
     event->eventStarted = true;
-    event->eventCounter = connectionEventCounter_;
+    event->eventCounter = currentEventCounter;
     event->dataChannel = dataChannel;
   }
 
@@ -13403,8 +13232,13 @@ bool BleRadio::pollConnectionEventCore(BleConnectionEvent* event,
     }
   }
 
-  uint32_t rxListenUs =
-      bleConnectionRxListenUs(connectionIntervalUnits_, connectionSca_);
+  const uint16_t unsyncedEventCount =
+      (connectionMissedEventCount_ < 0xFFFFU)
+          ? static_cast<uint16_t>(connectionMissedEventCount_ + 1U)
+          : 0xFFFFU;
+  uint32_t rxListenUs = bleConnectionRxListenUs(connectionIntervalUnits_,
+                                                connectionSca_,
+                                                unsyncedEventCount);
   if (rxListenUs == 0U) {
     rxListenUs = intervalUsForListen;
   }
@@ -13420,7 +13254,6 @@ bool BleRadio::pollConnectionEventCore(BleConnectionEvent* event,
       rxListenUs = 50000U;
     }
   }
-  encDebug_.connLastRxListenBudgetUs = rxListenUs;
   uint32_t rxEndTimestampUs = 0U;
   const bool endSeen =
       waitRadioEndBudgeted(radio_, rxListenUs, spinLimit, &rxEndTimestampUs);
@@ -13474,34 +13307,16 @@ bool BleRadio::pollConnectionEventCore(BleConnectionEvent* event,
         }
         rememberDisconnectReason(kBleLlErrorConnectionTimeout, false);
         emitBleTrace("SUPERVISION_TIMEOUT");
-        disconnect(spinLimit / 2U + 1U);
+        disconnectWithReason(BleDisconnectReason::kSupervisionTimeout, 0U,
+                             spinLimit / 2U + 1U);
       }
     }
     emitBleTrace("EVT_RX_TIMEOUT");
     return true;
   }
-  const uint8_t hdr0Early = rxPacket_[0];
-  const uint8_t llidEarly = hdr0Early & 0x03U;
-  const uint8_t nesnEarly = (hdr0Early >> 2U) & 0x01U;
-  const uint8_t snEarly = (hdr0Early >> 3U) & 0x01U;
-  const uint8_t rxLengthEarly = rxPacket_[1];
-  auto tryFastAttWriteTurnaround = [&]() -> bool {
-    if ((radio_->EVENTS_END == 0U) || (radio_->EVENTS_PHYEND != 0U)) {
-      return false;
-    }
-    if (connectionEncSessionValid_ ||
-        connectionEncRxEnabled_ ||
-        connectionEncTxEnabled_ ||
-        connectionEncAwaitingStartRsp_ ||
-        connectionEncStartReqPending_ ||
-        connectionEncStartReqTxPending_ ||
-        connectionEncKeyDerivationPending_) {
-      return false;
-    }
-    if ((llidEarly != kBlePduDataStartOrComplete) ||
-        (rxLengthEarly < (kBleL2capHeaderLen + 5U))) {
-      return false;
-    }
+  if (rxEndTimestampUs == 0U) {
+    rxEndTimestampUs = micros();
+  }
 
     const bool peerAckedLastTxEarly =
         connectionTxHistoryValid_ && (nesnEarly != connectionLastTxSn_);
@@ -14010,33 +13825,21 @@ bool BleRadio::pollConnectionEventCore(BleConnectionEvent* event,
         }
         rememberDisconnectReason(kBleLlErrorConnectionTimeout, false);
         emitBleTrace("SUPERVISION_TIMEOUT");
-        disconnect(spinLimit / 2U + 1U);
+        disconnectWithReason(BleDisconnectReason::kSupervisionTimeout, 0U,
+                             spinLimit / 2U + 1U);
       }
     }
     clearRadioCoreEvents(radio_);
     return true;
   }
   connectionMissedEventCount_ = 0U;
-  encDebug_.connMissedEventCountLast = 0U;
 
   const uint8_t hdr0 = rxPacket_[0];
   const uint8_t llid = hdr0 & 0x03U;
   const uint8_t nesn = (hdr0 >> 2U) & 0x01U;
   const uint8_t sn = (hdr0 >> 3U) & 0x01U;
   const uint8_t rxLengthRaw = rxPacket_[1];
-  const uint32_t intervalUs =
-      (connectionIntervalUnits_ > 0U)
-          ? (static_cast<uint32_t>(connectionIntervalUnits_) * 1250UL)
-          : 1250UL;
-  const uint32_t rxPacketStartUs =
-      rxEndTimestampUs - bleDataPduAirTimeUs(rxLengthRaw);
-  connectionNextEventUs_ = rxPacketStartUs + intervalUs;
-  if (connectionSyncAttemptsRemaining_ > 0U) {
-    --connectionSyncAttemptsRemaining_;
-    if (connectionSyncAttemptsRemaining_ == 0U) {
-      connectionFirstEventListenUs_ = 0U;
-    }
-  }
+  connectionSyncAttemptsRemaining_ = 0U;
 
   bool peerAckedLastTx =
       connectionTxHistoryValid_ && (nesn != connectionLastTxSn_);
@@ -14122,6 +13925,8 @@ bool BleRadio::pollConnectionEventCore(BleConnectionEvent* event,
   }
 
   bool terminateInd = false;
+  bool peerTerminateIndReceived = false;
+  uint8_t peerTerminateErrorCode = 0U;
   bool terminateMicFailure = false;
   uint8_t rxLength = rxLengthRaw;
   auto recordMicFailPacket = [&](uint8_t rawLen) {
@@ -14412,6 +14217,8 @@ bool BleRadio::pollConnectionEventCore(BleConnectionEvent* event,
       event->disconnectReason = rxPacket_[3];
     }
     terminateInd = true;
+    peerTerminateIndReceived = true;
+    peerTerminateErrorCode = rxPacket_[3];
   }
 
   if ((llid == kBlePduLlControl) &&
@@ -14474,6 +14281,13 @@ bool BleRadio::pollConnectionEventCore(BleConnectionEvent* event,
   bool l2capHandledImmediate = false;
   bool immediateL2capResponseValid = false;
   uint8_t immediateL2capResponseLength = 0U;
+  const bool encryptionProcedureBusy =
+      connectionEncSessionValid_ &&
+      (connectionEncKeyDerivationPending_ ||
+       connectionEncStartReqTxPending_ ||
+       connectionEncAwaitingStartRsp_ ||
+       connectionEncEnableTxOnNextEvent_ ||
+       connectionEncStartReqPending_);
   // If the peer has not ACKed our last TX PDU, keep retransmitting that exact
   // packet/SN until ACKed. This is required for encrypted empty PDUs as well,
   // since each fresh encrypted transmission consumes a new CCM packet counter.
@@ -14492,6 +14306,19 @@ bool BleRadio::pollConnectionEventCore(BleConnectionEvent* event,
                                &immediateLlControlResponseLength, &terminateInd) &&
         immediateLlControlResponseLength > 0U) {
       immediateLlControlResponseValid = true;
+    }
+  }
+  if (packetIsNew && !terminateInd &&
+      (llid == kBlePduDataStartOrComplete) &&
+      (rxLength >= kBleL2capHeaderLen) &&
+      canSendNewPayloadThisEvent &&
+      !encryptionProcedureBusy &&
+      !deferEncryptedDataDecrypt) {
+    l2capHandledImmediate = true;
+    if (buildL2capResponse(&rxPacket_[2], rxLength, connectionTxPayload_,
+                           &immediateL2capResponseLength) &&
+        immediateL2capResponseLength > 0U) {
+      immediateL2capResponseValid = true;
     }
   }
 
@@ -14780,24 +14607,24 @@ bool BleRadio::pollConnectionEventCore(BleConnectionEvent* event,
   }
 
   // During start encryption, some controllers send LL_START_ENC_REQ as a second
-  // packet in a later connection event. Some Linux centrals also send early LL
-  // control PDUs immediately after the first empty ACK. Keep TX->RX turnaround
-  // in hardware for those cases so we can catch same-event follow-up packets
-  // without CPU latency.
+  // packet in a later connection event. Keep TX->RX turnaround in hardware while
+  // awaiting LL_START_ENC_REQ so we can catch it without CPU latency.
+  const bool allowPlainFollowupTurnaround =
+      !terminateInd &&
+      !connectionEncSessionValid_ &&
+      !connectionEncRxEnabled_ &&
+      !connectionEncTxEnabled_ &&
+      !connectionEncStartReqPending_ &&
+      !connectionEncStartReqTxPending_ &&
+      !connectionEncAwaitingStartRsp_ &&
+      !connectionEncKeyDerivationPending_ &&
+      packetIsNew &&
+      (rxLength > 0U);
   const bool doPostTxRxTurnaround =
       !terminateInd &&
-      ((connectionEncStartReqPending_ && txIsEncRspPlain) ||
-       txIsStartEncReqPlain ||
-       txIsEmptyAckPlain);
-
-  // Preserve the just-received payload before the T_IFS turnaround path
-  // reuses `rxPacket_` as the TX->RX buffer for same-event follow-up traffic.
-  uint8_t postTxOriginalPayload[kBleDataPduMaxPayload] = {0};
-  const bool restoreOriginalPacketAfterFollowup =
-      packetIsNew && !terminateInd && (rxLengthRaw > 0U);
-  if (restoreOriginalPacketAfterFollowup) {
-    memcpy(postTxOriginalPayload, &rxPacket_[2], rxLengthRaw);
-  }
+      (allowPlainFollowupTurnaround ||
+       (connectionEncStartReqPending_ && txIsEncRspPlain) ||
+       txIsStartEncReqPlain);
 
   clearRadioCoreEvents(radio_);
   if (doPostTxRxTurnaround) {
@@ -15337,10 +15164,14 @@ bool BleRadio::pollConnectionEventCore(BleConnectionEvent* event,
         encDebug_.lastFollowLen = rxLengthFollow;
         encDebug_.lastFollowByte0 =
             (rxLengthFollow >= 1U) ? rxPacket_[2] : 0U;
-        encDebug_.lastFollowWasNew = packetIsNewFollow ? 1U : 0U;
-        encDebug_.lastFollowWasDecrypted = followWasDecrypted ? 1U : 0U;
-        encDebug_.lastFollowCounterLo =
-            static_cast<uint32_t>(followCounterUsed & 0xFFFFFFFFULL);
+
+        if ((llidFollow == kBlePduLlControl) &&
+            (rxLengthFollow >= 2U) &&
+            (rxPacket_[2] == kBleLlCtrlTerminateInd)) {
+          peerTerminateIndReceived = true;
+          peerTerminateErrorCode = rxPacket_[3];
+        }
+
         if (packetIsNewFollow && !terminateInd &&
             (llidFollow == kBlePduLlControl) &&
             (rxLengthFollow >= 1U) &&
@@ -15365,65 +15196,135 @@ bool BleRadio::pollConnectionEventCore(BleConnectionEvent* event,
           break;
         }
 
-        if (packetIsNewFollow && !terminateInd && !connectionPendingTxValid_) {
-          uint8_t deferredFollowLlid = 0U;
-          uint8_t deferredFollowLength = 0U;
-          bool followAckOnly = false;
-          const bool encryptionProcedureBusyFollow =
-              connectionEncSessionValid_ &&
-              (connectionEncKeyDerivationPending_ ||
-               connectionEncStartReqTxPending_ ||
-               connectionEncAwaitingStartRsp_ ||
-               connectionEncEnableTxOnNextEvent_ ||
-               connectionEncStartReqPending_);
-
-          if (!encryptionProcedureBusyFollow &&
-              (llidFollow == kBlePduLlControl) &&
-              (rxLengthFollow >= 1U)) {
-            if (buildLlControlResponse(&rxPacket_[2], rxLengthFollow,
-                                       currentEventCounter,
-                                       connectionTxPayload_,
-                                       &deferredFollowLength,
-                                       &terminateInd) &&
-                (deferredFollowLength > 0U)) {
-              transmitImmediateFollowupResponse(kBlePduLlControl,
-                                                deferredFollowLength);
-              break;
-            }
-          } else if (!encryptionProcedureBusyFollow &&
-                     (llidFollow == kBlePduDataStartOrComplete) &&
-                     (rxLengthFollow >= kBleL2capHeaderLen)) {
-            const uint16_t followCid = readLe16(&rxPacket_[4]);
-            if ((followCid == kBleL2capCidSmp) &&
-                buildL2capResponse(&rxPacket_[2], rxLengthFollow,
-                                   connectionTxPayload_,
-                                   &deferredFollowLength) &&
-                (deferredFollowLength > 0U)) {
-              transmitImmediateFollowupResponse(kBlePduDataStartOrComplete,
-                                                deferredFollowLength);
-              break;
-            }
-            if (buildL2capResponse(&rxPacket_[2], rxLengthFollow,
-                                   connectionTxPayload_,
-                                   &deferredFollowLength) &&
-                (deferredFollowLength > 0U)) {
-              deferredFollowLlid = kBlePduDataStartOrComplete;
+        if (allowPlainFollowupTurnaround && !terminateInd) {
+          if (packetIsNewFollow && !connectionPendingTxValid_) {
+            if ((llidFollow == kBlePduLlControl) && (rxLengthFollow >= 1U)) {
+              uint8_t responseLength = 0U;
+              bool followTerminate = false;
+              if (buildLlControlResponse(&rxPacket_[2], rxLengthFollow,
+                                         connectionPendingTxPayload_,
+                                         &responseLength, &followTerminate) &&
+                  responseLength > 0U) {
+                connectionPendingTxLlid_ = kBlePduLlControl;
+                connectionPendingTxLength_ = responseLength;
+                connectionPendingTxValid_ = true;
+              }
+              if (followTerminate) {
+                terminateInd = true;
+              }
+            } else if ((llidFollow == kBlePduDataStartOrComplete) &&
+                       (rxLengthFollow >= kBleL2capHeaderLen)) {
+              uint8_t responseLength = 0U;
+              if (buildL2capResponse(&rxPacket_[2], rxLengthFollow,
+                                     connectionPendingTxPayload_,
+                                     &responseLength) &&
+                  responseLength > 0U) {
+                connectionPendingTxLlid_ = kBlePduDataStartOrComplete;
+                connectionPendingTxLength_ = responseLength;
+                connectionPendingTxValid_ = true;
+              }
             }
           }
 
-          if (!terminateInd && (deferredFollowLength > 0U)) {
-            connectionPendingTxLlid_ = deferredFollowLlid;
-            connectionPendingTxLength_ = deferredFollowLength;
-            memcpy(connectionPendingTxPayload_, connectionTxPayload_,
-                   deferredFollowLength);
-            connectionPendingTxValid_ = true;
-          } else if (!terminateInd) {
-            followAckOnly = true;
-          }
+          if (!terminateInd) {
+            const bool txFollowCanUseFreshPayload =
+                !connectionTxHistoryValid_ || peerAckedLastTxFollowMutable;
+            uint8_t txFollowLlid = 0x01U;
+            uint8_t txFollowLength = 0U;
+            if (txFollowCanUseFreshPayload) {
+              connectionLastTxLlid_ = txFollowLlid;
+              connectionLastTxLength_ = txFollowLength;
+              connectionLastTxPlainLlid_ = txFollowLlid;
+              connectionLastTxPlainLength_ = txFollowLength;
+              memset(connectionLastTxPlainPayload_, 0,
+                     sizeof(connectionLastTxPlainPayload_));
+              connectionLastTxWasEncrypted_ = false;
+              connectionLastTxEncryptedLength_ = 0U;
+              memset(connectionLastTxEncryptedPayload_, 0,
+                     sizeof(connectionLastTxEncryptedPayload_));
+            } else {
+              txFollowLlid = connectionLastTxLlid_;
+              txFollowLength = connectionLastTxLength_;
+            }
 
-          if (followAckOnly) {
-            transmitImmediateFollowupResponse(0x01U, 0U);
-            break;
+            txPacket_[0] = static_cast<uint8_t>((txFollowLlid & 0x03U) |
+                                                ((connectionExpectedRxSn_ & 0x01U) << 2U) |
+                                                ((connectionTxSn_ & 0x01U) << 3U));
+            txPacket_[1] = txFollowLength;
+            if (txFollowLength > 0U) {
+              memcpy(&txPacket_[2], connectionLastTxPlainPayload_, txFollowLength);
+            }
+
+            clearRadioCoreEvents(radio_);
+            {
+              const size_t txCopyLen = 2U + static_cast<size_t>(txFollowLength);
+              const size_t copyLen =
+                  (txCopyLen <= sizeof(rxPacket_)) ? txCopyLen : sizeof(rxPacket_);
+              memcpy(rxPacket_, txPacket_, copyLen);
+            }
+            radio_->PACKETPTR =
+                static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&rxPacket_[0]));
+            radio_->SHORTS =
+                ((RADIO_SHORTS_TXREADY_START_Enabled << RADIO_SHORTS_TXREADY_START_Pos) &
+                 RADIO_SHORTS_TXREADY_START_Msk) |
+                ((RADIO_SHORTS_PHYEND_DISABLE_Enabled << RADIO_SHORTS_PHYEND_DISABLE_Pos) &
+                 RADIO_SHORTS_PHYEND_DISABLE_Msk) |
+                ((RADIO_SHORTS_DISABLED_RXEN_Enabled << RADIO_SHORTS_DISABLED_RXEN_Pos) &
+                 RADIO_SHORTS_DISABLED_RXEN_Msk) |
+                ((RADIO_SHORTS_RXREADY_START_Enabled << RADIO_SHORTS_RXREADY_START_Pos) &
+                 RADIO_SHORTS_RXREADY_START_Msk) |
+                ((RADIO_SHORTS_ADDRESS_RSSISTART_Enabled
+                  << RADIO_SHORTS_ADDRESS_RSSISTART_Pos) &
+                 RADIO_SHORTS_ADDRESS_RSSISTART_Msk);
+
+            const uint32_t txFollowTriggerTargetUs =
+                followRxEndTimestampUs + kBleConnTxenAfterRxUs;
+            uint32_t txFollowTriggerNowUs = micros();
+            while (!timeReachedUs(txFollowTriggerNowUs, txFollowTriggerTargetUs)) {
+              txFollowTriggerNowUs = micros();
+            }
+            radio_->TASKS_TXEN = RADIO_TASKS_TXEN_TASKS_TXEN_Trigger;
+
+            const uint32_t txFollowEndBudgetUs = kBleConnTxDisableWaitUs + 1200U;
+            const bool txFollowEndSeen =
+                waitRadioEndBudgeted(radio_, txFollowEndBudgetUs, spinLimit / 2U + 1U);
+            bool txFollowOk = false;
+            if (txFollowEndSeen) {
+              radio_->EVENTS_END = 0U;
+              radio_->EVENTS_PHYEND = 0U;
+              txFollowOk =
+                  waitRadioDisabledBudgeted(radio_, kBleConnTxDisableWaitUs,
+                                            spinLimit / 2U + 1U);
+            }
+            if (!txFollowOk) {
+              radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
+              waitRadioDisabledBudgeted(radio_, kBleConnTxDisableWaitUs,
+                                        spinLimit / 2U + 1U);
+              radio_->SHORTS = 0U;
+              break;
+            }
+
+            connectionTxHistoryValid_ = true;
+            radio_->EVENTS_DISABLED = 0U;
+            radio_->EVENTS_CRCOK = 0U;
+            radio_->EVENTS_CRCERROR = 0U;
+            radio_->SHORTS =
+                ((RADIO_SHORTS_RXREADY_START_Enabled << RADIO_SHORTS_RXREADY_START_Pos) &
+                 RADIO_SHORTS_RXREADY_START_Msk) |
+                ((RADIO_SHORTS_ADDRESS_RSSISTART_Enabled
+                  << RADIO_SHORTS_ADDRESS_RSSISTART_Pos) &
+                 RADIO_SHORTS_ADDRESS_RSSISTART_Msk) |
+                ((RADIO_SHORTS_PHYEND_DISABLE_Enabled
+                  << RADIO_SHORTS_PHYEND_DISABLE_Pos) &
+                 RADIO_SHORTS_PHYEND_DISABLE_Msk);
+            {
+              const uint32_t state =
+                  (radio_->STATE & RADIO_STATE_STATE_Msk) >> RADIO_STATE_STATE_Pos;
+              if (state == RADIO_STATE_STATE_Disabled) {
+                radio_->TASKS_RXEN = RADIO_TASKS_RXEN_TASKS_RXEN_Trigger;
+              }
+            }
+            continue;
           }
         }
       }
@@ -15583,16 +15484,14 @@ bool BleRadio::pollConnectionEventCore(BleConnectionEvent* event,
   encDebug_.encLastRxCounterLo =
       static_cast<uint32_t>(connectionEncRxCounter_ & 0xFFFFFFFFULL);
 
+  rememberConnectionRxDebug(
+      llid, rxLength,
+      bleConnectionPayloadProtocolOpcode(llid, &rxPacket_[2], rxLength), nesn, sn,
+      packetIsNew, peerAckedLastTx);
+
   if (packetIsNew && !terminateInd) {
     uint8_t deferredLlid = 0x01U;
     uint8_t deferredLength = 0U;
-    const bool encryptionProcedureBusy =
-        connectionEncSessionValid_ &&
-        (connectionEncKeyDerivationPending_ ||
-         connectionEncStartReqTxPending_ ||
-         connectionEncAwaitingStartRsp_ ||
-         connectionEncEnableTxOnNextEvent_ ||
-         connectionEncStartReqPending_);
 
     // Interop fallback: some hosts stall after LL_ENC_RSP instead of issuing
     // the initiator-side LL_START_ENC_REQ. Queue a single next-event
@@ -15766,371 +15665,42 @@ bool BleRadio::pollConnectionEventCore(BleConnectionEvent* event,
   }
 
   if (terminateInd) {
-    disconnect(spinLimit / 2U + 1U);
+    const BleDisconnectReason disconnectReason =
+        terminateMicFailure
+            ? BleDisconnectReason::kMicFailure
+            : (peerTerminateIndReceived ? BleDisconnectReason::kPeerTerminate
+                                        : BleDisconnectReason::kInternalTerminate);
+    const uint8_t disconnectErrorCode =
+        terminateMicFailure ? kBleLlErrorMicFailure : peerTerminateErrorCode;
+    if (terminateMicFailure) {
+      emitBleTrace("TERMINATE_MIC_FAILURE");
+    } else if (peerTerminateIndReceived) {
+      emitBleTrace("PEER_TERMINATE");
+    } else {
+      emitBleTrace("TERMINATE_INTERNAL");
+    }
+    recordDisconnectDebug(disconnectReason, disconnectErrorCode);
+    connectionPendingTxLlid_ = 0x01U;
+    connectionPendingTxLength_ = 0U;
+    connectionPendingTxValid_ = false;
+    connected_ = false;
+    restoreAdvertisingLinkDefaults();
   }
 
   clearRadioCoreEvents(radio_);
   return true;
 }
 
-extern "C" void nrf54l15_ble_idle_service(void) {
-  if (NRF54L15_CLEAN_BLE_BACKGROUND_SERVICE == 0) {
-    return;
-  }
-  BleRadio* const radio = g_bleBackgroundRadio;
-  if (radio == nullptr) {
-    return;
-  }
-  const bool fallbackAdvertisingPrewarm =
-      radio->backgroundAdvertisingConsumePendingPrewarmFromFallback();
-  const bool fallbackAdvertising =
-      radio->backgroundAdvertisingConsumePendingCompareFromFallback();
-  if (fallbackAdvertisingPrewarm || fallbackAdvertising) {
-    ++radio->backgroundAdvertisingDebug_.idleFallbackCount;
-  }
-  if (fallbackAdvertising || radio->backgroundAdvertisingNeedsIdleService()) {
-    (void)radio->serviceBackgroundAdvertising();
-  }
-  (void)radio->serviceBackgroundConnectionEvent();
-  radio->serviceDeferredApplicationWork();
-}
-
-extern "C" void nrf54l15_ble_grtc_irq_service(void) {
-  if (NRF54L15_CLEAN_BLE_BACKGROUND_SERVICE == 0) {
-    return;
-  }
-  if (NRF54L15_CLEAN_BLE_BACKGROUND_GRTC_IRQ_RUN == 0) {
-    return;
-  }
-  BleRadio* const radio = g_bleBackgroundRadio;
-  if (radio == nullptr) {
-    return;
-  }
-  const uint32_t irqState = bleEnterCritical();
-  bool runConnectionInIrq = false;
-  bool runAdvertisingInIrq = false;
-  bool runAdvertisingPrewarm = false;
-  bool runAdvertisingTx0 = false;
-  bool runAdvertisingTx1 = false;
-  bool runAdvertisingTx2 = false;
-  uint8_t advertisingTxCompareChannel = 0xFFU;
-  uint8_t advertisingServiceCompareChannel = 0xFFU;
-  if (radio->backgroundConnectionServiceEnabled_ && radio->connected_ &&
-      !radio->backgroundConnectionServiceInProgress_ &&
-      bleBackgroundCompareEventPending()) {
-    bleBackgroundDisableCompare();
-    radio->backgroundConnectionServiceArmed_ = false;
-    radio->backgroundConnectionServiceDue_ = true;
-    runConnectionInIrq = true;
-  }
-  if (radio->backgroundAdvertisingEnabled_ &&
-      !radio->backgroundAdvertisingInProgress_) {
-    if (bleCompareEventPending(kBleBackgroundAdvPrewarmCompareChannel)) {
-      bleDisableCompare(kBleBackgroundAdvPrewarmCompareChannel, true);
-      runAdvertisingPrewarm = true;
-    }
-    if (bleCompareEventPending(kBleBackgroundAdvTxCompareChannel)) {
-      bleDisableCompare(kBleBackgroundAdvTxCompareChannel, false);
-      if (radio->backgroundAdvertisingUseIrqTxKick_ &&
-          radio->radio_ != nullptr) {
-        runAdvertisingTx0 = true;
-        advertisingTxCompareChannel = kBleBackgroundAdvTxCompareChannel;
-      }
-    }
-    if (bleCompareEventPending(kBleBackgroundAdvStage1TxCompareChannel)) {
-      bleDisableCompare(kBleBackgroundAdvStage1TxCompareChannel, false);
-      if (radio->backgroundAdvertisingUseIrqTxKick_ &&
-          radio->radio_ != nullptr) {
-        runAdvertisingTx1 = true;
-        advertisingTxCompareChannel = kBleBackgroundAdvStage1TxCompareChannel;
-      }
-    }
-    if (bleCompareEventPending(kBleBackgroundAdvStage2TxCompareChannel)) {
-      bleDisableCompare(kBleBackgroundAdvStage2TxCompareChannel, false);
-      if (radio->backgroundAdvertisingUseIrqTxKick_ &&
-          radio->radio_ != nullptr) {
-        runAdvertisingTx2 = true;
-        advertisingTxCompareChannel = kBleBackgroundAdvStage2TxCompareChannel;
-      }
-    }
-    if (bleCompareEventPending(kBleBackgroundAdvCleanupCompareChannel)) {
-      bleDisableCompare(kBleBackgroundAdvCleanupCompareChannel, true);
-      radio->backgroundAdvertisingArmed_ = false;
-      radio->backgroundAdvertisingDue_ = true;
-      ++radio->backgroundAdvertisingDebug_.irqCompareCount;
-      runAdvertisingInIrq = true;
-      advertisingServiceCompareChannel = kBleBackgroundAdvCleanupCompareChannel;
-    }
-    if (bleCompareEventPending(kBleBackgroundAdvStage1ServiceCompareChannel)) {
-      bleDisableCompare(kBleBackgroundAdvStage1ServiceCompareChannel, true);
-      radio->backgroundAdvertisingArmed_ = false;
-      radio->backgroundAdvertisingDue_ = true;
-      ++radio->backgroundAdvertisingDebug_.irqCompareCount;
-      runAdvertisingInIrq = true;
-      advertisingServiceCompareChannel = kBleBackgroundAdvStage1ServiceCompareChannel;
-    }
-    if (bleCompareEventPending(kBleBackgroundAdvStage2ServiceCompareChannel)) {
-      bleDisableCompare(kBleBackgroundAdvStage2ServiceCompareChannel, true);
-      radio->backgroundAdvertisingArmed_ = false;
-      radio->backgroundAdvertisingDue_ = true;
-      ++radio->backgroundAdvertisingDebug_.irqCompareCount;
-      runAdvertisingInIrq = true;
-      advertisingServiceCompareChannel = kBleBackgroundAdvStage2ServiceCompareChannel;
-    }
-    if (bleCompareEventPending(kBleBackgroundAdvFinalCleanupCompareChannel)) {
-      bleDisableCompare(kBleBackgroundAdvFinalCleanupCompareChannel, true);
-      radio->backgroundAdvertisingArmed_ = false;
-      radio->backgroundAdvertisingDue_ = true;
-      ++radio->backgroundAdvertisingDebug_.irqCompareCount;
-      runAdvertisingInIrq = true;
-      advertisingServiceCompareChannel = kBleBackgroundAdvFinalCleanupCompareChannel;
+bool BleRadio::pollConnectionEvent(BleConnectionEvent* event,
+                                   uint32_t spinLimit) {
+  if (event != nullptr) {
+    resetConnectionEventStruct(event);
+    if (dequeueConnectionEvent(event)) {
+      return true;
     }
   }
-  if (!runConnectionInIrq && !runAdvertisingInIrq && !runAdvertisingPrewarm &&
-      !runAdvertisingTx0 && !runAdvertisingTx1 && !runAdvertisingTx2) {
-    bleExitCritical(irqState);
-    return;
-  }
-  bleExitCritical(irqState);
-  if (runAdvertisingPrewarm && !radio->handleBackgroundAdvertisingPrewarmEvent()) {
-    radio->backgroundAdvertisingLastStopReason_ = kBleBackgroundAdvStopReasonPrewarmFailed;
-    radio->stopBackgroundAdvertising();
-    return;
-  }
-  if ((runAdvertisingTx0 || runAdvertisingTx1 || runAdvertisingTx2) &&
-      radio->backgroundAdvertisingUseIrqTxKick_) {
-    // Keep the compare schedule hardware-owned. If HFXO is not tuned yet,
-    // re-arm the same TX compare a few microseconds later instead of spinning.
-    if (!radio->ensureRfPathActiveForBle()) {
-      radio->backgroundAdvertisingLastStopReason_ =
-          kBleBackgroundAdvStopReasonTxCompareFailed;
-      radio->stopBackgroundAdvertising();
-      return;
-    }
-    if (!bleHfxoRunning()) {
-      if ((NRF_CLOCK->EVENTS_XOTUNEFAILED != 0U) ||
-          advertisingTxCompareChannel == kBleBackgroundInvalidCompareChannel) {
-        radio->backgroundAdvertisingLastStopReason_ =
-            kBleBackgroundAdvStopReasonTxCompareFailed;
-        radio->stopBackgroundAdvertising();
-        return;
-      }
-      if (radio->backgroundAdvertisingAwaitingHfxoTuned_) {
-        const uint8_t delayedServiceCompareChannel =
-            bleBackgroundAdvertisingServiceCompareChannelForTxCompare(
-                radio->backgroundAdvertisingThreeChannel_,
-                advertisingTxCompareChannel);
-        if (delayedServiceCompareChannel != kBleBackgroundInvalidCompareChannel) {
-          bleDisableCompare(delayedServiceCompareChannel, true);
-        }
-        const uint32_t txIrqState = bleEnterCritical();
-        radio->backgroundAdvertisingDue_ = false;
-        radio->backgroundAdvertisingArmed_ = false;
-        radio->backgroundAdvertisingPendingTxCompareChannel_ =
-            advertisingTxCompareChannel;
-        radio->backgroundAdvertisingPendingServiceCompareChannel_ =
-            delayedServiceCompareChannel;
-        bleExitCritical(txIrqState);
-        bleBackgroundEnableClockTuneInterrupts();
-        runAdvertisingInIrq = false;
-        advertisingServiceCompareChannel = kBleBackgroundInvalidCompareChannel;
-      } else if (!radio->rescheduleBackgroundAdvertisingTxCompare(
-                     advertisingTxCompareChannel)) {
-        radio->backgroundAdvertisingLastStopReason_ =
-            kBleBackgroundAdvStopReasonTxCompareFailed;
-        radio->stopBackgroundAdvertising();
-        return;
-      }
-    } else if (!radio->kickPreparedPacketOnCurrentChannel(&radio->txPacket_[0])) {
-      radio->backgroundAdvertisingLastStopReason_ =
-          kBleBackgroundAdvStopReasonTxCompareFailed;
-      radio->stopBackgroundAdvertising();
-      return;
-    } else {
-      const uint32_t txIrqState = bleEnterCritical();
-      radio->backgroundAdvertisingAwaitingHfxoTuned_ = false;
-      radio->backgroundAdvertisingPendingTxCompareChannel_ =
-          kBleBackgroundInvalidCompareChannel;
-      radio->backgroundAdvertisingPendingServiceCompareChannel_ =
-          kBleBackgroundInvalidCompareChannel;
-      bleExitCritical(txIrqState);
-      bleBackgroundDisableClockIrq();
-    }
-  }
-  if (runAdvertisingInIrq && (runAdvertisingTx0 || runAdvertisingTx1 || runAdvertisingTx2) &&
-      advertisingServiceCompareChannel != 0xFFU) {
-    if (!radio->rescheduleBackgroundAdvertisingService(
-            advertisingServiceCompareChannel)) {
-      radio->backgroundAdvertisingLastStopReason_ =
-          kBleBackgroundAdvStopReasonArmFailed;
-      radio->stopBackgroundAdvertising();
-      return;
-    }
-    runAdvertisingInIrq = false;
-  }
-  if (runAdvertisingInIrq) {
-    (void)radio->serviceBackgroundAdvertising();
-  }
-  if (runConnectionInIrq) {
-    (void)radio->serviceBackgroundConnectionEvent();
-    return;
-  }
-}
 
-extern "C" void nrf54l15_ble_clock_irq_service(void) {
-  if (NRF54L15_CLEAN_BLE_BACKGROUND_SERVICE == 0) {
-    return;
-  }
-
-  BleRadio* const radio = g_bleBackgroundRadio;
-  if (radio == nullptr || !radio->backgroundAdvertisingUseIrqTxKick_) {
-    NRF_CLOCK->EVENTS_XOTUNED = 0U;
-    NRF_CLOCK->EVENTS_XOTUNEERROR = 0U;
-    NRF_CLOCK->EVENTS_XOTUNEFAILED = 0U;
-    bleBackgroundDisableClockIrq();
-    return;
-  }
-
-  const bool tuned = (NRF_CLOCK->EVENTS_XOTUNED != 0U);
-  const bool tuneError = (NRF_CLOCK->EVENTS_XOTUNEERROR != 0U);
-  const bool tuneFailed = (NRF_CLOCK->EVENTS_XOTUNEFAILED != 0U);
-  if (tuned) {
-    NRF_CLOCK->EVENTS_XOTUNED = 0U;
-  }
-  if (tuneError) {
-    NRF_CLOCK->EVENTS_XOTUNEERROR = 0U;
-  }
-  if (tuneFailed) {
-    NRF_CLOCK->EVENTS_XOTUNEFAILED = 0U;
-  }
-
-  const uint32_t irqState = bleEnterCritical();
-  ++radio->backgroundAdvertisingDebug_.clockIrqCount;
-  if (tuned) {
-    ++radio->backgroundAdvertisingDebug_.clockXotunedCount;
-  }
-  if (tuneError) {
-    ++radio->backgroundAdvertisingDebug_.clockXotuneErrorCount;
-  }
-  if (tuneFailed) {
-    ++radio->backgroundAdvertisingDebug_.clockXotuneFailedCount;
-  }
-  const bool advertisingEnabled = radio->backgroundAdvertisingEnabled_;
-  const bool awaitingTune = radio->backgroundAdvertisingAwaitingHfxoTuned_;
-  const uint8_t txCompareChannel =
-      radio->backgroundAdvertisingPendingTxCompareChannel_;
-  const uint8_t serviceCompareChannel =
-      radio->backgroundAdvertisingPendingServiceCompareChannel_;
-  bleExitCritical(irqState);
-
-  if (!advertisingEnabled || radio->radio_ == nullptr || radio->connected_) {
-    bleBackgroundDisableClockIrq();
-    return;
-  }
-
-  if (tuneFailed) {
-    radio->backgroundAdvertisingLastStopReason_ = kBleBackgroundAdvStopReasonPrewarmFailed;
-    radio->stopBackgroundAdvertising();
-    return;
-  }
-
-  if (!tuned && !bleHfxoRunning()) {
-    return;
-  }
-
-  if (!awaitingTune && txCompareChannel == kBleBackgroundInvalidCompareChannel) {
-    bleBackgroundDisableClockIrq();
-    return;
-  }
-
-  if (txCompareChannel == kBleBackgroundInvalidCompareChannel) {
-    const uint32_t tunedIrqState = bleEnterCritical();
-    radio->backgroundAdvertisingAwaitingHfxoTuned_ = false;
-    bleExitCritical(tunedIrqState);
-    bleBackgroundDisableClockIrq();
-    return;
-  }
-
-  if (!radio->ensureRfPathActiveForBle() ||
-      !radio->kickPreparedPacketOnCurrentChannel(&radio->txPacket_[0])) {
-    radio->backgroundAdvertisingLastStopReason_ =
-        kBleBackgroundAdvStopReasonTxCompareFailed;
-    radio->stopBackgroundAdvertising();
-    return;
-  }
-
-  if ((serviceCompareChannel != kBleBackgroundInvalidCompareChannel) &&
-      !radio->rescheduleBackgroundAdvertisingService(serviceCompareChannel)) {
-    radio->backgroundAdvertisingLastStopReason_ = kBleBackgroundAdvStopReasonArmFailed;
-    radio->stopBackgroundAdvertising();
-    return;
-  }
-
-  const uint32_t doneIrqState = bleEnterCritical();
-  radio->backgroundAdvertisingAwaitingHfxoTuned_ = false;
-  radio->backgroundAdvertisingPendingTxCompareChannel_ =
-      kBleBackgroundInvalidCompareChannel;
-  radio->backgroundAdvertisingPendingServiceCompareChannel_ =
-      kBleBackgroundInvalidCompareChannel;
-  bleExitCritical(doneIrqState);
-  bleBackgroundDisableClockIrq();
-}
-
-extern "C" void CLOCK_POWER_IRQHandler(void) {
-  nrf54l15_ble_clock_irq_service();
-}
-
-extern "C" uint32_t nrf54l15_ble_grtc_reserved_cc_mask(void) {
-  if (NRF54L15_CLEAN_BLE_BACKGROUND_SERVICE == 0) {
-    return 0U;
-  }
-  BleRadio* const radio = g_bleBackgroundRadio;
-  if (radio == nullptr) {
-    return 0U;
-  }
-  uint32_t mask = 0U;
-  if (radio->backgroundConnectionServiceEnabled_ && radio->connected_) {
-    mask |= (1UL << static_cast<uint32_t>(kBleBackgroundCompareChannel));
-    mask |= (1UL << static_cast<uint32_t>(kBleBackgroundConnPrewarmCompareChannel));
-    mask |= (1UL << static_cast<uint32_t>(kBleBackgroundConnRxCompareChannel));
-  }
-  if (radio->backgroundAdvertisingEnabled_) {
-    mask |= (1UL << static_cast<uint32_t>(kBleBackgroundAdvPrewarmCompareChannel));
-    mask |= (1UL << static_cast<uint32_t>(kBleBackgroundAdvTxCompareChannel));
-    mask |= (1UL << static_cast<uint32_t>(kBleBackgroundAdvCleanupCompareChannel));
-    if (radio->backgroundAdvertisingThreeChannel_) {
-      mask |= (1UL << static_cast<uint32_t>(kBleBackgroundAdvStage1ServiceCompareChannel));
-      mask |= (1UL << static_cast<uint32_t>(kBleBackgroundAdvStage1TxCompareChannel));
-      mask |= (1UL << static_cast<uint32_t>(kBleBackgroundAdvStage2ServiceCompareChannel));
-      mask |= (1UL << static_cast<uint32_t>(kBleBackgroundAdvStage2TxCompareChannel));
-      mask |= (1UL << static_cast<uint32_t>(kBleBackgroundAdvFinalCleanupCompareChannel));
-    }
-  }
-  return mask;
-}
-
-extern "C" void PendSV_Handler(void) {
-  if (NRF54L15_CLEAN_BLE_BACKGROUND_SERVICE == 0 ||
-      NRF54L15_CLEAN_BLE_BACKGROUND_GRTC_IRQ_RUN == 0 ||
-      NRF54L15_CLEAN_BLE_BACKGROUND_PENDSV_HANDOFF == 0) {
-    return;
-  }
-  if (g_bleBackgroundPendSvPending == 0U) {
-    return;
-  }
-  g_bleBackgroundPendSvPending = 0U;
-  BleRadio* const radio = g_bleBackgroundRadio;
-  if (radio == nullptr) {
-    return;
-  }
-  if (radio->backgroundAdvertisingConsumePendingPrewarmFromFallback()) {
-    ++radio->backgroundAdvertisingDebug_.idleFallbackCount;
-  }
-  if (radio->backgroundAdvertisingConsumePendingCompareFromFallback() ||
-      radio->backgroundAdvertisingNeedsIdleService()) {
-    (void)radio->serviceBackgroundAdvertising();
-  }
-  (void)radio->serviceBackgroundConnectionEvent();
+  return pollConnectionEventInternal(event, spinLimit);
 }
 
 bool BleRadio::scanOnce(BleAdvertisingChannel channel, BleScanPacket* packet,
@@ -16566,326 +16136,123 @@ bool BleRadio::scanActiveCycle(BleActiveScanResult* result,
   return false;
 }
 
-bool BleRadio::scanExtendedOnce(BleAdvertisingChannel channel,
-                                BleExtendedScanResult* result,
-                                uint32_t primaryListenSpinLimit,
-                                uint32_t secondaryListenSpinLimit,
-                                uint32_t spinLimit) {
-  if (!beginUnconnectedRadioActivity(1500000UL)) {
-    return false;
-  }
-  if (!initialized_ || radio_ == nullptr || connected_) {
-    endUnconnectedRadioActivity();
-    return false;
-  }
-  if (!setAdvertisingChannel(channel)) {
-    endUnconnectedRadioActivity();
-    return false;
-  }
-
-  if (result != nullptr) {
-    memset(result, 0, sizeof(*result));
-    result->primaryChannel = channel;
-  }
-
-  uint8_t primaryHeader = 0U;
-  uint8_t primaryPayloadLength = 0U;
-  const uint8_t* primaryPayload = nullptr;
-  int8_t primaryRssi = -127;
-  uint32_t primaryStartUs = 0U;
-  if (!receivePacketOnCurrentChannel(primaryListenSpinLimit, spinLimit, &primaryHeader,
-                                     &primaryPayloadLength, &primaryPayload,
-                                     &primaryRssi, &primaryStartUs,
-                                     nullptr)) {
-    endUnconnectedRadioActivity();
-    return false;
-  }
-
-  if (static_cast<uint8_t>(primaryHeader & 0x0FU) != kBlePduAdvExtInd) {
-    endUnconnectedRadioActivity();
-    return false;
-  }
-
-  BleExtendedHeaderView primaryView{};
-  if (!parseBleExtendedHeader(primaryPayload, primaryPayloadLength, &primaryView) ||
-      !primaryView.valid ||
-      (primaryView.advMode != kBleExtendedAdvModeNonConnNonScan) ||
-      !primaryView.hasAdvA || !primaryView.hasAuxPtr || !primaryView.hasAdi ||
-      (primaryView.auxPtr.phy != kBleExtendedAuxPhy1M)) {
-    endUnconnectedRadioActivity();
-    return false;
-  }
-
-  if (result != nullptr) {
-    result->primaryRssiDbm = primaryRssi;
-    result->primaryHeader = primaryHeader;
-    result->primaryPayloadLength = primaryPayloadLength;
-    result->advMode = primaryView.advMode;
-    result->advertiserAddressRandom = ((primaryHeader >> 6U) & 0x1U) != 0U;
-    memcpy(result->advertiserAddress, primaryView.advA, sizeof(result->advertiserAddress));
-    result->did = primaryView.did;
-    result->sid = primaryView.sid;
-    result->auxChannel = primaryView.auxPtr.channel;
-    result->auxPhy = primaryView.auxPtr.phy;
-    result->auxOffsetUs = primaryView.auxPtr.offsetUs;
-    result->secondaryPacketCount = 0U;
-    result->dataLength = 0U;
-  }
-
-  uint16_t dataLength = 0U;
-  if (primaryView.advDataLength > 0U) {
-    dataLength = primaryView.advDataLength;
-    if (result != nullptr) {
-      memcpy(result->data, primaryView.advData, primaryView.advDataLength);
-      result->dataLength = dataLength;
-    }
-  }
-
-  BleExtendedAuxPtrView nextAux = primaryView.auxPtr;
-  uint32_t previousPacketStartUs = primaryStartUs;
-  uint8_t secondaryPacketCount = 0U;
-  bool expectAnotherPacket = true;
-
-  while (expectAnotherPacket) {
-    if (secondaryPacketCount >= kBleExtendedSecondaryPacketCountMax) {
-      endUnconnectedRadioActivity();
-      return false;
-    }
-    if (!setDataChannel(nextAux.channel)) {
-      endUnconnectedRadioActivity();
-      return false;
-    }
-
-    const uint32_t targetUs = previousPacketStartUs + nextAux.offsetUs;
-    const uint32_t armUs = targetUs - kBleExtendedAuxRxLeadUs;
-    uint32_t nowUs = bleTimingUs();
-    while (!timeReachedUs(nowUs, armUs)) {
-      nowUs = bleTimingUs();
-    }
-
-    uint8_t secondaryHeader = 0U;
-    uint8_t secondaryPayloadLength = 0U;
-    const uint8_t* secondaryPayload = nullptr;
-    int8_t secondaryRssi = -127;
-    uint32_t secondaryStartUs = 0U;
-    if (!receivePacketOnCurrentChannel(secondaryListenSpinLimit, spinLimit,
-                                       &secondaryHeader, &secondaryPayloadLength,
-                                       &secondaryPayload, &secondaryRssi,
-                                       &secondaryStartUs,
-                                       nullptr)) {
-      endUnconnectedRadioActivity();
-      return false;
-    }
-    if (static_cast<uint8_t>(secondaryHeader & 0x0FU) != kBlePduAdvExtInd) {
-      endUnconnectedRadioActivity();
-      return false;
-    }
-
-    BleExtendedHeaderView secondaryView{};
-    if (!parseBleExtendedHeader(secondaryPayload, secondaryPayloadLength, &secondaryView) ||
-        !secondaryView.valid || !secondaryView.hasAdi ||
-        (secondaryView.did != primaryView.did) ||
-        (secondaryView.sid != primaryView.sid)) {
-      endUnconnectedRadioActivity();
-      return false;
-    }
-
-    if ((static_cast<uint32_t>(dataLength) + secondaryView.advDataLength) >
-        kBleExtendedAdvDataMaxLength) {
-      endUnconnectedRadioActivity();
-      return false;
-    }
-    if ((secondaryView.advDataLength > 0U) && (result != nullptr)) {
-      memcpy(&result->data[dataLength], secondaryView.advData,
-             secondaryView.advDataLength);
-    }
-    dataLength = static_cast<uint16_t>(dataLength + secondaryView.advDataLength);
-    ++secondaryPacketCount;
-    if (result != nullptr) {
-      result->dataLength = dataLength;
-      result->secondaryPacketCount = secondaryPacketCount;
-      result->auxChannel = nextAux.channel;
-      result->auxPhy = nextAux.phy;
-      result->auxOffsetUs = nextAux.offsetUs;
-      result->primaryRssiDbm = primaryRssi;
-      (void)secondaryRssi;
-    }
-
-    if (!secondaryView.hasAuxPtr) {
-      expectAnotherPacket = false;
-      break;
-    }
-    if (secondaryView.auxPtr.phy != kBleExtendedAuxPhy1M) {
-      endUnconnectedRadioActivity();
-      return false;
-    }
-
-    nextAux = secondaryView.auxPtr;
-    previousPacketStartUs = secondaryStartUs;
-  }
-
-  endUnconnectedRadioActivity();
-  return (secondaryPacketCount > 0U);
-}
-
-bool BleRadio::scanExtendedCycle(BleExtendedScanResult* result,
-                                 uint32_t perChannelPrimaryListenSpinLimit,
-                                 uint32_t secondaryListenSpinLimit) {
-  static constexpr BleAdvertisingChannel kChannels[3] = {
-      BleAdvertisingChannel::k37,
-      BleAdvertisingChannel::k38,
-      BleAdvertisingChannel::k39,
-  };
-
-  const uint32_t firstPassSpin = perChannelPrimaryListenSpinLimit;
-  const uint32_t secondPassSpin =
-      (perChannelPrimaryListenSpinLimit > 1U)
-          ? (perChannelPrimaryListenSpinLimit / 2U)
-          : perChannelPrimaryListenSpinLimit;
-
-  for (uint8_t pass = 0U; pass < 2U; ++pass) {
-    const uint32_t dwell = (pass == 0U) ? firstPassSpin : secondPassSpin;
-    for (uint8_t i = 0U; i < 3U; ++i) {
-      const uint8_t idx = static_cast<uint8_t>((scanCycleStartIndex_ + i) % 3U);
-      if (scanExtendedOnce(kChannels[idx], result, dwell, secondaryListenSpinLimit,
-                           dwell + secondaryListenSpinLimit + 300000UL)) {
-        scanCycleStartIndex_ = static_cast<uint8_t>((idx + 1U) % 3U);
-        return true;
-      }
-    }
-  }
-
-  scanCycleStartIndex_ = static_cast<uint8_t>((scanCycleStartIndex_ + 1U) % 3U);
-  return false;
-}
-
-bool BleRadio::scanExtendedActiveOnce(BleAdvertisingChannel channel,
-                                      BleExtendedScanResult* result,
-                                      uint32_t primaryListenSpinLimit,
-                                      uint32_t secondaryListenSpinLimit,
-                                      uint32_t scanRspListenSpinLimit,
+bool BleRadio::initiateConnectionOnce(BleAdvertisingChannel channel,
+                                      const uint8_t peerAddress[6],
+                                      bool peerAddressRandom,
+                                      uint16_t intervalUnits,
+                                      uint16_t supervisionTimeoutUnits,
+                                      uint8_t hopIncrement,
+                                      uint32_t advListenSpinLimit,
                                       uint32_t spinLimit) {
-  if (!beginUnconnectedRadioActivity(1500000UL)) {
-    return false;
-  }
-  if (!initialized_ || radio_ == nullptr || connected_) {
-    endUnconnectedRadioActivity();
+  if (!initialized_ || radio_ == nullptr || connected_ || peerAddress == nullptr) {
     return false;
   }
   if (!setAdvertisingChannel(channel)) {
-    endUnconnectedRadioActivity();
     return false;
   }
 
-  if (result != nullptr) {
-    memset(result, 0, sizeof(*result));
-    result->primaryChannel = channel;
+  clearRadioCoreEvents(radio_);
+  memset(rxPacket_, 0, sizeof(rxPacket_));
+  radio_->PACKETPTR =
+      static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&rxPacket_[0]));
+  radio_->SHORTS =
+      ((RADIO_SHORTS_RXREADY_START_Enabled << RADIO_SHORTS_RXREADY_START_Pos) &
+       RADIO_SHORTS_RXREADY_START_Msk) |
+      ((RADIO_SHORTS_ADDRESS_RSSISTART_Enabled
+        << RADIO_SHORTS_ADDRESS_RSSISTART_Pos) &
+       RADIO_SHORTS_ADDRESS_RSSISTART_Msk) |
+      ((RADIO_SHORTS_PHYEND_DISABLE_Enabled << RADIO_SHORTS_PHYEND_DISABLE_Pos) &
+       RADIO_SHORTS_PHYEND_DISABLE_Msk);
+  radio_->TASKS_RXEN = RADIO_TASKS_RXEN_TASKS_RXEN_Trigger;
+
+  const bool endSeen =
+      waitRadioEndBudgeted(radio_, advListenSpinLimit, spinLimit);
+  if (!endSeen) {
+    radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
+    waitDisabled(spinLimit / 2U + 1U);
+    radio_->SHORTS = 0U;
+    clearRadioCoreEvents(radio_);
+    return false;
+  }
+  const uint32_t advEndUs = micros();
+
+  bool disabled = waitDisabled(spinLimit / 2U + 1U);
+  if (!disabled) {
+    radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
+    disabled = waitDisabled(spinLimit / 2U + 1U);
   }
 
-  uint8_t primaryHeader = 0U;
-  uint8_t primaryPayloadLength = 0U;
-  const uint8_t* primaryPayload = nullptr;
-  int8_t primaryRssi = -127;
-  uint32_t primaryStartUs = 0U;
-  uint32_t primaryEndUs = 0U;
-  if (!receivePacketOnCurrentChannel(primaryListenSpinLimit, spinLimit, &primaryHeader,
-                                     &primaryPayloadLength, &primaryPayload,
-                                     &primaryRssi, &primaryStartUs,
-                                     &primaryEndUs)) {
-    endUnconnectedRadioActivity();
+  const uint32_t crcStatus =
+      (radio_->CRCSTATUS & RADIO_CRCSTATUS_CRCSTATUS_Msk) >>
+      RADIO_CRCSTATUS_CRCSTATUS_Pos;
+  const bool crcOk = (crcStatus == RADIO_CRCSTATUS_CRCSTATUS_CRCOk);
+  const uint8_t advHeader = rxPacket_[0];
+  const uint8_t advPduType = static_cast<uint8_t>(advHeader & 0x0FU);
+  const uint8_t advPayloadLen = static_cast<uint8_t>(rxPacket_[1] & 0x3FU);
+  const bool advChSel2 = ((advHeader >> 5U) & 0x1U) != 0U;
+  const bool advertiserAddressRandom = ((advHeader >> 6U) & 0x1U) != 0U;
+  const uint8_t* advPayload = &rxPacket_[2];
+  radio_->SHORTS = 0U;
+  if (!disabled || !crcOk || advPayloadLen < 6U) {
+    clearRadioCoreEvents(radio_);
     return false;
   }
 
-  if (static_cast<uint8_t>(primaryHeader & 0x0FU) != kBlePduAdvExtInd) {
-    endUnconnectedRadioActivity();
+  const bool addressMatch =
+      (advertiserAddressRandom == peerAddressRandom) &&
+      bleAddressEqual(advPayload, peerAddress);
+  const bool connectable =
+      (advPduType == static_cast<uint8_t>(BleAdvPduType::kAdvInd));
+  if (!addressMatch || !connectable) {
+    clearRadioCoreEvents(radio_);
     return false;
   }
 
-  BleExtendedHeaderView primaryView{};
-  if (!parseBleExtendedHeader(primaryPayload, primaryPayloadLength, &primaryView) ||
-      !primaryView.valid ||
-      (primaryView.advMode != kBleExtendedAdvModeNonConnScan) ||
-      !primaryView.hasAuxPtr || !primaryView.hasAdi ||
-      (primaryView.auxPtr.phy != kBleExtendedAuxPhy1M)) {
-    endUnconnectedRadioActivity();
-    return false;
-  }
-
-  if (result != nullptr) {
-    result->primaryRssiDbm = primaryRssi;
-    result->primaryHeader = primaryHeader;
-    result->primaryPayloadLength = primaryPayloadLength;
-    result->advMode = primaryView.advMode;
-    result->did = primaryView.did;
-    result->sid = primaryView.sid;
-    result->auxChannel = primaryView.auxPtr.channel;
-    result->auxPhy = primaryView.auxPtr.phy;
-    result->auxOffsetUs = primaryView.auxPtr.offsetUs;
-  }
-
-  if (!setDataChannel(primaryView.auxPtr.channel)) {
-    endUnconnectedRadioActivity();
-    return false;
-  }
-
-  const uint32_t auxTargetUs = primaryStartUs + primaryView.auxPtr.offsetUs;
-  const uint32_t auxArmUs = auxTargetUs - kBleExtendedAuxRxLeadUs;
-  uint32_t nowUs = bleTimingUs();
-  while (!timeReachedUs(nowUs, auxArmUs)) {
-    nowUs = bleTimingUs();
-  }
-
-  uint8_t secondaryHeader = 0U;
-  uint8_t secondaryPayloadLength = 0U;
-  const uint8_t* secondaryPayload = nullptr;
-  int8_t secondaryRssi = -127;
-  uint32_t secondaryStartUs = 0U;
-  uint32_t secondaryEndUs = 0U;
-  if (!receivePacketOnCurrentChannel(secondaryListenSpinLimit, spinLimit,
-                                     &secondaryHeader, &secondaryPayloadLength,
-                                     &secondaryPayload, &secondaryRssi,
-                                     &secondaryStartUs, &secondaryEndUs)) {
-    endUnconnectedRadioActivity();
-    return false;
-  }
-
-  if (static_cast<uint8_t>(secondaryHeader & 0x0FU) != kBlePduAdvExtInd) {
-    endUnconnectedRadioActivity();
-    return false;
-  }
-
-  BleExtendedHeaderView secondaryView{};
-  if (!parseBleExtendedHeader(secondaryPayload, secondaryPayloadLength, &secondaryView) ||
-      !secondaryView.valid ||
-      (secondaryView.advMode != kBleExtendedAdvModeNonConnScan) ||
-      !secondaryView.hasAdi || !secondaryView.hasAdvA ||
-      (secondaryView.did != primaryView.did) ||
-      (secondaryView.sid != primaryView.sid)) {
-    endUnconnectedRadioActivity();
-    return false;
-  }
-
-  const bool advertiserAddressRandom = ((secondaryHeader >> 6U) & 0x1U) != 0U;
-  if (result != nullptr) {
-    result->advertiserAddressRandom = advertiserAddressRandom;
-    memcpy(result->advertiserAddress, secondaryView.advA,
-           sizeof(result->advertiserAddress));
-    result->secondaryPacketCount = 1U;
-    result->dataLength = 0U;
-  }
-  if ((secondaryView.advDataLength > 0U) && (result != nullptr)) {
-    memcpy(result->data, secondaryView.advData, secondaryView.advDataLength);
-    result->dataLength = secondaryView.advDataLength;
-  }
-
-  const bool scannerAddressRandom =
+  const bool initiatorAddressRandom =
       (addressType_ == BleAddressType::kRandomStatic);
-  txPacket_[0] = static_cast<uint8_t>(kBlePduScanReq |
-                                      ((scannerAddressRandom ? 1U : 0U) << 6U) |
-                                      ((advertiserAddressRandom ? 1U : 0U) << 7U));
-  txPacket_[1] = 12U;
+  const bool useChSel2 = useChSel2_ && advChSel2;
+  uint8_t entropy[7] = {0};
+  const uint32_t seed =
+      micros() ^ (static_cast<uint32_t>(address_[0]) << 24U) ^
+      (static_cast<uint32_t>(peerAddress[0]) << 16U) ^
+      (static_cast<uint32_t>(peerAddress[5]) << 8U) ^
+      static_cast<uint32_t>(intervalUnits);
+  fillPseudoRandomBytes(entropy, sizeof(entropy), seed);
+
+  uint32_t accessAddress = readLe32(&entropy[0]);
+  if (accessAddress == kBleAccessAddress || accessAddress == 0U ||
+      accessAddress == 0xFFFFFFFFUL) {
+    accessAddress ^= 0xC3A55A3CUL;
+  }
+  uint32_t crcInit = readLe24(&entropy[4]);
+  if (crcInit == 0U || crcInit == 0x00FFFFFFUL) {
+    crcInit ^= 0x005A96A5UL;
+  }
+  crcInit &= 0x00FFFFFFUL;
+
+  txPacket_[0] = static_cast<uint8_t>(
+      kBlePduConnectInd |
+      ((useChSel2 ? 1U : 0U) << 5U) |
+      ((initiatorAddressRandom ? 1U : 0U) << 6U) |
+      ((peerAddressRandom ? 1U : 0U) << 7U));
+  txPacket_[1] = 34U;
   memcpy(&txPacket_[2], address_, 6U);
-  memcpy(&txPacket_[8], secondaryView.advA, 6U);
+  memcpy(&txPacket_[8], peerAddress, 6U);
+
+  uint8_t* llData = &txPacket_[14];
+  writeLe32(&llData[0], accessAddress);
+  writeLe24(&llData[4], crcInit);
+  llData[7] = 1U;
+  writeLe16(&llData[8], 0U);
+  writeLe16(&llData[10], intervalUnits);
+  writeLe16(&llData[12], 0U);
+  writeLe16(&llData[14], supervisionTimeoutUnits);
+  llData[16] = 0xFFU;
+  llData[17] = 0xFFU;
+  llData[18] = 0xFFU;
+  llData[19] = 0xFFU;
+  llData[20] = 0x1FU;
+  llData[21] = static_cast<uint8_t>((3U << 5U) | (hopIncrement & 0x1FU));
 
   clearRadioCoreEvents(radio_);
   radio_->PACKETPTR =
@@ -16896,191 +16263,33 @@ bool BleRadio::scanExtendedActiveOnce(BleAdvertisingChannel channel,
       ((RADIO_SHORTS_PHYEND_DISABLE_Enabled << RADIO_SHORTS_PHYEND_DISABLE_Pos) &
        RADIO_SHORTS_PHYEND_DISABLE_Msk);
 
-  const uint32_t txTriggerTargetUs = secondaryEndUs + kBleConnTxenAfterRxUs;
-  uint32_t txTriggerNowUs = bleTimingUs();
+  const uint32_t txTriggerTargetUs = advEndUs + kBleConnTxenAfterRxUs;
+  uint32_t txTriggerNowUs = micros();
   while (!timeReachedUs(txTriggerNowUs, txTriggerTargetUs)) {
-    txTriggerNowUs = bleTimingUs();
+    txTriggerNowUs = micros();
   }
 
   radio_->TASKS_TXEN = RADIO_TASKS_TXEN_TASKS_TXEN_Trigger;
-  bool txDisabled = waitDisabled(spinLimit / 2U + 1U);
+  const bool txEndSeen = waitForEnd(spinLimit / 2U + 1U);
+  bool txDisabled = false;
+  if (txEndSeen) {
+    txDisabled = waitDisabled(spinLimit / 2U + 1U);
+  }
   if (!txDisabled) {
     radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
     txDisabled = waitDisabled(spinLimit / 2U + 1U);
   }
+  const uint32_t connectIndEndUs = micros();
   radio_->SHORTS = 0U;
+  clearRadioCoreEvents(radio_);
   if (!txDisabled) {
-    clearRadioCoreEvents(radio_);
-    endUnconnectedRadioActivity();
     return false;
   }
 
-  uint8_t scanRspHeader = 0U;
-  uint8_t scanRspPayloadLength = 0U;
-  const uint8_t* scanRspPayload = nullptr;
-  int8_t scanRspRssi = -127;
-  uint32_t scanRspStartUs = 0U;
-  uint32_t scanRspEndUs = 0U;
-  if (!receivePacketOnCurrentChannel(scanRspListenSpinLimit, spinLimit, &scanRspHeader,
-                                     &scanRspPayloadLength, &scanRspPayload,
-                                     &scanRspRssi, &scanRspStartUs,
-                                     &scanRspEndUs)) {
-    endUnconnectedRadioActivity();
-    return false;
-  }
-
-  if (static_cast<uint8_t>(scanRspHeader & 0x0FU) != kBlePduAdvExtInd) {
-    endUnconnectedRadioActivity();
-    return false;
-  }
-
-  BleExtendedHeaderView scanRspView{};
-  if (!parseBleExtendedHeader(scanRspPayload, scanRspPayloadLength, &scanRspView) ||
-      !scanRspView.valid ||
-      (scanRspView.advMode != kBleExtendedAdvModeNonConnNonScan) ||
-      !scanRspView.hasAdvA || !scanRspView.hasAdi ||
-      (scanRspView.did != primaryView.did) ||
-      (scanRspView.sid != primaryView.sid) ||
-      !bleAddressEqual(scanRspView.advA, secondaryView.advA)) {
-    endUnconnectedRadioActivity();
-    return false;
-  }
-
-  uint16_t scanRspDataLength = 0U;
-  if (scanRspView.advDataLength > 0U) {
-    scanRspDataLength = scanRspView.advDataLength;
-    if (result != nullptr) {
-      memcpy(result->scanRspData, scanRspView.advData, scanRspView.advDataLength);
-      result->scanRspDataLength = scanRspDataLength;
-    }
-  }
-
-  uint8_t scanRspPacketCount = 1U;
-  if (result != nullptr) {
-    result->scanResponseReceived = true;
-    result->scanRspRssiDbm = scanRspRssi;
-    result->scanRspSecondaryPacketCount = scanRspPacketCount;
-  }
-
-  BleExtendedAuxPtrView nextRspAux = scanRspView.auxPtr;
-  uint32_t previousRspStartUs = scanRspStartUs;
-  bool expectAnotherScanRspPacket = scanRspView.hasAuxPtr;
-  while (expectAnotherScanRspPacket) {
-    if (scanRspPacketCount >= kBleExtendedSecondaryPacketCountMax) {
-      endUnconnectedRadioActivity();
-      return false;
-    }
-    if (nextRspAux.phy != kBleExtendedAuxPhy1M) {
-      endUnconnectedRadioActivity();
-      return false;
-    }
-    if (!setDataChannel(nextRspAux.channel)) {
-      endUnconnectedRadioActivity();
-      return false;
-    }
-
-    const uint32_t targetUs = previousRspStartUs + nextRspAux.offsetUs;
-    const uint32_t armUs = targetUs - kBleExtendedAuxRxLeadUs;
-    nowUs = bleTimingUs();
-    while (!timeReachedUs(nowUs, armUs)) {
-      nowUs = bleTimingUs();
-    }
-
-    uint8_t chainHeader = 0U;
-    uint8_t chainPayloadLength = 0U;
-    const uint8_t* chainPayload = nullptr;
-    int8_t chainRssi = -127;
-    uint32_t chainStartUs = 0U;
-    uint32_t chainEndUs = 0U;
-    if (!receivePacketOnCurrentChannel(secondaryListenSpinLimit, spinLimit,
-                                       &chainHeader, &chainPayloadLength,
-                                       &chainPayload, &chainRssi,
-                                       &chainStartUs, &chainEndUs)) {
-      endUnconnectedRadioActivity();
-      return false;
-    }
-    if (static_cast<uint8_t>(chainHeader & 0x0FU) != kBlePduAdvExtInd) {
-      endUnconnectedRadioActivity();
-      return false;
-    }
-
-    BleExtendedHeaderView chainView{};
-    if (!parseBleExtendedHeader(chainPayload, chainPayloadLength, &chainView) ||
-        !chainView.valid ||
-        (chainView.advMode != kBleExtendedAdvModeNonConnNonScan) ||
-        !chainView.hasAdi || (chainView.did != primaryView.did) ||
-        (chainView.sid != primaryView.sid)) {
-      endUnconnectedRadioActivity();
-      return false;
-    }
-    if ((static_cast<uint32_t>(scanRspDataLength) + chainView.advDataLength) >
-        kBleExtendedAdvDataMaxLength) {
-      endUnconnectedRadioActivity();
-      return false;
-    }
-    if ((chainView.advDataLength > 0U) && (result != nullptr)) {
-      memcpy(&result->scanRspData[scanRspDataLength], chainView.advData,
-             chainView.advDataLength);
-    }
-    scanRspDataLength =
-        static_cast<uint16_t>(scanRspDataLength + chainView.advDataLength);
-    ++scanRspPacketCount;
-    if (result != nullptr) {
-      result->scanRspDataLength = scanRspDataLength;
-      result->scanRspSecondaryPacketCount = scanRspPacketCount;
-      result->scanRspRssiDbm = chainRssi;
-    }
-
-    if (!chainView.hasAuxPtr) {
-      expectAnotherScanRspPacket = false;
-      break;
-    }
-    if (chainView.auxPtr.phy != kBleExtendedAuxPhy1M) {
-      endUnconnectedRadioActivity();
-      return false;
-    }
-
-    nextRspAux = chainView.auxPtr;
-    previousRspStartUs = chainStartUs;
-  }
-
-  endUnconnectedRadioActivity();
-  return true;
-}
-
-bool BleRadio::scanExtendedActiveCycle(BleExtendedScanResult* result,
-                                       uint32_t perChannelPrimaryListenSpinLimit,
-                                       uint32_t secondaryListenSpinLimit,
-                                       uint32_t scanRspListenSpinLimit) {
-  static constexpr BleAdvertisingChannel kChannels[3] = {
-      BleAdvertisingChannel::k37,
-      BleAdvertisingChannel::k38,
-      BleAdvertisingChannel::k39,
-  };
-
-  const uint32_t firstPassSpin = perChannelPrimaryListenSpinLimit;
-  const uint32_t secondPassSpin =
-      (perChannelPrimaryListenSpinLimit > 1U)
-          ? (perChannelPrimaryListenSpinLimit / 2U)
-          : perChannelPrimaryListenSpinLimit;
-
-  for (uint8_t pass = 0U; pass < 2U; ++pass) {
-    const uint32_t dwell = (pass == 0U) ? firstPassSpin : secondPassSpin;
-    for (uint8_t i = 0U; i < 3U; ++i) {
-      const uint8_t idx = static_cast<uint8_t>((scanCycleStartIndex_ + i) % 3U);
-      if (scanExtendedActiveOnce(kChannels[idx], result, dwell,
-                                 secondaryListenSpinLimit,
-                                 scanRspListenSpinLimit,
-                                 dwell + secondaryListenSpinLimit +
-                                     scanRspListenSpinLimit + 300000UL)) {
-        scanCycleStartIndex_ = static_cast<uint8_t>((idx + 1U) % 3U);
-        return true;
-      }
-    }
-  }
-
-  scanCycleStartIndex_ = static_cast<uint8_t>((scanCycleStartIndex_ + 1U) % 3U);
-  return false;
+  return startCentralConnection(peerAddress, peerAddressRandom, accessAddress,
+                                crcInit, intervalUnits,
+                                supervisionTimeoutUnits, hopIncrement,
+                                useChSel2, connectIndEndUs);
 }
 
 bool BleRadio::handleRequestAndMaybeRespond(BleAdvertisingChannel channel,
@@ -17268,6 +16477,7 @@ bool BleRadio::startConnectionFromConnectInd(const uint8_t* payload, uint8_t len
   connectionTxSn_ = 0U;
   connectionLastTxSn_ = 0U;
   connectionTxHistoryValid_ = false;
+  connectionFreshTxAllowed_ = true;
   connectionEventCounter_ = 0U;
   connectionMissedEventCount_ = 0U;
   connectionFirstEventListenUs_ =
@@ -17310,6 +16520,8 @@ bool BleRadio::startConnectionFromConnectInd(const uint8_t* payload, uint8_t len
   connectionPreparedWriteValue_[0] = 0U;
   connectionPreparedWriteValue_[1] = 0U;
   connectionPreparedWriteMask_ = 0U;
+  connectionServiceBusy_ = false;
+  clearQueuedConnectionEvents();
   clearCustomGattConnectionState();
   clearConnectionSecurityState();
   smpPrefetchedLocalRandomValid_ = false;
@@ -17345,8 +16557,109 @@ bool BleRadio::startConnectionFromConnectInd(const uint8_t* payload, uint8_t len
   // Do not add extra background-advertising or RF-path work here unless it is
   // proven safe against the first connection-event anchor on hardware.
   connected_ = true;
-  prefetchConnectionSecurityMaterial(kBleSecurityRandomSpinLimit);
+  connectionRole_ = BleConnectionRole::kPeripheral;
   emitBleTrace("CONNECTED");
+  return true;
+}
+
+bool BleRadio::startCentralConnection(const uint8_t peerAddress[6],
+                                      bool peerAddressRandom,
+                                      uint32_t accessAddress, uint32_t crcInit,
+                                      uint16_t intervalUnits,
+                                      uint16_t supervisionTimeoutUnits,
+                                      uint8_t hopIncrement, bool useChSel2,
+                                      uint32_t connectIndEndUs) {
+  if (!initialized_ || radio_ == nullptr || peerAddress == nullptr) {
+    return false;
+  }
+  if (intervalUnits < 6U || intervalUnits > 3200U ||
+      supervisionTimeoutUnits < 10U ||
+      hopIncrement < 5U || hopIncrement > 16U ||
+      accessAddress == kBleAccessAddress) {
+    return false;
+  }
+
+  memcpy(connectionPeerAddress_, peerAddress, sizeof(connectionPeerAddress_));
+  connectionPeerAddressRandom_ = peerAddressRandom;
+  connectionAccessAddress_ = accessAddress;
+  connectionCrcInit_ = (crcInit & 0x00FFFFFFUL);
+  connectionIntervalUnits_ = intervalUnits;
+  connectionLatency_ = 0U;
+  connectionTimeoutUnits_ = supervisionTimeoutUnits;
+  memset(connectionChannelMap_, 0, sizeof(connectionChannelMap_));
+  connectionChannelMap_[0] = 0xFFU;
+  connectionChannelMap_[1] = 0xFFU;
+  connectionChannelMap_[2] = 0xFFU;
+  connectionChannelMap_[3] = 0xFFU;
+  connectionChannelMap_[4] = 0x1FU;
+  connectionChannelCount_ = 37U;
+  connectionHop_ = hopIncrement;
+  connectionUseChSel2_ = useChSel2;
+  connectionChannelId_ = static_cast<uint16_t>(
+      (connectionAccessAddress_ & 0xFFFFU) ^
+      ((connectionAccessAddress_ >> 16U) & 0xFFFFU));
+  connectionSca_ = 3U;
+  connectionChanUse_ = 0U;
+  connectionExpectedRxSn_ = 0U;
+  connectionTxSn_ = 0U;
+  connectionTxHistoryValid_ = false;
+  connectionFreshTxAllowed_ = true;
+  connectionEventCounter_ = 0U;
+  connectionMissedEventCount_ = 0U;
+  connectionFirstEventListenUs_ = 0U;
+  connectionSyncAttemptsRemaining_ = 0U;
+  connectionAttMtu_ = kBleDefaultAttMtu;
+  connectionLastTxLlid_ = 0x01U;
+  connectionLastTxLength_ = 0U;
+  connectionLastTxPlainLlid_ = 0x01U;
+  connectionLastTxPlainLength_ = 0U;
+  memset(connectionLastTxPlainPayload_, 0, sizeof(connectionLastTxPlainPayload_));
+  connectionPendingTxLlid_ = 0x01U;
+  connectionPendingTxLength_ = 0U;
+  connectionPendingTxValid_ = false;
+  memset(connectionPendingTxPayload_, 0, sizeof(connectionPendingTxPayload_));
+  connectionUpdatePending_ = false;
+  connectionUpdateInstant_ = 0U;
+  connectionPendingIntervalUnits_ = 0U;
+  connectionPendingLatency_ = 0U;
+  connectionPendingTimeoutUnits_ = 0U;
+  connectionChannelMapPending_ = false;
+  connectionChannelMapInstant_ = 0U;
+  memset(connectionPendingChannelMap_, 0, sizeof(connectionPendingChannelMap_));
+  connectionPendingChannelCount_ = 0U;
+  connectionServiceChangedIndicationsEnabled_ = false;
+  connectionServiceChangedIndicationPending_ = false;
+  connectionServiceChangedIndicationAwaitingConfirm_ = false;
+  connectionBatteryNotificationsEnabled_ = false;
+  connectionBatteryNotificationPending_ = false;
+  connectionPreparedWriteActive_ = false;
+  connectionPreparedWriteHandle_ = 0U;
+  connectionPreparedWriteValue_[0] = 0U;
+  connectionPreparedWriteValue_[1] = 0U;
+  connectionPreparedWriteMask_ = 0U;
+  connectionServiceBusy_ = false;
+  clearQueuedConnectionEvents();
+  clearCustomGattConnectionState();
+  clearConnectionSecurityState();
+  memset(connectionTxPayload_, 0, sizeof(connectionTxPayload_));
+
+  radio_->BASE0 = bleAccessAddressBase(connectionAccessAddress_);
+  radio_->PREFIX0 = (radio_->PREFIX0 & ~RADIO_PREFIX0_AP0_Msk) |
+                    ((bleAccessAddressPrefix(connectionAccessAddress_)
+                      << RADIO_PREFIX0_AP0_Pos) &
+                     RADIO_PREFIX0_AP0_Msk);
+  radio_->CRCINIT = (connectionCrcInit_ & RADIO_CRCINIT_CRCINIT_Msk);
+  radio_->TXADDRESS =
+      (0UL << RADIO_TXADDRESS_TXADDRESS_Pos) & RADIO_TXADDRESS_TXADDRESS_Msk;
+  radio_->RXADDRESSES =
+      (RADIO_RXADDRESSES_ADDR0_Enabled << RADIO_RXADDRESSES_ADDR0_Pos) &
+      RADIO_RXADDRESSES_ADDR0_Msk;
+
+  const uint32_t nowUs = (connectIndEndUs != 0U) ? connectIndEndUs : micros();
+  connectionNextEventUs_ = nowUs + 1250UL;
+  connected_ = true;
+  connectionRole_ = BleConnectionRole::kCentral;
+  emitBleTrace("CONNECTED_CENTRAL");
   return true;
 }
 
@@ -17526,12 +16839,13 @@ uint8_t BleRadio::readAttributeValue(uint16_t handle, uint16_t offset,
     default: {
       const BleCustomServiceState* service = findCustomServiceByHandle(handle);
       if (service != nullptr) {
-        const uint8_t uuidLength = customUuidLength(service->uuid.length);
-        if (uuidLength == 0U) {
-          return kAttrReadInvalidHandleLen;
+        if (service->uuidSize == kBleUuid128Size) {
+          memcpy(&fullValue[0], service->uuid, kBleUuid128Size);
+          fullLen = kBleUuid128Size;
+        } else {
+          writeLe16(&fullValue[0], bleUuidRead16(service->uuid, service->uuidSize));
+          fullLen = kBleUuid16Size;
         }
-        memcpy(&fullValue[0], service->uuid.bytes, uuidLength);
-        fullLen = uuidLength;
         break;
       }
 
@@ -17560,14 +16874,10 @@ uint8_t BleRadio::readAttributeValue(uint16_t handle, uint16_t offset,
         if (candidate.declarationHandle != handle) {
           continue;
         }
-        fullValue[0] = candidate.properties;
-        writeLe16(&fullValue[1], candidate.valueHandle);
-        const uint8_t uuidLength = customUuidLength(candidate.uuid.length);
-        if (uuidLength == 0U) {
-          return kAttrReadInvalidHandleLen;
-        }
-        memcpy(&fullValue[3], candidate.uuid.bytes, uuidLength);
-        fullLen = static_cast<uint8_t>(3U + uuidLength);
+        writeCharacteristicDeclarationValue(fullValue, candidate.properties,
+                                            candidate.valueHandle, candidate.uuid,
+                                            candidate.uuidSize);
+        fullLen = bleCharacteristicDeclarationValueLen(candidate.uuidSize);
         break;
       }
       if (fullLen == 0U) {
@@ -17665,14 +16975,15 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
         ++recordCount;
       }
       for (uint8_t i = 0U;
-           (i < customGattServiceCount_) && !stopFindInfo; ++i) {
+           i < customGattServiceCount_; ++i) {
         const BleCustomServiceState& service = customGattServices_[i];
         if (inHandleRange(service.serviceHandle, start, end)) {
-          if (responseFormat == kAttFindInfoFormat128Bit || (used + 4U) > maxAttResponseLen) {
+          if (recordCount == 0U) {
+            outAttResponse[1] = 0x01U;
+          }
+          if (outAttResponse[1] != 0x01U || (used + 4U) > maxAttResponseLen) {
             break;
           }
-          responseFormat = kAttFindInfoFormat16Bit;
-          outAttResponse[1] = responseFormat;
           writeLe16(&outAttResponse[used], service.serviceHandle);
           writeLe16(&outAttResponse[used + 2U], kUuidPrimaryService);
           used += 4U;
@@ -17685,48 +16996,48 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
             continue;
           }
           if (inHandleRange(ch.declarationHandle, start, end)) {
-            if (responseFormat == kAttFindInfoFormat128Bit ||
-                (used + 4U) > maxAttResponseLen) {
+            if (recordCount == 0U) {
+              outAttResponse[1] = 0x01U;
+            }
+            if (outAttResponse[1] != 0x01U || (used + 4U) > maxAttResponseLen) {
               break;
             }
-            responseFormat = kAttFindInfoFormat16Bit;
-            outAttResponse[1] = responseFormat;
             writeLe16(&outAttResponse[used], ch.declarationHandle);
             writeLe16(&outAttResponse[used + 2U], kUuidCharacteristic);
             used += 4U;
             ++recordCount;
           }
           if (inHandleRange(ch.valueHandle, start, end)) {
-            const uint8_t uuidLength = customUuidLength(ch.uuid.length);
-            const uint8_t nextFormat =
-                (uuidLength == kBleUuidLength128) ? kAttFindInfoFormat128Bit
-                                                  : kAttFindInfoFormat16Bit;
-            const uint16_t recordLen = static_cast<uint16_t>(2U + uuidLength);
-            if (uuidLength == 0U) {
-              stopFindInfo = true;
+            if (recordCount == 0U) {
+              outAttResponse[1] = (ch.uuidSize == kBleUuid128Size) ? 0x02U : 0x01U;
+            }
+            if ((outAttResponse[1] == 0x01U && ch.uuidSize != kBleUuid16Size) ||
+                (outAttResponse[1] == 0x02U && ch.uuidSize != kBleUuid128Size)) {
               break;
             }
-            if ((responseFormat != 0U && responseFormat != nextFormat) ||
-                (used + recordLen) > maxAttResponseLen) {
-              stopFindInfo = true;
+            const uint16_t entrySize =
+                (outAttResponse[1] == 0x02U) ? 18U : 4U;
+            if ((used + entrySize) > maxAttResponseLen) {
               break;
             }
-            responseFormat = nextFormat;
-            outAttResponse[1] = responseFormat;
             writeLe16(&outAttResponse[used], ch.valueHandle);
-            memcpy(&outAttResponse[used + 2U], ch.uuid.bytes, uuidLength);
-            used += recordLen;
+            if (outAttResponse[1] == 0x02U) {
+              memcpy(&outAttResponse[used + 2U], ch.uuid, kBleUuid128Size);
+              used += 18U;
+            } else {
+              writeLe16(&outAttResponse[used + 2U], bleUuidRead16(ch.uuid, ch.uuidSize));
+              used += 4U;
+            }
             ++recordCount;
           }
           if (ch.cccdHandle != 0U &&
               inHandleRange(ch.cccdHandle, start, end)) {
-            if (responseFormat == kAttFindInfoFormat128Bit ||
-                (used + 4U) > maxAttResponseLen) {
-              stopFindInfo = true;
+            if (recordCount == 0U) {
+              outAttResponse[1] = 0x01U;
+            }
+            if (outAttResponse[1] != 0x01U || (used + 4U) > maxAttResponseLen) {
               break;
             }
-            responseFormat = kAttFindInfoFormat16Bit;
-            outAttResponse[1] = responseFormat;
             writeLe16(&outAttResponse[used], ch.cccdHandle);
             writeLe16(&outAttResponse[used + 2U], kUuidClientCharacteristicConfig);
             used += 4U;
@@ -17757,38 +17068,44 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
                                      outAttResponse, outAttResponseLength);
       }
 
-      const uint8_t valueLen = static_cast<uint8_t>(requestLength - 7U);
+      const uint16_t valueLen = static_cast<uint16_t>(requestLength - 7U);
       if (attrType != kUuidPrimaryService ||
-          (valueLen != kBleUuidLength16 && valueLen != kBleUuidLength128)) {
+          (valueLen != kBleUuid16Size && valueLen != kBleUuid128Size)) {
         return buildAttErrorResponse(opcode, rawStart, kAttErrAttributeNotFound,
                                      outAttResponse, outAttResponseLength);
       }
+
+      const uint8_t* requestedServiceUuid = &attRequest[7];
+      const uint16_t serviceUuid16 =
+          (valueLen == kBleUuid16Size) ? readLe16(requestedServiceUuid) : 0U;
       outAttResponse[0] = kAttOpFindByTypeValueRsp;
       uint16_t used = 1U;
       const uint16_t maxRecords = static_cast<uint16_t>((maxAttResponseLen - 1U) / 4U);
       uint16_t recordCount = 0U;
-      for (size_t i = 0; i < (sizeof(kBlePrimaryServices) / sizeof(kBlePrimaryServices[0]));
-           ++i) {
-        const BlePrimaryServiceRecord& service = kBlePrimaryServices[i];
-        if (valueLen != kBleUuidLength16 || service.uuid16 != readLe16(&attRequest[7])) {
-          continue;
+      if (valueLen == kBleUuid16Size) {
+        for (size_t i = 0; i < (sizeof(kBlePrimaryServices) / sizeof(kBlePrimaryServices[0]));
+             ++i) {
+          const BlePrimaryServiceRecord& service = kBlePrimaryServices[i];
+          if (service.uuid16 != serviceUuid16) {
+            continue;
+          }
+          if (!inHandleRange(service.startHandle, rawStart, end)) {
+            continue;
+          }
+          if (recordCount >= maxRecords) {
+            break;
+          }
+          writeLe16(&outAttResponse[used], service.startHandle);
+          writeLe16(&outAttResponse[used + 2U], service.endHandle);
+          used += 4U;
+          ++recordCount;
         }
-        if (!inHandleRange(service.startHandle, rawStart, end)) {
-          continue;
-        }
-        if (recordCount >= maxRecords) {
-          break;
-        }
-        writeLe16(&outAttResponse[used], service.startHandle);
-        writeLe16(&outAttResponse[used + 2U], service.endHandle);
-        used += 4U;
-        ++recordCount;
       }
       for (uint8_t i = 0U;
            (i < customGattServiceCount_) && (recordCount < maxRecords); ++i) {
         const BleCustomServiceState& service = customGattServices_[i];
-        if (!customUuidMatchesRaw(service.uuid.bytes, service.uuid.length, &attRequest[7],
-                                  valueLen)) {
+        if (!bleUuidEquals(service.uuid, service.uuidSize, requestedServiceUuid,
+                           static_cast<uint8_t>(valueLen))) {
           continue;
         }
         if (!inHandleRange(service.serviceHandle, rawStart, end)) {
@@ -17870,25 +17187,24 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
         if (!inHandleRange(service.serviceHandle, start, end)) {
           continue;
         }
-        const uint8_t uuidLength = customUuidLength(service.uuid.length);
         const uint8_t candidateEntryLen =
-            uuidLength == 0U ? 0U : static_cast<uint8_t>(4U + uuidLength);
-        if (candidateEntryLen == 0U) {
-          break;
+            (service.uuidSize == kBleUuid128Size) ? 20U : 6U;
+        if (recordCount == 0U) {
+          outAttResponse[1] = candidateEntryLen;
         }
-        if (entryLen == 0U) {
-          entryLen = candidateEntryLen;
-          outAttResponse[1] = entryLen;
-        } else if (candidateEntryLen != entryLen) {
-          break;
-        }
-        if ((used + entryLen) > maxAttResponseLen) {
+        if (candidateEntryLen != outAttResponse[1] ||
+            (used + candidateEntryLen) > maxAttResponseLen) {
           break;
         }
         writeLe16(&outAttResponse[used], service.serviceHandle);
         writeLe16(&outAttResponse[used + 2U], service.endHandle);
-        memcpy(&outAttResponse[used + 4U], service.uuid.bytes, uuidLength);
-        used += entryLen;
+        if (candidateEntryLen == 20U) {
+          memcpy(&outAttResponse[used + 4U], service.uuid, kBleUuid128Size);
+        } else {
+          writeLe16(&outAttResponse[used + 4U],
+                    bleUuidRead16(service.uuid, service.uuidSize));
+        }
+        used += candidateEntryLen;
         ++recordCount;
       }
 
@@ -17908,6 +17224,14 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
 
       const uint16_t rawStart = readLe16(&attRequest[1]);
       const uint16_t end = readLe16(&attRequest[3]);
+      const uint16_t typeLen = static_cast<uint16_t>(requestLength - 5U);
+      if (typeLen != kBleUuid16Size && typeLen != kBleUuid128Size) {
+        return buildAttErrorResponse(opcode, 0U, kAttErrInvalidPdu, outAttResponse,
+                                     outAttResponseLength);
+      }
+      const uint8_t* requestedType = &attRequest[5];
+      const uint16_t type =
+          (typeLen == kBleUuid16Size) ? readLe16(requestedType) : 0U;
       if (rawStart == 0U || rawStart > end) {
         return buildAttErrorResponse(opcode, rawStart, kAttErrInvalidHandle, outAttResponse,
                                      outAttResponseLength);
@@ -17926,7 +17250,11 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
       uint8_t entryLen = 0U;
       uint16_t recordCount = 0U;
 
-      if (typeLength == kBleUuidLength16 && type16 == kUuidCharacteristic) {
+      if (typeLen == kBleUuid16Size && type == kUuidCharacteristic) {
+        entryLen = 7U;
+        outAttResponse[1] = entryLen;
+        const uint16_t maxRecords =
+            static_cast<uint16_t>((maxAttResponseLen - 2U) / entryLen);
         for (size_t i = 0; i < (sizeof(kBleCharacteristics) / sizeof(kBleCharacteristics[0]));
              ++i) {
           const BleCharacteristicRecord& ch = kBleCharacteristics[i];
@@ -17963,23 +17291,27 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
           if (!inHandleRange(ch.declarationHandle, start, end)) {
             continue;
           }
-          if (entryLen == 0U) {
-            entryLen = responseEntryLen;
+          const uint8_t candidateEntryLen =
+              static_cast<uint8_t>(2U + bleCharacteristicDeclarationValueLen(ch.uuidSize));
+          if (recordCount == 0U) {
+            entryLen = candidateEntryLen;
             outAttResponse[1] = entryLen;
-          } else if (responseEntryLen != entryLen) {
-            break;
           }
-          if ((used + entryLen) > maxAttResponseLen) {
+          if (candidateEntryLen != entryLen ||
+              (used + candidateEntryLen) > maxAttResponseLen) {
             break;
           }
           writeLe16(&outAttResponse[used], ch.declarationHandle);
-          outAttResponse[used + 2U] = ch.properties;
-          writeLe16(&outAttResponse[used + 3U], ch.valueHandle);
-          memcpy(&outAttResponse[used + 5U], ch.uuid.bytes, uuidLength);
-          used += entryLen;
+          writeCharacteristicDeclarationValue(&outAttResponse[used + 2U], ch.properties,
+                                              ch.valueHandle, ch.uuid, ch.uuidSize);
+          used += candidateEntryLen;
           ++recordCount;
         }
-      } else if (typeLength == kBleUuidLength16 && type16 == kUuidPrimaryService) {
+      } else if (typeLen == kBleUuid16Size && type == kUuidPrimaryService) {
+        entryLen = 4U;
+        outAttResponse[1] = entryLen;
+        const uint16_t maxRecords =
+            static_cast<uint16_t>((maxAttResponseLen - 2U) / entryLen);
         for (size_t i = 0; i < (sizeof(kBlePrimaryServices) / sizeof(kBlePrimaryServices[0]));
              ++i) {
           const BlePrimaryServiceRecord& service = kBlePrimaryServices[i];
@@ -18007,24 +17339,24 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
           if (!inHandleRange(service.serviceHandle, start, end)) {
             continue;
           }
-          const uint8_t uuidLength = customUuidLength(service.uuid.length);
-          const uint8_t responseEntryLen =
-              uuidLength == 0U ? 0U : static_cast<uint8_t>(2U + uuidLength);
-          if (responseEntryLen == 0U) {
-            break;
-          }
-          if (entryLen == 0U) {
-            entryLen = responseEntryLen;
+          const uint8_t candidateEntryLen =
+              (service.uuidSize == kBleUuid128Size) ? 18U : 4U;
+          if (recordCount == 0U) {
+            entryLen = candidateEntryLen;
             outAttResponse[1] = entryLen;
-          } else if (responseEntryLen != entryLen) {
-            break;
           }
-          if ((used + entryLen) > maxAttResponseLen) {
+          if (candidateEntryLen != entryLen ||
+              (used + candidateEntryLen) > maxAttResponseLen) {
             break;
           }
           writeLe16(&outAttResponse[used], service.serviceHandle);
-          memcpy(&outAttResponse[used + 2U], service.uuid.bytes, uuidLength);
-          used += entryLen;
+          if (candidateEntryLen == 18U) {
+            memcpy(&outAttResponse[used + 2U], service.uuid, kBleUuid128Size);
+          } else {
+            writeLe16(&outAttResponse[used + 2U],
+                      bleUuidRead16(service.uuid, service.uuidSize));
+          }
+          used += candidateEntryLen;
           ++recordCount;
         }
       } else {
@@ -18082,10 +17414,11 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
         for (uint8_t i = 0U; i < customGattCharacteristicCount_; ++i) {
           const BleCustomCharacteristicState& ch = customGattCharacteristics_[i];
           uint16_t handle = 0U;
-          if (customUuidMatchesRaw(ch.uuid.bytes, ch.uuid.length, &attRequest[5], typeLength)) {
+          if (bleUuidEquals(ch.uuid, ch.uuidSize, requestedType,
+                            static_cast<uint8_t>(typeLen))) {
             handle = ch.valueHandle;
-          } else if (typeLength == kBleUuidLength16 &&
-                     type16 == kUuidClientCharacteristicConfig) {
+          } else if (typeLen == kBleUuid16Size &&
+                     type == kUuidClientCharacteristicConfig) {
             handle = ch.cccdHandle;
           }
           if (handle == 0U || !inHandleRange(handle, start, end)) {
