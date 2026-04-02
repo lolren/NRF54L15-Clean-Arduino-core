@@ -6,6 +6,10 @@
 #include "bluefruit_common.h"
 
 class BluefruitCompatManager;
+class BLEClientService;
+class BLEClientCharacteristic;
+class BLEClientUart;
+class EddyStoneUrl;
 
 enum {
   BANDWIDTH_AUTO = 0,
@@ -231,6 +235,7 @@ class BLEAdvertisingData {
   bool addAppearance(uint16_t appearance);
   bool addManufacturerData(const void* data, uint8_t len);
   bool addService(const BLEService& service);
+  bool addService(const BLEClientService& service);
   bool addService(const BLEService& service1, const BLEService& service2);
   bool addService(const BLEService& service1, const BLEService& service2,
                   const BLEService& service3);
@@ -271,6 +276,7 @@ class BLEAdvertising : public BLEAdvertisingData {
   void setStopCallback(stop_callback_t cb);
   uint16_t getInterval() const;
   bool setBeacon(class BLEBeacon& beacon);
+  bool setBeacon(class EddyStoneUrl& beacon);
 
   bool start(uint16_t timeout = 0);
   bool stop();
@@ -315,6 +321,22 @@ class BLEBeacon {
   int8_t rssi_at_1m_;
 };
 
+class EddyStoneUrl {
+ public:
+  EddyStoneUrl();
+  EddyStoneUrl(int8_t rssiAt0m, const char* url = nullptr);
+
+  void setUrl(const char* url);
+  void setRssi(int8_t rssiAt0m);
+
+  bool start();
+  bool start(BLEAdvertising& adv);
+
+ private:
+  int8_t rssi_;
+  const char* url_;
+};
+
 class BLEPeriph {
  public:
   BLEPeriph();
@@ -322,6 +344,7 @@ class BLEPeriph {
   void setConnectCallback(ble_connect_callback_t fp);
   void setDisconnectCallback(ble_disconnect_callback_t fp);
   void setConnInterval(uint16_t min_interval, uint16_t max_interval = 0);
+  void clearBonds();
 
  private:
   ble_connect_callback_t connect_callback_;
@@ -337,13 +360,23 @@ class BLEConnection {
   BLEConnection();
 
   uint16_t handle() const;
+  bool connected() const;
+  bool bonded() const;
+  bool secured() const;
   bool getPeerName(char* name, uint16_t bufsize) const;
+  bool disconnect() const;
   bool requestPHY() { return false; }
   bool requestDataLengthUpdate() { return false; }
   bool requestMtuExchange(uint16_t mtu) {
     (void)mtu;
     return false;
   }
+  bool requestPairing() const;
+  bool monitorRssi(uint8_t threshold = 0xFFU) const {
+    (void)threshold;
+    return connected();
+  }
+  int8_t getRssi() const { return 0; }
   uint16_t getMtu() const { return 23U; }
 
  private:
@@ -354,50 +387,80 @@ class BLEConnection {
 
 class BLECentral {
  public:
+  BLECentral();
+
+  void setConnectCallback(ble_connect_callback_t fp);
+  void setDisconnectCallback(ble_disconnect_callback_t fp);
   template <typename T>
-  void setConnectCallback(T) {}
+  void setConnectCallback(T fp) {
+    setConnectCallback(static_cast<ble_connect_callback_t>(fp));
+  }
   template <typename T>
-  void setDisconnectCallback(T) {}
-  bool connect(const ble_gap_evt_adv_report_t*) { return false; }
-  bool connected() const { return false; }
-  void clearBonds() {}
+  void setDisconnectCallback(T fp) {
+    setDisconnectCallback(static_cast<ble_disconnect_callback_t>(fp));
+  }
+  bool connect(const ble_gap_evt_adv_report_t* report);
+  bool connected() const;
+  void clearBonds();
+
+ private:
+  ble_connect_callback_t connect_callback_;
+  ble_disconnect_callback_t disconnect_callback_;
+
+  friend class BluefruitCompatManager;
 };
 
 class BLEScanner {
  public:
+  typedef void (*rx_callback_t)(ble_gap_evt_adv_report_t* report);
+
+  BLEScanner();
+
+  void setRxCallback(rx_callback_t fp);
   template <typename T>
-  void setRxCallback(T) {}
-  void setInterval(uint16_t, uint16_t = 0) {}
-  void useActiveScan(bool) {}
-  void restartOnDisconnect(bool) {}
-  void filterUuid(const BLEUuid&) {}
-  void filterService(const BLEUuid&) {}
-  void filterMSD(uint16_t) {}
-  void filterRssi(int8_t) {}
-  void start(uint16_t) {}
-  void resume() {}
-  bool checkReportForUuid(const ble_gap_evt_adv_report_t*, const BLEUuid&) const {
-    return false;
+  void setRxCallback(T fp) {
+    setRxCallback(static_cast<rx_callback_t>(fp));
   }
-  bool checkReportForUuid(const ble_gap_evt_adv_report_t*,
-                          const uint8_t uuid128[16]) const {
-    (void)uuid128;
-    return false;
-  }
-  bool checkReportForService(const ble_gap_evt_adv_report_t*, const BLEUuid&) const {
-    return false;
-  }
-  bool checkReportForService(const ble_gap_evt_adv_report_t*,
-                             const class BLEClientService&) const {
-    return false;
-  }
-  bool checkReportForService(const ble_gap_evt_adv_report_t*,
-                             const class BLEClientUart&) const {
-    return false;
-  }
-  int parseReportByType(const ble_gap_evt_adv_report_t*, uint8_t, void*, uint8_t) const {
-    return 0;
-  }
+  void setInterval(uint16_t interval, uint16_t window = 0);
+  void useActiveScan(bool enabled);
+  void restartOnDisconnect(bool enabled);
+  void filterUuid(const BLEUuid& uuid);
+  void filterService(const BLEUuid& uuid);
+  void filterService(const BLEClientService& service);
+  void filterMSD(uint16_t company_id);
+  void filterRssi(int8_t min_rssi_dbm);
+  void start(uint16_t timeout);
+  void resume();
+  bool checkReportForUuid(const ble_gap_evt_adv_report_t* report,
+                          const BLEUuid& uuid) const;
+  bool checkReportForUuid(const ble_gap_evt_adv_report_t* report,
+                          const uint8_t uuid128[16]) const;
+  bool checkReportForService(const ble_gap_evt_adv_report_t* report,
+                             const BLEUuid& uuid) const;
+  bool checkReportForService(const ble_gap_evt_adv_report_t* report,
+                             const BLEClientService& service) const;
+  bool checkReportForService(const ble_gap_evt_adv_report_t* report,
+                             const BLEClientUart& client_uart) const;
+  int parseReportByType(const ble_gap_evt_adv_report_t* report, uint8_t type,
+                        void* buffer, uint8_t buffer_len) const;
+
+ private:
+  rx_callback_t rx_callback_;
+  uint16_t interval_;
+  uint16_t window_;
+  uint16_t timeout_s_;
+  bool active_scan_;
+  bool restart_on_disconnect_;
+  bool running_;
+  bool paused_;
+  bool has_filter_uuid_;
+  BLEUuid filter_uuid_;
+  bool has_filter_msd_;
+  uint16_t filter_msd_company_;
+  bool has_filter_rssi_;
+  int8_t filter_rssi_dbm_;
+
+  friend class BluefruitCompatManager;
 };
 
 class BLEDiscovery {};
@@ -412,7 +475,71 @@ class BLESecurity {
   template <typename T>
   void setPairCompleteCallback(T) {}
   void setIOCaps(uint8_t) {}
+  void setIOCaps(bool, bool, bool) {}
   void setPIN(const char*) {}
+};
+
+enum {
+  ANCS_CAT_OTHER,
+  ANCS_CAT_INCOMING_CALL,
+  ANCS_CAT_MISSED_CALL,
+  ANCS_CAT_VOICE_MAIL,
+  ANCS_CAT_SOCIAL,
+  ANCS_CAT_SCHEDULE,
+  ANCS_CAT_EMAIL,
+  ANCS_CAT_NEWS,
+  ANCS_CAT_HEALTH_AND_FITNESS,
+  ANCS_CAT_BUSSINESS_AND_FINANCE,
+  ANCS_CAT_LOCATION,
+  ANCS_CAT_ENTERTAINMENT,
+};
+
+enum {
+  ANCS_EVT_NOTIFICATION_ADDED,
+  ANCS_EVT_NOTIFICATION_MODIFIED,
+  ANCS_EVT_NOTIFICATION_REMOVED,
+};
+
+enum {
+  ANCS_CMD_GET_NOTIFICATION_ATTR,
+  ANCS_CMD_GET_APP_ATTR,
+  ANCS_CMD_PERFORM_NOTIFICATION_ACTION,
+};
+
+enum {
+  ANCS_ATTR_APP_IDENTIFIER,
+  ANCS_ATTR_TITLE,
+  ANCS_ATTR_SUBTITLE,
+  ANCS_ATTR_MESSAGE,
+  ANCS_ATTR_MESSAGE_SIZE,
+  ANCS_ATTR_DATE,
+  ANCS_ATTR_POSITIVE_ACTION_LABEL,
+  ANCS_ATTR_NEGATIVE_ACTION_LABEL,
+  ANCS_ATTR_INVALID,
+};
+
+enum {
+  ANCS_ACTION_POSITIVE,
+  ANCS_ACTION_NEGATIVE,
+};
+
+enum {
+  ANCS_APP_ATTR_DISPLAY_NAME,
+  ANCS_APP_ATTR_INVALID,
+};
+
+struct ATTR_PACKED AncsNotification_t {
+  uint8_t eventID;
+  struct ATTR_PACKED {
+    uint8_t silent : 1;
+    uint8_t important : 1;
+    uint8_t preExisting : 1;
+    uint8_t positiveAction : 1;
+    uint8_t NegativeAction : 1;
+  } eventFlags;
+  uint8_t categoryID;
+  uint8_t categoryCount;
+  uint32_t uid;
 };
 
 class BLEClientCharacteristic {
@@ -421,106 +548,324 @@ class BLEClientCharacteristic {
 
   BLEUuid uuid;
 
-  BLEClientCharacteristic()
-      : uuid(), discovered_(false), notify_callback_(nullptr) {}
-  explicit BLEClientCharacteristic(BLEUuid bleuuid)
-      : uuid(bleuuid), discovered_(false), notify_callback_(nullptr) {}
+  BLEClientCharacteristic();
+  explicit BLEClientCharacteristic(BLEUuid bleuuid);
 
-  bool begin() { return true; }
-  bool discover(uint16_t conn_hdl) {
-    (void)conn_hdl;
-    discovered_ = false;
-    return false;
-  }
-  bool discover() {
-    discovered_ = false;
-    return false;
-  }
+  bool begin();
+  bool begin(BLEClientService* parent_service);
+  bool discover(uint16_t conn_hdl);
+  bool discover();
   bool discovered() const { return discovered_; }
   void setNotifyCallback(notify_cb_t fp) { notify_callback_ = fp; }
-  uint8_t read8() const { return 0U; }
-  bool enableNotify() { return false; }
+  BLEClientService& parentService();
+  const BLEClientService& parentService() const;
+  uint16_t read(void* buffer, uint16_t len);
+  uint8_t read8();
+  uint16_t write(const void* buffer, uint16_t len);
+  uint16_t write8(uint8_t value);
+  bool enableNotify();
+  bool disableNotify();
 
  protected:
+  bool begun_;
   bool discovered_;
   notify_cb_t notify_callback_;
+  BLEClientService* service_;
+  uint16_t conn_handle_;
+  uint16_t decl_handle_;
+  uint16_t value_handle_;
+  uint16_t end_handle_;
+  uint16_t cccd_handle_;
+  uint8_t last_value_[20];
+  uint8_t last_value_len_;
+
+  void handleNotify(const uint8_t* data, uint16_t len);
+  void resetDiscovery();
+
+  friend class BluefruitCompatManager;
+  friend class BLEClientUart;
+  friend class BLEClientDis;
+  friend class BLEClientBas;
 };
 
 class BLEClientService {
  public:
+  static BLEClientService* lastService;
+
   BLEUuid uuid;
 
-  BLEClientService() : uuid(), discovered_(false) {}
-  explicit BLEClientService(BLEUuid bleuuid) : uuid(bleuuid), discovered_(false) {}
+  BLEClientService();
+  explicit BLEClientService(BLEUuid bleuuid);
 
-  bool begin() { return true; }
-  bool discover(uint16_t conn_hdl) {
-    (void)conn_hdl;
-    discovered_ = false;
-    return false;
-  }
+  bool begin();
+  bool discover(uint16_t conn_hdl);
   bool discovered() const { return discovered_; }
+  uint16_t connHandle() const { return conn_handle_; }
 
  protected:
+  bool begun_;
   bool discovered_;
+  uint16_t conn_handle_;
+  uint16_t start_handle_;
+  uint16_t end_handle_;
+
+  void resetDiscovery();
+
+  friend class BLEClientCharacteristic;
+  friend class BLEClientUart;
+  friend class BLEClientDis;
+  friend class BLEClientBas;
 };
 class BLEClientUart : public Stream {
  public:
   typedef void (*rx_callback_t)(BLEClientUart& uart_svc);
 
-  BLEClientUart() : discovered_(false), rx_callback_(nullptr) {}
+  BLEClientUart();
 
-  bool begin() { return true; }
-  bool discover(uint16_t conn_hdl) {
-    (void)conn_hdl;
-    discovered_ = false;
-    return false;
-  }
+  bool begin();
+  bool discover(uint16_t conn_hdl);
   bool discovered() const { return discovered_; }
   void setRxCallback(rx_callback_t fp) { rx_callback_ = fp; }
-  bool enableTXD() { return false; }
-  int read() override { return -1; }
-  int available() override { return 0; }
-  int peek() override { return -1; }
-  void flush() override {}
-  size_t write(uint8_t value) override {
-    (void)value;
-    return 0U;
+  bool enableTXD();
+  uint16_t connHandle() const { return service_.conn_handle_; }
+  int read() override;
+  int read(uint8_t* buffer, size_t size);
+  int read(char* buffer, size_t size) {
+    return read(reinterpret_cast<uint8_t*>(buffer), size);
   }
+  int available() override;
+  int peek() override;
+  void flush() override;
+  size_t write(uint8_t value) override;
+  size_t write(const uint8_t* buffer, size_t size);
   using Print::write;
 
+  const BLEUuid& serviceUuid() const;
+
  private:
+  static constexpr uint16_t kRxFifoDepth = 256U;
+  static constexpr uint8_t kMaxInstances = 4U;
+
+  BLEClientService service_;
+  BLEClientCharacteristic txd_;
+  BLEClientCharacteristic rxd_;
+  static BLEClientUart* instances_[kMaxInstances];
+  static uint8_t instance_count_;
   bool discovered_;
   rx_callback_t rx_callback_;
+  uint8_t rx_fifo_[kRxFifoDepth];
+  uint16_t rx_head_;
+  uint16_t rx_tail_;
+  uint16_t rx_count_;
+
+  void handleTxdNotify(BLEClientCharacteristic* chr, uint8_t* data, uint16_t len);
+  static void txdNotifyThunk(BLEClientCharacteristic* chr, uint8_t* data, uint16_t len);
 };
 class BLEClientDis : public BLEClientService {
  public:
-  BLEClientDis() : BLEClientService(UUID16_SVC_DEVICE_INFORMATION) {}
+  BLEClientDis();
 
-  bool getManufacturer(char* buffer, uint16_t len) {
-    if (buffer != nullptr && len > 0U) {
-      buffer[0] = '\0';
-    }
-    return false;
-  }
+  bool begin();
+  bool discover(uint16_t conn_hdl);
+  bool getManufacturer(char* buffer, uint16_t len);
+  bool getModel(char* buffer, uint16_t len);
 
-  bool getModel(char* buffer, uint16_t len) {
-    if (buffer != nullptr && len > 0U) {
-      buffer[0] = '\0';
-    }
-    return false;
-  }
+ private:
+  BLEClientCharacteristic manufacturer_;
+  BLEClientCharacteristic model_;
 };
 class BLEClientBas : public BLEClientService {
  public:
-  BLEClientBas() : BLEClientService(UUID16_SVC_BATTERY) {}
-  uint8_t read() const { return 0U; }
+  BLEClientBas();
+
+  bool begin();
+  bool discover(uint16_t conn_hdl);
+  uint8_t read();
+
+ private:
+  BLEClientCharacteristic battery_;
 };
 class BLEClientCts : public BLEClientService {
  public:
-  BLEClientCts() : BLEClientService(UUID16_SVC_CURRENT_TIME) {}
+  typedef void (*adjust_callback_t)(uint8_t reason);
+
+  struct ATTR_PACKED CurrentTimeData {
+    uint16_t year;
+    uint8_t month;
+    uint8_t day;
+    uint8_t hour;
+    uint8_t minute;
+    uint8_t second;
+    uint8_t weekday;
+    uint8_t subsecond;
+    uint8_t adjust_reason;
+  } Time;
+
+  struct ATTR_PACKED LocalTimeInfoData {
+    int8_t timezone;
+    uint8_t dst_offset;
+  } LocalInfo;
+
+  BLEClientCts();
+
+  bool begin();
+  bool discover(uint16_t conn_hdl);
+  bool getCurrentTime();
+  bool getLocalTimeInfo();
+  bool enableAdjust();
+  void setAdjustCallback(adjust_callback_t fp) { adjust_callback_ = fp; }
+
+ private:
+  BLEClientCharacteristic current_time_;
+  BLEClientCharacteristic local_info_;
+  adjust_callback_t adjust_callback_;
+
+  void handleCurrentTimeNotify(uint8_t* data, uint16_t len);
+  static void currentTimeNotifyThunk(BLEClientCharacteristic* chr, uint8_t* data,
+                                     uint16_t len);
 };
-class BLEAncs {};
+class BLEAncs : public BLEClientService {
+ public:
+  typedef void (*notification_callback_t)(AncsNotification_t* notif);
+
+  BLEAncs();
+
+  bool begin();
+  bool discover(uint16_t conn_handle);
+  void setNotificationCallback(notification_callback_t fp);
+  bool enableNotification();
+  bool disableNotification();
+  uint16_t getAttribute(uint32_t uid, uint8_t attr, void* buffer, uint16_t bufsize);
+  uint16_t getAppAttribute(const char* appid, uint8_t attr, void* buffer, uint16_t bufsize);
+  bool performAction(uint32_t uid, uint8_t actionid);
+  uint16_t getAppName(uint32_t uid, void* buffer, uint16_t bufsize);
+  uint16_t getAppID(uint32_t uid, void* buffer, uint16_t bufsize);
+  uint16_t getTitle(uint32_t uid, void* buffer, uint16_t bufsize);
+  uint16_t getSubtitle(uint32_t uid, void* buffer, uint16_t bufsize);
+  uint16_t getMessage(uint32_t uid, void* buffer, uint16_t bufsize);
+  uint16_t getMessageSize(uint32_t uid);
+  uint16_t getDate(uint32_t uid, void* buffer, uint16_t bufsize);
+  uint16_t getPosActionLabel(uint32_t uid, void* buffer, uint16_t bufsize);
+  uint16_t getNegActionLabel(uint32_t uid, void* buffer, uint16_t bufsize);
+  bool actPositive(uint32_t uid);
+  bool actNegative(uint32_t uid);
+
+ private:
+  BLEClientCharacteristic control_;
+  BLEClientCharacteristic notification_;
+  BLEClientCharacteristic data_;
+  notification_callback_t notification_callback_;
+
+  void handleNotification(uint8_t* data, uint16_t len);
+  static void notificationThunk(BLEClientCharacteristic* chr, uint8_t* data, uint16_t len);
+  static void dataThunk(BLEClientCharacteristic* chr, uint8_t* data, uint16_t len);
+};
+
+class BLEClientHidAdafruit : public BLEClientService {
+ public:
+  typedef void (*kbd_callback_t)(hid_keyboard_report_t* report);
+  typedef void (*mse_callback_t)(hid_mouse_report_t* report);
+  typedef void (*gpd_callback_t)(hid_gamepad_report_t* report);
+
+  BLEClientHidAdafruit();
+
+  bool begin();
+  bool discover(uint16_t conn_handle);
+  bool getHidInfo(uint8_t info[4]);
+  uint8_t getCountryCode(void);
+  bool setBootMode(bool boot);
+  bool keyboardPresent(void);
+  bool enableKeyboard(void);
+  bool disableKeyboard(void);
+  void getKeyboardReport(hid_keyboard_report_t* report);
+  bool mousePresent(void);
+  bool enableMouse(void);
+  bool disableMouse(void);
+  void getMouseReport(hid_mouse_report_t* report);
+  bool gamepadPresent(void);
+  bool enableGamepad(void);
+  bool disableGamepad(void);
+  void getGamepadReport(hid_gamepad_report_t* report);
+  void setKeyboardReportCallback(kbd_callback_t fp);
+  void setMouseReportCallback(mse_callback_t fp);
+  void setGamepadReportCallback(gpd_callback_t fp);
+
+ private:
+  kbd_callback_t keyboard_callback_;
+  mse_callback_t mouse_callback_;
+  gpd_callback_t gamepad_callback_;
+  hid_keyboard_report_t last_keyboard_report_;
+  hid_mouse_report_t last_mouse_report_;
+  hid_gamepad_report_t last_gamepad_report_;
+  BLEClientCharacteristic protocol_mode_;
+  BLEClientCharacteristic hid_info_;
+  BLEClientCharacteristic hid_control_;
+  BLEClientCharacteristic keyboard_boot_input_;
+  BLEClientCharacteristic keyboard_boot_output_;
+  BLEClientCharacteristic mouse_boot_input_;
+  BLEClientCharacteristic gamepad_report_;
+
+  void handleKeyboardInput(uint8_t* data, uint16_t len);
+  void handleMouseInput(uint8_t* data, uint16_t len);
+  void handleGamepadInput(uint8_t* data, uint16_t len);
+  static void keyboardNotifyThunk(BLEClientCharacteristic* chr, uint8_t* data, uint16_t len);
+  static void mouseNotifyThunk(BLEClientCharacteristic* chr, uint8_t* data, uint16_t len);
+  static void gamepadNotifyThunk(BLEClientCharacteristic* chr, uint8_t* data, uint16_t len);
+};
+
+class BLEHidAdafruit : public BLEService {
+ public:
+  typedef void (*kbd_led_cb_t)(uint16_t conn_hdl, uint8_t leds_bitmap);
+
+  BLEHidAdafruit();
+
+  err_t begin() override;
+  void setKeyboardLedCallback(kbd_led_cb_t fp);
+  bool keyboardReport(hid_keyboard_report_t* report);
+  bool keyboardReport(uint8_t modifier, uint8_t keycode[6]);
+  bool keyPress(char ch);
+  bool keyRelease(void);
+  bool keySequence(const char* str, int interval = 5);
+  bool keyboardReport(uint16_t conn_hdl, hid_keyboard_report_t* report);
+  bool keyboardReport(uint16_t conn_hdl, uint8_t modifier, uint8_t keycode[6]);
+  bool keyPress(uint16_t conn_hdl, char ch);
+  bool keyRelease(uint16_t conn_hdl);
+  bool keySequence(uint16_t conn_hdl, const char* str, int interval = 5);
+  bool consumerReport(uint16_t usage_code);
+  bool consumerKeyPress(uint16_t usage_code);
+  bool consumerKeyRelease(void);
+  bool consumerReport(uint16_t conn_hdl, uint16_t usage_code);
+  bool consumerKeyPress(uint16_t conn_hdl, uint16_t usage_code);
+  bool consumerKeyRelease(uint16_t conn_hdl);
+  bool mouseReport(hid_mouse_report_t* report);
+  bool mouseReport(uint8_t buttons, int8_t x, int8_t y, int8_t wheel = 0, int8_t pan = 0);
+  bool mouseButtonPress(uint8_t buttons);
+  bool mouseButtonRelease(void);
+  bool mouseMove(int8_t x, int8_t y);
+  bool mouseScroll(int8_t scroll);
+  bool mousePan(int8_t pan);
+  bool mouseReport(uint16_t conn_hdl, hid_mouse_report_t* report);
+  bool mouseReport(uint16_t conn_hdl, uint8_t buttons, int8_t x, int8_t y,
+                   int8_t wheel = 0, int8_t pan = 0);
+  bool mouseButtonPress(uint16_t conn_hdl, uint8_t buttons);
+  bool mouseButtonRelease(uint16_t conn_hdl);
+  bool mouseMove(uint16_t conn_hdl, int8_t x, int8_t y);
+  bool mouseScroll(uint16_t conn_hdl, int8_t scroll);
+  bool mousePan(uint16_t conn_hdl, int8_t pan);
+
+ private:
+  uint8_t mouse_buttons_;
+  kbd_led_cb_t keyboard_led_callback_;
+};
+
+class BLEHidGamepad : public BLEService {
+ public:
+  BLEHidGamepad();
+
+  err_t begin() override;
+  bool report(hid_gamepad_report_t* report);
+  bool report(uint16_t conn_hdl, hid_gamepad_report_t* report);
+};
 
 class BLEDis : public BLEService {
  public:
@@ -672,6 +1017,7 @@ class AdafruitBluefruit {
   uint8_t getConnectedHandles(uint16_t* hdl_list, uint8_t max_count) const;
   uint16_t connHandle() const;
   bool disconnect(uint16_t conn_hdl);
+  void setRssiCallback(void (*fp)(uint16_t conn_hdl, int8_t rssi));
   BLEConnection* Connection(uint16_t conn_hdl);
 
  private:

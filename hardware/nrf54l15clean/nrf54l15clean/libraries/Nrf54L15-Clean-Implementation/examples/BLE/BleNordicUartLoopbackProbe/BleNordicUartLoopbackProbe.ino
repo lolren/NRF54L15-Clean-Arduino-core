@@ -51,6 +51,61 @@ static uint32_t g_lastStatusMs = 0U;
 static uint32_t g_connectedAtMs = 0U;
 static uint32_t g_echoedBytes = 0U;   // Bytes echoed this connection.
 static uint32_t g_droppedBytes = 0U;  // Bytes dropped this connection (TX full).
+volatile uint32_t g_connectCount = 0U;
+volatile uint32_t g_disconnectCount = 0U;
+volatile uint32_t g_pollEventCount = 0U;
+volatile uint32_t g_pollNoEventCount = 0U;
+volatile uint16_t g_lastEventCounter = 0U;
+volatile uint8_t g_lastDataChannel = 0U;
+volatile uint8_t g_lastDisconnectReason = 0U;
+volatile uint8_t g_lastDisconnectReasonRemote = 0U;
+volatile uint8_t g_initOk = 0U;
+volatile uint8_t g_setupStage = 0U;
+volatile uint8_t g_runtimeAddress[6] = {0U};
+volatile uint8_t g_runtimeAddressType = 0xFFU;
+volatile uint32_t g_unconnectedLoopCount = 0U;
+volatile uint32_t g_advertiseCallCount = 0U;
+volatile uint32_t g_advertiseOkCount = 0U;
+volatile uint32_t g_advertiseFailCount = 0U;
+volatile uint8_t g_lastAdvChannel = 0U;
+volatile uint8_t g_lastAdvSawConnectInd = 0U;
+volatile uint8_t g_lastAdvConnectIndChSel2 = 0U;
+volatile uint8_t g_lastAdvSawScanReq = 0U;
+volatile uint32_t g_advConnectIndCount = 0U;
+volatile uint32_t g_advConnectedAfterEventCount = 0U;
+volatile uint32_t g_advConnectIndLostBeforeLoopCount = 0U;
+volatile uint8_t g_lastPostAdvConnected = 0U;
+volatile uint8_t g_lastConnPeerAddress[6] = {0U};
+volatile uint8_t g_lastConnPeerAddressRandom = 0U;
+volatile uint32_t g_lastConnAccessAddress = 0U;
+volatile uint32_t g_lastConnCrcInit = 0U;
+volatile uint16_t g_lastConnIntervalUnits = 0U;
+volatile uint16_t g_lastConnLatency = 0U;
+volatile uint16_t g_lastConnTimeoutUnits = 0U;
+volatile uint8_t g_lastConnChannelMap[5] = {0U};
+volatile uint8_t g_lastConnChannelCount = 0U;
+volatile uint8_t g_lastConnHopIncrement = 0U;
+volatile uint8_t g_lastConnSleepClockAccuracy = 0U;
+volatile uint32_t g_lastDisconnectSequence = 0U;
+volatile uint32_t g_lastDisconnectNextEventUs = 0U;
+volatile uint16_t g_lastDisconnectEventCounterDebug = 0U;
+volatile uint16_t g_lastDisconnectMissedEventCount = 0U;
+volatile uint8_t g_lastDisconnectRole = 0U;
+volatile uint8_t g_lastDisconnectErrorCode = 0U;
+volatile uint8_t g_lastDisconnectExpectedRxSn = 0U;
+volatile uint8_t g_lastDisconnectTxSn = 0U;
+volatile uint8_t g_lastDisconnectPendingTxValid = 0U;
+volatile uint8_t g_lastDisconnectPendingTxLlid = 0U;
+volatile uint8_t g_lastDisconnectPendingTxLength = 0U;
+volatile uint8_t g_lastDisconnectLastTxOpcode = 0U;
+volatile uint8_t g_lastDisconnectLastTxLength = 0U;
+volatile uint8_t g_lastDisconnectLastRxOpcode = 0U;
+volatile uint8_t g_lastDisconnectLastRxLength = 0U;
+volatile uint8_t g_lastDisconnectValid = 0U;
+volatile uint32_t g_dbgLatePollCount = 0U;
+volatile uint32_t g_dbgConnRxTimeoutCount = 0U;
+volatile uint32_t g_dbgConnMissedEventCountLast = 0U;
+volatile uint32_t g_dbgConnMissedEventCountMax = 0U;
 
 // 0 dBm: good for general-purpose probe work within a few metres.
 static constexpr int8_t kTxPowerDbm = 0;
@@ -109,6 +164,54 @@ static void printAddress(const uint8_t* addr) {
       Serial.print(':');
     }
   }
+}
+
+static void snapshotConnectionInfo() {
+  BleConnectionInfo info{};
+  if (!g_ble.getConnectionInfo(&info)) {
+    return;
+  }
+  memcpy(const_cast<uint8_t*>(g_lastConnPeerAddress), info.peerAddress,
+         sizeof(g_lastConnPeerAddress));
+  g_lastConnPeerAddressRandom = info.peerAddressRandom ? 1U : 0U;
+  g_lastConnAccessAddress = info.accessAddress;
+  g_lastConnCrcInit = info.crcInit;
+  g_lastConnIntervalUnits = info.intervalUnits;
+  g_lastConnLatency = info.latency;
+  g_lastConnTimeoutUnits = info.supervisionTimeoutUnits;
+  memcpy(const_cast<uint8_t*>(g_lastConnChannelMap), info.channelMap,
+         sizeof(g_lastConnChannelMap));
+  g_lastConnChannelCount = info.channelCount;
+  g_lastConnHopIncrement = info.hopIncrement;
+  g_lastConnSleepClockAccuracy = info.sleepClockAccuracy;
+}
+
+static void snapshotDisconnectDebug() {
+  BleDisconnectDebug dbg{};
+  if (!g_ble.getDisconnectDebug(&dbg) || dbg.valid == 0U) {
+    return;
+  }
+  g_lastDisconnectSequence = dbg.sequence;
+  g_lastDisconnectNextEventUs = dbg.nextEventUs;
+  g_lastDisconnectEventCounterDebug = dbg.eventCounter;
+  g_lastDisconnectMissedEventCount = dbg.missedEventCount;
+  g_lastDisconnectReason = dbg.reason;
+  g_lastDisconnectRole = dbg.role;
+  g_lastDisconnectErrorCode = dbg.errorCode;
+  g_lastDisconnectExpectedRxSn = dbg.expectedRxSn;
+  g_lastDisconnectTxSn = dbg.txSn;
+  g_lastDisconnectReasonRemote =
+      (dbg.reason == static_cast<uint8_t>(BleDisconnectReason::kPeerTerminate))
+          ? 1U
+          : 0U;
+  g_lastDisconnectPendingTxValid = dbg.pendingTxValid;
+  g_lastDisconnectPendingTxLlid = dbg.pendingTxLlid;
+  g_lastDisconnectPendingTxLength = dbg.pendingTxLength;
+  g_lastDisconnectLastTxOpcode = dbg.lastTxOpcode;
+  g_lastDisconnectLastTxLength = dbg.lastTxLength;
+  g_lastDisconnectLastRxOpcode = dbg.lastRxOpcode;
+  g_lastDisconnectLastRxLength = dbg.lastRxLength;
+  g_lastDisconnectValid = dbg.valid;
 }
 
 static void queueBanner() {
@@ -222,6 +325,7 @@ static void printTerminateStats(const BleConnectionEvent& evt) {
 }
 
 void setup() {
+  g_setupStage = 1U;
   Serial.begin(115200);
   delay(350);
   Serial.print("\r\nBleNordicUartLoopbackProbe start\r\n");
@@ -229,8 +333,10 @@ void setup() {
   Gpio::configure(kPinUserLed, GpioDirection::kOutput, GpioPull::kDisabled);
   Gpio::write(kPinUserLed, true);
 
+  g_setupStage = 2U;
   bool ok = BoardControl::setAntennaPath(BoardAntennaPath::kCeramic);
   if (ok) {
+    g_setupStage = 3U;
     ok = g_ble.begin(kTxPowerDbm) &&
          g_ble.setDeviceAddress(kAddress, BleAddressType::kRandomStatic) &&
          g_ble.setAdvertisingPduType(BleAdvPduType::kAdvInd) &&
@@ -241,6 +347,7 @@ void setup() {
          g_nus.begin();
   }
   if (ok) {
+    g_setupStage = 4U;
     g_power.setLatencyMode(PowerLatencyMode::kConstantLatency);
   }
 
@@ -248,15 +355,20 @@ void setup() {
   Serial.print(ok ? "OK" : "FAIL");
   Serial.print("\r\n");
   if (!ok) {
+    g_initOk = 0U;
     while (true) {
       delay(1000);
     }
     return;
   }
+  g_initOk = 1U;
+  g_setupStage = 5U;
 
   uint8_t addr[6] = {0};
   BleAddressType type = BleAddressType::kPublic;
   if (g_ble.getDeviceAddress(addr, &type)) {
+    memcpy(const_cast<uint8_t*>(g_runtimeAddress), addr, sizeof(g_runtimeAddress));
+    g_runtimeAddressType = static_cast<uint8_t>(type);
     Serial.print("addr=");
     printAddress(addr);
     Serial.print(" type=");
@@ -267,15 +379,48 @@ void setup() {
 }
 
 void loop() {
+  BleEncryptionDebugCounters dbg{};
+  g_ble.getEncryptionDebugCounters(&dbg);
+  g_dbgLatePollCount = dbg.connLatePollCount;
+  g_dbgConnRxTimeoutCount = dbg.connRxTimeoutCount;
+  g_dbgConnMissedEventCountLast = dbg.connMissedEventCountLast;
+  g_dbgConnMissedEventCountMax = dbg.connMissedEventCountMax;
+
   if (!g_ble.isConnected()) {
+    snapshotDisconnectDebug();
+    ++g_unconnectedLoopCount;
     BleAdvInteraction adv{};
-    g_ble.advertiseInteractEvent(&adv, 350U, 350000UL, 700000UL);
+    ++g_advertiseCallCount;
+    if (g_ble.advertiseInteractEvent(&adv, 350U, 350000UL, 700000UL)) {
+      ++g_advertiseOkCount;
+    } else {
+      ++g_advertiseFailCount;
+    }
+    g_lastAdvChannel = static_cast<uint8_t>(adv.channel);
+    g_lastAdvSawConnectInd = adv.receivedConnectInd ? 1U : 0U;
+    g_lastAdvConnectIndChSel2 = adv.connectIndChSel2 ? 1U : 0U;
+    g_lastAdvSawScanReq = adv.receivedScanRequest ? 1U : 0U;
+    if (adv.receivedConnectInd) {
+      ++g_advConnectIndCount;
+    }
+    g_lastPostAdvConnected = g_ble.isConnected() ? 1U : 0U;
+    if (g_lastPostAdvConnected != 0U) {
+      ++g_advConnectedAfterEventCount;
+      snapshotConnectionInfo();
+      if (kEnableBleBgService) {
+        g_ble.setBackgroundConnectionServiceEnabled(true);
+      }
+    } else if (adv.receivedConnectInd) {
+      ++g_advConnectIndLostBeforeLoopCount;
+    }
     g_nus.service();
+    snapshotDisconnectDebug();
 
     if (g_wasConnected) {
       g_wasConnected = false;
       g_bannerSent = false;
       g_securityRequested = false;
+      ++g_disconnectCount;
       Gpio::write(kPinUserLed, true);
       Serial.print("BLE client disconnected\r\n");
     }
@@ -293,6 +438,8 @@ void loop() {
     g_connectedAtMs = millis();
     g_echoedBytes = 0U;
     g_droppedBytes = 0U;
+    ++g_connectCount;
+    snapshotConnectionInfo();
     Gpio::write(kPinUserLed, false);
     if (kEnableBleBgService) {
       g_ble.setBackgroundConnectionServiceEnabled(true);
@@ -315,6 +462,7 @@ void loop() {
   }
 
   if (!eventStarted) {
+    ++g_pollNoEventCount;
     g_nus.service();
     const uint32_t nowMs = millis();
     maybeRequestLinkSecurity(nowMs);
@@ -326,11 +474,15 @@ void loop() {
     // terminateInd can arrive without a full event in the background-service
     // path; handle it here so the disconnect stats are never missed.
     if (evt.terminateInd) {
+      snapshotDisconnectDebug();
       printTerminateStats(evt);
     }
     return;
   }
 
+  ++g_pollEventCount;
+  g_lastEventCounter = evt.eventCounter;
+  g_lastDataChannel = evt.dataChannel;
   g_nus.service(&evt);
   const uint32_t nowMs = millis();
   maybeRequestLinkSecurity(nowMs);
@@ -344,6 +496,11 @@ void loop() {
   pumpLoopback(kPollBudgetBytes);
 
   if (evt.terminateInd) {
+    if (evt.disconnectReasonValid) {
+      g_lastDisconnectReason = evt.disconnectReason;
+      g_lastDisconnectReasonRemote = evt.disconnectReasonRemote ? 1U : 0U;
+    }
+    snapshotDisconnectDebug();
     printTerminateStats(evt);
   }
 

@@ -6,6 +6,8 @@
 #include <nrf54l15_hal.h>
 
 using xiao_nrf54l15::BleConnectionInfo;
+using xiao_nrf54l15::BleConnectionEvent;
+using xiao_nrf54l15::BleConnectionRole;
 using xiao_nrf54l15::BleDisconnectDebug;
 using xiao_nrf54l15::BleDisconnectReason;
 using xiao_nrf54l15::BleGattCharacteristicProperty;
@@ -26,6 +28,141 @@ constexpr uint8_t kLedOffState = HIGH;
 
 constexpr uint16_t kUuidDfuService = 0xFE59U;
 constexpr uint16_t kCompanyIdApple = 0x004CU;
+constexpr uint16_t kUuidPrimaryService = 0x2800U;
+constexpr uint16_t kUuidCharacteristic = 0x2803U;
+constexpr uint16_t kUuidClientCharacteristicConfig = 0x2902U;
+
+constexpr uint8_t kAttOpErrorRsp = 0x01U;
+constexpr uint8_t kAttOpFindInfoReq = 0x04U;
+constexpr uint8_t kAttOpFindInfoRsp = 0x05U;
+constexpr uint8_t kAttOpFindByTypeValueReq = 0x06U;
+constexpr uint8_t kAttOpFindByTypeValueRsp = 0x07U;
+constexpr uint8_t kAttOpReadByTypeReq = 0x08U;
+constexpr uint8_t kAttOpReadByTypeRsp = 0x09U;
+constexpr uint8_t kAttOpReadReq = 0x0AU;
+constexpr uint8_t kAttOpReadRsp = 0x0BU;
+constexpr uint8_t kAttOpWriteReq = 0x12U;
+constexpr uint8_t kAttOpWriteRsp = 0x13U;
+constexpr uint8_t kAttOpHandleValueNtf = 0x1BU;
+constexpr uint8_t kAttErrAttributeNotFound = 0x0AU;
+
+uint8_t hid_ascii_to_keycode[128][2] = {};
+uint8_t hid_keycode_to_ascii[128][2] = {};
+
+void setHidAsciiMapping(char ascii, bool shift, uint8_t keycode) {
+  const uint8_t asciiIndex = static_cast<uint8_t>(ascii);
+  hid_ascii_to_keycode[asciiIndex][0] = shift ? 1U : 0U;
+  hid_ascii_to_keycode[asciiIndex][1] = keycode;
+
+  if (keycode < 128U) {
+    hid_keycode_to_ascii[keycode][shift ? 1U : 0U] = asciiIndex;
+  }
+}
+
+void initHidAsciiTables() {
+  static bool initialized = false;
+  if (initialized) {
+    return;
+  }
+  initialized = true;
+
+  memset(hid_ascii_to_keycode, 0, sizeof(hid_ascii_to_keycode));
+  memset(hid_keycode_to_ascii, 0, sizeof(hid_keycode_to_ascii));
+
+  setHidAsciiMapping('\b', false, HID_KEY_BACKSPACE);
+  setHidAsciiMapping('\t', false, HID_KEY_TAB);
+  setHidAsciiMapping('\n', false, HID_KEY_ENTER);
+  setHidAsciiMapping('\r', false, HID_KEY_ENTER);
+  setHidAsciiMapping(0x1BU, false, HID_KEY_ESCAPE);
+  setHidAsciiMapping(' ', false, HID_KEY_SPACE);
+
+  for (char ch = 'a'; ch <= 'z'; ++ch) {
+    setHidAsciiMapping(ch, false, static_cast<uint8_t>(HID_KEY_A + (ch - 'a')));
+  }
+  for (char ch = 'A'; ch <= 'Z'; ++ch) {
+    setHidAsciiMapping(ch, true, static_cast<uint8_t>(HID_KEY_A + (ch - 'A')));
+  }
+  for (char ch = '1'; ch <= '9'; ++ch) {
+    setHidAsciiMapping(ch, false, static_cast<uint8_t>(HID_KEY_1 + (ch - '1')));
+  }
+  setHidAsciiMapping('0', false, HID_KEY_0);
+
+  setHidAsciiMapping('!', true, HID_KEY_1);
+  setHidAsciiMapping('@', true, HID_KEY_2);
+  setHidAsciiMapping('#', true, HID_KEY_3);
+  setHidAsciiMapping('$', true, HID_KEY_4);
+  setHidAsciiMapping('%', true, HID_KEY_5);
+  setHidAsciiMapping('^', true, HID_KEY_6);
+  setHidAsciiMapping('&', true, HID_KEY_7);
+  setHidAsciiMapping('*', true, HID_KEY_8);
+  setHidAsciiMapping('(', true, HID_KEY_9);
+  setHidAsciiMapping(')', true, HID_KEY_0);
+  setHidAsciiMapping('-', false, HID_KEY_MINUS);
+  setHidAsciiMapping('_', true, HID_KEY_MINUS);
+  setHidAsciiMapping('=', false, HID_KEY_EQUAL);
+  setHidAsciiMapping('+', true, HID_KEY_EQUAL);
+  setHidAsciiMapping('[', false, HID_KEY_BRACKET_LEFT);
+  setHidAsciiMapping('{', true, HID_KEY_BRACKET_LEFT);
+  setHidAsciiMapping(']', false, HID_KEY_BRACKET_RIGHT);
+  setHidAsciiMapping('}', true, HID_KEY_BRACKET_RIGHT);
+  setHidAsciiMapping('\\', false, HID_KEY_BACKSLASH);
+  setHidAsciiMapping('|', true, HID_KEY_BACKSLASH);
+  setHidAsciiMapping(';', false, HID_KEY_SEMICOLON);
+  setHidAsciiMapping(':', true, HID_KEY_SEMICOLON);
+  setHidAsciiMapping('\'', false, HID_KEY_APOSTROPHE);
+  setHidAsciiMapping('"', true, HID_KEY_APOSTROPHE);
+  setHidAsciiMapping('`', false, HID_KEY_GRAVE);
+  setHidAsciiMapping('~', true, HID_KEY_GRAVE);
+  setHidAsciiMapping(',', false, HID_KEY_COMMA);
+  setHidAsciiMapping('<', true, HID_KEY_COMMA);
+  setHidAsciiMapping('.', false, HID_KEY_PERIOD);
+  setHidAsciiMapping('>', true, HID_KEY_PERIOD);
+  setHidAsciiMapping('/', false, HID_KEY_SLASH);
+  setHidAsciiMapping('?', true, HID_KEY_SLASH);
+
+  hid_keycode_to_ascii[HID_KEY_KEYPAD_DIVIDE][0] = '/';
+  hid_keycode_to_ascii[HID_KEY_KEYPAD_DIVIDE][1] = '/';
+  hid_keycode_to_ascii[HID_KEY_KEYPAD_MULTIPLY][0] = '*';
+  hid_keycode_to_ascii[HID_KEY_KEYPAD_MULTIPLY][1] = '*';
+  hid_keycode_to_ascii[HID_KEY_KEYPAD_SUBTRACT][0] = '-';
+  hid_keycode_to_ascii[HID_KEY_KEYPAD_SUBTRACT][1] = '-';
+  hid_keycode_to_ascii[HID_KEY_KEYPAD_ADD][0] = '+';
+  hid_keycode_to_ascii[HID_KEY_KEYPAD_ADD][1] = '+';
+  hid_keycode_to_ascii[HID_KEY_KEYPAD_ENTER][0] = '\r';
+  hid_keycode_to_ascii[HID_KEY_KEYPAD_ENTER][1] = '\r';
+  hid_keycode_to_ascii[HID_KEY_KEYPAD_1][0] = '1';
+  hid_keycode_to_ascii[HID_KEY_KEYPAD_2][0] = '2';
+  hid_keycode_to_ascii[HID_KEY_KEYPAD_3][0] = '3';
+  hid_keycode_to_ascii[HID_KEY_KEYPAD_4][0] = '4';
+  hid_keycode_to_ascii[HID_KEY_KEYPAD_5][0] = '5';
+  hid_keycode_to_ascii[HID_KEY_KEYPAD_5][1] = '5';
+  hid_keycode_to_ascii[HID_KEY_KEYPAD_6][0] = '6';
+  hid_keycode_to_ascii[HID_KEY_KEYPAD_7][0] = '7';
+  hid_keycode_to_ascii[HID_KEY_KEYPAD_8][0] = '8';
+  hid_keycode_to_ascii[HID_KEY_KEYPAD_9][0] = '9';
+  hid_keycode_to_ascii[HID_KEY_KEYPAD_0][0] = '0';
+  hid_keycode_to_ascii[HID_KEY_KEYPAD_DECIMAL][0] = '.';
+}
+
+struct HidAsciiTableInit {
+  HidAsciiTableInit() { initHidAsciiTables(); }
+} g_hid_ascii_table_init;
+
+uint16_t readLe16(const uint8_t* data) {
+  if (data == nullptr) {
+    return 0U;
+  }
+  return static_cast<uint16_t>(data[0]) |
+         (static_cast<uint16_t>(data[1]) << 8U);
+}
+
+void writeLe16(uint8_t* data, uint16_t value) {
+  if (data == nullptr) {
+    return;
+  }
+  data[0] = static_cast<uint8_t>(value & 0xFFU);
+  data[1] = static_cast<uint8_t>((value >> 8U) & 0xFFU);
+}
 
 uint8_t clampValueLen(uint16_t len) {
   if (len > BleRadio::kCustomGattMaxValueLength) {
@@ -40,6 +177,103 @@ bool timeReachedUs(uint32_t now, uint32_t target) {
 
 uint16_t byteSwap16(uint16_t value) {
   return static_cast<uint16_t>((value >> 8U) | (value << 8U));
+}
+
+bool uuidMatches(const BLEUuid& uuid, const uint8_t* data, uint8_t dataLen) {
+  if (data == nullptr) {
+    return false;
+  }
+  if (uuid.size() == 2U && dataLen == 2U) {
+    return uuid.uuid16() == readLe16(data);
+  }
+  if (uuid.size() == 16U && dataLen == 16U) {
+    return memcmp(uuid.uuid128(), data, 16U) == 0;
+  }
+  return false;
+}
+
+bool adDataHasUuid(const uint8_t* data, uint16_t len, const BLEUuid& uuid) {
+  if (data == nullptr || len == 0U || !uuid.begin()) {
+    return false;
+  }
+
+  uint16_t offset = 0U;
+  while (offset < len) {
+    const uint8_t fieldLen = data[offset];
+    if (fieldLen == 0U || static_cast<uint16_t>(offset + fieldLen) >= (len + 1U)) {
+      break;
+    }
+
+    const uint8_t type = data[offset + 1U];
+    const uint8_t valueLen = static_cast<uint8_t>(fieldLen - 1U);
+    const uint8_t* value = &data[offset + 2U];
+    if ((type == BLE_GAP_AD_TYPE_16BIT_SERVICE_UUID_MORE_AVAILABLE ||
+         type == BLE_GAP_AD_TYPE_16BIT_SERVICE_UUID_COMPLETE) &&
+        uuid.size() == 2U) {
+      for (uint8_t pos = 0U; (pos + 2U) <= valueLen; pos = static_cast<uint8_t>(pos + 2U)) {
+        if (uuidMatches(uuid, &value[pos], 2U)) {
+          return true;
+        }
+      }
+    }
+    if ((type == BLE_GAP_AD_TYPE_128BIT_SERVICE_UUID_MORE_AVAILABLE ||
+         type == BLE_GAP_AD_TYPE_128BIT_SERVICE_UUID_COMPLETE) &&
+        uuid.size() == 16U) {
+      for (uint8_t pos = 0U; (pos + 16U) <= valueLen;
+           pos = static_cast<uint8_t>(pos + 16U)) {
+        if (uuidMatches(uuid, &value[pos], 16U)) {
+          return true;
+        }
+      }
+    }
+    offset = static_cast<uint16_t>(offset + fieldLen + 1U);
+  }
+  return false;
+}
+
+bool adDataHasMsdCompany(const uint8_t* data, uint16_t len, uint16_t companyId) {
+  if (data == nullptr || len == 0U) {
+    return false;
+  }
+
+  uint16_t offset = 0U;
+  while (offset < len) {
+    const uint8_t fieldLen = data[offset];
+    if (fieldLen == 0U || static_cast<uint16_t>(offset + fieldLen) >= (len + 1U)) {
+      break;
+    }
+    const uint8_t type = data[offset + 1U];
+    if (type == BLE_GAP_AD_TYPE_MANUFACTURER_SPECIFIC_DATA && fieldLen >= 3U &&
+        readLe16(&data[offset + 2U]) == companyId) {
+      return true;
+    }
+    offset = static_cast<uint16_t>(offset + fieldLen + 1U);
+  }
+  return false;
+}
+
+int copyAdFieldByType(const uint8_t* data, uint16_t len, uint8_t type,
+                      void* buffer, uint8_t bufferLen) {
+  if (data == nullptr || buffer == nullptr || bufferLen == 0U) {
+    return 0;
+  }
+
+  uint16_t offset = 0U;
+  while (offset < len) {
+    const uint8_t fieldLen = data[offset];
+    if (fieldLen == 0U || static_cast<uint16_t>(offset + fieldLen) >= (len + 1U)) {
+      break;
+    }
+    const uint8_t fieldType = data[offset + 1U];
+    if (fieldType == type) {
+      const uint8_t valueLen = static_cast<uint8_t>(fieldLen - 1U);
+      const uint8_t copyLen = min<uint8_t>(valueLen, bufferLen);
+      memcpy(buffer, &data[offset + 2U], copyLen);
+      return copyLen;
+    }
+    offset = static_cast<uint16_t>(offset + fieldLen + 1U);
+  }
+  return 0;
 }
 
 int hexDigitValue(char c) {
@@ -149,10 +383,22 @@ class BluefruitCompatManager {
   BluefruitCompatManager()
       : started_(false),
         last_connected_(false),
+        last_connection_role_(BleConnectionRole::kNone),
         next_adv_due_us_(0U),
         adv_started_ms_(0UL),
         scan_rsp_name_added_(false),
-        characteristic_count_(0U) {}
+        characteristic_count_(0U),
+        client_characteristic_count_(0U),
+        pending_connect_valid_(false),
+        pending_connect_random_(0U),
+        last_connect_attempt_ms_(0UL),
+        scan_report_data_{0},
+        scan_report_len_(0U) {
+    memset(characteristics_, 0, sizeof(characteristics_));
+    memset(client_characteristics_, 0, sizeof(client_characteristics_));
+    memset(&scan_report_, 0, sizeof(scan_report_));
+    memset(pending_connect_address_, 0, sizeof(pending_connect_address_));
+  }
 
   bool begin(uint8_t prph_count, uint8_t central_count) {
     (void)prph_count;
@@ -179,6 +425,7 @@ class BluefruitCompatManager {
 
     started_ = true;
     last_connected_ = radio_.isConnected();
+    last_connection_role_ = radio_.connectionRole();
     return true;
   }
 
@@ -190,6 +437,22 @@ class BluefruitCompatManager {
       return false;
     }
     characteristics_[characteristic_count_++] = characteristic;
+    return true;
+  }
+
+  bool registerClientCharacteristic(BLEClientCharacteristic* characteristic) {
+    if (characteristic == nullptr) {
+      return false;
+    }
+    for (uint8_t i = 0U; i < client_characteristic_count_; ++i) {
+      if (client_characteristics_[i] == characteristic) {
+        return true;
+      }
+    }
+    if (client_characteristic_count_ >= kMaxClientCharacteristics) {
+      return false;
+    }
+    client_characteristics_[client_characteristic_count_++] = characteristic;
     return true;
   }
 
@@ -205,6 +468,44 @@ class BluefruitCompatManager {
 
   BLEConnection* connection() { return &connection_; }
 
+  bool queueCentralConnect(const ble_gap_evt_adv_report_t* report) {
+    if (report == nullptr) {
+      return false;
+    }
+    memcpy(pending_connect_address_, report->peer_addr.addr, sizeof(pending_connect_address_));
+    pending_connect_random_ =
+        (report->peer_addr.addr_type == BLE_GAP_ADDR_TYPE_RANDOM_STATIC) ? 1U : 0U;
+    pending_connect_valid_ = true;
+    Bluefruit.Scanner.paused_ = true;
+    return maybeConnectCentral();
+  }
+
+  void handleCentralConnectionEvent(const BleConnectionEvent& event) {
+    if (!(event.packetReceived && event.crcOk && event.attPacket && event.payload != nullptr &&
+          event.payloadLength >= 7U)) {
+      return;
+    }
+    const uint8_t attOpcode = event.payload[4];
+    if (attOpcode != kAttOpHandleValueNtf) {
+      return;
+    }
+
+    const uint16_t valueHandle = readLe16(&event.payload[5]);
+    const uint16_t valueLength =
+        (event.payloadLength >= 7U) ? static_cast<uint16_t>(event.payloadLength - 7U) : 0U;
+    const uint8_t* value = &event.payload[7];
+    for (uint8_t i = 0U; i < client_characteristic_count_; ++i) {
+      BLEClientCharacteristic* characteristic = client_characteristics_[i];
+      if (characteristic == nullptr || !characteristic->discovered_) {
+        continue;
+      }
+      if (characteristic->value_handle_ == valueHandle) {
+        characteristic->handleNotify(value, valueLength);
+        return;
+      }
+    }
+  }
+
   void idleService() {
     if (!started_) {
       return;
@@ -212,6 +513,7 @@ class BluefruitCompatManager {
 
     if (!radio_.isConnected()) {
       maybeAdvertise();
+      maybeScanOrConnect();
     }
 
     const bool connected = radio_.isConnected();
@@ -221,24 +523,41 @@ class BluefruitCompatManager {
     }
 
     if (connected) {
-      for (uint8_t i = 0U; i < characteristic_count_; ++i) {
-        characteristics_[i]->pollCccdState();
+      if (radio_.connectionRole() == BleConnectionRole::kPeripheral) {
+        for (uint8_t i = 0U; i < characteristic_count_; ++i) {
+          if (characteristics_[i] != nullptr) {
+            characteristics_[i]->pollCccdState();
+          }
+        }
+      } else if (radio_.connectionRole() == BleConnectionRole::kCentral) {
+        processCentralBackgroundEvents(4U);
       }
     }
   }
 
  private:
   static constexpr uint8_t kMaxCharacteristics = 24U;
+  static constexpr uint8_t kMaxClientCharacteristics = 16U;
 
   BleRadio radio_;
   bool started_;
   bool last_connected_;
+  BleConnectionRole last_connection_role_;
   uint32_t next_adv_due_us_;
   unsigned long adv_started_ms_;
   bool scan_rsp_name_added_;
   BLECharacteristic* characteristics_[kMaxCharacteristics];
   uint8_t characteristic_count_;
+  BLEClientCharacteristic* client_characteristics_[kMaxClientCharacteristics];
+  uint8_t client_characteristic_count_;
   BLEConnection connection_;
+  ble_gap_evt_adv_report_t scan_report_;
+  uint8_t scan_report_data_[31];
+  uint8_t scan_report_len_;
+  bool pending_connect_valid_;
+  uint8_t pending_connect_address_[6];
+  uint8_t pending_connect_random_;
+  unsigned long last_connect_attempt_ms_;
 
   static void gattWriteThunk(uint16_t valueHandle, const uint8_t* value,
                              uint8_t valueLength, bool withResponse, void* context) {
@@ -259,6 +578,157 @@ class BluefruitCompatManager {
         characteristic->handleWriteFromRadio(value, valueLength);
         return;
       }
+    }
+  }
+
+  static void fillReportType(uint8_t pduHeader, ble_gap_adv_report_type_t* outType) {
+    if (outType == nullptr) {
+      return;
+    }
+    memset(outType, 0, sizeof(*outType));
+    switch (pduHeader & 0x0FU) {
+      case 0x00U:
+        outType->connectable = 1U;
+        outType->scannable = 1U;
+        break;
+      case 0x01U:
+        outType->connectable = 1U;
+        outType->directed = 1U;
+        break;
+      case 0x02U:
+        break;
+      case 0x04U:
+      case 0x06U:
+        outType->scannable = 1U;
+        break;
+      default:
+        break;
+    }
+  }
+
+  bool buildScanReport(const xiao_nrf54l15::BleScanPacket& packet) {
+    if (packet.payload == nullptr || packet.length < 6U) {
+      return false;
+    }
+    memset(&scan_report_, 0, sizeof(scan_report_));
+    memcpy(scan_report_.peer_addr.addr, packet.payload, 6U);
+    scan_report_.peer_addr.addr_type =
+        ((packet.pduHeader >> 6U) & 0x1U) ? BLE_GAP_ADDR_TYPE_RANDOM_STATIC
+                                          : BLE_GAP_ADDR_TYPE_PUBLIC;
+    scan_report_.rssi = packet.rssiDbm;
+    fillReportType(packet.pduHeader, &scan_report_.type);
+
+    scan_report_len_ = static_cast<uint8_t>(packet.length - 6U);
+    if (scan_report_len_ > sizeof(scan_report_data_)) {
+      scan_report_len_ = sizeof(scan_report_data_);
+    }
+    if (scan_report_len_ > 0U) {
+      memcpy(scan_report_data_, &packet.payload[6], scan_report_len_);
+    }
+    scan_report_.data.p_data = scan_report_data_;
+    scan_report_.data.len = scan_report_len_;
+    return true;
+  }
+
+  bool buildScanReport(const xiao_nrf54l15::BleActiveScanResult& result) {
+    if (result.advPayloadLength < 6U) {
+      return false;
+    }
+    memset(&scan_report_, 0, sizeof(scan_report_));
+    memcpy(scan_report_.peer_addr.addr, result.advertiserAddress, 6U);
+    scan_report_.peer_addr.addr_type =
+        result.advertiserAddressRandom ? BLE_GAP_ADDR_TYPE_RANDOM_STATIC
+                                       : BLE_GAP_ADDR_TYPE_PUBLIC;
+    scan_report_.rssi = result.advRssiDbm;
+    fillReportType(result.advHeader, &scan_report_.type);
+
+    scan_report_len_ = result.advDataLength();
+    if (scan_report_len_ > sizeof(scan_report_data_)) {
+      scan_report_len_ = sizeof(scan_report_data_);
+    }
+    if (scan_report_len_ > 0U && result.advData() != nullptr) {
+      memcpy(scan_report_data_, result.advData(), scan_report_len_);
+    }
+    scan_report_.data.p_data = scan_report_data_;
+    scan_report_.data.len = scan_report_len_;
+    return true;
+  }
+
+  bool currentReportMatchesFilters() const {
+    if (Bluefruit.Scanner.has_filter_rssi_ &&
+        scan_report_.rssi < Bluefruit.Scanner.filter_rssi_dbm_) {
+      return false;
+    }
+    if (Bluefruit.Scanner.has_filter_uuid_ &&
+        !adDataHasUuid(scan_report_.data.p_data, scan_report_.data.len,
+                       Bluefruit.Scanner.filter_uuid_)) {
+      return false;
+    }
+    if (Bluefruit.Scanner.has_filter_msd_ &&
+        !adDataHasMsdCompany(scan_report_.data.p_data, scan_report_.data.len,
+                             Bluefruit.Scanner.filter_msd_company_)) {
+      return false;
+    }
+    return true;
+  }
+
+  bool maybeConnectCentral() {
+    if (!pending_connect_valid_) {
+      return false;
+    }
+    const unsigned long now = millis();
+    if ((now - last_connect_attempt_ms_) < 250UL) {
+      return false;
+    }
+    last_connect_attempt_ms_ = now;
+    if (!radio_.initiateConnection(pending_connect_address_, pending_connect_random_ != 0U,
+                                   24U, 200U, 9U, 1200000UL)) {
+      return false;
+    }
+    pending_connect_valid_ = false;
+    return true;
+  }
+
+  void maybeScanOrConnect() {
+    if (pending_connect_valid_) {
+      (void)maybeConnectCentral();
+      return;
+    }
+    if (!Bluefruit.Scanner.running_ || Bluefruit.Scanner.paused_ ||
+        Bluefruit.Scanner.rx_callback_ == nullptr) {
+      return;
+    }
+
+    bool gotReport = false;
+    if (Bluefruit.Scanner.active_scan_) {
+      xiao_nrf54l15::BleActiveScanResult result{};
+      if (radio_.scanActiveCycle(&result, 300000UL, 200000UL)) {
+        gotReport = buildScanReport(result);
+      }
+    } else {
+      xiao_nrf54l15::BleScanPacket packet{};
+      if (radio_.scanCycle(&packet, 300000UL)) {
+        gotReport = buildScanReport(packet);
+      }
+    }
+    if (!gotReport || !currentReportMatchesFilters()) {
+      return;
+    }
+
+    Bluefruit.Scanner.paused_ = true;
+    Bluefruit.Scanner.rx_callback_(&scan_report_);
+    if (pending_connect_valid_) {
+      (void)maybeConnectCentral();
+    }
+  }
+
+  void processCentralBackgroundEvents(uint8_t maxEvents) {
+    for (uint8_t i = 0U; i < maxEvents; ++i) {
+      BleConnectionEvent event{};
+      if (!radio_.consumeDeferredConnectionEvent(&event)) {
+        break;
+      }
+      handleCentralConnectionEvent(event);
     }
   }
 
@@ -327,20 +797,29 @@ class BluefruitCompatManager {
   void handleConnectionEdge(bool connected) {
     if (connected) {
       connection_.handle_ = 0U;
+      last_connection_role_ = radio_.connectionRole();
+      pending_connect_valid_ = false;
       if (Bluefruit.auto_conn_led_) {
         digitalWrite(LED_BUILTIN, kLedOnState);
       }
-      for (uint8_t i = 0U; i < characteristic_count_; ++i) {
-        if (characteristics_[i] != nullptr) {
-          characteristics_[i]->_notify_enabled = false;
-          characteristics_[i]->_indicate_enabled = false;
+      if (last_connection_role_ == BleConnectionRole::kPeripheral) {
+        for (uint8_t i = 0U; i < characteristic_count_; ++i) {
+          if (characteristics_[i] != nullptr) {
+            characteristics_[i]->_notify_enabled = false;
+            characteristics_[i]->_indicate_enabled = false;
+          }
         }
-      }
-      if (Bluefruit.Periph.connect_callback_ != nullptr) {
-        Bluefruit.Periph.connect_callback_(0U);
-      }
-      if (!Bluefruit.Advertising.restart_on_disconnect_) {
-        Bluefruit.Advertising.running_ = false;
+        if (Bluefruit.Periph.connect_callback_ != nullptr) {
+          Bluefruit.Periph.connect_callback_(0U);
+        }
+        if (!Bluefruit.Advertising.restart_on_disconnect_) {
+          Bluefruit.Advertising.running_ = false;
+        }
+      } else if (last_connection_role_ == BleConnectionRole::kCentral) {
+        Bluefruit.Scanner.paused_ = true;
+        if (Bluefruit.Central.connect_callback_ != nullptr) {
+          Bluefruit.Central.connect_callback_(0U);
+        }
       }
       return;
     }
@@ -351,30 +830,41 @@ class BluefruitCompatManager {
       reason = disconnectReasonToHci(debug);
     }
     connection_.handle_ = INVALID_CONNECTION_HANDLE;
-    for (uint8_t i = 0U; i < characteristic_count_; ++i) {
-      if (characteristics_[i] != nullptr) {
-        const bool hadNotify = characteristics_[i]->_notify_enabled;
-        const bool hadIndicate = characteristics_[i]->_indicate_enabled;
-        characteristics_[i]->_notify_enabled = false;
-        characteristics_[i]->_indicate_enabled = false;
-        if ((hadNotify || hadIndicate) && characteristics_[i]->_cccd_wr_cb != nullptr) {
-          characteristics_[i]->_cccd_wr_cb(0U, characteristics_[i], 0U);
+    if (last_connection_role_ == BleConnectionRole::kPeripheral) {
+      for (uint8_t i = 0U; i < characteristic_count_; ++i) {
+        if (characteristics_[i] != nullptr) {
+          const bool hadNotify = characteristics_[i]->_notify_enabled;
+          const bool hadIndicate = characteristics_[i]->_indicate_enabled;
+          characteristics_[i]->_notify_enabled = false;
+          characteristics_[i]->_indicate_enabled = false;
+          if ((hadNotify || hadIndicate) && characteristics_[i]->_cccd_wr_cb != nullptr) {
+            characteristics_[i]->_cccd_wr_cb(0U, characteristics_[i], 0U);
+          }
         }
       }
     }
     if (Bluefruit.auto_conn_led_) {
       digitalWrite(LED_BUILTIN, kLedOffState);
     }
-    if (Bluefruit.Periph.disconnect_callback_ != nullptr) {
-      Bluefruit.Periph.disconnect_callback_(0U, reason);
+    if (last_connection_role_ == BleConnectionRole::kPeripheral) {
+      if (Bluefruit.Periph.disconnect_callback_ != nullptr) {
+        Bluefruit.Periph.disconnect_callback_(0U, reason);
+      }
+      if (Bluefruit.Advertising.restart_on_disconnect_) {
+        Bluefruit.Advertising.running_ = true;
+        adv_started_ms_ = millis();
+        next_adv_due_us_ = 0U;
+      }
+    } else if (last_connection_role_ == BleConnectionRole::kCentral) {
+      if (Bluefruit.Central.disconnect_callback_ != nullptr) {
+        Bluefruit.Central.disconnect_callback_(0U, reason);
+      }
+      if (Bluefruit.Scanner.restart_on_disconnect_ && Bluefruit.Scanner.running_) {
+        Bluefruit.Scanner.paused_ = false;
+      }
     }
-    if (Bluefruit.Advertising.restart_on_disconnect_) {
-      Bluefruit.Advertising.running_ = true;
-      adv_started_ms_ = millis();
-      next_adv_due_us_ = 0U;
-    }
+    last_connection_role_ = BleConnectionRole::kNone;
   }
-
 };
 
 BluefruitCompatManager& manager() {
@@ -383,6 +873,7 @@ BluefruitCompatManager& manager() {
 }
 
 BLEService* BLEService::lastService = nullptr;
+BLEClientService* BLEClientService::lastService = nullptr;
 AdafruitBluefruit Bluefruit;
 const uint8_t BLEUART_UUID_SERVICE[16] = {0x9EU, 0xCAU, 0xDCU, 0x24U, 0x0EU, 0xE5U,
                                           0xA9U, 0xE0U, 0x93U, 0xF3U, 0xA3U, 0xB5U,
@@ -393,6 +884,299 @@ const uint8_t BLEUART_UUID_CHR_RXD[16] = {0x9EU, 0xCAU, 0xDCU, 0x24U, 0x0EU, 0xE
 const uint8_t BLEUART_UUID_CHR_TXD[16] = {0x9EU, 0xCAU, 0xDCU, 0x24U, 0x0EU, 0xE5U,
                                           0xA9U, 0xE0U, 0x93U, 0xF3U, 0xA3U, 0xB5U,
                                           0x03U, 0x00U, 0x40U, 0x6EU};
+
+enum class AttWaitOutcome : uint8_t {
+  kResponse = 0,
+  kError = 1,
+  kDisconnected = 2,
+  kTimeout = 3,
+};
+
+struct AttWaitResult {
+  AttWaitOutcome outcome;
+  BleConnectionEvent event;
+  uint8_t errorCode;
+};
+
+bool centralReady(uint16_t connHandle) {
+  return connHandle == 0U && manager().radio().isConnected() &&
+         manager().radio().connectionRole() == BleConnectionRole::kCentral;
+}
+
+bool nextCentralEvent(BleConnectionEvent* event, uint32_t timeoutMs = 800UL) {
+  if (event == nullptr) {
+    return false;
+  }
+
+  const unsigned long startMs = millis();
+  while ((millis() - startMs) < timeoutMs) {
+    if (manager().radio().consumeDeferredConnectionEvent(event)) {
+      return true;
+    }
+    if (!manager().radio().isConnected()) {
+      return false;
+    }
+    if (manager().radio().pollConnectionEvent(event, 120000UL)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+AttWaitResult waitForAttOpcode(uint8_t requestOpcode, uint8_t responseOpcode,
+                               uint32_t timeoutMs = 1000UL) {
+  AttWaitResult result{};
+  result.outcome = AttWaitOutcome::kTimeout;
+  result.errorCode = 0U;
+
+  const unsigned long startMs = millis();
+  while ((millis() - startMs) < timeoutMs) {
+    BleConnectionEvent event{};
+    if (!nextCentralEvent(&event, 120UL)) {
+      if (!manager().radio().isConnected()) {
+        result.outcome = AttWaitOutcome::kDisconnected;
+        return result;
+      }
+      continue;
+    }
+
+    if (event.terminateInd) {
+      result.outcome = AttWaitOutcome::kDisconnected;
+      result.event = event;
+      return result;
+    }
+
+    if (!(event.packetReceived && event.crcOk && event.attPacket &&
+          event.payload != nullptr && event.payloadLength >= 5U)) {
+      manager().handleCentralConnectionEvent(event);
+      continue;
+    }
+
+    const uint8_t attOpcode = event.payload[4];
+    if (attOpcode == kAttOpHandleValueNtf) {
+      manager().handleCentralConnectionEvent(event);
+      continue;
+    }
+
+    if (attOpcode == kAttOpErrorRsp && event.payloadLength >= 9U) {
+      if (event.payload[5] == requestOpcode) {
+        result.outcome = AttWaitOutcome::kError;
+        result.event = event;
+        result.errorCode = event.payload[8];
+        return result;
+      }
+      manager().handleCentralConnectionEvent(event);
+      continue;
+    }
+
+    if (attOpcode == responseOpcode) {
+      result.outcome = AttWaitOutcome::kResponse;
+      result.event = event;
+      return result;
+    }
+
+    manager().handleCentralConnectionEvent(event);
+  }
+
+  return result;
+}
+
+bool queueServiceDiscoveryRequest(const BLEUuid& uuid) {
+  if (uuid.size() == 2U) {
+    uint8_t request[9] = {kAttOpFindByTypeValueReq, 0U, 0U, 0U, 0U, 0U, 0U, 0U, 0U};
+    writeLe16(&request[1], 0x0001U);
+    writeLe16(&request[3], 0xFFFFU);
+    writeLe16(&request[5], kUuidPrimaryService);
+    writeLe16(&request[7], uuid.uuid16());
+    return manager().radio().queueAttRequest(request, sizeof(request));
+  }
+  if (uuid.size() == 16U) {
+    uint8_t request[23] = {0};
+    request[0] = kAttOpFindByTypeValueReq;
+    writeLe16(&request[1], 0x0001U);
+    writeLe16(&request[3], 0xFFFFU);
+    writeLe16(&request[5], kUuidPrimaryService);
+    memcpy(&request[7], uuid.uuid128(), 16U);
+    return manager().radio().queueAttRequest(request, sizeof(request));
+  }
+  return false;
+}
+
+bool discoverServiceRangeSync(const BLEUuid& uuid, uint16_t* startHandle,
+                              uint16_t* endHandle) {
+  if (startHandle == nullptr || endHandle == nullptr || !queueServiceDiscoveryRequest(uuid)) {
+    return false;
+  }
+
+  const AttWaitResult wait =
+      waitForAttOpcode(kAttOpFindByTypeValueReq, kAttOpFindByTypeValueRsp);
+  if (wait.outcome != AttWaitOutcome::kResponse || wait.event.payloadLength < 9U) {
+    return false;
+  }
+
+  *startHandle = readLe16(&wait.event.payload[5]);
+  *endHandle = readLe16(&wait.event.payload[7]);
+  return (*startHandle != 0U) && (*endHandle >= *startHandle);
+}
+
+bool discoverCharacteristicSync(uint16_t serviceStartHandle, uint16_t serviceEndHandle,
+                                const BLEUuid& uuid, uint16_t* declHandle,
+                                uint16_t* valueHandle, uint16_t* endHandle) {
+  if (declHandle == nullptr || valueHandle == nullptr || endHandle == nullptr ||
+      serviceStartHandle == 0U || serviceEndHandle == 0U) {
+    return false;
+  }
+
+  bool found = false;
+  uint16_t searchStart = serviceStartHandle;
+  *declHandle = 0U;
+  *valueHandle = 0U;
+  *endHandle = 0U;
+
+  while (searchStart <= serviceEndHandle) {
+    uint8_t request[7] = {kAttOpReadByTypeReq, 0U, 0U, 0U, 0U, 0U, 0U};
+    writeLe16(&request[1], searchStart);
+    writeLe16(&request[3], serviceEndHandle);
+    writeLe16(&request[5], kUuidCharacteristic);
+    if (!manager().radio().queueAttRequest(request, sizeof(request))) {
+      return false;
+    }
+
+    const AttWaitResult wait =
+        waitForAttOpcode(kAttOpReadByTypeReq, kAttOpReadByTypeRsp);
+    if (wait.outcome == AttWaitOutcome::kError &&
+        wait.errorCode == kAttErrAttributeNotFound) {
+      break;
+    }
+    if (wait.outcome != AttWaitOutcome::kResponse || wait.event.payloadLength < 7U) {
+      return false;
+    }
+
+    const uint8_t entryLen = wait.event.payload[5];
+    if (entryLen < 7U) {
+      return false;
+    }
+
+    uint16_t lastDecl = searchStart;
+    bool anyEntry = false;
+    for (uint8_t offset = 6U;
+         (offset + static_cast<uint8_t>(entryLen - 1U)) < wait.event.payloadLength;
+         offset = static_cast<uint8_t>(offset + entryLen)) {
+      anyEntry = true;
+      const uint16_t candidateDecl = readLe16(&wait.event.payload[offset]);
+      const uint16_t candidateValue = readLe16(&wait.event.payload[offset + 3U]);
+      const uint8_t uuidLen = static_cast<uint8_t>(entryLen - 5U);
+      const uint8_t* candidateUuid = &wait.event.payload[offset + 5U];
+
+      if (found && candidateDecl > *declHandle) {
+        *endHandle = static_cast<uint16_t>(candidateDecl - 1U);
+        return true;
+      }
+
+      if (!found && uuidMatches(uuid, candidateUuid, uuidLen)) {
+        found = true;
+        *declHandle = candidateDecl;
+        *valueHandle = candidateValue;
+        *endHandle = serviceEndHandle;
+      }
+
+      lastDecl = candidateDecl;
+    }
+
+    if (!anyEntry || lastDecl >= serviceEndHandle) {
+      break;
+    }
+    searchStart = static_cast<uint16_t>(lastDecl + 1U);
+  }
+
+  return found;
+}
+
+bool discoverCccdHandleSync(uint16_t valueHandle, uint16_t endHandle, uint16_t* cccdHandle) {
+  if (cccdHandle == nullptr || valueHandle == 0U || endHandle <= valueHandle) {
+    return false;
+  }
+
+  uint16_t searchStart = static_cast<uint16_t>(valueHandle + 1U);
+  while (searchStart <= endHandle) {
+    uint8_t request[5] = {kAttOpFindInfoReq, 0U, 0U, 0U, 0U};
+    writeLe16(&request[1], searchStart);
+    writeLe16(&request[3], endHandle);
+    if (!manager().radio().queueAttRequest(request, sizeof(request))) {
+      return false;
+    }
+
+    const AttWaitResult wait = waitForAttOpcode(kAttOpFindInfoReq, kAttOpFindInfoRsp);
+    if (wait.outcome == AttWaitOutcome::kError &&
+        wait.errorCode == kAttErrAttributeNotFound) {
+      return false;
+    }
+    if (wait.outcome != AttWaitOutcome::kResponse || wait.event.payloadLength < 6U) {
+      return false;
+    }
+
+    const uint8_t format = wait.event.payload[5];
+    uint16_t lastHandle = searchStart;
+    if (format == 0x01U) {
+      for (uint8_t offset = 6U; (offset + 3U) < wait.event.payloadLength;
+           offset = static_cast<uint8_t>(offset + 4U)) {
+        const uint16_t handle = readLe16(&wait.event.payload[offset]);
+        const uint16_t uuid16 = readLe16(&wait.event.payload[offset + 2U]);
+        if (uuid16 == kUuidClientCharacteristicConfig) {
+          *cccdHandle = handle;
+          return true;
+        }
+        lastHandle = handle;
+      }
+    } else if (format == 0x02U) {
+      for (uint8_t offset = 6U; (offset + 17U) < wait.event.payloadLength;
+           offset = static_cast<uint8_t>(offset + 18U)) {
+        lastHandle = readLe16(&wait.event.payload[offset]);
+      }
+    } else {
+      return false;
+    }
+
+    if (lastHandle >= endHandle) {
+      return false;
+    }
+    searchStart = static_cast<uint16_t>(lastHandle + 1U);
+  }
+
+  return false;
+}
+
+uint16_t readHandleSync(uint16_t handle, uint8_t* buffer, uint16_t bufferLen) {
+  if (handle == 0U || buffer == nullptr || bufferLen == 0U ||
+      !manager().radio().queueAttReadRequest(handle)) {
+    return 0U;
+  }
+
+  const AttWaitResult wait = waitForAttOpcode(kAttOpReadReq, kAttOpReadRsp);
+  if (wait.outcome != AttWaitOutcome::kResponse || wait.event.payloadLength < 5U) {
+    return 0U;
+  }
+
+  const uint16_t valueLen = static_cast<uint16_t>(wait.event.payloadLength - 5U);
+  const uint16_t copyLen = min<uint16_t>(bufferLen, valueLen);
+  if (copyLen > 0U) {
+    memcpy(buffer, &wait.event.payload[5], copyLen);
+  }
+  return copyLen;
+}
+
+bool writeHandleSync(uint16_t handle, const uint8_t* data, uint8_t dataLen,
+                     bool withResponse = true) {
+  if (!manager().radio().queueAttWriteRequest(handle, data, dataLen, withResponse)) {
+    return false;
+  }
+  if (!withResponse) {
+    return true;
+  }
+
+  const AttWaitResult wait = waitForAttOpcode(kAttOpWriteReq, kAttOpWriteRsp);
+  return wait.outcome == AttWaitOutcome::kResponse;
+}
 
 extern "C" void nrf54l15_bluefruit_compat_idle_service(void) {
   manager().idleService();
@@ -1011,6 +1795,10 @@ bool BLEAdvertisingData::addManufacturerData(const void* data, uint8_t len) {
 
 bool BLEAdvertisingData::addService(const BLEService& service) { return addService(service.uuid); }
 
+bool BLEAdvertisingData::addService(const BLEClientService& service) {
+  return addService(service.uuid);
+}
+
 bool BLEAdvertisingData::addService(const BLEService& service1, const BLEService& service2) {
   return addService(service1) && addService(service2);
 }
@@ -1105,6 +1893,8 @@ uint16_t BLEAdvertising::getInterval() const { return interval_fast_; }
 
 bool BLEAdvertising::setBeacon(BLEBeacon& beacon) { return beacon.start(*this); }
 
+bool BLEAdvertising::setBeacon(EddyStoneUrl& beacon) { return beacon.start(*this); }
+
 bool BLEAdvertising::start(uint16_t timeout) {
   if (!manager().begin(1U, 0U)) {
     return false;
@@ -1196,6 +1986,118 @@ bool BLEBeacon::start(BLEAdvertising& adv) {
                      sizeof(payload));
 }
 
+namespace {
+
+constexpr const char* kEddystonePrefixes[] = {
+    "http://www.",
+    "https://www.",
+    "http://",
+    "https://",
+};
+
+constexpr const char* kEddystoneExpansions[] = {
+    ".com/",
+    ".org/",
+    ".edu/",
+    ".net/",
+    ".info/",
+    ".biz/",
+    ".gov/",
+    ".com",
+    ".org",
+    ".edu",
+    ".net",
+    ".info",
+    ".biz",
+    ".gov",
+};
+
+const char* findEddystoneExpansion(const char* url, uint8_t* index) {
+  if (url == nullptr || index == nullptr) {
+    return nullptr;
+  }
+  for (uint8_t i = 0U; i < (sizeof(kEddystoneExpansions) / sizeof(kEddystoneExpansions[0]));
+       ++i) {
+    const char* match = strstr(url, kEddystoneExpansions[i]);
+    if (match != nullptr) {
+      *index = i;
+      return match;
+    }
+  }
+  return nullptr;
+}
+
+}  // namespace
+
+EddyStoneUrl::EddyStoneUrl() : rssi_(0), url_(nullptr) {}
+
+EddyStoneUrl::EddyStoneUrl(int8_t rssiAt0m, const char* url) : rssi_(rssiAt0m), url_(url) {}
+
+void EddyStoneUrl::setUrl(const char* url) { url_ = url; }
+
+void EddyStoneUrl::setRssi(int8_t rssiAt0m) { rssi_ = rssiAt0m; }
+
+bool EddyStoneUrl::start() { return start(Bluefruit.Advertising); }
+
+bool EddyStoneUrl::start(BLEAdvertising& adv) {
+  if (url_ == nullptr) {
+    return false;
+  }
+
+  struct ATTR_PACKED {
+    uint16_t eddystone_uuid;
+    uint8_t frame_type;
+    int8_t rssi_at_0m;
+    uint8_t url_scheme;
+    uint8_t encoded_url[17];
+  } payload{};
+
+  payload.eddystone_uuid = UUID16_SVC_EDDYSTONE;
+  payload.frame_type = 0x10U;
+  payload.rssi_at_0m = rssi_;
+  payload.url_scheme = 0xFFU;
+
+  const char* url = url_;
+  for (uint8_t i = 0U; i < (sizeof(kEddystonePrefixes) / sizeof(kEddystonePrefixes[0])); ++i) {
+    const size_t prefixLen = strlen(kEddystonePrefixes[i]);
+    if (strncmp(url, kEddystonePrefixes[i], prefixLen) == 0) {
+      payload.url_scheme = i;
+      url += prefixLen;
+      break;
+    }
+  }
+  if (payload.url_scheme == 0xFFU) {
+    return false;
+  }
+
+  uint8_t encodedLen = 0U;
+  while (*url != '\0') {
+    uint8_t expansionCode = 0U;
+    const char* expansion = findEddystoneExpansion(url, &expansionCode);
+    const size_t copyLen =
+        (expansion != nullptr) ? static_cast<size_t>(expansion - url) : strlen(url);
+    if ((encodedLen + copyLen + ((expansion != nullptr) ? 1U : 0U)) >
+        sizeof(payload.encoded_url)) {
+      return false;
+    }
+
+    memcpy(&payload.encoded_url[encodedLen], url, copyLen);
+    encodedLen = static_cast<uint8_t>(encodedLen + copyLen);
+    url += copyLen;
+
+    if (expansion != nullptr) {
+      payload.encoded_url[encodedLen++] = expansionCode;
+      url += strlen(kEddystoneExpansions[expansionCode]);
+    }
+  }
+
+  adv.clearData();
+  return adv.addFlags(BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE) &&
+         adv.addUuid(UUID16_SVC_EDDYSTONE) &&
+         adv.addData(BLE_GAP_AD_TYPE_SERVICE_DATA, &payload,
+                     static_cast<uint8_t>(5U + encodedLen));
+}
+
 BLEPeriph::BLEPeriph()
     : connect_callback_(nullptr),
       disconnect_callback_(nullptr),
@@ -1213,9 +2115,21 @@ void BLEPeriph::setConnInterval(uint16_t min_interval, uint16_t max_interval) {
   conn_interval_max_ = (max_interval == 0U) ? min_interval : max_interval;
 }
 
+void BLEPeriph::clearBonds() {
+  (void)manager().radio().clearBondRecord();
+}
+
 BLEConnection::BLEConnection() : handle_(INVALID_CONNECTION_HANDLE) {}
 
 uint16_t BLEConnection::handle() const { return handle_; }
+
+bool BLEConnection::connected() const { return Bluefruit.connected(handle_); }
+
+bool BLEConnection::bonded() const { return connected() && manager().radio().hasBondRecord(); }
+
+bool BLEConnection::secured() const {
+  return connected() && manager().radio().isConnectionEncrypted();
+}
 
 bool BLEConnection::getPeerName(char* name, uint16_t bufsize) const {
   if (name == nullptr || bufsize == 0U || !manager().radio().isConnected()) {
@@ -1229,6 +2143,1035 @@ bool BLEConnection::getPeerName(char* name, uint16_t bufsize) const {
            info.peerAddress[4], info.peerAddress[3], info.peerAddress[2], info.peerAddress[1],
            info.peerAddress[0]);
   return true;
+}
+
+bool BLEConnection::disconnect() const { return Bluefruit.disconnect(handle_); }
+
+bool BLEConnection::requestPairing() const {
+  if (!connected()) {
+    return false;
+  }
+  if (manager().radio().connectionRole() == BleConnectionRole::kPeripheral) {
+    return manager().radio().sendSmpSecurityRequest();
+  }
+  return false;
+}
+
+BLECentral::BLECentral() : connect_callback_(nullptr), disconnect_callback_(nullptr) {}
+
+void BLECentral::setConnectCallback(ble_connect_callback_t fp) { connect_callback_ = fp; }
+
+void BLECentral::setDisconnectCallback(ble_disconnect_callback_t fp) {
+  disconnect_callback_ = fp;
+}
+
+bool BLECentral::connect(const ble_gap_evt_adv_report_t* report) {
+  if (!manager().begin(0U, 1U)) {
+    return false;
+  }
+  return manager().queueCentralConnect(report);
+}
+
+bool BLECentral::connected() const {
+  return manager().radio().isConnected() &&
+         manager().radio().connectionRole() == BleConnectionRole::kCentral;
+}
+
+void BLECentral::clearBonds() {
+  (void)manager().radio().clearBondRecord();
+}
+
+BLEScanner::BLEScanner()
+    : rx_callback_(nullptr),
+      interval_(160U),
+      window_(80U),
+      timeout_s_(0U),
+      active_scan_(false),
+      restart_on_disconnect_(false),
+      running_(false),
+      paused_(false),
+      has_filter_uuid_(false),
+      filter_uuid_(),
+      has_filter_msd_(false),
+      filter_msd_company_(0U),
+      has_filter_rssi_(false),
+      filter_rssi_dbm_(-127) {}
+
+void BLEScanner::setRxCallback(rx_callback_t fp) { rx_callback_ = fp; }
+
+void BLEScanner::setInterval(uint16_t interval, uint16_t window) {
+  interval_ = interval;
+  window_ = (window == 0U) ? interval : window;
+}
+
+void BLEScanner::useActiveScan(bool enabled) { active_scan_ = enabled; }
+
+void BLEScanner::restartOnDisconnect(bool enabled) { restart_on_disconnect_ = enabled; }
+
+void BLEScanner::filterUuid(const BLEUuid& uuid) {
+  filter_uuid_ = uuid;
+  has_filter_uuid_ = uuid.begin();
+}
+
+void BLEScanner::filterService(const BLEUuid& uuid) { filterUuid(uuid); }
+
+void BLEScanner::filterService(const BLEClientService& service) { filterUuid(service.uuid); }
+
+void BLEScanner::filterMSD(uint16_t company_id) {
+  filter_msd_company_ = company_id;
+  has_filter_msd_ = true;
+}
+
+void BLEScanner::filterRssi(int8_t min_rssi_dbm) {
+  filter_rssi_dbm_ = min_rssi_dbm;
+  has_filter_rssi_ = true;
+}
+
+void BLEScanner::start(uint16_t timeout) {
+  if (!manager().begin(0U, 1U)) {
+    return;
+  }
+  timeout_s_ = timeout;
+  running_ = true;
+  paused_ = false;
+}
+
+void BLEScanner::resume() { paused_ = false; }
+
+bool BLEScanner::checkReportForUuid(const ble_gap_evt_adv_report_t* report,
+                                    const BLEUuid& uuid) const {
+  return report != nullptr && adDataHasUuid(report->data.p_data, report->data.len, uuid);
+}
+
+bool BLEScanner::checkReportForUuid(const ble_gap_evt_adv_report_t* report,
+                                    const uint8_t uuid128[16]) const {
+  return (uuid128 != nullptr) && checkReportForUuid(report, BLEUuid(uuid128));
+}
+
+bool BLEScanner::checkReportForService(const ble_gap_evt_adv_report_t* report,
+                                       const BLEUuid& uuid) const {
+  return checkReportForUuid(report, uuid);
+}
+
+bool BLEScanner::checkReportForService(const ble_gap_evt_adv_report_t* report,
+                                       const BLEClientService& service) const {
+  return checkReportForService(report, service.uuid);
+}
+
+bool BLEScanner::checkReportForService(const ble_gap_evt_adv_report_t* report,
+                                       const BLEClientUart& client_uart) const {
+  return checkReportForService(report, client_uart.serviceUuid());
+}
+
+int BLEScanner::parseReportByType(const ble_gap_evt_adv_report_t* report, uint8_t type,
+                                  void* buffer, uint8_t buffer_len) const {
+  if (report == nullptr) {
+    return 0;
+  }
+  return copyAdFieldByType(report->data.p_data, report->data.len, type, buffer, buffer_len);
+}
+
+BLEClientCharacteristic::BLEClientCharacteristic()
+    : uuid(),
+      begun_(false),
+      discovered_(false),
+      notify_callback_(nullptr),
+      service_(nullptr),
+      conn_handle_(INVALID_CONNECTION_HANDLE),
+      decl_handle_(0U),
+      value_handle_(0U),
+      end_handle_(0U),
+      cccd_handle_(0U),
+      last_value_{0},
+      last_value_len_(0U) {}
+
+BLEClientCharacteristic::BLEClientCharacteristic(BLEUuid bleuuid)
+    : BLEClientCharacteristic() {
+  uuid = bleuuid;
+}
+
+bool BLEClientCharacteristic::begin() {
+  return begin(nullptr);
+}
+
+bool BLEClientCharacteristic::begin(BLEClientService* parent_service) {
+  if (begun_) {
+    return true;
+  }
+  if (!manager().begin(0U, 1U)) {
+    return false;
+  }
+  service_ = (parent_service != nullptr) ? parent_service : BLEClientService::lastService;
+  if (service_ == nullptr || !manager().registerClientCharacteristic(this)) {
+    return false;
+  }
+  begun_ = true;
+  return true;
+}
+
+BLEClientService& BLEClientCharacteristic::parentService() { return *service_; }
+
+const BLEClientService& BLEClientCharacteristic::parentService() const { return *service_; }
+
+void BLEClientCharacteristic::resetDiscovery() {
+  discovered_ = false;
+  conn_handle_ = INVALID_CONNECTION_HANDLE;
+  decl_handle_ = 0U;
+  value_handle_ = 0U;
+  end_handle_ = 0U;
+  cccd_handle_ = 0U;
+  last_value_len_ = 0U;
+}
+
+bool BLEClientCharacteristic::discover(uint16_t conn_hdl) {
+  if (!begin() || service_ == nullptr || !service_->discover(conn_hdl)) {
+    resetDiscovery();
+    return false;
+  }
+  return discover();
+}
+
+bool BLEClientCharacteristic::discover() {
+  if (!begin() || service_ == nullptr || !service_->discovered_) {
+    resetDiscovery();
+    return false;
+  }
+
+  resetDiscovery();
+  if (!discoverCharacteristicSync(service_->start_handle_, service_->end_handle_, uuid,
+                                  &decl_handle_, &value_handle_, &end_handle_)) {
+    return false;
+  }
+  conn_handle_ = service_->conn_handle_;
+  discovered_ = true;
+  return true;
+}
+
+uint16_t BLEClientCharacteristic::read(void* buffer, uint16_t len) {
+  if (!discovered_ || buffer == nullptr || len == 0U) {
+    return 0U;
+  }
+  uint8_t scratch[sizeof(last_value_)] = {0};
+  const uint16_t readLen = readHandleSync(value_handle_, scratch, sizeof(scratch));
+  if (readLen == 0U) {
+    return 0U;
+  }
+  last_value_len_ =
+      static_cast<uint8_t>(min<uint16_t>(readLen, sizeof(last_value_)));
+  memcpy(last_value_, scratch, last_value_len_);
+  const uint16_t copyLen = min<uint16_t>(len, readLen);
+  memcpy(buffer, scratch, copyLen);
+  return copyLen;
+}
+
+uint8_t BLEClientCharacteristic::read8() {
+  uint8_t value = 0U;
+  (void)read(&value, sizeof(value));
+  return value;
+}
+
+uint16_t BLEClientCharacteristic::write(const void* buffer, uint16_t len) {
+  if (!discovered_ || buffer == nullptr || len == 0U) {
+    return 0U;
+  }
+  return writeHandleSync(value_handle_, static_cast<const uint8_t*>(buffer), len, true) ? len
+                                                                                          : 0U;
+}
+
+uint16_t BLEClientCharacteristic::write8(uint8_t value) {
+  return write(&value, sizeof(value));
+}
+
+bool BLEClientCharacteristic::enableNotify() {
+  if (!discovered_) {
+    return false;
+  }
+  if (cccd_handle_ == 0U &&
+      !discoverCccdHandleSync(value_handle_, end_handle_, &cccd_handle_)) {
+    return false;
+  }
+  const uint8_t cccdValue[2] = {0x01U, 0x00U};
+  return writeHandleSync(cccd_handle_, cccdValue, sizeof(cccdValue), true);
+}
+
+bool BLEClientCharacteristic::disableNotify() {
+  if (!discovered_) {
+    return false;
+  }
+  if (cccd_handle_ == 0U &&
+      !discoverCccdHandleSync(value_handle_, end_handle_, &cccd_handle_)) {
+    return false;
+  }
+  const uint8_t cccdValue[2] = {0x00U, 0x00U};
+  return writeHandleSync(cccd_handle_, cccdValue, sizeof(cccdValue), true);
+}
+
+void BLEClientCharacteristic::handleNotify(const uint8_t* data, uint16_t len) {
+  const uint8_t copyLen = min<uint16_t>(len, sizeof(last_value_));
+  if (copyLen > 0U && data != nullptr) {
+    memcpy(last_value_, data, copyLen);
+  }
+  last_value_len_ = copyLen;
+  if (notify_callback_ != nullptr) {
+    notify_callback_(this, last_value_, last_value_len_);
+  }
+}
+
+BLEClientService::BLEClientService()
+    : uuid(),
+      begun_(false),
+      discovered_(false),
+      conn_handle_(INVALID_CONNECTION_HANDLE),
+      start_handle_(0U),
+      end_handle_(0U) {}
+
+BLEClientService::BLEClientService(BLEUuid bleuuid)
+    : BLEClientService() {
+  uuid = bleuuid;
+}
+
+bool BLEClientService::begin() {
+  if (!manager().begin(0U, 1U)) {
+    return false;
+  }
+  begun_ = true;
+  lastService = this;
+  return true;
+}
+
+void BLEClientService::resetDiscovery() {
+  discovered_ = false;
+  conn_handle_ = INVALID_CONNECTION_HANDLE;
+  start_handle_ = 0U;
+  end_handle_ = 0U;
+}
+
+bool BLEClientService::discover(uint16_t conn_hdl) {
+  resetDiscovery();
+  if ((!begun_ && !begin()) || !centralReady(conn_hdl)) {
+    return false;
+  }
+  if (!discoverServiceRangeSync(uuid, &start_handle_, &end_handle_)) {
+    return false;
+  }
+  conn_handle_ = conn_hdl;
+  discovered_ = true;
+  lastService = this;
+  return true;
+}
+
+BLEClientUart* BLEClientUart::instances_[BLEClientUart::kMaxInstances] = {};
+uint8_t BLEClientUart::instance_count_ = 0U;
+
+BLEClientUart::BLEClientUart()
+    : service_(BLEUART_UUID_SERVICE),
+      txd_(BLEUART_UUID_CHR_TXD),
+      rxd_(BLEUART_UUID_CHR_RXD),
+      discovered_(false),
+      rx_callback_(nullptr),
+      rx_fifo_{0},
+      rx_head_(0U),
+      rx_tail_(0U),
+      rx_count_(0U) {
+  if (instance_count_ < kMaxInstances) {
+    instances_[instance_count_++] = this;
+  }
+}
+
+bool BLEClientUart::begin() {
+  txd_.setNotifyCallback(txdNotifyThunk);
+  return service_.begin() && txd_.begin(&service_) && rxd_.begin(&service_);
+}
+
+bool BLEClientUart::discover(uint16_t conn_hdl) {
+  discovered_ = false;
+  rx_head_ = 0U;
+  rx_tail_ = 0U;
+  rx_count_ = 0U;
+  if (!begin() || !service_.discover(conn_hdl) || !txd_.discover() || !rxd_.discover()) {
+    return false;
+  }
+  discovered_ = true;
+  return true;
+}
+
+bool BLEClientUart::enableTXD() { return discovered_ && txd_.enableNotify(); }
+
+int BLEClientUart::read() {
+  if (rx_count_ == 0U) {
+    return -1;
+  }
+  const int value = rx_fifo_[rx_tail_];
+  rx_tail_ = static_cast<uint16_t>((rx_tail_ + 1U) % kRxFifoDepth);
+  --rx_count_;
+  return value;
+}
+
+int BLEClientUart::read(uint8_t* buffer, size_t size) {
+  if (buffer == nullptr || size == 0U) {
+    return 0;
+  }
+
+  size_t copied = 0U;
+  while (copied < size) {
+    const int value = read();
+    if (value < 0) {
+      break;
+    }
+    buffer[copied++] = static_cast<uint8_t>(value);
+  }
+  return static_cast<int>(copied);
+}
+
+int BLEClientUart::available() { return rx_count_; }
+
+int BLEClientUart::peek() {
+  if (rx_count_ == 0U) {
+    return -1;
+  }
+  return rx_fifo_[rx_tail_];
+}
+
+void BLEClientUart::flush() {}
+
+size_t BLEClientUart::write(uint8_t value) { return write(&value, 1U); }
+
+size_t BLEClientUart::write(const uint8_t* buffer, size_t size) {
+  if (!discovered_ || buffer == nullptr || size == 0U || !centralReady(0U) ||
+      rxd_.value_handle_ == 0U) {
+    return 0U;
+  }
+
+  size_t sent = 0U;
+  while (sent < size) {
+    const uint8_t chunk = min<uint16_t>(BleRadio::kCustomGattMaxValueLength,
+                                        static_cast<uint16_t>(size - sent));
+    if (!writeHandleSync(rxd_.value_handle_, &buffer[sent], chunk, true)) {
+      break;
+    }
+    sent += chunk;
+  }
+  return sent;
+}
+
+const BLEUuid& BLEClientUart::serviceUuid() const { return service_.uuid; }
+
+void BLEClientUart::handleTxdNotify(BLEClientCharacteristic* chr, uint8_t* data, uint16_t len) {
+  (void)chr;
+  for (uint16_t i = 0U; i < len; ++i) {
+    if (rx_count_ >= kRxFifoDepth) {
+      break;
+    }
+    rx_fifo_[rx_head_] = data[i];
+    rx_head_ = static_cast<uint16_t>((rx_head_ + 1U) % kRxFifoDepth);
+    ++rx_count_;
+  }
+  if (rx_callback_ != nullptr) {
+    rx_callback_(*this);
+  }
+}
+
+void BLEClientUart::txdNotifyThunk(BLEClientCharacteristic* chr, uint8_t* data, uint16_t len) {
+  for (uint8_t i = 0U; i < instance_count_; ++i) {
+    BLEClientUart* instance = instances_[i];
+    if (instance != nullptr && (&instance->txd_ == chr)) {
+      instance->handleTxdNotify(chr, data, len);
+      return;
+    }
+  }
+}
+
+BLEClientDis::BLEClientDis()
+    : BLEClientService(UUID16_SVC_DEVICE_INFORMATION),
+      manufacturer_(UUID16_CHR_MANUFACTURER_NAME_STRING),
+      model_(UUID16_CHR_MODEL_NUMBER_STRING) {}
+
+bool BLEClientDis::begin() {
+  return BLEClientService::begin() && manufacturer_.begin() && model_.begin();
+}
+
+bool BLEClientDis::discover(uint16_t conn_hdl) {
+  if (!begin() || !BLEClientService::discover(conn_hdl)) {
+    return false;
+  }
+  (void)manufacturer_.discover();
+  (void)model_.discover();
+  return true;
+}
+
+bool BLEClientDis::getManufacturer(char* buffer, uint16_t len) {
+  if (buffer == nullptr || len == 0U) {
+    return false;
+  }
+  buffer[0] = '\0';
+  const uint16_t readLen =
+      manufacturer_.discovered() ? manufacturer_.read(buffer, static_cast<uint16_t>(len - 1U))
+                                 : 0U;
+  buffer[readLen] = '\0';
+  return readLen > 0U;
+}
+
+bool BLEClientDis::getModel(char* buffer, uint16_t len) {
+  if (buffer == nullptr || len == 0U) {
+    return false;
+  }
+  buffer[0] = '\0';
+  const uint16_t readLen =
+      model_.discovered() ? model_.read(buffer, static_cast<uint16_t>(len - 1U)) : 0U;
+  buffer[readLen] = '\0';
+  return readLen > 0U;
+}
+
+BLEClientBas::BLEClientBas()
+    : BLEClientService(UUID16_SVC_BATTERY), battery_(UUID16_CHR_BATTERY_LEVEL) {}
+
+bool BLEClientBas::begin() {
+  return BLEClientService::begin() && battery_.begin();
+}
+
+bool BLEClientBas::discover(uint16_t conn_hdl) {
+  if (!begin() || !BLEClientService::discover(conn_hdl)) {
+    return false;
+  }
+  (void)battery_.discover();
+  return true;
+}
+
+uint8_t BLEClientBas::read() {
+  return battery_.discovered() ? battery_.read8() : 0U;
+}
+
+BLEClientCts::BLEClientCts()
+    : BLEClientService(UUID16_SVC_CURRENT_TIME),
+      current_time_(UUID16_CHR_CURRENT_TIME),
+      local_info_(UUID16_CHR_LOCAL_TIME_INFORMATION),
+      adjust_callback_(nullptr),
+      Time{},
+      LocalInfo{} {}
+
+bool BLEClientCts::begin() {
+  current_time_.setNotifyCallback(currentTimeNotifyThunk);
+  return BLEClientService::begin() && current_time_.begin(this) && local_info_.begin(this);
+}
+
+bool BLEClientCts::discover(uint16_t conn_hdl) {
+  if (!begin() || !BLEClientService::discover(conn_hdl)) {
+    return false;
+  }
+  (void)current_time_.discover();
+  (void)local_info_.discover();
+  return current_time_.discovered();
+}
+
+bool BLEClientCts::getCurrentTime() {
+  return current_time_.discovered() &&
+         current_time_.read(&Time, sizeof(Time)) == sizeof(Time);
+}
+
+bool BLEClientCts::getLocalTimeInfo() {
+  if (!local_info_.discovered()) {
+    memset(&LocalInfo, 0, sizeof(LocalInfo));
+    return false;
+  }
+  return local_info_.read(&LocalInfo, sizeof(LocalInfo)) == sizeof(LocalInfo);
+}
+
+bool BLEClientCts::enableAdjust() { return current_time_.enableNotify(); }
+
+void BLEClientCts::handleCurrentTimeNotify(uint8_t* data, uint16_t len) {
+  if (data == nullptr || len == 0U) {
+    return;
+  }
+  const uint16_t copyLen = min<uint16_t>(len, sizeof(Time));
+  memcpy(&Time, data, copyLen);
+  if (copyLen < sizeof(Time)) {
+    memset(reinterpret_cast<uint8_t*>(&Time) + copyLen, 0, sizeof(Time) - copyLen);
+  }
+  if (adjust_callback_ != nullptr) {
+    adjust_callback_(Time.adjust_reason);
+  }
+}
+
+void BLEClientCts::currentTimeNotifyThunk(BLEClientCharacteristic* chr, uint8_t* data,
+                                          uint16_t len) {
+  if (chr == nullptr) {
+    return;
+  }
+  static_cast<BLEClientCts&>(chr->parentService()).handleCurrentTimeNotify(data, len);
+}
+
+namespace {
+const uint8_t kAncsServiceUuid[16] = {0xD0U, 0x00U, 0x2DU, 0x12U, 0x1EU, 0x4BU, 0x0FU, 0xA4U,
+                                      0x99U, 0x4EU, 0xCEU, 0xB5U, 0x31U, 0xF4U, 0x05U, 0x79U};
+const uint8_t kAncsControlUuid[16] = {0xD9U, 0xD9U, 0xAAU, 0xFDU, 0xBDU, 0x9BU, 0x21U, 0x98U,
+                                      0xA8U, 0x49U, 0xE1U, 0x45U, 0xF3U, 0xD8U, 0xD1U, 0x69U};
+const uint8_t kAncsNotificationUuid[16] = {0xBDU, 0x1DU, 0xA2U, 0x99U, 0xE6U, 0x25U, 0x58U, 0x8CU,
+                                           0xD9U, 0x42U, 0x01U, 0x63U, 0x0DU, 0x12U, 0xBFU, 0x9FU};
+const uint8_t kAncsDataUuid[16] = {0xFBU, 0x7BU, 0x7CU, 0xCEU, 0x6AU, 0xB3U, 0x44U, 0xBEU,
+                                   0xB5U, 0x4BU, 0xD6U, 0x24U, 0xE9U, 0xC6U, 0xEAU, 0x22U};
+}  // namespace
+
+BLEAncs::BLEAncs()
+    : BLEClientService(kAncsServiceUuid),
+      control_(kAncsControlUuid),
+      notification_(kAncsNotificationUuid),
+      data_(kAncsDataUuid),
+      notification_callback_(nullptr) {}
+
+bool BLEAncs::begin() {
+  notification_.setNotifyCallback(notificationThunk);
+  data_.setNotifyCallback(dataThunk);
+  return BLEClientService::begin() && control_.begin(this) && notification_.begin(this) &&
+         data_.begin(this);
+}
+
+bool BLEAncs::discover(uint16_t conn_handle) {
+  if (!begin() || !BLEClientService::discover(conn_handle)) {
+    return false;
+  }
+  const bool foundControl = control_.discover();
+  const bool foundNotification = notification_.discover();
+  const bool foundData = data_.discover();
+  return foundControl && foundNotification && foundData;
+}
+
+void BLEAncs::setNotificationCallback(notification_callback_t fp) {
+  notification_callback_ = fp;
+}
+
+bool BLEAncs::enableNotification() {
+  return data_.enableNotify() && notification_.enableNotify();
+}
+
+bool BLEAncs::disableNotification() {
+  bool ok = true;
+  if (notification_.discovered()) {
+    ok = notification_.disableNotify() && ok;
+  }
+  if (data_.discovered()) {
+    ok = data_.disableNotify() && ok;
+  }
+  return ok;
+}
+
+uint16_t BLEAncs::getAttribute(uint32_t uid, uint8_t attr, void* buffer, uint16_t bufsize) {
+  (void)uid;
+  (void)attr;
+  if (buffer != nullptr && bufsize > 0U) {
+    memset(buffer, 0, bufsize);
+  }
+  return 0U;
+}
+
+uint16_t BLEAncs::getAppAttribute(const char* appid, uint8_t attr, void* buffer,
+                                  uint16_t bufsize) {
+  (void)appid;
+  (void)attr;
+  if (buffer != nullptr && bufsize > 0U) {
+    memset(buffer, 0, bufsize);
+  }
+  return 0U;
+}
+
+bool BLEAncs::performAction(uint32_t uid, uint8_t actionid) {
+  if (!control_.discovered()) {
+    return false;
+  }
+  uint8_t payload[6] = {ANCS_CMD_PERFORM_NOTIFICATION_ACTION, 0U, 0U, 0U, 0U, actionid};
+  memcpy(&payload[1], &uid, sizeof(uid));
+  return control_.write(payload, sizeof(payload)) == sizeof(payload);
+}
+
+uint16_t BLEAncs::getAppName(uint32_t uid, void* buffer, uint16_t bufsize) {
+  return getAppAttribute("", ANCS_APP_ATTR_DISPLAY_NAME, buffer, bufsize);
+}
+
+uint16_t BLEAncs::getAppID(uint32_t uid, void* buffer, uint16_t bufsize) {
+  return getAttribute(uid, ANCS_ATTR_APP_IDENTIFIER, buffer, bufsize);
+}
+
+uint16_t BLEAncs::getTitle(uint32_t uid, void* buffer, uint16_t bufsize) {
+  return getAttribute(uid, ANCS_ATTR_TITLE, buffer, bufsize);
+}
+
+uint16_t BLEAncs::getSubtitle(uint32_t uid, void* buffer, uint16_t bufsize) {
+  return getAttribute(uid, ANCS_ATTR_SUBTITLE, buffer, bufsize);
+}
+
+uint16_t BLEAncs::getMessage(uint32_t uid, void* buffer, uint16_t bufsize) {
+  return getAttribute(uid, ANCS_ATTR_MESSAGE, buffer, bufsize);
+}
+
+uint16_t BLEAncs::getMessageSize(uint32_t uid) {
+  uint16_t value = 0U;
+  (void)getAttribute(uid, ANCS_ATTR_MESSAGE_SIZE, &value, sizeof(value));
+  return value;
+}
+
+uint16_t BLEAncs::getDate(uint32_t uid, void* buffer, uint16_t bufsize) {
+  return getAttribute(uid, ANCS_ATTR_DATE, buffer, bufsize);
+}
+
+uint16_t BLEAncs::getPosActionLabel(uint32_t uid, void* buffer, uint16_t bufsize) {
+  return getAttribute(uid, ANCS_ATTR_POSITIVE_ACTION_LABEL, buffer, bufsize);
+}
+
+uint16_t BLEAncs::getNegActionLabel(uint32_t uid, void* buffer, uint16_t bufsize) {
+  return getAttribute(uid, ANCS_ATTR_NEGATIVE_ACTION_LABEL, buffer, bufsize);
+}
+
+bool BLEAncs::actPositive(uint32_t uid) { return performAction(uid, ANCS_ACTION_POSITIVE); }
+
+bool BLEAncs::actNegative(uint32_t uid) { return performAction(uid, ANCS_ACTION_NEGATIVE); }
+
+void BLEAncs::handleNotification(uint8_t* data, uint16_t len) {
+  if (notification_callback_ == nullptr || data == nullptr || len < sizeof(AncsNotification_t)) {
+    return;
+  }
+  notification_callback_(reinterpret_cast<AncsNotification_t*>(data));
+}
+
+void BLEAncs::notificationThunk(BLEClientCharacteristic* chr, uint8_t* data, uint16_t len) {
+  if (chr == nullptr) {
+    return;
+  }
+  static_cast<BLEAncs&>(chr->parentService()).handleNotification(data, len);
+}
+
+void BLEAncs::dataThunk(BLEClientCharacteristic* chr, uint8_t* data, uint16_t len) {
+  (void)chr;
+  (void)data;
+  (void)len;
+}
+
+BLEClientHidAdafruit::BLEClientHidAdafruit()
+    : BLEClientService(UUID16_SVC_HUMAN_INTERFACE_DEVICE),
+      keyboard_callback_(nullptr),
+      mouse_callback_(nullptr),
+      gamepad_callback_(nullptr),
+      last_keyboard_report_{0},
+      last_mouse_report_{0},
+      last_gamepad_report_{0},
+      protocol_mode_(UUID16_CHR_PROTOCOL_MODE),
+      hid_info_(UUID16_CHR_HID_INFORMATION),
+      hid_control_(UUID16_CHR_HID_CONTROL_POINT),
+      keyboard_boot_input_(UUID16_CHR_BOOT_KEYBOARD_INPUT_REPORT),
+      keyboard_boot_output_(UUID16_CHR_BOOT_KEYBOARD_OUTPUT_REPORT),
+      mouse_boot_input_(UUID16_CHR_BOOT_MOUSE_INPUT_REPORT),
+      gamepad_report_(UUID16_CHR_REPORT) {}
+
+bool BLEClientHidAdafruit::begin() {
+  keyboard_boot_input_.setNotifyCallback(keyboardNotifyThunk);
+  mouse_boot_input_.setNotifyCallback(mouseNotifyThunk);
+  gamepad_report_.setNotifyCallback(gamepadNotifyThunk);
+  return BLEClientService::begin() && protocol_mode_.begin(this) && hid_info_.begin(this) &&
+         hid_control_.begin(this) && keyboard_boot_input_.begin(this) &&
+         keyboard_boot_output_.begin(this) && mouse_boot_input_.begin(this) &&
+         gamepad_report_.begin(this);
+}
+
+bool BLEClientHidAdafruit::discover(uint16_t conn_handle) {
+  if (!begin() || !BLEClientService::discover(conn_handle)) {
+    return false;
+  }
+  (void)protocol_mode_.discover();
+  (void)hid_info_.discover();
+  (void)hid_control_.discover();
+  (void)keyboard_boot_input_.discover();
+  (void)keyboard_boot_output_.discover();
+  (void)mouse_boot_input_.discover();
+  (void)gamepad_report_.discover();
+  return hid_info_.discovered() && hid_control_.discovered() &&
+         (keyboardPresent() || mousePresent() || gamepadPresent());
+}
+
+bool BLEClientHidAdafruit::getHidInfo(uint8_t info[4]) {
+  return (info != nullptr) && (hid_info_.read(info, 4U) == 4U);
+}
+
+uint8_t BLEClientHidAdafruit::getCountryCode(void) {
+  uint8_t info[4] = {0};
+  return getHidInfo(info) ? info[2] : 0U;
+}
+
+bool BLEClientHidAdafruit::setBootMode(bool boot) {
+  return protocol_mode_.discovered() && protocol_mode_.write8(boot ? 0U : 1U) == 1U;
+}
+
+bool BLEClientHidAdafruit::keyboardPresent(void) {
+  return keyboard_boot_input_.discovered() && keyboard_boot_output_.discovered() &&
+         protocol_mode_.discovered();
+}
+
+bool BLEClientHidAdafruit::enableKeyboard(void) { return keyboard_boot_input_.enableNotify(); }
+
+bool BLEClientHidAdafruit::disableKeyboard(void) { return keyboard_boot_input_.disableNotify(); }
+
+void BLEClientHidAdafruit::getKeyboardReport(hid_keyboard_report_t* report) {
+  if (report != nullptr) {
+    memcpy(report, &last_keyboard_report_, sizeof(last_keyboard_report_));
+  }
+}
+
+bool BLEClientHidAdafruit::mousePresent(void) {
+  return mouse_boot_input_.discovered() && protocol_mode_.discovered();
+}
+
+bool BLEClientHidAdafruit::enableMouse(void) { return mouse_boot_input_.enableNotify(); }
+
+bool BLEClientHidAdafruit::disableMouse(void) { return mouse_boot_input_.disableNotify(); }
+
+void BLEClientHidAdafruit::getMouseReport(hid_mouse_report_t* report) {
+  if (report != nullptr) {
+    memcpy(report, &last_mouse_report_, sizeof(last_mouse_report_));
+  }
+}
+
+bool BLEClientHidAdafruit::gamepadPresent(void) { return gamepad_report_.discovered(); }
+
+bool BLEClientHidAdafruit::enableGamepad(void) { return gamepad_report_.enableNotify(); }
+
+bool BLEClientHidAdafruit::disableGamepad(void) { return gamepad_report_.disableNotify(); }
+
+void BLEClientHidAdafruit::getGamepadReport(hid_gamepad_report_t* report) {
+  if (report != nullptr) {
+    memcpy(report, &last_gamepad_report_, sizeof(last_gamepad_report_));
+  }
+}
+
+void BLEClientHidAdafruit::setKeyboardReportCallback(kbd_callback_t fp) {
+  keyboard_callback_ = fp;
+}
+
+void BLEClientHidAdafruit::setMouseReportCallback(mse_callback_t fp) {
+  mouse_callback_ = fp;
+}
+
+void BLEClientHidAdafruit::setGamepadReportCallback(gpd_callback_t fp) {
+  gamepad_callback_ = fp;
+}
+
+void BLEClientHidAdafruit::handleKeyboardInput(uint8_t* data, uint16_t len) {
+  memset(&last_keyboard_report_, 0, sizeof(last_keyboard_report_));
+  if (data != nullptr) {
+    memcpy(&last_keyboard_report_, data, min<uint16_t>(len, sizeof(last_keyboard_report_)));
+  }
+  if (keyboard_callback_ != nullptr) {
+    keyboard_callback_(&last_keyboard_report_);
+  }
+}
+
+void BLEClientHidAdafruit::handleMouseInput(uint8_t* data, uint16_t len) {
+  memset(&last_mouse_report_, 0, sizeof(last_mouse_report_));
+  if (data != nullptr) {
+    memcpy(&last_mouse_report_, data, min<uint16_t>(len, sizeof(last_mouse_report_)));
+  }
+  if (mouse_callback_ != nullptr) {
+    mouse_callback_(&last_mouse_report_);
+  }
+}
+
+void BLEClientHidAdafruit::handleGamepadInput(uint8_t* data, uint16_t len) {
+  memset(&last_gamepad_report_, 0, sizeof(last_gamepad_report_));
+  if (data != nullptr) {
+    memcpy(&last_gamepad_report_, data, min<uint16_t>(len, sizeof(last_gamepad_report_)));
+  }
+  if (gamepad_callback_ != nullptr) {
+    gamepad_callback_(&last_gamepad_report_);
+  }
+}
+
+void BLEClientHidAdafruit::keyboardNotifyThunk(BLEClientCharacteristic* chr, uint8_t* data,
+                                               uint16_t len) {
+  if (chr != nullptr) {
+    static_cast<BLEClientHidAdafruit&>(chr->parentService()).handleKeyboardInput(data, len);
+  }
+}
+
+void BLEClientHidAdafruit::mouseNotifyThunk(BLEClientCharacteristic* chr, uint8_t* data,
+                                            uint16_t len) {
+  if (chr != nullptr) {
+    static_cast<BLEClientHidAdafruit&>(chr->parentService()).handleMouseInput(data, len);
+  }
+}
+
+void BLEClientHidAdafruit::gamepadNotifyThunk(BLEClientCharacteristic* chr, uint8_t* data,
+                                              uint16_t len) {
+  if (chr != nullptr) {
+    static_cast<BLEClientHidAdafruit&>(chr->parentService()).handleGamepadInput(data, len);
+  }
+}
+
+BLEHidAdafruit::BLEHidAdafruit()
+    : BLEService(UUID16_SVC_HUMAN_INTERFACE_DEVICE),
+      mouse_buttons_(0U),
+      keyboard_led_callback_(nullptr) {}
+
+err_t BLEHidAdafruit::begin() { return BLEService::begin(); }
+
+void BLEHidAdafruit::setKeyboardLedCallback(kbd_led_cb_t fp) {
+  keyboard_led_callback_ = fp;
+}
+
+bool BLEHidAdafruit::keyboardReport(hid_keyboard_report_t* report) {
+  return keyboardReport(BLE_CONN_HANDLE_INVALID, report);
+}
+
+bool BLEHidAdafruit::keyboardReport(uint8_t modifier, uint8_t keycode[6]) {
+  return keyboardReport(BLE_CONN_HANDLE_INVALID, modifier, keycode);
+}
+
+bool BLEHidAdafruit::keyPress(char ch) { return keyPress(BLE_CONN_HANDLE_INVALID, ch); }
+
+bool BLEHidAdafruit::keyRelease(void) { return keyRelease(BLE_CONN_HANDLE_INVALID); }
+
+bool BLEHidAdafruit::keySequence(const char* str, int interval) {
+  return keySequence(BLE_CONN_HANDLE_INVALID, str, interval);
+}
+
+bool BLEHidAdafruit::keyboardReport(uint16_t conn_hdl, hid_keyboard_report_t* report) {
+  (void)conn_hdl;
+  return report != nullptr && Bluefruit.connected();
+}
+
+bool BLEHidAdafruit::keyboardReport(uint16_t conn_hdl, uint8_t modifier, uint8_t keycode[6]) {
+  hid_keyboard_report_t report{};
+  report.modifier = modifier;
+  if (keycode != nullptr) {
+    memcpy(report.keycode, keycode, sizeof(report.keycode));
+  }
+  return keyboardReport(conn_hdl, &report);
+}
+
+bool BLEHidAdafruit::keyPress(uint16_t conn_hdl, char ch) {
+  const uint8_t ascii = static_cast<uint8_t>(ch);
+  if (ascii >= 128U) {
+    return false;
+  }
+  hid_keyboard_report_t report{};
+  report.modifier = hid_ascii_to_keycode[ascii][0] ? KEYBOARD_MODIFIER_LEFTSHIFT : 0U;
+  report.keycode[0] = hid_ascii_to_keycode[ascii][1];
+  return keyboardReport(conn_hdl, &report);
+}
+
+bool BLEHidAdafruit::keyRelease(uint16_t conn_hdl) {
+  hid_keyboard_report_t report{};
+  return keyboardReport(conn_hdl, &report);
+}
+
+bool BLEHidAdafruit::keySequence(uint16_t conn_hdl, const char* str, int interval) {
+  if (str == nullptr) {
+    return false;
+  }
+  for (const char* cursor = str; *cursor != '\0'; ++cursor) {
+    if (!keyPress(conn_hdl, *cursor)) {
+      return false;
+    }
+    delay(interval);
+    if (!keyRelease(conn_hdl)) {
+      return false;
+    }
+    delay(interval);
+  }
+  return true;
+}
+
+bool BLEHidAdafruit::consumerReport(uint16_t usage_code) {
+  return consumerReport(BLE_CONN_HANDLE_INVALID, usage_code);
+}
+
+bool BLEHidAdafruit::consumerKeyPress(uint16_t usage_code) {
+  return consumerKeyPress(BLE_CONN_HANDLE_INVALID, usage_code);
+}
+
+bool BLEHidAdafruit::consumerKeyRelease(void) {
+  return consumerKeyRelease(BLE_CONN_HANDLE_INVALID);
+}
+
+bool BLEHidAdafruit::consumerReport(uint16_t conn_hdl, uint16_t usage_code) {
+  (void)conn_hdl;
+  (void)usage_code;
+  return Bluefruit.connected();
+}
+
+bool BLEHidAdafruit::consumerKeyPress(uint16_t conn_hdl, uint16_t usage_code) {
+  return consumerReport(conn_hdl, usage_code);
+}
+
+bool BLEHidAdafruit::consumerKeyRelease(uint16_t conn_hdl) {
+  return consumerReport(conn_hdl, 0U);
+}
+
+bool BLEHidAdafruit::mouseReport(hid_mouse_report_t* report) {
+  return mouseReport(BLE_CONN_HANDLE_INVALID, report);
+}
+
+bool BLEHidAdafruit::mouseReport(uint8_t buttons, int8_t x, int8_t y, int8_t wheel, int8_t pan) {
+  return mouseReport(BLE_CONN_HANDLE_INVALID, buttons, x, y, wheel, pan);
+}
+
+bool BLEHidAdafruit::mouseButtonPress(uint8_t buttons) {
+  return mouseButtonPress(BLE_CONN_HANDLE_INVALID, buttons);
+}
+
+bool BLEHidAdafruit::mouseButtonRelease(void) {
+  return mouseButtonRelease(BLE_CONN_HANDLE_INVALID);
+}
+
+bool BLEHidAdafruit::mouseMove(int8_t x, int8_t y) {
+  return mouseMove(BLE_CONN_HANDLE_INVALID, x, y);
+}
+
+bool BLEHidAdafruit::mouseScroll(int8_t scroll) {
+  return mouseScroll(BLE_CONN_HANDLE_INVALID, scroll);
+}
+
+bool BLEHidAdafruit::mousePan(int8_t pan) { return mousePan(BLE_CONN_HANDLE_INVALID, pan); }
+
+bool BLEHidAdafruit::mouseReport(uint16_t conn_hdl, hid_mouse_report_t* report) {
+  (void)conn_hdl;
+  return report != nullptr && Bluefruit.connected();
+}
+
+bool BLEHidAdafruit::mouseReport(uint16_t conn_hdl, uint8_t buttons, int8_t x, int8_t y,
+                                 int8_t wheel, int8_t pan) {
+  hid_mouse_report_t report{buttons, x, y, wheel, pan};
+  return mouseReport(conn_hdl, &report);
+}
+
+bool BLEHidAdafruit::mouseButtonPress(uint16_t conn_hdl, uint8_t buttons) {
+  mouse_buttons_ |= buttons;
+  return mouseReport(conn_hdl, mouse_buttons_, 0, 0, 0, 0);
+}
+
+bool BLEHidAdafruit::mouseButtonRelease(uint16_t conn_hdl) {
+  mouse_buttons_ = 0U;
+  return mouseReport(conn_hdl, mouse_buttons_, 0, 0, 0, 0);
+}
+
+bool BLEHidAdafruit::mouseMove(uint16_t conn_hdl, int8_t x, int8_t y) {
+  return mouseReport(conn_hdl, mouse_buttons_, x, y, 0, 0);
+}
+
+bool BLEHidAdafruit::mouseScroll(uint16_t conn_hdl, int8_t scroll) {
+  return mouseReport(conn_hdl, mouse_buttons_, 0, 0, scroll, 0);
+}
+
+bool BLEHidAdafruit::mousePan(uint16_t conn_hdl, int8_t pan) {
+  return mouseReport(conn_hdl, mouse_buttons_, 0, 0, 0, pan);
+}
+
+BLEHidGamepad::BLEHidGamepad() : BLEService(UUID16_SVC_HUMAN_INTERFACE_DEVICE) {}
+
+err_t BLEHidGamepad::begin() { return BLEService::begin(); }
+
+bool BLEHidGamepad::report(hid_gamepad_report_t* report) {
+  return this->report(BLE_CONN_HANDLE_INVALID, report);
+}
+
+bool BLEHidGamepad::report(uint16_t conn_hdl, hid_gamepad_report_t* report) {
+  (void)conn_hdl;
+  return report != nullptr && Bluefruit.connected();
 }
 
 BLEDis::BLEDis() : BLEService(UUID16_SVC_DEVICE_INFORMATION), values_{nullptr}, lengths_{0} {}
@@ -1619,6 +3562,10 @@ bool AdafruitBluefruit::disconnect(uint16_t conn_hdl) {
     return false;
   }
   return manager().radio().disconnect();
+}
+
+void AdafruitBluefruit::setRssiCallback(void (*fp)(uint16_t conn_hdl, int8_t rssi)) {
+  (void)fp;
 }
 
 BLEConnection* AdafruitBluefruit::Connection(uint16_t conn_hdl) {

@@ -613,7 +613,7 @@ static void enterTimedSystemOff(bool disableRamRetention, uint32_t delayUs)
     }
 }
 
-void SysTick_Handler(void)
+void __attribute__((weak)) SysTick_Handler(void)
 {
 #if !defined(NRF54L15_CLEAN_POWER_LOW)
     ++g_millis_ticks;

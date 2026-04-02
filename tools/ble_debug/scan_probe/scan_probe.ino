@@ -6,8 +6,8 @@ using namespace xiao_nrf54l15;
 
 static BleRadio g_ble;
 
-static const uint8_t kTargetAddress[6] = {0x6E, 0x22, 0x59, 0xF9, 0xAC, 0xD0};
-static const char kTargetName[] = "XIAO nRF54L15";
+static const uint8_t kTargetAddress[6] = {0x37, 0x00, 0x15, 0x54, 0xDE, 0xC0};
+static const char kTargetName[] = "X54-LB";
 static const uint8_t kUartServiceUuid[16] = {0x9E, 0xCA, 0xDC, 0x24, 0x0E, 0xE5,
                                              0xA9, 0xE0, 0x93, 0xF3, 0xA3, 0xB5,
                                              0x01, 0x00, 0x40, 0x6E};

@@ -16,6 +16,7 @@
 #include <string.h>
 
 #include <avr/pgmspace.h>
+#include "cmsis.h"
 
 // Legacy Arduino binary constants (B00000000 style).
 #include "binary.h"
@@ -44,6 +45,8 @@ typedef uint8_t BitOrder;
 #define OUTPUT          0x1
 #define INPUT_PULLUP    0x2
 #define INPUT_PULLDOWN  0x3
+#define INPUT_PULLUP_SENSE INPUT_PULLUP
+#define INPUT_PULLDOWN_SENSE INPUT_PULLDOWN
 
 // Bit order
 #define LSBFIRST 0
@@ -55,6 +58,9 @@ typedef uint8_t BitOrder;
 #define RISING  0x3
 
 #define DEFAULT 1
+#define AR_DEFAULT DEFAULT
+#define AR_INTERNAL_3_0 3
+#define ISR_DEFERRED 0
 
 // Serial config constants (Arduino-compatible)
 #define SERIAL_PARITY_NONE (0x0ul)
@@ -331,6 +337,8 @@ inline unsigned long pulseInLong(uint8_t pin, uint8_t state)
 #include "Print.h"
 #include "Stream.h"
 #include "HardwareSerial.h"
+#include "nrf52_compat.h"
+#include "utility/SoftwareTimer.h"
 #include "SPI.h"
 #include "Wire.h"
 #include "IPAddress.h"

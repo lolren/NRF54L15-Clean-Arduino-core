@@ -1279,6 +1279,22 @@ enum class BleAdvertisingChannel : uint8_t {
   k39 = 39,
 };
 
+static constexpr uint8_t kBleLegacyAddressLength = 6U;
+static constexpr size_t kBleAddressStringLength = 18U;
+static constexpr uint8_t kBleLegacyAdDataMaxLength = 31U;
+static constexpr uint8_t kBleLegacyRawPayloadMaxLength =
+    static_cast<uint8_t>(kBleLegacyAddressLength + kBleLegacyAdDataMaxLength);
+static constexpr uint8_t kCustomGattUuid128Length = 16U;
+// Current controller scope supports the documented 995-byte extended payload
+// limit using one AUX_ADV_IND followed by three AUX_CHAIN_IND packets.
+static constexpr uint16_t kBleExtendedAdvDataMaxLength = 995U;
+static constexpr uint8_t kBleExtendedSecondaryPacketCountMax = 4U;
+
+bool parseBleAddressString(const char* text,
+                           uint8_t addressOut[kBleLegacyAddressLength]);
+size_t formatBleAddressString(const uint8_t address[kBleLegacyAddressLength],
+                              char* out, size_t outSize);
+
 enum class BleConnectionRole : uint8_t {
   kNone = 0,
   kPeripheral = 1,
@@ -2082,6 +2098,36 @@ class BleRadio {
                                      uint16_t valueLength, bool withResponse,
                                      uint8_t* outErrorCode);
   void emitBleTrace(const char* message) const;
+  void rememberDisconnectReason(uint8_t reason, bool remote);
+  bool prepareBackgroundAdvertisingEvent();
+  bool configureBackgroundAdvertisingHardware(bool enable);
+  bool armBackgroundAdvertising(uint32_t targetTxUs, bool prewarmHfxo,
+                                bool stopHfxoAfterTx);
+  bool rescheduleBackgroundAdvertisingTxCompare(uint8_t compareChannel);
+  bool rescheduleBackgroundAdvertisingService(uint8_t compareChannel);
+  bool reconfigureBackgroundAdvertisingTxKick(bool useIrqKick);
+  bool handleBackgroundAdvertisingPrewarmEvent();
+  bool settleBackgroundAdvertisingRadioBeforeService(uint32_t waitBudgetUs);
+  void collapseBackgroundAdvertisingRfPathIfManaged();
+  bool backgroundAdvertisingConsumePendingPrewarmFromFallback();
+  bool backgroundAdvertisingNeedsIdleService() const;
+  bool backgroundAdvertisingConsumePendingCompareFromFallback();
+  bool serviceBackgroundAdvertising();
+  bool backgroundServicesActive() const;
+  bool configureBackgroundConnectionHardware(bool enable);
+  bool previewBackgroundConnectionDataChannel(uint8_t* outDataChannel) const;
+  bool prepareBackgroundConnectionReceiveWindow(uint32_t rxStartUs);
+  bool armBackgroundConnectionService();
+  void stopBackgroundConnectionService();
+  void snapshotDeferredConnectionEvent(const BleConnectionEvent& event);
+  bool serviceBackgroundConnectionEvent();
+  bool enqueueDeferredGattWrite(BleGattWriteCallback callback, void* context,
+                                uint16_t valueHandle, const uint8_t* value,
+                                uint8_t valueLength, bool withResponse);
+  void dispatchDeferredGattWrites();
+  bool enqueueDeferredTrace(const char* message);
+  void dispatchDeferredTraces();
+  void serviceDeferredApplicationWork();
   static void resetConnectionEventStruct(BleConnectionEvent* event);
   bool disconnectWithReason(BleDisconnectReason reason, uint8_t errorCode,
                             uint32_t spinLimit);
@@ -2146,6 +2192,10 @@ class BleRadio {
   alignas(4) uint8_t connectionTxPayload_[255];
 
   bool connected_;
+  bool rfPathOwnedByBle_;
+  bool backgroundAdvertisingRestoreRfPathValid_;
+  bool backgroundAdvertisingRestoreRfPathPowerEnabled_;
+  BoardAntennaPath backgroundAdvertisingRestoreRfPath_;
   BleConnectionRole connectionRole_;
   uint8_t connectionPeerAddress_[6];
   bool connectionPeerAddressRandom_;
