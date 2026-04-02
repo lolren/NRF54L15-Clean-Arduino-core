@@ -34,6 +34,43 @@ In short:
 - Peripheral-side Bluefruit compatibility is much further along.
 - Central/client-side Bluefruit compatibility is the next real implementation target.
 
+## Important Clarification: Low-Level Central/GATT Work Is Already On `main`
+
+The low-level BLE central and ATT client work is already present in the pushed `main` checkpoint.
+
+That includes the central-side controller primitives in:
+
+- `hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/src/nrf54l15_hal.h`
+- `hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/src/nrf54l15_hal.cpp`
+
+Specifically, `main` already contains:
+
+- `BleConnectionRole`
+- `initiateConnection(...)`
+- `queueAttRequest(...)`
+- `queueAttReadRequest(...)`
+- `queueAttWriteRequest(...)`
+- `queueAttCccdWrite(...)`
+- `connectionRole()`
+- `startCentralConnection(...)`
+- `pollCentralConnectionEvent(...)`
+
+The notify demo pair is also already on `main`:
+
+- `hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples/BLE/BleNotifyCentral/BleNotifyCentral.ino`
+- `hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples/BLE/BleNotifyPeripheral/BleNotifyPeripheral.ino`
+
+So the remaining missing work is not the low-level central controller path itself.
+
+The remaining missing work is the higher-level Bluefruit compatibility runtime on top of it, especially:
+
+- `BLEClientService`
+- `BLEClientCharacteristic`
+- `BLEClientUart`
+- `BLEClientDis`
+- `BLEClientBas`
+- scanner/central wrapper behavior expected by unchanged upstream Bluefruit examples
+
 ## Files That Matter Most Next
 
 High priority implementation area:
