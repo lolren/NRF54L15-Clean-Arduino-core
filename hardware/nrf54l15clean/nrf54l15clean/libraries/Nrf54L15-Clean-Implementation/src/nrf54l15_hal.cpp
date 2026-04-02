@@ -16268,10 +16268,10 @@ bool BleRadio::pollConnectionEventInternal(BleConnectionEvent* event,
       bleConnectionPayloadProtocolOpcode(llid, &rxPacket_[2], rxLength), nesn, sn,
       packetIsNew, peerAckedLastTx);
 
-  if (packetIsNew && !terminateInd) {
-    uint8_t deferredLlid = 0x01U;
-    uint8_t deferredLength = 0U;
+  uint8_t deferredLlid = 0x01U;
+  uint8_t deferredLength = 0U;
 
+  if (!terminateInd) {
     // Interop fallback: some hosts stall after LL_ENC_RSP instead of issuing
     // the initiator-side LL_START_ENC_REQ. Queue a single next-event
     // LL_START_ENC_REQ so the host can complete the procedure with
@@ -16284,17 +16284,20 @@ bool BleRadio::pollConnectionEventInternal(BleConnectionEvent* event,
       connectionTxPayload_[0] = kBleLlCtrlStartEncReq;
       deferredLlid = kBlePduLlControl;
       deferredLength = 1U;
-    } else if (!llControlHandledImmediate &&
-        llid == kBlePduLlControl && rxLength >= 1U) {
+    } else if (packetIsNew &&
+               !llControlHandledImmediate &&
+               llid == kBlePduLlControl &&
+               rxLength >= 1U) {
       uint8_t responseLength = 0U;
       if (buildLlControlResponse(&rxPacket_[2], rxLength, currentEventCounter,
-                                 connectionTxPayload_,
-                                 &responseLength, &terminateInd) &&
+                                 connectionTxPayload_, &responseLength,
+                                 &terminateInd) &&
           responseLength > 0U) {
         deferredLlid = kBlePduLlControl;
         deferredLength = responseLength;
       }
-    } else if (!l2capHandledImmediate &&
+    } else if (packetIsNew &&
+               !l2capHandledImmediate &&
                !encryptionProcedureBusy &&
                llid == kBlePduDataStartOrComplete &&
                rxLength >= kBleL2capHeaderLen) {
@@ -16418,7 +16421,7 @@ bool BleRadio::pollConnectionEventInternal(BleConnectionEvent* event,
       connectionBatteryNotificationPending_ = false;
     }
 
-    if (!terminateInd && deferredLength > 0U) {
+    if (deferredLength > 0U) {
       connectionPendingTxLlid_ = deferredLlid;
       connectionPendingTxLength_ = deferredLength;
       memcpy(connectionPendingTxPayload_, connectionTxPayload_, deferredLength);

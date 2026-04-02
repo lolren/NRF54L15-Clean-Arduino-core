@@ -27,6 +27,12 @@ class BleNordicUart : public Stream {
   bool isConnected() const;
   bool isNotifyEnabled() const;
   bool hasPendingTx() const;
+  uint16_t debugTxCount() const;
+  bool debugTxNotificationInFlight() const;
+  bool debugTxNotificationAwaitingAck() const;
+  uint8_t debugLastQueueResult() const;
+  uint32_t debugNotificationSentCount() const;
+  uint32_t debugNotificationRetiredCount() const;
 
   uint16_t serviceHandle() const;
   uint16_t rxValueHandle() const;
@@ -55,8 +61,6 @@ class BleNordicUart : public Stream {
   static void onRxWriteThunk(uint16_t valueHandle, const uint8_t* value,
                              uint8_t valueLength, bool withResponse,
                              void* context);
-  static bool eventSentNotificationForHandle(const BleConnectionEvent* event,
-                                             uint16_t valueHandle);
 
   void onRxWrite(const uint8_t* value, uint8_t valueLength);
   bool queueNextNotification();
@@ -81,9 +85,13 @@ class BleNordicUart : public Stream {
   uint8_t txChunkLength_;
   uint32_t rxDroppedBytes_;
   uint32_t txDroppedBytes_;
+  uint32_t debugNotificationSentCount_;
+  uint32_t debugNotificationRetiredCount_;
+  uint8_t lastQueueResult_;
   bool initialized_;
   bool connected_;
   bool txNotificationInFlight_;
+  bool txNotificationAwaitingAck_;
 };
 
 }  // namespace xiao_nrf54l15

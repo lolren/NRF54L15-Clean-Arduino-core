@@ -6,17 +6,6 @@ namespace xiao_nrf54l15 {
 
 namespace {
 
-constexpr uint16_t kBleAttCid = 0x0004U;
-constexpr uint8_t kAttOpHandleValueNtf = 0x1BU;
-
-inline uint16_t readLe16Local(const uint8_t* value) {
-  if (value == nullptr) {
-    return 0U;
-  }
-  return static_cast<uint16_t>(value[0]) |
-         static_cast<uint16_t>(value[1] << 8U);
-}
-
 inline uint16_t advanceIndex(uint16_t index, uint16_t capacity) {
   ++index;
   if (index >= capacity) {
@@ -57,9 +46,13 @@ BleNordicUart::BleNordicUart(BleRadio& ble)
       txChunkLength_(0U),
       rxDroppedBytes_(0U),
       txDroppedBytes_(0U),
+      debugNotificationSentCount_(0U),
+      debugNotificationRetiredCount_(0U),
+      lastQueueResult_(0U),
       initialized_(false),
       connected_(false),
-      txNotificationInFlight_(false) {}
+      txNotificationInFlight_(false),
+      txNotificationAwaitingAck_(false) {}
 
 bool BleNordicUart::begin() {
   if (initialized_) {
@@ -132,36 +125,29 @@ void BleNordicUart::service(const BleConnectionEvent* event) {
     }
   }
 
-  // Only retire the in-flight notification when the HAL confirms it was sent
-  // as a *fresh* (non-retransmitted) PDU and the payload matches. On a
-  // retransmit event txPayload still points to the last fresh payload, so
-  // checking only txPacketSent would fire prematurely and advance txTail_
-  // before the peer has even ACKed the packet.
-  if (event != nullptr && txNotificationInFlight_ &&
-      event->freshTxAllowed &&
-      eventSentNotificationForHandle(event, txValueHandle_)) {
-    uint8_t advance = txChunkLength_;
-    if (advance > txCount_) {
-      advance = static_cast<uint8_t>(txCount_);
+  // The controller keeps only one custom notification pending at a time. Once
+  // a chunk has been handed off to that HAL queue, keep NUS blocked only until
+  // the HAL reports that queue empty again; link-layer retransmission is then
+  // owned entirely by the controller.
+  if (txNotificationInFlight_) {
+    const bool stillQueued =
+        ble_.isCustomGattNotificationQueued(txValueHandle_, false);
+    txNotificationAwaitingAck_ = stillQueued;
+    if (!stillQueued) {
+      txChunkLength_ = 0U;
+      txNotificationInFlight_ = false;
+      txNotificationAwaitingAck_ = false;
+      ++debugNotificationRetiredCount_;
     }
-    while (advance > 0U) {
-      txTail_ = advanceIndex(txTail_, static_cast<uint16_t>(kTxBufferSize));
-      --txCount_;
-      --advance;
-    }
-    txChunkLength_ = 0U;
-    txNotificationInFlight_ = false;
   }
 
-  // If CCCD was disabled while a notification was in-flight (e.g. Android
-  // temporarily wrote CCCD=0 during GATT re-discovery after a Service Changed
-  // indication), the HAL silently drops the queued notification without ever
-  // firing eventSentNotificationForHandle. Clear the in-flight flag so the
-  // same bytes can be re-queued once CCCD is re-enabled. txTail_ is not
-  // advanced, so the data is re-sent rather than lost.
+  // If CCCD was disabled while a notification was still queued in the HAL,
+  // drop the controller-handoff state and let future writes re-arm it once
+  // the central enables notifications again.
   if (txNotificationInFlight_ && ble_.isConnected() && !isNotifyEnabled()) {
     txChunkLength_ = 0U;
     txNotificationInFlight_ = false;
+    txNotificationAwaitingAck_ = false;
   }
 
   if (event != nullptr && event->terminateInd) {
@@ -199,6 +185,30 @@ bool BleNordicUart::isNotifyEnabled() const {
 
 bool BleNordicUart::hasPendingTx() const {
   return (txCount_ != 0U) || txNotificationInFlight_;
+}
+
+uint16_t BleNordicUart::debugTxCount() const {
+  return txCount_;
+}
+
+bool BleNordicUart::debugTxNotificationInFlight() const {
+  return txNotificationInFlight_;
+}
+
+bool BleNordicUart::debugTxNotificationAwaitingAck() const {
+  return txNotificationAwaitingAck_;
+}
+
+uint8_t BleNordicUart::debugLastQueueResult() const {
+  return lastQueueResult_;
+}
+
+uint32_t BleNordicUart::debugNotificationSentCount() const {
+  return debugNotificationSentCount_;
+}
+
+uint32_t BleNordicUart::debugNotificationRetiredCount() const {
+  return debugNotificationRetiredCount_;
 }
 
 uint16_t BleNordicUart::serviceHandle() const {
@@ -246,6 +256,7 @@ void BleNordicUart::clearTx() {
   txCount_ = 0U;
   txChunkLength_ = 0U;
   txNotificationInFlight_ = false;
+  txNotificationAwaitingAck_ = false;
 }
 
 int BleNordicUart::available() {
@@ -316,23 +327,6 @@ void BleNordicUart::onRxWriteThunk(uint16_t valueHandle, const uint8_t* value,
   self->onRxWrite(value, valueLength);
 }
 
-bool BleNordicUart::eventSentNotificationForHandle(const BleConnectionEvent* event,
-                                                   uint16_t valueHandle) {
-  if (event == nullptr || !event->txPacketSent || event->txPayload == nullptr ||
-      event->txPayloadLength < 7U) {
-    return false;
-  }
-
-  const uint8_t* payload = event->txPayload;
-  if (readLe16Local(&payload[2]) != kBleAttCid) {
-    return false;
-  }
-  if (payload[4] != kAttOpHandleValueNtf) {
-    return false;
-  }
-  return (readLe16Local(&payload[5]) == valueHandle);
-}
-
 void BleNordicUart::onRxWrite(const uint8_t* value, uint8_t valueLength) {
   if (valueLength == 0U || value == nullptr) {
     return;
@@ -350,25 +344,54 @@ void BleNordicUart::onRxWrite(const uint8_t* value, uint8_t valueLength) {
 }
 
 bool BleNordicUart::queueNextNotification() {
-  if (!initialized_ || !ble_.isConnected() || txNotificationInFlight_ ||
-      txCount_ == 0U || !isNotifyEnabled()) {
+  if (!initialized_) {
+    lastQueueResult_ = 1U;
+    return false;
+  }
+  if (!ble_.isConnected()) {
+    lastQueueResult_ = 2U;
+    return false;
+  }
+  if (txNotificationInFlight_) {
+    lastQueueResult_ = 3U;
+    return false;
+  }
+  if (txCount_ == 0U) {
+    lastQueueResult_ = 4U;
+    return false;
+  }
+  if (!isNotifyEnabled()) {
+    lastQueueResult_ = 5U;
     return false;
   }
 
   const size_t chunkLength = copyTxChunk(txChunk_, sizeof(txChunk_));
   if (chunkLength == 0U || chunkLength > kMaxPayloadLength) {
+    lastQueueResult_ = 6U;
     return false;
   }
   if (!ble_.setCustomGattCharacteristicValue(
           txValueHandle_, txChunk_, static_cast<uint8_t>(chunkLength))) {
+    lastQueueResult_ = 7U;
     return false;
   }
   if (!ble_.notifyCustomGattCharacteristic(txValueHandle_, false)) {
+    lastQueueResult_ = 8U;
     return false;
   }
 
+  uint16_t advance = static_cast<uint16_t>(chunkLength);
+  while (advance > 0U && txCount_ > 0U) {
+    txTail_ = advanceIndex(txTail_, static_cast<uint16_t>(kTxBufferSize));
+    --txCount_;
+    --advance;
+  }
   txChunkLength_ = static_cast<uint8_t>(chunkLength);
   txNotificationInFlight_ = true;
+  txNotificationAwaitingAck_ =
+      ble_.isCustomGattNotificationQueued(txValueHandle_, false);
+  ++debugNotificationSentCount_;
+  lastQueueResult_ = 9U;
   return true;
 }
 

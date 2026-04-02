@@ -50,6 +50,21 @@ static uint32_t g_lastBleDbgMs = 0U;
 static uint32_t g_connectedAtMs = 0U;
 static uint32_t g_usbDroppedBytes = 0U;
 static uint32_t g_bleDroppedBytes = 0U;
+volatile uint32_t g_dbgLastEventCounter = 0U;
+volatile uint8_t g_dbgLastPeerAcked = 0U;
+volatile uint8_t g_dbgLastFreshTxAllowed = 0U;
+volatile uint8_t g_dbgLastTxPacketSent = 0U;
+volatile uint8_t g_dbgLastTxPayloadLength = 0U;
+volatile uint8_t g_dbgLastTxLlid = 0U;
+volatile uint8_t g_dbgLastTxPayload0 = 0U;
+volatile uint8_t g_dbgLastTxPayload4 = 0U;
+volatile uint8_t g_dbgLastNotifyEnabled = 0U;
+volatile uint8_t g_dbgLastQueueResult = 0U;
+volatile uint8_t g_dbgLastTxInFlight = 0U;
+volatile uint8_t g_dbgLastTxAwaitingAck = 0U;
+volatile uint16_t g_dbgLastTxCount = 0U;
+volatile uint32_t g_dbgNusSentCount = 0U;
+volatile uint32_t g_dbgNusRetiredCount = 0U;
 
 static constexpr uint16_t kUsbToBleBufferSize = 1024U;
 static constexpr uint16_t kBleToUsbBufferSize = 1024U;
@@ -304,6 +319,29 @@ static void selfTestTx() {
   }
 }
 
+static void snapshotBridgeDebug(const BleConnectionEvent* event) {
+  g_dbgLastNotifyEnabled = g_nus.isNotifyEnabled() ? 1U : 0U;
+  g_dbgLastQueueResult = g_nus.debugLastQueueResult();
+  g_dbgLastTxInFlight = g_nus.debugTxNotificationInFlight() ? 1U : 0U;
+  g_dbgLastTxAwaitingAck = g_nus.debugTxNotificationAwaitingAck() ? 1U : 0U;
+  g_dbgLastTxCount = g_nus.debugTxCount();
+  g_dbgNusSentCount = g_nus.debugNotificationSentCount();
+  g_dbgNusRetiredCount = g_nus.debugNotificationRetiredCount();
+  if (event == nullptr) {
+    return;
+  }
+  g_dbgLastEventCounter = event->eventCounter;
+  g_dbgLastPeerAcked = event->peerAckedLastTx ? 1U : 0U;
+  g_dbgLastFreshTxAllowed = event->freshTxAllowed ? 1U : 0U;
+  g_dbgLastTxPacketSent = event->txPacketSent ? 1U : 0U;
+  g_dbgLastTxPayloadLength = event->txPayloadLength;
+  g_dbgLastTxLlid = event->txLlid;
+  g_dbgLastTxPayload0 =
+      (event->txPayload != nullptr && event->txPayloadLength > 0U) ? event->txPayload[0] : 0U;
+  g_dbgLastTxPayload4 =
+      (event->txPayload != nullptr && event->txPayloadLength > 4U) ? event->txPayload[4] : 0U;
+}
+
 void setup() {
   Serial.begin(115200);
   delay(350);
@@ -423,6 +461,7 @@ void loop() {
 
   if (!eventStarted) {
     g_nus.service();
+    snapshotBridgeDebug(nullptr);
     const uint32_t nowMs = millis();
     maybeRequestLinkSecurity(nowMs);
     if (!bridgeWarmupElapsed(nowMs)) {
@@ -436,6 +475,7 @@ void loop() {
   }
 
   g_nus.service(&evt);
+  snapshotBridgeDebug(&evt);
   const uint32_t nowMs = millis();
   maybeRequestLinkSecurity(nowMs);
   if (kEnableBridgeLogs) {

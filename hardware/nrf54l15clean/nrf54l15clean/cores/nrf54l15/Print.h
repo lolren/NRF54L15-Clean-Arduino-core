@@ -22,7 +22,7 @@ public:
     virtual ~Print() = default;
     virtual size_t write(uint8_t value) = 0;
 
-    size_t write(const uint8_t *buffer, size_t size);
+    virtual size_t write(const uint8_t *buffer, size_t size);
     size_t write(const char *str);
     size_t write(const char *buffer, size_t size) {
         return write(reinterpret_cast<const uint8_t *>(buffer), size);
