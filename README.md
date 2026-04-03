@@ -81,11 +81,17 @@ examples:
 - hardware examples: `20` pass / `0` fail
 - every remaining BLE failure is from an optional extra dependency not present
   locally, not from a core or wrapper API break
+- those compile-clean wrapper examples are now shipped back into the package as
+  broader Bluefruit example menus: `Advertising`, `Central`, `Diagnostics`,
+  `DualRoles`, `HID`, `Projects`, `Security`, and `Services`
+- representative repo-local smoke validation across those bundled Bluefruit
+  menus: `11` pass / `0` fail
 
 To make that compatibility visible in Arduino IDE, the package now ships a
-curated `Bluefruit52Lib -> nRF52Compat` example category with unchanged
+curated `Bluefruit52Lib -> nRF52Compat` starter category with unchanged
 upstream-style sketches that already compile on the wrapper, plus a simple
-notify peripheral/central pair:
+notify peripheral/central pair. That starter pack sits alongside the broader
+role-based Bluefruit example categories listed above:
 
 - `central_bleuart`
 - `central_scan`
@@ -133,8 +139,16 @@ In Arduino IDE they now appear under:
 - `File -> Examples -> Nrf54L15-Clean-Implementation -> Board`
 - `File -> Examples -> Nrf54L15-Clean-Implementation -> Peripherals`
 - `File -> Examples -> Nrf54L15-Clean-Implementation -> Zigbee`
+- `File -> Examples -> Bluefruit52Lib -> Advertising`
+- `File -> Examples -> Bluefruit52Lib -> Central`
+- `File -> Examples -> Bluefruit52Lib -> Diagnostics`
+- `File -> Examples -> Bluefruit52Lib -> DualRoles`
+- `File -> Examples -> Bluefruit52Lib -> HID`
 - `File -> Examples -> Bluefruit52Lib -> nRF52Compat`
 - `File -> Examples -> Bluefruit52Lib -> Peripheral`
+- `File -> Examples -> Bluefruit52Lib -> Projects`
+- `File -> Examples -> Bluefruit52Lib -> Security`
+- `File -> Examples -> Bluefruit52Lib -> Services`
 
 Recommended library examples:
 
@@ -145,7 +159,8 @@ Recommended library examples:
 - Burst/beacon BLE: `BleAdvertiserPhoneBeacon15s`, `BleAdvertiserHybridDutyCycle`, `BleAdvertiserBurstSystemOff`
 - Zigbee: `ZigbeeCoordinator`, `ZigbeeRouter`, `ZigbeeEndDevice`, `ZigbeePingInitiator`, `ZigbeePongResponder`, `ZigbeeStackCodecSelfTest`, `ZigbeeHaCoordinatorJoinDemo`, `ZigbeeHaOnOffLightStatic`, `ZigbeeHaOnOffLightJoinable`, `ZigbeeHaDimmableLightStatic`, `ZigbeeHaDimmableLightJoinable`, `ZigbeeHaTemperatureSensorStatic`, `ZigbeeHaTemperatureSensorJoinable`
 - BLE diagnostics: `BleAdvertiserProbe`, `BlePassiveScanner`, `BleActiveScanner`, `BleExtendedScanner`, `BleExtendedActiveScanner`, `BleLegacyAdv31Plus31`, `BleExtendedAdv251`, `BleExtendedScannableAdv251`, `BleExtendedAdv499`, `BleExtendedAdv995`, `BleConnectionPeripheral`, `BleGattBasicPeripheral`
-- Bluefruit/nRF52 compatibility: `central_bleuart`, `central_scan`, `central_notify`, `dual_bleuart`, `beacon`, `custom_hrm`, `notify_peripheral`, `pairing_pin`, plus the smaller `Peripheral` examples already shipped in `Bluefruit52Lib`
+- Bluefruit/nRF52 compatibility starter pack: `central_bleuart`, `central_scan`, `central_notify`, `dual_bleuart`, `beacon`, `custom_hrm`, `notify_peripheral`, `pairing_pin`
+- Bluefruit wrapper categories: `Advertising` (`adv_advanced`, `beacon`, `eddystone_url`), `Central` (`central_bleuart_multi`, `central_hid`, `central_pairing`, `central_scan_advanced`), `Diagnostics` (`throughput`, `rssi_callback`, `rssi_poll`), `HID` (`blehid_keyboard`, `blehid_mouse`, `blehid_gamepad`), `Security` (`pairing_passkey`, `clearbonds`), `Services` (`bleuart`, `bleuart_multi`, `custom_hrm`, `custom_htm`, `client_cts`, `ancs`), `Projects` (`rssi_proximity_central`, `rssi_proximity_peripheral`), plus the existing `Peripheral` menu
 - Peripheral bring-up: `RawI2sTxInterrupt`, `I2sTxWrapperInterrupt`, `I2sRxWrapperInterrupt`, `I2sDuplexWrapperInterrupt`, `RawRadioPacketTx`, `RawRadioPacketRx`, `RawRadioAckRequester`, `RawRadioAckResponder`
 - `I2sTxWrapperInterrupt` shows the callback-based refill path, where the next buffer is generated from the I2S IRQ instead of managed manually in the sketch loop
 - `I2sRxWrapperInterrupt` shows the matching receive path, where completed RX buffers are handed to a callback from the same `I2S20` IRQ service model
