@@ -53,6 +53,7 @@ void setup()
 
   Bluefruit.begin();
   Bluefruit.setTxPower(4);    // Check bluefruit.h for supported values
+  Bluefruit.setName("X54-ANCS");
   Bluefruit.Periph.setConnectCallback(connect_callback);
   Bluefruit.Periph.setDisconnectCallback(disconnect_callback);
 
@@ -74,13 +75,10 @@ void startAdv(void)
 {
   // Advertising packet
   Bluefruit.Advertising.addFlags(BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE);
-  Bluefruit.Advertising.addTxPower();
-
   // Include ANCS 128-bit uuid
   Bluefruit.Advertising.addService(bleancs);
 
-  // Secondary Scan Response packet (optional)
-  // Since there is no room for 'Name' in Advertising packet
+  // Keep the complete short name in ADV so passive scanners can see it directly.
   Bluefruit.Advertising.addName();
   Bluefruit.ScanResponse.addName();
   

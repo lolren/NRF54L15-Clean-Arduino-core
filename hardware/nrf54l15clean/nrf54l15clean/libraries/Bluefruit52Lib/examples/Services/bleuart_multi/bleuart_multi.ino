@@ -37,6 +37,7 @@ void setup()
   // Initialize Bluefruit with max concurrent connections as Peripheral = 2, Central = 0
   Bluefruit.begin(MAX_PRPH_CONNECTION, 0);
   Bluefruit.setTxPower(4);    // Check bluefruit.h for supported values
+  Bluefruit.setName("X54-MULT");
 
   Bluefruit.Periph.setConnectCallback(connect_callback);
   Bluefruit.Periph.setDisconnectCallback(disconnect_callback);
@@ -63,12 +64,10 @@ void startAdv(void)
 {
   // Advertising packet
   Bluefruit.Advertising.addFlags(BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE);
-  Bluefruit.Advertising.addTxPower();
-
   // Include bleuart 128-bit uuid
   Bluefruit.Advertising.addService(bleuart);
 
-  // Keep a shortened name in ADV so passive scanners still show a label.
+  // Keep the complete short name in ADV so passive scanners can see it directly.
   Bluefruit.Advertising.addName();
   // Secondary Scan Response packet keeps the full name for active scanners.
   Bluefruit.ScanResponse.addName();

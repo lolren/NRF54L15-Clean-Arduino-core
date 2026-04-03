@@ -9,9 +9,8 @@ void startAdv() {
   Bluefruit.Advertising.clearData();
   Bluefruit.ScanResponse.clearData();
   Bluefruit.Advertising.addFlags(BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE);
-  Bluefruit.Advertising.addTxPower();
   Bluefruit.Advertising.addService(bleuart);
-  // Keep a shortened name in ADV so passive scanners still show a label.
+  // Keep the complete short name in ADV so passive scanners can see it directly.
   Bluefruit.Advertising.addName();
   Bluefruit.ScanResponse.addName();
   Bluefruit.Advertising.restartOnDisconnect(true);
@@ -43,7 +42,7 @@ void setup() {
   Bluefruit.autoConnLed(true);
   Bluefruit.configPrphBandwidth(BANDWIDTH_MAX);
   Bluefruit.begin();
-  Bluefruit.setName("XIAO54 BLEUART");
+  Bluefruit.setName("X54-NUS");
   Bluefruit.setTxPower(0);
   Bluefruit.Periph.setConnectCallback(connectCallback);
   Bluefruit.Periph.setDisconnectCallback(disconnectCallback);
