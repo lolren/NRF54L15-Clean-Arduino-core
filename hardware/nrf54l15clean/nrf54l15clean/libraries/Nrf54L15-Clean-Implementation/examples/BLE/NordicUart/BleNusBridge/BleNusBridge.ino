@@ -7,9 +7,9 @@
  * them to the central via NUS TX notifications.
  *
  * Unlike BleNordicUartBridge, this version:
- *   - Always logs connect/disconnect and periodic stats to Serial.
- *   - Arms the background GRTC service on connect (same as BleNordicUartBridge)
- *     so ATT/SMP responses land even when the main loop is briefly delayed.
+ *   - Keeps a smaller feature surface and less runtime debug state.
+ *   - Can optionally log connect/disconnect and periodic stats to Serial.
+ *   - Arms the background GRTC service on connect when requested.
  *   - The NUS UUID is embedded in the ad packet by ble_nus.begin(); the short
  *     device name fits alongside it so passive scanners see the name directly.
  *
@@ -20,9 +20,8 @@
  *   2. Connect from a BLE app — device advertises as "X54-NUS".
  *   3. Enable notifications in the app and start typing on either side.
  *
- * Gotcha: Serial.print() inside loop() adds latency. If bytes are dropping,
- * reduce or remove the printStreamingStats() call, or switch to BleNordicUartBridge
- * which has a kEnableBridgeLogs flag to silence logs on the bridged port.
+ * Gotcha: any Serial logging while bridged data is flowing steals bandwidth from
+ * the same USB CDC port. Keep kEnableBridgeLogs off in production.
  */
 
 #include <Arduino.h>
@@ -37,12 +36,15 @@ BleRadio g_ble;
 BleNordicUart g_nus(g_ble);
 PowerManager g_power;
 
-constexpr uint16_t kUsbToBleBufferSize = 1024U;   // Staging buffer for USB→BLE direction.
-constexpr uint8_t kUsbToBleChunkBytes = 20U;       // Max bytes per NUS TX notification.
-constexpr uint16_t kUsbStageBudgetBytes = 128U;    // Bytes drained from USB per event.
+constexpr uint16_t kUsbToBleBufferSize = 2048U;    // Staging buffer for USB→BLE direction.
+constexpr uint8_t kUsbToBleChunkBytes = BleNordicUart::kMaxPayloadLength;
+constexpr uint16_t kEventNoopStageBytes = 256U;    // Bytes staged between connection events.
+constexpr uint16_t kEventStageBytes = 512U;        // Bytes staged on a real connection event.
+constexpr uint16_t kEventPumpBytes = 64U;          // Bytes pumped per loop pass.
+constexpr bool kEnableBridgeLogs = false;
 constexpr bool kEnableBleBgService = false;
 // pollConnectionEvent spin limit in µs. Keep short so we don't miss 7.5 ms anchors.
-constexpr uint32_t kConnectionPollTimeoutUs = 3000UL;
+constexpr uint32_t kConnectionPollTimeoutUs = 2000UL;
 constexpr uint32_t kBridgeWarmupMs = 500UL;
 constexpr bool kRequestLinkSecurity = false;
 constexpr uint32_t kStatusPeriodMs = 2000UL;       // How often to print streaming stats.
@@ -53,12 +55,18 @@ bool g_bannerSent = false;
 bool g_securityRequested = false;
 uint32_t g_lastStatusMs = 0U;
 uint32_t g_connectedAtMs = 0U;
+uint32_t g_usbDroppedBytes = 0U;
+uint32_t g_bleDroppedBytes = 0U;
 uint32_t g_connSessionRxDropped = 0U;
 uint32_t g_connSessionTxDropped = 0U;
 uint16_t g_usbToBleHead = 0U;
 uint16_t g_usbToBleTail = 0U;
 uint16_t g_usbToBleCount = 0U;
+uint16_t g_bleToUsbHead = 0U;
+uint16_t g_bleToUsbTail = 0U;
+uint16_t g_bleToUsbCount = 0U;
 uint8_t g_usbToBleBuffer[kUsbToBleBufferSize] = {0};
+uint8_t g_bleToUsbBuffer[kUsbToBleBufferSize] = {0};
 
 }  // namespace
 
@@ -99,52 +107,51 @@ static void resetBridgeBuffers() {
   g_usbToBleHead = 0U;
   g_usbToBleTail = 0U;
   g_usbToBleCount = 0U;
+  g_bleToUsbHead = 0U;
+  g_bleToUsbTail = 0U;
+  g_bleToUsbCount = 0U;
 }
 
 static void stageUsbToBle(int maxBytes) {
-  const int queueSpace = static_cast<int>(kUsbToBleBufferSize - g_usbToBleCount);
-  if (queueSpace <= 0) {
-    return;
-  }
   int budget = maxBytes;
-  if (budget > queueSpace) {
-    budget = queueSpace;
-  }
   while (budget > 0 && Serial.available() > 0) {
     const int ch = Serial.read();
     if (ch < 0) {
       break;
     }
 
-    g_usbToBleBuffer[g_usbToBleHead] = static_cast<uint8_t>(ch);
-    g_usbToBleHead = advanceIndex(g_usbToBleHead, kUsbToBleBufferSize);
-    ++g_usbToBleCount;
+    if (g_usbToBleCount >= kUsbToBleBufferSize) {
+      ++g_usbDroppedBytes;
+    } else {
+      g_usbToBleBuffer[g_usbToBleHead] = static_cast<uint8_t>(ch);
+      g_usbToBleHead = advanceIndex(g_usbToBleHead, kUsbToBleBufferSize);
+      ++g_usbToBleCount;
+    }
     --budget;
   }
 }
 
-static void pumpUsbToBle() {
+static void pumpUsbToBle(int maxBytes) {
   if (!g_nus.isNotifyEnabled() || g_usbToBleCount == 0U) {
     return;
   }
 
-  const int payloadLimit = static_cast<int>(g_nus.maxPayloadLength());
-  if (payloadLimit <= 0) {
-    return;
-  }
   int budget = g_nus.availableForWrite();
-  if (budget > static_cast<int>(payloadLimit)) {
-    budget = static_cast<int>(payloadLimit);
+  const int payloadLimit = g_nus.maxPayloadLength();
+  if (budget > payloadLimit) {
+    budget = payloadLimit;
   }
-  if (budget > g_usbToBleCount) {
-    budget = static_cast<int>(g_usbToBleCount);
+  if (budget > maxBytes) {
+    budget = maxBytes;
+  }
+  if (budget <= 0) {
+    return;
   }
   if (budget > static_cast<int>(kUsbToBleChunkBytes)) {
     budget = static_cast<int>(kUsbToBleChunkBytes);
   }
-
-  if (budget <= 0) {
-    return;
+  if (g_usbToBleCount < static_cast<uint16_t>(budget)) {
+    budget = static_cast<int>(g_usbToBleCount);
   }
 
   uint8_t chunk[kUsbToBleChunkBytes] = {kNoBytes};
@@ -160,7 +167,41 @@ static void pumpUsbToBle() {
   }
 }
 
+static void stageBleToUsb(int maxBytes) {
+  int budget = maxBytes;
+  while (budget > 0 && g_nus.available() > 0) {
+    const int ch = g_nus.read();
+    if (ch < 0) {
+      break;
+    }
+    if (g_bleToUsbCount >= kUsbToBleBufferSize) {
+      ++g_bleDroppedBytes;
+    } else {
+      g_bleToUsbBuffer[g_bleToUsbHead] = static_cast<uint8_t>(ch);
+      g_bleToUsbHead = advanceIndex(g_bleToUsbHead, kUsbToBleBufferSize);
+      ++g_bleToUsbCount;
+    }
+    --budget;
+  }
+}
+
+static void pumpBleToUsb(int maxBytes) {
+  int budget = maxBytes;
+  while (budget > 0 && g_bleToUsbCount > 0U) {
+    const size_t written = Serial.write(g_bleToUsbBuffer[g_bleToUsbTail]);
+    if (written != 1U) {
+      break;
+    }
+    g_bleToUsbTail = advanceIndex(g_bleToUsbTail, kUsbToBleBufferSize);
+    --g_bleToUsbCount;
+    --budget;
+  }
+}
+
 static void printDropCounters() {
+  if (!kEnableBridgeLogs) {
+    return;
+  }
   const uint32_t txDropped = g_nus.txDroppedBytes();
   const uint32_t rxDropped = g_nus.rxDroppedBytes();
   if (txDropped <= g_connSessionTxDropped && rxDropped <= g_connSessionRxDropped) {
@@ -171,12 +212,21 @@ static void printDropCounters() {
   Serial.print(txDropped - g_connSessionTxDropped);
   Serial.print(" rx=");
   Serial.print(rxDropped - g_connSessionRxDropped);
+  Serial.print(" usb=");
+  Serial.print(g_usbDroppedBytes);
+  Serial.print(" ble=");
+  Serial.print(g_bleDroppedBytes);
   Serial.print(" queued=");
   Serial.print(g_usbToBleCount);
+  Serial.print("/");
+  Serial.print(g_bleToUsbCount);
   Serial.print("\r\n");
 }
 
 static void printStreamingStats() {
+  if (!kEnableBridgeLogs) {
+    return;
+  }
   const uint32_t nowMs = millis();
   if ((nowMs - g_lastStatusMs) < kStatusPeriodMs) {
     return;
@@ -186,6 +236,8 @@ static void printStreamingStats() {
   Serial.print(g_nus.availableForWrite());
   Serial.print(" usb_q=");
   Serial.print(g_usbToBleCount);
+  Serial.print(" ble_q=");
+  Serial.print(g_bleToUsbCount);
   Serial.print(" usb_avail=");
   Serial.print(Serial.available());
   Serial.print(" rxq=");
@@ -210,25 +262,6 @@ static void maybeRequestLinkSecurity(uint32_t nowMs) {
   }
   g_securityRequested = true;
   g_ble.sendSmpSecurityRequest();
-}
-
-static void pumpUsbToBleWhenReady(int maxBytes) {
-  stageUsbToBle(maxBytes);
-  if (g_nus.isNotifyEnabled() && g_usbToBleCount > 0U) {
-    pumpUsbToBle();
-  }
-}
-
-static void pumpBleToUsb(int maxBytes) {
-  int budget = maxBytes;
-  while (budget > 0 && g_nus.available() > 0) {
-    const int ch = g_nus.read();
-    if (ch < 0) {
-      break;
-    }
-    Serial.write(static_cast<uint8_t>(ch));
-    --budget;
-  }
 }
 
 void setup() {
@@ -278,11 +311,15 @@ void loop() {
       g_wasConnected = false;
       g_bannerSent = false;
       g_securityRequested = false;
+      g_usbDroppedBytes = 0U;
+      g_bleDroppedBytes = 0U;
       resetBridgeBuffers();
       printDropCounters();
       printStreamingStats();
       Gpio::write(kPinUserLed, true);
-      Serial.print("\r\nBLE client disconnected\r\n");
+      if (kEnableBridgeLogs) {
+        Serial.print("\r\nBLE client disconnected\r\n");
+      }
     }
 
     // Only pace the advertising loop when still disconnected after
@@ -299,6 +336,8 @@ void loop() {
     g_bannerSent = false;
     g_securityRequested = false;
     g_connectedAtMs = millis();
+    g_usbDroppedBytes = 0U;
+    g_bleDroppedBytes = 0U;
     g_connSessionRxDropped = g_nus.rxDroppedBytes();
     g_connSessionTxDropped = g_nus.txDroppedBytes();
     resetBridgeBuffers();
@@ -308,7 +347,9 @@ void loop() {
       g_ble.setBackgroundConnectionServiceEnabled(true);
     }
     Gpio::write(kPinUserLed, false);
-    Serial.print("\r\nBLE client connected\r\n");
+    if (kEnableBridgeLogs) {
+      Serial.print("\r\nBLE client connected\r\n");
+    }
   }
 
   // Keep BLE connection-event polling tight; missing anchors leads to 0x08 timeouts.
@@ -332,8 +373,10 @@ void loop() {
     if (!bridgeWarmupElapsed(nowMs)) {
       return;
     }
-    stageUsbToBle(2);
-    pumpUsbToBleWhenReady(2);
+    stageUsbToBle(static_cast<int>(kEventNoopStageBytes));
+    stageBleToUsb(static_cast<int>(kEventNoopStageBytes));
+    pumpUsbToBle(static_cast<int>(kEventPumpBytes));
+    pumpBleToUsb(static_cast<int>(kEventPumpBytes));
     return;
   }
 
@@ -341,20 +384,22 @@ void loop() {
   const uint32_t nowMs = millis();
   maybeRequestLinkSecurity(nowMs);
   if (evt.terminateInd) {
-    Serial.print("BLE link terminated");
-    if (evt.disconnectReasonValid) {
-      Serial.print(" reason=0x");
-      if (evt.disconnectReason < 0x10U) {
-        Serial.print('0');
+    if (kEnableBridgeLogs) {
+      Serial.print("BLE link terminated");
+      if (evt.disconnectReasonValid) {
+        Serial.print(" reason=0x");
+        if (evt.disconnectReason < 0x10U) {
+          Serial.print('0');
+        }
+        Serial.print(evt.disconnectReason, HEX);
+        Serial.print(" (");
+        Serial.print(disconnectReasonLabel(evt.disconnectReason));
+        Serial.print(", ");
+        Serial.print(evt.disconnectReasonRemote ? "peer" : "local");
+        Serial.print(")");
       }
-      Serial.print(evt.disconnectReason, HEX);
-      Serial.print(" (");
-      Serial.print(disconnectReasonLabel(evt.disconnectReason));
-      Serial.print(", ");
-      Serial.print(evt.disconnectReasonRemote ? "peer" : "local");
-      Serial.print(")");
+      Serial.print("\r\n");
     }
-    Serial.print("\r\n");
     printDropCounters();
   }
 
@@ -363,8 +408,10 @@ void loop() {
   }
 
   // Only pump UART after a real connection event.
-  pumpUsbToBleWhenReady(static_cast<int>(kUsbStageBudgetBytes));
-  pumpBleToUsb(16);
+  stageUsbToBle(static_cast<int>(kEventStageBytes));
+  stageBleToUsb(static_cast<int>(kEventStageBytes));
+  pumpUsbToBle(static_cast<int>(kEventPumpBytes));
+  pumpBleToUsb(static_cast<int>(kEventPumpBytes));
   printStreamingStats();
 
   if (!g_bannerSent && g_nus.isNotifyEnabled()) {

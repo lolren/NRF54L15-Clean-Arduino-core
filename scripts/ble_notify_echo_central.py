@@ -58,7 +58,10 @@ async def run(args: argparse.Namespace) -> int:
         first_notification.set()
 
     async with BleakClient(device) as client:
-        services = await client.get_services()
+        if hasattr(client, "get_services"):
+            services = await client.get_services()
+        else:
+            services = client.services
         if services.get_service(SERVICE_UUID) is None:
             print(f"Service {SERVICE_UUID} not found", file=sys.stderr)
             return 1

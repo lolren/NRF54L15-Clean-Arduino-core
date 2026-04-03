@@ -13,6 +13,7 @@ static uint16_t g_notifyCccdHandle = 0U;
 static uint32_t g_lastNotifyMs = 0U;
 static uint32_t g_notifyCounter = 0U;
 static uint32_t g_notifySentCount = 0U;
+static bool g_notifyPending = false;
 static constexpr bool kEnableNotifyTraffic = true;
 static constexpr uint32_t kNotifyIntervalMs = 1000UL;
 static bool g_wasConnected = false;
@@ -93,8 +94,12 @@ static void queueNotify() {
   }
 
   if (!g_ble.notifyCustomGattCharacteristic(g_notifyValueHandle, false)) {
+    --g_notifyCounter;
+    g_notifyPending = true;
     return;
   }
+
+  g_notifyPending = false;
 }
 
 static void captureDisconnectDebug() {
@@ -154,10 +159,13 @@ void loop() {
   if (!g_ble.isConnected()) {
     captureDisconnectDebug();
     g_wasConnected = false;
+    g_notifyPending = false;
     BleAdvInteraction adv{};
     (void)g_ble.advertiseInteractEvent(&adv, 350U, 300000UL, 700000UL);
     Gpio::write(kPinUserLed, true);
-    delay(1);
+    if (!g_ble.isConnected()) {
+      delay(20);
+    }
     return;
   }
 
@@ -183,7 +191,9 @@ void loop() {
   Gpio::write(kPinUserLed, false);
 
   const uint32_t now = millis();
-  if (kEnableNotifyTraffic &&
+  if (g_notifyPending && g_ble.isCustomGattCccdEnabled(g_notifyValueHandle, false)) {
+    queueNotify();
+  } else if (kEnableNotifyTraffic &&
       (now - g_lastNotifyMs) >= kNotifyIntervalMs &&
       g_ble.isCustomGattCccdEnabled(g_notifyValueHandle, false)) {
     g_lastNotifyMs = now;

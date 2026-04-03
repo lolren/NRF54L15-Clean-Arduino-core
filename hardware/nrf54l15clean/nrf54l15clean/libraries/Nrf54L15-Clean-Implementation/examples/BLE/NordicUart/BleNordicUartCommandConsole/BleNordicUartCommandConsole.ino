@@ -39,6 +39,7 @@ static bool g_bannerSent = false;  // True once the welcome banner has been sent
 static bool g_ledOn = false;
 static char g_lineBuffer[64];      // Accumulates incoming characters until newline.
 static uint8_t g_lineLength = 0U;
+static constexpr bool kEnableSerialLogs = false;
 
 // 0 dBm: good general-purpose TX power for console use.
 static constexpr int8_t kTxPowerDbm = 0;
@@ -47,6 +48,13 @@ static const uint8_t kAddress[6] = {0x36, 0x00, 0x15, 0x54, 0xDE, 0xC0};
 // Name ≤ 8 chars so it embeds alongside the 128-bit NUS UUID in the 31-byte ad
 // payload (3 flags + 18 UUID + 9 name = 30 bytes). See BleNusBridge for details.
 static constexpr char kDeviceName[] = "X54-CMD";
+
+static void logSerial(const char* text) {
+  if (!kEnableSerialLogs || text == nullptr) {
+    return;
+  }
+  Serial.print(text);
+}
 
 static void setLed(bool on) {
   g_ledOn = on;
@@ -127,9 +135,11 @@ static void processBleInput() {
     if (ch == '\r' || ch == '\n') {
       if (g_lineLength > 0U) {
         g_lineBuffer[g_lineLength] = '\0';
-        Serial.print("cmd: ");
-        Serial.print(g_lineBuffer);
-        Serial.print("\r\n");
+        if (kEnableSerialLogs) {
+          Serial.print("cmd: ");
+          Serial.print(g_lineBuffer);
+          Serial.print("\r\n");
+        }
         handleCommand(g_lineBuffer);
         g_lineLength = 0U;
       } else {
@@ -182,10 +192,12 @@ void loop() {
       g_bannerSent = false;
       g_lineLength = 0U;
       setLed(false);
-      Serial.print("BLE console disconnected\r\n");
+      logSerial("BLE console disconnected\r\n");
     }
 
-    delay(20);
+    if (!g_ble.isConnected()) {
+      delay(20);
+    }
     return;
   }
 
@@ -197,14 +209,14 @@ void loop() {
     // without encrypting, and NUS-capable apps refuse to write the CCCD on
     // an unencrypted link (seen as "cccd descriptor not writable" in the app).
     g_ble.sendSmpSecurityRequest();
-    Serial.print("BLE console connected\r\n");
+    logSerial("BLE console connected\r\n");
   }
 
   BleConnectionEvent evt{};
   if (g_ble.pollConnectionEvent(&evt, 450000UL) && evt.eventStarted) {
     g_nus.service(&evt);
     if (evt.terminateInd) {
-      Serial.print("BLE link terminated\r\n");
+      logSerial("BLE link terminated\r\n");
     }
   } else {
     g_nus.service();
@@ -220,5 +232,4 @@ void loop() {
   }
 
   processBleInput();
-  delay(1);
 }

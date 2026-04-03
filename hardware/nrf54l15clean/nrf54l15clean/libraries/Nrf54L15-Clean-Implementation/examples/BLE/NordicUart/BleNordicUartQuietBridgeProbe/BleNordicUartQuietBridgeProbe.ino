@@ -32,9 +32,9 @@ PowerManager g_power;
 
 // TX power in dBm. 0 dBm is a good default for USB-tethered probe work.
 constexpr int8_t kTxPowerDbm = 0;
-// Ring buffer sizes for each direction. 1024 bytes handles burst traffic.
-constexpr uint16_t kUsbToBleBufferSize = 1024U;
-constexpr uint16_t kBleToUsbBufferSize = 1024U;
+// Ring buffer sizes for each direction. 2048 bytes gives headroom for burst traffic.
+constexpr uint16_t kUsbToBleBufferSize = 2048U;
+constexpr uint16_t kBleToUsbBufferSize = 2048U;
 // NUS payload limit. Standard BLE 4.x MTU yields 20 bytes of usable payload.
 // Larger MTU can be negotiated with BLE 5 centrals, but 20 is a safe default.
 constexpr uint8_t kBleChunkBytes = 20U;

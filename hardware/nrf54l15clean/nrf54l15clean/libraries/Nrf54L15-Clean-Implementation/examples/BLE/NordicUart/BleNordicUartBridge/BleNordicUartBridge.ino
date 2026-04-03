@@ -66,8 +66,8 @@ volatile uint16_t g_dbgLastTxCount = 0U;
 volatile uint32_t g_dbgNusSentCount = 0U;
 volatile uint32_t g_dbgNusRetiredCount = 0U;
 
-static constexpr uint16_t kUsbToBleBufferSize = 1024U;
-static constexpr uint16_t kBleToUsbBufferSize = 1024U;
+static constexpr uint16_t kUsbToBleBufferSize = 2048U;
+static constexpr uint16_t kBleToUsbBufferSize = 2048U;
 static uint16_t g_usbToBleHead = 0U;
 static uint16_t g_usbToBleTail = 0U;
 static uint16_t g_usbToBleCount = 0U;

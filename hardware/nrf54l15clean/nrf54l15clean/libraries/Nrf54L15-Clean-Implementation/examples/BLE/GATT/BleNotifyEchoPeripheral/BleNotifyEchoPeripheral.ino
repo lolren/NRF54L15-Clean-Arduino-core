@@ -18,7 +18,9 @@ uint16_t g_notifyValueHandle = 0U;
 uint16_t g_notifyCccdHandle = 0U;
 
 char g_lastWrite[BleRadio::kCustomGattMaxValueLength + 1U] = {0};
+char g_pendingNotify[BleRadio::kCustomGattMaxValueLength + 1U] = {0};
 bool g_writePending = false;
+bool g_notifyPending = false;
 bool g_wasConnected = false;
 
 uint16_t g_tickCounter = 0U;
@@ -26,6 +28,14 @@ uint32_t g_lastTickMs = 0U;
 
 constexpr int8_t kTxPowerDbm = -8;
 constexpr uint32_t kTickIntervalMs = 2000UL;
+constexpr bool kEnableSerialLogs = false;
+
+void logSerial(const char* text) {
+  if (!kEnableSerialLogs || text == nullptr) {
+    return;
+  }
+  Serial.print(text);
+}
 
 void copyAsciiValue(char* outBuffer, size_t outBufferSize, const uint8_t* value,
                     uint8_t valueLength) {
@@ -41,32 +51,38 @@ void copyAsciiValue(char* outBuffer, size_t outBufferSize, const uint8_t* value,
   outBuffer[copyLength] = '\0';
 }
 
-bool queueNotifyMessage(const char* text) {
+bool stageNotifyMessage(const char* text) {
   if (text == nullptr) {
     return false;
   }
+  strncpy(g_pendingNotify, text, sizeof(g_pendingNotify) - 1U);
+  g_pendingNotify[sizeof(g_pendingNotify) - 1U] = '\0';
+  g_notifyPending = true;
+  return true;
+}
 
-  const size_t messageLength = strlen(text);
+bool flushPendingNotify() {
+  if (!g_notifyPending || !g_ble.isCustomGattCccdEnabled(g_notifyValueHandle, false)) {
+    return false;
+  }
+
+  const size_t messageLength = strlen(g_pendingNotify);
   const uint8_t valueLength = static_cast<uint8_t>(
       (messageLength < BleRadio::kCustomGattMaxValueLength)
           ? messageLength
           : BleRadio::kCustomGattMaxValueLength);
 
   if (!g_ble.setCustomGattCharacteristicValue(
-          g_notifyValueHandle, reinterpret_cast<const uint8_t*>(text),
+          g_notifyValueHandle, reinterpret_cast<const uint8_t*>(g_pendingNotify),
           valueLength)) {
-    Serial.print("notify value update failed\r\n");
     return false;
   }
 
   if (!g_ble.notifyCustomGattCharacteristic(g_notifyValueHandle, false)) {
-    Serial.print("notify skipped (CCCD disabled or controller busy)\r\n");
     return false;
   }
 
-  Serial.print("notify: ");
-  Serial.print(text);
-  Serial.print("\r\n");
+  g_notifyPending = false;
   return true;
 }
 
@@ -80,12 +96,6 @@ void onWrite(uint16_t valueHandle, const uint8_t* value, uint8_t valueLength,
 
   copyAsciiValue(g_lastWrite, sizeof(g_lastWrite), value, valueLength);
   g_writePending = true;
-
-  Serial.print("write ");
-  Serial.print(withResponse ? "req" : "cmd");
-  Serial.print(": ");
-  Serial.print(g_lastWrite);
-  Serial.print("\r\n");
 }
 
 void printUsage() {
@@ -161,11 +171,14 @@ void loop() {
   if (!g_ble.isConnected()) {
     g_wasConnected = false;
     g_writePending = false;
+    g_notifyPending = false;
 
     BleAdvInteraction adv{};
     g_ble.advertiseInteractEvent(&adv, 350U, 350000UL, 700000UL);
     Gpio::write(kPinUserLed, true);
-    delay(1);
+    if (!g_ble.isConnected()) {
+      delay(20);
+    }
     return;
   }
 
@@ -173,16 +186,15 @@ void loop() {
     g_wasConnected = true;
     g_tickCounter = 0U;
     g_lastTickMs = millis();
-    Serial.print("central connected\r\n");
+    logSerial("central connected\r\n");
   }
 
   BleConnectionEvent evt{};
   if (g_ble.pollConnectionEvent(&evt, 450000UL) && evt.eventStarted) {
     Gpio::write(kPinUserLed, false);
     if (evt.terminateInd) {
-      Serial.print("link terminated\r\n");
+      logSerial("link terminated\r\n");
       Gpio::write(kPinUserLed, true);
-      delay(1);
       return;
     }
   }
@@ -192,20 +204,22 @@ void loop() {
     snprintf(notifyText, sizeof(notifyText), "rx:%.*s",
              static_cast<int>(BleRadio::kCustomGattMaxValueLength - 3U),
              g_lastWrite);
-    queueNotifyMessage(notifyText);
-    g_writePending = false;
+    if (stageNotifyMessage(notifyText)) {
+      g_writePending = false;
+    }
   }
 
   const uint32_t nowMs = millis();
   if ((nowMs - g_lastTickMs) >= kTickIntervalMs &&
-      g_ble.isCustomGattCccdEnabled(g_notifyValueHandle, false)) {
+      g_ble.isCustomGattCccdEnabled(g_notifyValueHandle, false) &&
+      !g_writePending && !g_notifyPending) {
     g_lastTickMs = nowMs;
 
     char tickText[BleRadio::kCustomGattMaxValueLength + 1U] = {0};
     snprintf(tickText, sizeof(tickText), "tick:%u",
              static_cast<unsigned>(++g_tickCounter));
-    queueNotifyMessage(tickText);
+    stageNotifyMessage(tickText);
   }
 
-  delay(1);
+  flushPendingNotify();
 }
