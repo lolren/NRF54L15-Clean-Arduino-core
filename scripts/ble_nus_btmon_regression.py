@@ -362,7 +362,7 @@ def upload_hex(hex_path: Path, uid: str) -> None:
     run([sys.executable, str(UPLOAD_SCRIPT), "--hex", str(hex_path), "--uid", uid])
 
 
-def scan_for_device(addr: str, name: str, timeout_s: int, log_path: Path) -> bool:
+def scan_for_device(addr: str, name: str, timeout_s: int, log_path: Path) -> tuple[bool, str]:
     result = run(
         ["bluetoothctl", "--timeout", str(timeout_s), "scan", "on"],
         check=False,
@@ -370,7 +370,21 @@ def scan_for_device(addr: str, name: str, timeout_s: int, log_path: Path) -> boo
     stop = run(["bluetoothctl", "scan", "off"], check=False)
     combined = result.stdout + result.stderr + "\n--- scan off ---\n" + stop.stdout + stop.stderr
     log_path.write_text(combined, encoding="utf-8")
-    return (addr in combined) or (name in combined)
+
+    resolved_addr = addr
+    if name:
+        pattern = re.compile(r"Device ([0-9A-F:]{17}) (.+)$", re.MULTILINE)
+        matches = pattern.findall(combined)
+        for candidate_addr, candidate_name in matches:
+            if candidate_name.strip() == name:
+                resolved_addr = candidate_addr
+
+    found = False
+    if resolved_addr:
+        found = resolved_addr in combined
+    if not found and name:
+        found = name in combined
+    return found, resolved_addr
 
 
 def ascii_packet(prefix: str, index: int, tail: str = DEFAULT_FRAME_TAIL) -> bytes:
@@ -553,6 +567,7 @@ def main() -> int:
     session: Optional[GatttoolSession] = None
     scan_found = False
     connected = False
+    resolved_addr = args.addr
     rx_handle: Optional[int] = None
     tx_handle: Optional[int] = None
     tx_cccd_handle: Optional[int] = None
@@ -564,13 +579,13 @@ def main() -> int:
     failure = ""
 
     try:
-        scan_found = scan_for_device(
+        scan_found, resolved_addr = scan_for_device(
             args.addr, args.name, args.scan_timeout, args.outdir / "scan.log"
         )
         time.sleep(0.5)
 
         session = GatttoolSession(
-            addr=args.addr,
+            addr=resolved_addr,
             addr_type=args.addr_type,
             log_path=args.outdir / "gatttool.log",
         )
@@ -657,7 +672,7 @@ def main() -> int:
     xiao_to_host = verify_packets(xiao_to_host_packets, notification_stream)
 
     summary = Summary(
-        address=args.addr,
+        address=resolved_addr,
         address_type=args.addr_type,
         name=args.name,
         port=args.port,
