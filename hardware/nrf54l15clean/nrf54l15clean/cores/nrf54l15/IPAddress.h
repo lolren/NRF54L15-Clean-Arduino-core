@@ -17,8 +17,6 @@ private:
         uint32_t dword;
     } _address;
 
-    uint8_t* raw_address() { return _address.bytes; }
-
 public:
     IPAddress();
     IPAddress(uint8_t firstOctet, uint8_t secondOctet, uint8_t thirdOctet, uint8_t fourthOctet);
@@ -34,6 +32,8 @@ public:
 
     uint8_t operator[](int index) const { return _address.bytes[index]; }
     uint8_t& operator[](int index) { return _address.bytes[index]; }
+    uint8_t* raw_address() { return _address.bytes; }
+    const uint8_t* raw_address() const { return _address.bytes; }
 
     IPAddress& operator=(const uint8_t* address);
     IPAddress& operator=(uint32_t address);
