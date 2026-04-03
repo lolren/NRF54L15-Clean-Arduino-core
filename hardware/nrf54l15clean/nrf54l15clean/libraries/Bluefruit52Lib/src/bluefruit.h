@@ -1033,6 +1033,11 @@ class AdafruitBluefruit {
   uint16_t appearance_;
   bool auto_conn_led_;
   uint32_t conn_led_interval_ms_;
+  uint16_t central_conn_interval_;
+  uint16_t central_supervision_timeout_;
+  uint16_t central_requested_mtu_;
+  bool central_request_data_length_;
+  bool central_request_mtu_;
 
   friend class BluefruitCompatManager;
 };

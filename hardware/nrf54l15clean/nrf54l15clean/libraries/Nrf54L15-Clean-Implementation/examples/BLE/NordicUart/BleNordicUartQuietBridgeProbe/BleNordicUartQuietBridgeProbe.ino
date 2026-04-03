@@ -454,7 +454,18 @@ void loop() {
       g_ble.pollConnectionEvent(&evt, kConnectionPollTimeoutUs) && evt.eventStarted;
   if (!eventStarted) {
     g_nus.service();
-    maybeRequestLinkSecurity(millis());
+    const uint32_t nowMs = millis();
+    maybeRequestLinkSecurity(nowMs);
+    if ((nowMs - g_stats.connectedAtMs) < kBridgeWarmupMs) {
+      return;
+    }
+    // Keep draining USB CDC even between explicit BLE event anchors; otherwise
+    // host->USB bursts can stall behind the controller poll loop and only the
+    // first packet makes it into the bridge stage buffer.
+    stageUsbToBle(128);
+    stageBleToUsb(128);
+    pumpUsbToBle();
+    pumpBleToUsb(128);
     return;
   }
 

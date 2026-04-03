@@ -9,8 +9,8 @@ namespace xiao_nrf54l15 {
 
 class BleNordicUart : public Stream {
  public:
-  static constexpr size_t kRxBufferSize = 2048U;
-  static constexpr size_t kTxBufferSize = 2048U;
+  static constexpr size_t kRxBufferSize = 4096U;
+  static constexpr size_t kTxBufferSize = 4096U;
   static constexpr uint8_t kMaxPayloadLength = BleRadio::kCustomGattMaxValueLength;
 
   static const uint8_t kServiceUuid128[16];

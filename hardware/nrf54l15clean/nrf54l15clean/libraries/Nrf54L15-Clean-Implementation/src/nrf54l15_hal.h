@@ -2183,7 +2183,7 @@ class BleRadio {
   friend uint32_t nrf54l15_ble_grtc_reserved_cc_mask(void);
 
   static constexpr uint8_t kConnectionEventQueueDepth = 4U;
-  static constexpr uint8_t kCustomGattNotificationQueueDepth = 4U;
+  static constexpr uint8_t kCustomGattNotificationQueueDepth = 8U;
   struct BleQueuedConnectionEvent {
     BleConnectionEvent event;
     uint8_t payload[255];

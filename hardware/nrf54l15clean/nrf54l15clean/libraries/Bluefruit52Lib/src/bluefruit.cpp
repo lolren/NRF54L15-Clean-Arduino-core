@@ -422,6 +422,9 @@ class BluefruitCompatManager {
         client_characteristic_count_(0U),
         pending_connect_valid_(false),
         pending_connect_random_(0U),
+        central_data_length_request_pending_(false),
+        central_mtu_request_pending_(false),
+        central_link_config_not_before_ms_(0UL),
         last_connect_attempt_ms_(0UL),
         scan_report_data_{0},
         scan_report_len_(0U) {
@@ -592,6 +595,9 @@ class BluefruitCompatManager {
   bool pending_connect_valid_;
   uint8_t pending_connect_address_[6];
   uint8_t pending_connect_random_;
+  bool central_data_length_request_pending_;
+  bool central_mtu_request_pending_;
+  unsigned long central_link_config_not_before_ms_;
   unsigned long last_connect_attempt_ms_;
 
   static void gattWriteThunk(uint16_t valueHandle, const uint8_t* value,
@@ -716,8 +722,21 @@ class BluefruitCompatManager {
       return false;
     }
     last_connect_attempt_ms_ = now;
+    uint16_t interval_units = Bluefruit.central_conn_interval_;
+    if (interval_units < 6U) {
+      interval_units = 6U;
+    } else if (interval_units > 3200U) {
+      interval_units = 3200U;
+    }
+    uint16_t supervision_timeout_units = Bluefruit.central_supervision_timeout_;
+    if (supervision_timeout_units < 10U) {
+      supervision_timeout_units = 10U;
+    } else if (supervision_timeout_units > 3200U) {
+      supervision_timeout_units = 3200U;
+    }
     if (!radio_.initiateConnection(pending_connect_address_, pending_connect_random_ != 0U,
-                                   24U, 200U, 9U, 1200000UL)) {
+                                   interval_units, supervision_timeout_units, 9U,
+                                   1200000UL)) {
       return false;
     }
     pending_connect_valid_ = false;
@@ -757,7 +776,33 @@ class BluefruitCompatManager {
     }
   }
 
+  void maybeApplyCentralLinkConfig() {
+    if (!radio_.isConnected() || radio_.connectionRole() != BleConnectionRole::kCentral) {
+      return;
+    }
+    if (static_cast<int32_t>(millis() - central_link_config_not_before_ms_) < 0) {
+      return;
+    }
+
+    if (central_data_length_request_pending_) {
+      if ((radio_.currentDataLength() >=
+           static_cast<uint16_t>(BleRadio::kCustomGattMaxValueLength + 7U)) ||
+          radio_.requestDataLengthUpdate()) {
+        central_data_length_request_pending_ = false;
+      }
+    }
+
+    if (central_mtu_request_pending_) {
+      const uint16_t mtu = Bluefruit.central_requested_mtu_;
+      if ((mtu <= 23U) || (radio_.currentAttMtu() >= mtu) ||
+          radio_.requestAttMtuExchange(mtu)) {
+        central_mtu_request_pending_ = false;
+      }
+    }
+  }
+
   void processCentralBackgroundEvents(uint8_t maxEvents) {
+    maybeApplyCentralLinkConfig();
     for (uint8_t i = 0U; i < maxEvents; ++i) {
       BleConnectionEvent event{};
       if (!radio_.consumeDeferredConnectionEvent(&event)) {
@@ -852,6 +897,9 @@ class BluefruitCompatManager {
         }
       } else if (last_connection_role_ == BleConnectionRole::kCentral) {
         Bluefruit.Scanner.paused_ = true;
+        central_data_length_request_pending_ = Bluefruit.central_request_data_length_;
+        central_mtu_request_pending_ = Bluefruit.central_request_mtu_;
+        central_link_config_not_before_ms_ = millis() + 1000UL;
         if (Bluefruit.Central.connect_callback_ != nullptr) {
           invokeBluefruitUserCallback(Bluefruit.Central.connect_callback_, 0U);
         }
@@ -892,6 +940,9 @@ class BluefruitCompatManager {
         next_adv_due_us_ = 0U;
       }
     } else if (last_connection_role_ == BleConnectionRole::kCentral) {
+      central_data_length_request_pending_ = false;
+      central_mtu_request_pending_ = false;
+      central_link_config_not_before_ms_ = 0UL;
       if (Bluefruit.Central.disconnect_callback_ != nullptr) {
         invokeBluefruitUserCallback(Bluefruit.Central.disconnect_callback_, 0U, reason);
       }
@@ -3601,7 +3652,12 @@ AdafruitBluefruit::AdafruitBluefruit()
       tx_power_(0),
       appearance_(0),
       auto_conn_led_(false),
-      conn_led_interval_ms_(500UL) {
+      conn_led_interval_ms_(500UL),
+      central_conn_interval_(24U),
+      central_supervision_timeout_(200U),
+      central_requested_mtu_(23U),
+      central_request_data_length_(false),
+      central_request_mtu_(false) {
   strncpy(device_name_, "XIAO nRF54L15", sizeof(device_name_) - 1U);
 }
 
@@ -3643,10 +3699,30 @@ void AdafruitBluefruit::configPrphConn(uint16_t mtu_max, uint16_t event_len,
 
 void AdafruitBluefruit::configCentralConn(uint16_t mtu_max, uint16_t event_len,
                                           uint8_t hvn_qsize, uint8_t wrcmd_qsize) {
-  (void)mtu_max;
-  (void)event_len;
   (void)hvn_qsize;
   (void)wrcmd_qsize;
+
+  uint16_t interval_units = 24U;
+  if (mtu_max >= 247U || event_len >= 100U) {
+    interval_units = 6U;
+  } else if (mtu_max >= 128U || event_len >= 6U) {
+    interval_units = 12U;
+  } else if (event_len <= 2U) {
+    interval_units = 40U;
+  }
+
+  uint16_t requested_mtu = mtu_max;
+  if (requested_mtu < 23U) {
+    requested_mtu = 23U;
+  } else if (requested_mtu > 247U) {
+    requested_mtu = 247U;
+  }
+
+  central_conn_interval_ = interval_units;
+  central_supervision_timeout_ = 200U;
+  central_requested_mtu_ = requested_mtu;
+  central_request_mtu_ = (requested_mtu > 23U);
+  central_request_data_length_ = central_request_mtu_ || (event_len >= 6U);
 }
 
 void AdafruitBluefruit::configPrphBandwidth(uint8_t bw) {
@@ -3673,7 +3749,29 @@ void AdafruitBluefruit::configPrphBandwidth(uint8_t bw) {
   }
 }
 
-void AdafruitBluefruit::configCentralBandwidth(uint8_t bw) { (void)bw; }
+void AdafruitBluefruit::configCentralBandwidth(uint8_t bw) {
+  switch (bw) {
+    case BANDWIDTH_LOW:
+      configCentralConn(23U, 2U, 1U, 1U);
+      break;
+
+    case BANDWIDTH_AUTO:
+    case BANDWIDTH_NORMAL:
+      configCentralConn(23U, 3U, 1U, 1U);
+      break;
+
+    case BANDWIDTH_HIGH:
+      configCentralConn(128U, 6U, 2U, 1U);
+      break;
+
+    case BANDWIDTH_MAX:
+      configCentralConn(247U, 100U, 3U, 1U);
+      break;
+
+    default:
+      break;
+  }
+}
 
 bool AdafruitBluefruit::begin(uint8_t prph_count, uint8_t central_count) {
   return manager().begin(prph_count, central_count);

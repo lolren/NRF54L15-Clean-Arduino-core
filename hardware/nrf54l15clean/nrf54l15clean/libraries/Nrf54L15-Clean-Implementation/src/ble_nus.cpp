@@ -129,10 +129,10 @@ void BleNordicUart::service(const BleConnectionEvent* event) {
     }
   }
 
-  // The controller keeps only one custom notification pending at a time. Once
-  // a chunk has been handed off to that HAL queue, keep NUS blocked only until
-  // the HAL reports that queue empty again; link-layer retransmission is then
-  // owned entirely by the controller.
+  // The HAL retains a small custom-notification queue. Once this NUS TX
+  // characteristic has anything pending in that controller-owned path, keep
+  // the sketch-side ring blocked only until the HAL reports that queue empty
+  // again; link-layer retransmission is then owned entirely by the controller.
   if (txNotificationInFlight_) {
     const bool stillQueued =
         ble_.isCustomGattNotificationQueued(txValueHandle_, false);
@@ -303,11 +303,34 @@ size_t BleNordicUart::write(const uint8_t* buffer, size_t size) {
   }
 
   size_t written = 0U;
-  while (written < size && txCount_ < kTxBufferSize) {
-    txBuffer_[txHead_] = buffer[written];
-    txHead_ = advanceIndex(txHead_, static_cast<uint16_t>(kTxBufferSize));
-    ++txCount_;
-    ++written;
+  while (written < size) {
+    if (txCount_ >= kTxBufferSize) {
+      const uint16_t beforeService = txCount_;
+      service();
+      if (txCount_ >= kTxBufferSize && txCount_ >= beforeService) {
+        break;
+      }
+    }
+
+    size_t batch = size - written;
+    const size_t freeSpace = static_cast<size_t>(kTxBufferSize - txCount_);
+    if (batch > freeSpace) {
+      batch = freeSpace;
+    }
+    if (batch == 0U) {
+      break;
+    }
+
+    for (size_t i = 0U; i < batch; ++i) {
+      txBuffer_[txHead_] = buffer[written++];
+      txHead_ = advanceIndex(txHead_, static_cast<uint16_t>(kTxBufferSize));
+      ++txCount_;
+    }
+
+    if (ble_.isConnected() && isNotifyEnabled() &&
+        txCount_ >= static_cast<uint16_t>(notificationValueLimit())) {
+      service();
+    }
   }
 
   if (written < size) {
