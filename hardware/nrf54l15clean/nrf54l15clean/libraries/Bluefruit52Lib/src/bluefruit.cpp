@@ -447,6 +447,10 @@ class BluefruitCompatManager {
     radio_.clearCustomGatt();
     radio_.setGattDeviceName(Bluefruit.device_name_);
     radio_.setGattAppearance(Bluefruit.appearance_);
+    radio_.setPreferredConnectionParameters(Bluefruit.Periph.conn_interval_min_,
+                                            Bluefruit.Periph.conn_interval_max_,
+                                            Bluefruit.Periph.conn_latency_,
+                                            Bluefruit.Periph.conn_supervision_timeout_);
     radio_.setCustomGattWriteCallback(&BluefruitCompatManager::gattWriteThunk, this);
 
     if (Bluefruit.auto_conn_led_) {
@@ -1637,9 +1641,14 @@ bool BLECharacteristic::notify32(float num) { return notify(&num, sizeof(num)); 
 
 bool BLECharacteristic::notify(uint16_t conn_hdl, const void* data, uint16_t len) {
   (void)conn_hdl;
-  write(data, len);
-  return (_handles.value_handle != 0U) &&
-         manager().radio().notifyCustomGattCharacteristic(_handles.value_handle, false);
+  if (_handles.value_handle == 0U) {
+    return false;
+  }
+  const uint16_t written = write(data, len);
+  if (len > 0U && written == 0U) {
+    return false;
+  }
+  return manager().radio().notifyCustomGattCharacteristic(_handles.value_handle, false);
 }
 
 bool BLECharacteristic::notify(uint16_t conn_hdl, const char* str) {
@@ -1694,9 +1703,15 @@ bool BLECharacteristic::indicate32(float num) { return indicate(&num, sizeof(num
 
 bool BLECharacteristic::indicate(uint16_t conn_hdl, const void* data, uint16_t len) {
   (void)conn_hdl;
-  write(data, len);
-  return (_handles.value_handle != 0U) &&
-         manager().radio().notifyCustomGattCharacteristic(_handles.value_handle, true);
+  if (_handles.value_handle == 0U ||
+      manager().radio().isCustomGattNotificationQueued(_handles.value_handle, true)) {
+    return false;
+  }
+  const uint16_t written = write(data, len);
+  if (len > 0U && written == 0U) {
+    return false;
+  }
+  return manager().radio().notifyCustomGattCharacteristic(_handles.value_handle, true);
 }
 
 bool BLECharacteristic::indicate(uint16_t conn_hdl, const char* str) {
@@ -2137,7 +2152,9 @@ BLEPeriph::BLEPeriph()
     : connect_callback_(nullptr),
       disconnect_callback_(nullptr),
       conn_interval_min_(BLE_GAP_CONN_MIN_INTERVAL_DFLT),
-      conn_interval_max_(BLE_GAP_CONN_MAX_INTERVAL_DFLT) {}
+      conn_interval_max_(BLE_GAP_CONN_MAX_INTERVAL_DFLT),
+      conn_latency_(BLE_GAP_CONN_SLAVE_LATENCY),
+      conn_supervision_timeout_(BLE_GAP_CONN_SUPERVISION_TIMEOUT_MS / 10U) {}
 
 void BLEPeriph::setConnectCallback(ble_connect_callback_t fp) { connect_callback_ = fp; }
 
@@ -2145,9 +2162,37 @@ void BLEPeriph::setDisconnectCallback(ble_disconnect_callback_t fp) {
   disconnect_callback_ = fp;
 }
 
-void BLEPeriph::setConnInterval(uint16_t min_interval, uint16_t max_interval) {
+bool BLEPeriph::setConnInterval(uint16_t min_interval, uint16_t max_interval) {
   conn_interval_min_ = min_interval;
   conn_interval_max_ = (max_interval == 0U) ? min_interval : max_interval;
+  manager().radio().setPreferredConnectionParameters(conn_interval_min_, conn_interval_max_,
+                                                     conn_latency_,
+                                                     conn_supervision_timeout_);
+  return true;
+}
+
+bool BLEPeriph::setConnIntervalMS(uint16_t min_ms, uint16_t max_ms) {
+  return setConnInterval(MS100TO125(min_ms), MS100TO125(max_ms));
+}
+
+bool BLEPeriph::setConnSlaveLatency(uint16_t latency) {
+  conn_latency_ = latency;
+  manager().radio().setPreferredConnectionParameters(conn_interval_min_, conn_interval_max_,
+                                                     conn_latency_,
+                                                     conn_supervision_timeout_);
+  return true;
+}
+
+bool BLEPeriph::setConnSupervisionTimeout(uint16_t timeout) {
+  conn_supervision_timeout_ = timeout;
+  manager().radio().setPreferredConnectionParameters(conn_interval_min_, conn_interval_max_,
+                                                     conn_latency_,
+                                                     conn_supervision_timeout_);
+  return true;
+}
+
+bool BLEPeriph::setConnSupervisionTimeoutMS(uint16_t timeout_ms) {
+  return setConnSupervisionTimeout(timeout_ms / 10U);
 }
 
 void BLEPeriph::clearBonds() {
@@ -2181,6 +2226,55 @@ bool BLEConnection::getPeerName(char* name, uint16_t bufsize) const {
 }
 
 bool BLEConnection::disconnect() const { return Bluefruit.disconnect(handle_); }
+
+uint16_t BLEConnection::getConnectionInterval() const {
+  if (!connected()) {
+    return 0U;
+  }
+  BleConnectionInfo info{};
+  return manager().radio().getConnectionInfo(&info) ? info.intervalUnits : 0U;
+}
+
+uint16_t BLEConnection::getSlaveLatency() const {
+  if (!connected()) {
+    return 0U;
+  }
+  BleConnectionInfo info{};
+  return manager().radio().getConnectionInfo(&info) ? info.latency : 0U;
+}
+
+uint16_t BLEConnection::getSupervisionTimeout() const {
+  if (!connected()) {
+    return 0U;
+  }
+  BleConnectionInfo info{};
+  return manager().radio().getConnectionInfo(&info) ? info.supervisionTimeoutUnits : 0U;
+}
+
+uint16_t BLEConnection::getDataLength() const {
+  return connected() ? manager().radio().currentDataLength() : 0U;
+}
+
+bool BLEConnection::requestDataLengthUpdate() {
+  if (!connected()) {
+    return false;
+  }
+  return manager().radio().requestDataLengthUpdate();
+}
+
+bool BLEConnection::requestMtuExchange(uint16_t mtu) {
+  if (!connected()) {
+    return false;
+  }
+  return manager().radio().requestAttMtuExchange(mtu);
+}
+
+uint16_t BLEConnection::getMtu() const {
+  if (!connected()) {
+    return 23U;
+  }
+  return manager().radio().currentAttMtu();
+}
 
 bool BLEConnection::requestPairing() const {
   if (!connected()) {
@@ -3416,22 +3510,37 @@ size_t BLEUart::write(const uint8_t* content, size_t len) { return write(0U, con
 size_t BLEUart::write(uint16_t conn_hdl, uint8_t b) { return write(conn_hdl, &b, 1U); }
 
 size_t BLEUart::write(uint16_t conn_hdl, const uint8_t* content, size_t len) {
-  (void)conn_hdl;
-  if (content == nullptr || len == 0U || !notifyEnabled()) {
+  BLEConnection* conn = Bluefruit.Connection(conn_hdl);
+  if (conn == nullptr || content == nullptr || len == 0U || !notifyEnabled(conn_hdl)) {
     return 0U;
   }
 
   size_t sent = 0U;
+  uint32_t stalledAtMs = 0U;
   while (sent < len) {
+    const uint16_t mtu = conn->getMtu();
+    const uint16_t maxChunk =
+        (mtu > 3U) ? static_cast<uint16_t>(mtu - 3U) : 20U;
     const uint16_t chunk =
-        min<uint16_t>(BleRadio::kCustomGattMaxValueLength, static_cast<uint16_t>(len - sent));
-    if (!_txd.notify(&content[sent], chunk)) {
+        min<uint16_t>(min<uint16_t>(BleRadio::kCustomGattMaxValueLength, maxChunk),
+                      static_cast<uint16_t>(len - sent));
+    if (_txd.notify(conn_hdl, &content[sent], chunk)) {
+      sent += chunk;
+      stalledAtMs = 0U;
+      continue;
+    }
+
+    if (!Bluefruit.connected() || !notifyEnabled(conn_hdl)) {
       break;
     }
-    sent += chunk;
-    if (sent < len) {
-      delay(5);
+
+    if (stalledAtMs == 0U) {
+      stalledAtMs = millis();
+    } else if ((millis() - stalledAtMs) > 1000UL) {
+      break;
     }
+
+    yield();
   }
   return sent;
 }
@@ -3504,12 +3613,32 @@ void AdafruitBluefruit::configAttrTableSize(uint32_t attr_table_size) {
   (void)attr_table_size;
 }
 
+static void applyPeripheralConnHint(BLEPeriph& periph, uint16_t mtu_max,
+                                    uint16_t event_len) {
+  uint16_t min_interval = 24U;
+  uint16_t max_interval = 40U;
+
+  if (mtu_max >= 247U || event_len >= 100U) {
+    min_interval = 6U;
+    max_interval = 12U;
+  } else if (mtu_max >= 128U || event_len >= 6U) {
+    min_interval = 12U;
+    max_interval = 24U;
+  } else if (event_len <= 2U) {
+    min_interval = 40U;
+    max_interval = 80U;
+  }
+
+  periph.setConnInterval(min_interval, max_interval);
+  periph.setConnSlaveLatency(0U);
+  periph.setConnSupervisionTimeout(500U);
+}
+
 void AdafruitBluefruit::configPrphConn(uint16_t mtu_max, uint16_t event_len,
                                        uint8_t hvn_qsize, uint8_t wrcmd_qsize) {
-  (void)mtu_max;
-  (void)event_len;
   (void)hvn_qsize;
   (void)wrcmd_qsize;
+  applyPeripheralConnHint(Periph, mtu_max, event_len);
 }
 
 void AdafruitBluefruit::configCentralConn(uint16_t mtu_max, uint16_t event_len,
@@ -3520,7 +3649,29 @@ void AdafruitBluefruit::configCentralConn(uint16_t mtu_max, uint16_t event_len,
   (void)wrcmd_qsize;
 }
 
-void AdafruitBluefruit::configPrphBandwidth(uint8_t bw) { (void)bw; }
+void AdafruitBluefruit::configPrphBandwidth(uint8_t bw) {
+  switch (bw) {
+    case BANDWIDTH_LOW:
+      configPrphConn(23U, 2U, 1U, 1U);
+      break;
+
+    case BANDWIDTH_AUTO:
+    case BANDWIDTH_NORMAL:
+      configPrphConn(23U, 3U, 1U, 1U);
+      break;
+
+    case BANDWIDTH_HIGH:
+      configPrphConn(128U, 6U, 2U, 1U);
+      break;
+
+    case BANDWIDTH_MAX:
+      configPrphConn(247U, 100U, 3U, 1U);
+      break;
+
+    default:
+      break;
+  }
+}
 
 void AdafruitBluefruit::configCentralBandwidth(uint8_t bw) { (void)bw; }
 

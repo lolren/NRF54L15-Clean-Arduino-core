@@ -59,6 +59,10 @@ bool BleNordicUart::begin() {
     return true;
   }
 
+  // NUS is an interactive streaming service; prefer a short connection
+  // interval so centrals are nudged toward a responsive, high-throughput link.
+  ble_.setPreferredConnectionParameters(6U, 12U, 0U, 500U);
+
   uint16_t serviceHandle = 0U;
   uint16_t rxValueHandle = 0U;
   uint16_t txValueHandle = 0U;
@@ -165,7 +169,8 @@ void BleNordicUart::service(const BleConnectionEvent* event) {
   }
 
   connected_ = true;
-  queueNextNotification();
+  while (queueNextNotification()) {
+  }
 }
 
 bool BleNordicUart::initialized() const {
@@ -352,31 +357,27 @@ bool BleNordicUart::queueNextNotification() {
     lastQueueResult_ = 2U;
     return false;
   }
-  if (txNotificationInFlight_) {
+  if (txCount_ == 0U) {
     lastQueueResult_ = 3U;
     return false;
   }
-  if (txCount_ == 0U) {
-    lastQueueResult_ = 4U;
-    return false;
-  }
   if (!isNotifyEnabled()) {
-    lastQueueResult_ = 5U;
+    lastQueueResult_ = 4U;
     return false;
   }
 
   const size_t chunkLength = copyTxChunk(txChunk_, sizeof(txChunk_));
   if (chunkLength == 0U || chunkLength > kMaxPayloadLength) {
-    lastQueueResult_ = 6U;
+    lastQueueResult_ = 5U;
     return false;
   }
   if (!ble_.setCustomGattCharacteristicValue(
           txValueHandle_, txChunk_, static_cast<uint8_t>(chunkLength))) {
-    lastQueueResult_ = 7U;
+    lastQueueResult_ = 6U;
     return false;
   }
   if (!ble_.notifyCustomGattCharacteristic(txValueHandle_, false)) {
-    lastQueueResult_ = 8U;
+    lastQueueResult_ = 7U;
     return false;
   }
 
@@ -391,7 +392,7 @@ bool BleNordicUart::queueNextNotification() {
   txNotificationAwaitingAck_ =
       ble_.isCustomGattNotificationQueued(txValueHandle_, false);
   ++debugNotificationSentCount_;
-  lastQueueResult_ = 9U;
+  lastQueueResult_ = 8U;
   return true;
 }
 

@@ -40,7 +40,9 @@ constexpr uint16_t kUsbToBleBufferSize = 2048U;    // Staging buffer for USB→B
 constexpr uint8_t kUsbToBleChunkBytes = BleNordicUart::kMaxPayloadLength;
 constexpr uint16_t kEventNoopStageBytes = 256U;    // Bytes staged between connection events.
 constexpr uint16_t kEventStageBytes = 512U;        // Bytes staged on a real connection event.
-constexpr uint16_t kEventPumpBytes = 64U;          // Bytes pumped per loop pass.
+constexpr uint16_t kEventPumpBytes = 512U;         // Bytes pumped per loop pass.
+constexpr uint16_t kBleWriteChunkBytes =
+    BleNordicUart::kMaxPayloadLength;              // One full notify-sized staging chunk.
 constexpr bool kEnableBridgeLogs = false;
 constexpr bool kEnableBleBgService = false;
 // pollConnectionEvent spin limit in µs. Keep short so we don't miss 7.5 ms anchors.
@@ -137,33 +139,47 @@ static void pumpUsbToBle(int maxBytes) {
   }
 
   int budget = g_nus.availableForWrite();
-  const int payloadLimit = g_nus.maxPayloadLength();
-  if (budget > payloadLimit) {
-    budget = payloadLimit;
-  }
   if (budget > maxBytes) {
     budget = maxBytes;
-  }
-  if (budget <= 0) {
-    return;
-  }
-  if (budget > static_cast<int>(kUsbToBleChunkBytes)) {
-    budget = static_cast<int>(kUsbToBleChunkBytes);
   }
   if (g_usbToBleCount < static_cast<uint16_t>(budget)) {
     budget = static_cast<int>(g_usbToBleCount);
   }
-
-  uint8_t chunk[kUsbToBleChunkBytes] = {kNoBytes};
-  uint16_t index = g_usbToBleTail;
-  for (int i = 0; i < budget; ++i) {
-    chunk[i] = g_usbToBleBuffer[index];
-    index = advanceIndex(index, kUsbToBleBufferSize);
+  if (budget <= 0) {
+    return;
   }
-  const size_t written = g_nus.write(chunk, static_cast<size_t>(budget));
-  for (size_t i = 0; i < written; ++i) {
-    g_usbToBleTail = advanceIndex(g_usbToBleTail, kUsbToBleBufferSize);
-    --g_usbToBleCount;
+
+  uint8_t chunk[kBleWriteChunkBytes] = {kNoBytes};
+  while (budget > 0 && g_usbToBleCount > 0U) {
+    int chunkBudget = budget;
+    if (chunkBudget > static_cast<int>(sizeof(chunk))) {
+      chunkBudget = static_cast<int>(sizeof(chunk));
+    }
+    if (g_usbToBleCount < static_cast<uint16_t>(chunkBudget)) {
+      chunkBudget = static_cast<int>(g_usbToBleCount);
+    }
+    if (chunkBudget <= 0) {
+      break;
+    }
+
+    uint16_t index = g_usbToBleTail;
+    for (int i = 0; i < chunkBudget; ++i) {
+      chunk[i] = g_usbToBleBuffer[index];
+      index = advanceIndex(index, kUsbToBleBufferSize);
+    }
+
+    const size_t written = g_nus.write(chunk, static_cast<size_t>(chunkBudget));
+    if (written == 0U) {
+      break;
+    }
+    for (size_t i = 0; i < written; ++i) {
+      g_usbToBleTail = advanceIndex(g_usbToBleTail, kUsbToBleBufferSize);
+      --g_usbToBleCount;
+    }
+    budget -= static_cast<int>(written);
+    if (written < static_cast<size_t>(chunkBudget)) {
+      break;
+    }
   }
 }
 

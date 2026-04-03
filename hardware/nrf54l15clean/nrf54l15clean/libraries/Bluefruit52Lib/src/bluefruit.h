@@ -206,7 +206,7 @@ class BLECharacteristic {
   SecureMode_t _read_perm;
   SecureMode_t _write_perm;
   ble_gatts_char_handles_t _handles;
-  uint8_t _value[20];
+  uint8_t _value[BLUEFRUIT_GATT_VALUE_MAX_LEN];
   uint8_t _value_len;
   bool _notify_enabled;
   bool _indicate_enabled;
@@ -343,7 +343,11 @@ class BLEPeriph {
 
   void setConnectCallback(ble_connect_callback_t fp);
   void setDisconnectCallback(ble_disconnect_callback_t fp);
-  void setConnInterval(uint16_t min_interval, uint16_t max_interval = 0);
+  bool setConnInterval(uint16_t min_interval, uint16_t max_interval = 0);
+  bool setConnIntervalMS(uint16_t min_ms, uint16_t max_ms);
+  bool setConnSlaveLatency(uint16_t latency);
+  bool setConnSupervisionTimeout(uint16_t timeout);
+  bool setConnSupervisionTimeoutMS(uint16_t timeout_ms);
   void clearBonds();
 
  private:
@@ -351,6 +355,8 @@ class BLEPeriph {
   ble_disconnect_callback_t disconnect_callback_;
   uint16_t conn_interval_min_;
   uint16_t conn_interval_max_;
+  uint16_t conn_latency_;
+  uint16_t conn_supervision_timeout_;
 
   friend class BluefruitCompatManager;
 };
@@ -366,18 +372,19 @@ class BLEConnection {
   bool getPeerName(char* name, uint16_t bufsize) const;
   bool disconnect() const;
   bool requestPHY() { return false; }
-  bool requestDataLengthUpdate() { return false; }
-  bool requestMtuExchange(uint16_t mtu) {
-    (void)mtu;
-    return false;
-  }
+  bool requestDataLengthUpdate();
+  bool requestMtuExchange(uint16_t mtu);
   bool requestPairing() const;
   bool monitorRssi(uint8_t threshold = 0xFFU) const {
     (void)threshold;
     return connected();
   }
   int8_t getRssi() const { return 0; }
-  uint16_t getMtu() const { return 23U; }
+  uint16_t getConnectionInterval() const;
+  uint16_t getSlaveLatency() const;
+  uint16_t getSupervisionTimeout() const;
+  uint16_t getDataLength() const;
+  uint16_t getMtu() const;
 
  private:
   uint16_t handle_;
@@ -576,7 +583,7 @@ class BLEClientCharacteristic {
   uint16_t value_handle_;
   uint16_t end_handle_;
   uint16_t cccd_handle_;
-  uint8_t last_value_[20];
+  uint8_t last_value_[BLUEFRUIT_GATT_VALUE_MAX_LEN];
   uint8_t last_value_len_;
 
   void handleNotify(const uint8_t* data, uint16_t len);

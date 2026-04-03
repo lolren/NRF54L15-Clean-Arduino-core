@@ -1697,7 +1697,7 @@ class BleRadio {
  public:
   static constexpr uint8_t kCustomGattMaxServices = 8U;
   static constexpr uint8_t kCustomGattMaxCharacteristics = 16U;
-  static constexpr uint8_t kCustomGattMaxValueLength = 20U;
+  static constexpr uint8_t kCustomGattMaxValueLength = 244U;
 
   explicit BleRadio(uint32_t radioBase = nrf54l15::RADIO_BASE,
                     uint32_t ficrBase = nrf54l15::FICR_BASE);
@@ -1761,6 +1761,7 @@ class BleRadio {
                                bool indication = false) const;
   bool isCustomGattNotificationQueued(uint16_t valueHandle,
                                       bool indicate = false) const;
+  uint16_t currentDataLength() const;
   uint16_t currentAttMtu() const;
   uint8_t maxNotificationValueLength() const;
   bool setCustomGattWriteHandler(uint16_t valueHandle,
@@ -1835,6 +1836,12 @@ class BleRadio {
                             uint8_t valueLength, bool withResponse = true);
   bool queueAttCccdWrite(uint16_t cccdHandle, bool notify,
                          bool indicate = false, bool withResponse = true);
+  void setPreferredConnectionParameters(uint16_t intervalMinUnits,
+                                        uint16_t intervalMaxUnits,
+                                        uint16_t latency,
+                                        uint16_t timeoutUnits);
+  bool requestDataLengthUpdate();
+  bool requestAttMtuExchange(uint16_t mtu);
   bool isConnected() const;
   BleConnectionRole connectionRole() const;
   bool isConnectionEncrypted() const;
@@ -1960,6 +1967,8 @@ class BleRadio {
     uint32_t hfxoLeadUs;
   };
 
+  struct BleQueuedCustomNotificationState;
+
   bool configureBle1M();
   bool beginUnconnectedRadioActivity(uint32_t spinLimit = 1500000UL);
   void endUnconnectedRadioActivity();
@@ -2055,6 +2064,16 @@ class BleRadio {
                              uint8_t l2capPayloadLength,
                              uint8_t* outPayload,
                              uint8_t* outPayloadLength);
+  uint16_t currentTxDataPduPayloadLength() const;
+  uint16_t currentRxDataPduPayloadLength() const;
+  uint16_t currentMaxAttPayloadLength() const;
+  uint16_t localPreferredAttMtu() const;
+  void updateConnectionDataLengthFromPeer(uint16_t peerMaxRxOctets,
+                                          uint16_t peerMaxTxOctets);
+  bool queueCentralDataLengthRequest();
+  bool queueCentralAttMtuRequest();
+  bool queuePeripheralConnParamUpdateRequest();
+  void maybeQueueCentralLinkSetupRequest();
   void clearPreparedWriteState();
   bool applyCccdState(uint16_t handle, uint16_t cccd);
   bool buildAttErrorResponse(uint8_t requestOpcode, uint16_t handle,
@@ -2138,6 +2157,15 @@ class BleRadio {
   bool enqueueConnectionEvent(const BleConnectionEvent& event);
   bool dequeueConnectionEvent(BleConnectionEvent* event);
   static bool shouldQueueConnectionEvent(const BleConnectionEvent& event);
+  bool enqueueCustomGattNotification(uint8_t characteristicIndex, bool indicate,
+                                     const uint8_t* value,
+                                     uint8_t valueLength);
+  bool peekCustomGattNotification(
+      BleQueuedCustomNotificationState* outNotification) const;
+  void popCustomGattNotification();
+  void filterCustomGattNotificationQueue(uint8_t characteristicIndex,
+                                         bool notificationsEnabled,
+                                         bool indicationsEnabled);
   void resetDisconnectDebugState();
   void rememberConnectionRxDebug(uint8_t llid, uint8_t rxLength,
                                  uint8_t protocolOpcode, uint8_t nesn,
@@ -2155,10 +2183,19 @@ class BleRadio {
   friend uint32_t nrf54l15_ble_grtc_reserved_cc_mask(void);
 
   static constexpr uint8_t kConnectionEventQueueDepth = 4U;
+  static constexpr uint8_t kCustomGattNotificationQueueDepth = 4U;
   struct BleQueuedConnectionEvent {
     BleConnectionEvent event;
     uint8_t payload[255];
     uint8_t txPayload[255];
+  };
+
+  struct BleQueuedCustomNotificationState {
+    bool valid;
+    uint8_t characteristicIndex;
+    bool indication;
+    uint8_t valueLength;
+    uint8_t value[kCustomGattMaxValueLength];
   };
 
   NRF_RADIO_Type* radio_;
@@ -2221,6 +2258,18 @@ class BleRadio {
   uint32_t connectionNextEventUs_;
   uint32_t connectionFirstEventListenUs_;
   uint8_t connectionSyncAttemptsRemaining_;
+  uint16_t connectionMaxTxPayloadLength_;
+  uint16_t connectionMaxRxPayloadLength_;
+  bool connectionDataLengthUpdatePending_;
+  bool connectionDataLengthUpdateInFlight_;
+  bool connectionDataLengthUpdateComplete_;
+  bool connectionAttMtuExchangePending_;
+  bool connectionAttMtuExchangeInFlight_;
+  bool connectionAttMtuExchangeComplete_;
+  bool connectionConnParamUpdatePending_;
+  bool connectionConnParamUpdateInFlight_;
+  uint8_t connectionConnParamUpdateIdentifier_;
+  uint16_t connectionRequestedAttMtu_;
   uint16_t connectionAttMtu_;
   uint8_t connectionLastTxLlid_;
   uint8_t connectionLastTxLength_;
@@ -2389,9 +2438,11 @@ class BleRadio {
   uint8_t customGattServiceCount_;
   uint8_t customGattCharacteristicCount_;
   uint16_t customGattNextHandle_;
-  bool connectionCustomNotificationPending_;
-  uint8_t connectionCustomPendingCharIndex_;
-  bool connectionCustomPendingIndication_;
+  BleQueuedCustomNotificationState
+      connectionCustomNotificationQueue_[kCustomGattNotificationQueueDepth];
+  uint8_t connectionCustomNotificationQueueHead_;
+  uint8_t connectionCustomNotificationQueueTail_;
+  uint8_t connectionCustomNotificationQueueCount_;
   uint16_t connectionCustomIndicationAwaitingHandle_;
   bool connectionSmpSecurityRequestPending_;
   BleGattWriteCallback customGattWriteCallback_;
