@@ -123,6 +123,7 @@ void startAdv(void)
 
   // Secondary Scan Response packet (optional)
   // Since there is no room for 'Name' in Advertising packet
+  Bluefruit.Advertising.addName();
   Bluefruit.ScanResponse.addName();
   
   /* Start Advertising
@@ -471,4 +472,3 @@ uint32_t readPressedButtons(void)
 
   return result;
 }
-

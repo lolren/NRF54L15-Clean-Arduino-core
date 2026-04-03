@@ -118,6 +118,7 @@ void startAdv(void)
 
   // Not enough room in the advertising packet for name
   // so store it in the Scan Response instead
+  Bluefruit.Advertising.addName();
   Bluefruit.ScanResponse.addName();
 
   /* Start Advertising
@@ -152,4 +153,3 @@ void blink_timer_callback(TimerHandle_t xTimerID)
   (void) xTimerID;
   digitalToggle(LED_RED);
 }
-

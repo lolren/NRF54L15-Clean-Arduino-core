@@ -99,7 +99,9 @@ void startAdv(void)
   // BLE_GAP_AD_TYPE_MANUFACTURER_SPECIFIC_DATA is 0xFF
   Bluefruit.Advertising.addData(BLE_GAP_AD_TYPE_MANUFACTURER_SPECIFIC_DATA, &color_data, sizeof(color_data));
 
-  // Tell the BLE device we want to send our name in a ScanResponse if asked.
+  // Keep a shortened name in ADV so passive scanners still show a label.
+  Bluefruit.Advertising.addName();
+  // ScanResponse keeps the full name for active scanners.
   Bluefruit.ScanResponse.addName();
 
   /* Start Advertising

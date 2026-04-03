@@ -39,6 +39,8 @@ void startAdv() {
   Bluefruit.Advertising.addFlags(BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE);
   Bluefruit.Advertising.addTxPower();
   Bluefruit.Advertising.addService(lbs);
+  // Keep a shortened name in ADV so passive scanners still show a label.
+  Bluefruit.Advertising.addName();
   Bluefruit.ScanResponse.addName();
   Bluefruit.Advertising.restartOnDisconnect(true);
   Bluefruit.Advertising.setInterval(32, 244);

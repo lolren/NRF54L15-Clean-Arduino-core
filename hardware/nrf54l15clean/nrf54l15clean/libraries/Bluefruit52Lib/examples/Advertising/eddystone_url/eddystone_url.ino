@@ -44,6 +44,7 @@ void startAdv(void)
 
   // Secondary Scan Response packet (optional)
   // Since there is no room for 'Name' in Advertising packet
+  Bluefruit.Advertising.addName();
   Bluefruit.ScanResponse.addName();
   
   /* Start Advertising
@@ -68,4 +69,3 @@ void loop()
   digitalToggle(LED_RED);
   delay(1000);
 }
-

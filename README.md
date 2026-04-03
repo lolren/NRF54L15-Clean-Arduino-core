@@ -307,6 +307,7 @@ Check:
 
 - the package index URL matches the one in `Install`
 - remove stale local override `~/Arduino/hardware/nrf54l15clean`
+  A symlink there also counts as an override and can shadow the Boards Manager package.
 - refresh indexes:
 
 ```bash
@@ -321,6 +322,7 @@ Check:
 
 - the selected board is `XIAO nRF54L15 (Nrf54L15-Clean-Implementation)`
 - there is no stale `~/Arduino/hardware/nrf54l15clean` override
+  A symlink there can make Arduino IDE show a different package/example tree than the installed release.
 - restart Arduino IDE after reinstall so the example tree is rebuilt
 
 CLI sanity check:

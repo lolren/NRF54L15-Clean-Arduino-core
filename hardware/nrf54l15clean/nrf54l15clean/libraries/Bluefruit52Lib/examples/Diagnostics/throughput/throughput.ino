@@ -87,8 +87,9 @@ void startAdv(void)
   // Include bleuart 128-bit uuid
   Bluefruit.Advertising.addService(bleuart);
 
-  // There is no room for Name in Advertising packet
-  // Use Scan response for Name
+  // Keep a shortened name in ADV so passive scanners still show a label.
+  Bluefruit.Advertising.addName();
+  // Scan response keeps the full name for active scanners.
   Bluefruit.ScanResponse.addName();
   
   /* Start Advertising
