@@ -171,6 +171,37 @@ uint8_t clampValueLen(uint16_t len) {
   return static_cast<uint8_t>(len);
 }
 
+class ScopedBluefruitUserCallback {
+ public:
+  ScopedBluefruitUserCallback() { ++depth(); }
+
+  ~ScopedBluefruitUserCallback() {
+    if (depth() != 0U) {
+      --depth();
+    }
+  }
+
+  ScopedBluefruitUserCallback(const ScopedBluefruitUserCallback&) = delete;
+  ScopedBluefruitUserCallback& operator=(const ScopedBluefruitUserCallback&) = delete;
+
+  static bool active() { return depth() != 0U; }
+
+ private:
+  static uint8_t& depth() {
+    static uint8_t value = 0U;
+    return value;
+  }
+};
+
+template <typename Callback, typename... Args>
+void invokeBluefruitUserCallback(Callback callback, Args... args) {
+  if (callback == nullptr) {
+    return;
+  }
+  ScopedBluefruitUserCallback scope;
+  callback(args...);
+}
+
 bool timeReachedUs(uint32_t now, uint32_t target) {
   return static_cast<int32_t>(now - target) >= 0;
 }
@@ -716,7 +747,7 @@ class BluefruitCompatManager {
     }
 
     Bluefruit.Scanner.paused_ = true;
-    Bluefruit.Scanner.rx_callback_(&scan_report_);
+    invokeBluefruitUserCallback(Bluefruit.Scanner.rx_callback_, &scan_report_);
     if (pending_connect_valid_) {
       (void)maybeConnectCentral();
     }
@@ -759,7 +790,7 @@ class BluefruitCompatManager {
                         1000UL)) {
         Bluefruit.Advertising.running_ = false;
         if (Bluefruit.Advertising.stop_callback_ != nullptr) {
-          Bluefruit.Advertising.stop_callback_();
+          invokeBluefruitUserCallback(Bluefruit.Advertising.stop_callback_);
         }
         return;
       }
@@ -810,7 +841,7 @@ class BluefruitCompatManager {
           }
         }
         if (Bluefruit.Periph.connect_callback_ != nullptr) {
-          Bluefruit.Periph.connect_callback_(0U);
+          invokeBluefruitUserCallback(Bluefruit.Periph.connect_callback_, 0U);
         }
         if (!Bluefruit.Advertising.restart_on_disconnect_) {
           Bluefruit.Advertising.running_ = false;
@@ -818,7 +849,7 @@ class BluefruitCompatManager {
       } else if (last_connection_role_ == BleConnectionRole::kCentral) {
         Bluefruit.Scanner.paused_ = true;
         if (Bluefruit.Central.connect_callback_ != nullptr) {
-          Bluefruit.Central.connect_callback_(0U);
+          invokeBluefruitUserCallback(Bluefruit.Central.connect_callback_, 0U);
         }
       }
       return;
@@ -838,7 +869,8 @@ class BluefruitCompatManager {
           characteristics_[i]->_notify_enabled = false;
           characteristics_[i]->_indicate_enabled = false;
           if ((hadNotify || hadIndicate) && characteristics_[i]->_cccd_wr_cb != nullptr) {
-            characteristics_[i]->_cccd_wr_cb(0U, characteristics_[i], 0U);
+            invokeBluefruitUserCallback(characteristics_[i]->_cccd_wr_cb, 0U,
+                                        characteristics_[i], 0U);
           }
         }
       }
@@ -848,7 +880,7 @@ class BluefruitCompatManager {
     }
     if (last_connection_role_ == BleConnectionRole::kPeripheral) {
       if (Bluefruit.Periph.disconnect_callback_ != nullptr) {
-        Bluefruit.Periph.disconnect_callback_(0U, reason);
+        invokeBluefruitUserCallback(Bluefruit.Periph.disconnect_callback_, 0U, reason);
       }
       if (Bluefruit.Advertising.restart_on_disconnect_) {
         Bluefruit.Advertising.running_ = true;
@@ -857,7 +889,7 @@ class BluefruitCompatManager {
       }
     } else if (last_connection_role_ == BleConnectionRole::kCentral) {
       if (Bluefruit.Central.disconnect_callback_ != nullptr) {
-        Bluefruit.Central.disconnect_callback_(0U, reason);
+        invokeBluefruitUserCallback(Bluefruit.Central.disconnect_callback_, 0U, reason);
       }
       if (Bluefruit.Scanner.restart_on_disconnect_ && Bluefruit.Scanner.running_) {
         Bluefruit.Scanner.paused_ = false;
@@ -1179,6 +1211,9 @@ bool writeHandleSync(uint16_t handle, const uint8_t* data, uint8_t dataLen,
 }
 
 extern "C" void nrf54l15_bluefruit_compat_idle_service(void) {
+  if (ScopedBluefruitUserCallback::active()) {
+    return;
+  }
   manager().idleService();
 }
 
@@ -1700,7 +1735,7 @@ void BLECharacteristic::handleWriteFromRadio(const uint8_t* data, uint16_t len) 
     memcpy(_userbuf, _value, copied);
   }
   if (_wr_cb != nullptr) {
-    _wr_cb(0U, this, _value, _value_len);
+    invokeBluefruitUserCallback(_wr_cb, 0U, this, _value, _value_len);
   }
 }
 
@@ -1722,7 +1757,7 @@ void BLECharacteristic::pollCccdState() {
   if (indicate) {
     cccd |= 0x0002U;
   }
-  _cccd_wr_cb(0U, this, cccd);
+  invokeBluefruitUserCallback(_cccd_wr_cb, 0U, this, cccd);
 }
 
 BLEAdvertisingData::BLEAdvertisingData(bool scan_response)
@@ -2413,7 +2448,7 @@ void BLEClientCharacteristic::handleNotify(const uint8_t* data, uint16_t len) {
   }
   last_value_len_ = copyLen;
   if (notify_callback_ != nullptr) {
-    notify_callback_(this, last_value_, last_value_len_);
+    invokeBluefruitUserCallback(notify_callback_, this, last_value_, last_value_len_);
   }
 }
 
@@ -2567,7 +2602,7 @@ void BLEClientUart::handleTxdNotify(BLEClientCharacteristic* chr, uint8_t* data,
     ++rx_count_;
   }
   if (rx_callback_ != nullptr) {
-    rx_callback_(*this);
+    invokeBluefruitUserCallback(rx_callback_, *this);
   }
 }
 
@@ -2688,7 +2723,7 @@ void BLEClientCts::handleCurrentTimeNotify(uint8_t* data, uint16_t len) {
     memset(reinterpret_cast<uint8_t*>(&Time) + copyLen, 0, sizeof(Time) - copyLen);
   }
   if (adjust_callback_ != nullptr) {
-    adjust_callback_(Time.adjust_reason);
+    invokeBluefruitUserCallback(adjust_callback_, Time.adjust_reason);
   }
 }
 
@@ -2828,7 +2863,8 @@ void BLEAncs::handleNotification(uint8_t* data, uint16_t len) {
   if (notification_callback_ == nullptr || data == nullptr || len < sizeof(AncsNotification_t)) {
     return;
   }
-  notification_callback_(reinterpret_cast<AncsNotification_t*>(data));
+  invokeBluefruitUserCallback(notification_callback_,
+                              reinterpret_cast<AncsNotification_t*>(data));
 }
 
 void BLEAncs::notificationThunk(BLEClientCharacteristic* chr, uint8_t* data, uint16_t len) {
@@ -2957,7 +2993,7 @@ void BLEClientHidAdafruit::handleKeyboardInput(uint8_t* data, uint16_t len) {
     memcpy(&last_keyboard_report_, data, min<uint16_t>(len, sizeof(last_keyboard_report_)));
   }
   if (keyboard_callback_ != nullptr) {
-    keyboard_callback_(&last_keyboard_report_);
+    invokeBluefruitUserCallback(keyboard_callback_, &last_keyboard_report_);
   }
 }
 
@@ -2967,7 +3003,7 @@ void BLEClientHidAdafruit::handleMouseInput(uint8_t* data, uint16_t len) {
     memcpy(&last_mouse_report_, data, min<uint16_t>(len, sizeof(last_mouse_report_)));
   }
   if (mouse_callback_ != nullptr) {
-    mouse_callback_(&last_mouse_report_);
+    invokeBluefruitUserCallback(mouse_callback_, &last_mouse_report_);
   }
 }
 
@@ -2977,7 +3013,7 @@ void BLEClientHidAdafruit::handleGamepadInput(uint8_t* data, uint16_t len) {
     memcpy(&last_gamepad_report_, data, min<uint16_t>(len, sizeof(last_gamepad_report_)));
   }
   if (gamepad_callback_ != nullptr) {
-    gamepad_callback_(&last_gamepad_report_);
+    invokeBluefruitUserCallback(gamepad_callback_, &last_gamepad_report_);
   }
 }
 
@@ -3423,10 +3459,10 @@ void BLEUart::handleRx(uint16_t conn_hdl, const uint8_t* data, uint16_t len) {
     ++_rx_count;
   }
   if (dropped > 0U && _overflow_cb != nullptr) {
-    _overflow_cb(conn_hdl, dropped);
+    invokeBluefruitUserCallback(_overflow_cb, conn_hdl, dropped);
   }
   if (_rx_cb != nullptr) {
-    _rx_cb(conn_hdl);
+    invokeBluefruitUserCallback(_rx_cb, conn_hdl);
   }
 }
 
@@ -3439,7 +3475,7 @@ void BLEUart::bleuart_rxd_cb(uint16_t conn_hdl, BLECharacteristic* chr, uint8_t*
 void BLEUart::bleuart_txd_cccd_cb(uint16_t conn_hdl, BLECharacteristic* chr, uint16_t value) {
   auto& service = static_cast<BLEUart&>(chr->parentService());
   if (service._notify_cb != nullptr) {
-    service._notify_cb(conn_hdl, (value & 0x0001U) != 0U);
+    invokeBluefruitUserCallback(service._notify_cb, conn_hdl, (value & 0x0001U) != 0U);
   }
 }
 

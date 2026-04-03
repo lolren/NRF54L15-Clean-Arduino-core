@@ -51,6 +51,7 @@
  */
 
 #include <bluefruit.h>
+#include <bluefruit_example_log.h>
 
 // Struct containing peripheral info
 typedef struct
@@ -79,6 +80,7 @@ prph_info_t prphs[BLE_MAX_CONNECTION];
 // Software Timer for blinking the RED LED
 SoftwareTimer blinkTimer;
 uint8_t connection_num = 0; // for blink pattern
+BluefruitExampleLogQueue<24, 96> logQueue;
 
 void setup() 
 {
@@ -158,24 +160,23 @@ void connect_callback(uint16_t conn_handle)
   
   Bluefruit.Connection(conn_handle)->getPeerName(peer->name, sizeof(peer->name)-1);
 
-  Serial.print("Connected to ");
-  Serial.println(peer->name);
+  logQueue.queuef("Connected to %s", peer->name);
 
-  Serial.print("Discovering BLE UART service ... ");
+  logQueue.queue("Discovering BLE UART service ...");
 
   if ( peer->bleuart.discover(conn_handle) )
   {
-    Serial.println("Found it");
-    Serial.println("Enabling TXD characteristic's CCCD notify bit");
+    logQueue.queue("Found BLE UART service");
+    logQueue.queue("Enabling TXD characteristic notify");
     peer->bleuart.enableTXD();
 
-    Serial.println("Continue scanning for more peripherals");
+    logQueue.queue("Continue scanning for more peripherals");
     Bluefruit.Scanner.start(0);
 
-    Serial.println("Enter some text in the Serial Monitor to send it to all connected peripherals:");
+    logQueue.queue("Enter text in the Serial Monitor to send it to all connected peripherals");
   } else
   {
-    Serial.println("Found ... NOTHING!");
+    logQueue.queue("BLE UART service not found");
 
     // disconnect since we couldn't find bleuart service
     Bluefruit.disconnect(conn_handle);
@@ -191,10 +192,7 @@ void connect_callback(uint16_t conn_handle)
  */
 void disconnect_callback(uint16_t conn_handle, uint8_t reason)
 {
-  (void) conn_handle;
   (void) reason;
-
-  connection_num--;
 
   // Mark the ID as invalid
   int id  = findConnHandle(conn_handle);
@@ -202,11 +200,12 @@ void disconnect_callback(uint16_t conn_handle, uint8_t reason)
   // Non-existant connection, something went wrong, DBG !!!
   if ( id < 0 ) return;
 
+  connection_num--;
+
   // Mark conn handle as invalid
   prphs[id].conn_handle = BLE_CONN_HANDLE_INVALID;
 
-  Serial.print(prphs[id].name);
-  Serial.println(" disconnected!");
+  logQueue.queuef("%s disconnected", prphs[id].name);
 }
 
 /**
@@ -221,9 +220,6 @@ void bleuart_rx_callback(BLEClientUart& uart_svc)
 
   int id = findConnHandle(conn_handle);
   prph_info_t* peer = &prphs[id];
-  
-  // Print sender's name
-  Serial.printf("[From %s]: ", peer->name);
 
   // Read then forward to all peripherals
   while ( uart_svc.available() )
@@ -233,7 +229,7 @@ void bleuart_rx_callback(BLEClientUart& uart_svc)
     
     if ( uart_svc.read(buf,sizeof(buf)-1) )
     {
-      Serial.println(buf);
+      logQueue.queuef("[From %s]: %s", peer->name, buf);
       sendAll(buf);
     }
   }
@@ -244,9 +240,6 @@ void bleuart_rx_callback(BLEClientUart& uart_svc)
  */
 void sendAll(const char* str)
 {
-  Serial.print("[Send to All]: ");
-  Serial.println(str);
-  
   for(uint8_t id=0; id < BLE_MAX_CONNECTION; id++)
   {
     prph_info_t* peer = &prphs[id];
@@ -260,6 +253,8 @@ void sendAll(const char* str)
 
 void loop()
 {
+  logQueue.flush(Serial);
+
   // First check if we are connected to any peripherals
   if ( Bluefruit.Central.connected() )
   {
@@ -269,6 +264,7 @@ void loop()
     // Read from HW Serial (normally USB Serial) and send to all peripherals
     if ( Serial.readBytes(buf, sizeof(buf)-1) )
     {
+      logQueue.queuef("[Send to All]: %s", buf);
       sendAll(buf);
     }
   }

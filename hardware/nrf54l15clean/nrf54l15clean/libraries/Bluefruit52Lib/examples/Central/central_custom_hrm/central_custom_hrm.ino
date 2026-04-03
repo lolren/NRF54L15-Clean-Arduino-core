@@ -21,6 +21,7 @@
  */
 
 #include <bluefruit.h>
+#include <bluefruit_example_log.h>
 
 /* HRM Service Definitions
  * Heart Rate Monitor Service:  0x180D
@@ -31,6 +32,7 @@
 BLEClientService        hrms(UUID16_SVC_HEART_RATE);
 BLEClientCharacteristic hrmc(UUID16_CHR_HEART_RATE_MEASUREMENT);
 BLEClientCharacteristic bslc(UUID16_CHR_BODY_SENSOR_LOCATION);
+BluefruitExampleLogQueue<16, 96> logQueue;
 
 void setup()
 {
@@ -81,7 +83,8 @@ void setup()
 
 void loop()
 {
-  // do nothing
+  logQueue.flush(Serial);
+  delay(20);
 }
 
 /**
@@ -102,13 +105,13 @@ void scan_callback(ble_gap_evt_adv_report_t* report)
  */
 void connect_callback(uint16_t conn_handle)
 {
-  Serial.println("Connected");
-  Serial.print("Discovering HRM Service ... ");
+  logQueue.queue("Connected");
+  logQueue.queue("Discovering HRM Service ...");
 
   // If HRM is not found, disconnect and return
   if ( !hrms.discover(conn_handle) )
   {
-    Serial.println("Found NONE");
+    logQueue.queue("Found NONE");
 
     // disconnect since we couldn't find HRM service
     Bluefruit.disconnect(conn_handle);
@@ -117,47 +120,52 @@ void connect_callback(uint16_t conn_handle)
   }
 
   // Once HRM service is found, we continue to discover its characteristic
-  Serial.println("Found it");
+  logQueue.queue("Found HRM service");
   
-  Serial.print("Discovering Measurement characteristic ... ");
+  logQueue.queue("Discovering Measurement characteristic ...");
   if ( !hrmc.discover() )
   {
     // Measurement chr is mandatory, if it is not found (valid), then disconnect
-    Serial.println("not found !!!");  
-    Serial.println("Measurement characteristic is mandatory but not found");
+    logQueue.queue("Measurement characteristic not found");
     Bluefruit.disconnect(conn_handle);
     return;
   }
-  Serial.println("Found it");
+  logQueue.queue("Found Measurement characteristic");
 
   // Measurement is found, continue to look for option Body Sensor Location
   // https://www.bluetooth.com/specifications/gatt/viewer?attributeXmlFile=org.bluetooth.characteristic.body_sensor_location.xml
   // Body Sensor Location is optional, print out the location in text if present
-  Serial.print("Discovering Body Sensor Location characteristic ... ");
+  logQueue.queue("Discovering Body Sensor Location characteristic ...");
   if ( bslc.discover() )
   {
-    Serial.println("Found it");
-    
+    logQueue.queue("Found Body Sensor Location characteristic");
+
     // Body sensor location value is 8 bit
     const char* body_str[] = { "Other", "Chest", "Wrist", "Finger", "Hand", "Ear Lobe", "Foot" };
 
     // Read 8-bit BSLC value from peripheral
     uint8_t loc_value = bslc.read8();
-    
-    Serial.print("Body Location Sensor: ");
-    Serial.println(body_str[loc_value]);
+
+    if ( loc_value < 7 )
+    {
+      logQueue.queuef("Body Location Sensor: %s", body_str[loc_value]);
+    }
+    else
+    {
+      logQueue.queuef("Body Location Sensor: %u", loc_value);
+    }
   }else
   {
-    Serial.println("Found NONE");
+    logQueue.queue("Body Sensor Location not found");
   }
 
   // Reaching here means we are ready to go, let's enable notification on measurement chr
   if ( hrmc.enableNotify() )
   {
-    Serial.println("Ready to receive HRM Measurement value");
+    logQueue.queue("Ready to receive HRM Measurement value");
   }else
   {
-    Serial.println("Couldn't enable notify for HRM Measurement. Increase DEBUG LEVEL for troubleshooting");
+    logQueue.queue("Couldn't enable notify for HRM Measurement");
   }
 }
 
@@ -169,9 +177,7 @@ void connect_callback(uint16_t conn_handle)
 void disconnect_callback(uint16_t conn_handle, uint8_t reason)
 {
   (void) conn_handle;
-  (void) reason;
-
-  Serial.print("Disconnected, reason = 0x"); Serial.println(reason, HEX);
+  logQueue.queuef("Disconnected, reason = 0x%02X", reason);
 }
 
 
@@ -184,21 +190,30 @@ void disconnect_callback(uint16_t conn_handle, uint8_t reason)
  */
 void hrm_notify_callback(BLEClientCharacteristic* chr, uint8_t* data, uint16_t len)
 {
+  (void) chr;
   // https://www.bluetooth.com/specifications/gatt/viewer?attributeXmlFile=org.bluetooth.characteristic.heart_rate_measurement.xml
   // Measurement contains of control byte0 and measurement (8 or 16 bit) + optional field
   // if byte0's bit0 is 0 --> measurement is 8 bit, otherwise 16 bit.
-
-  Serial.print("HRM Measurement: ");
+  if ( len < 2 )
+  {
+    logQueue.queue("HRM Measurement: <short packet>");
+    return;
+  }
 
   if ( data[0] & bit(0) )
   {
+    if ( len < 3 )
+    {
+      logQueue.queue("HRM Measurement: <short packet>");
+      return;
+    }
     uint16_t value;
     memcpy(&value, data+1, 2);
 
-    Serial.println(value);
+    logQueue.queuef("HRM Measurement: %u", value);
   }
   else
   {
-    Serial.println(data[1]);
+    logQueue.queuef("HRM Measurement: %u", data[1]);
   }
 }

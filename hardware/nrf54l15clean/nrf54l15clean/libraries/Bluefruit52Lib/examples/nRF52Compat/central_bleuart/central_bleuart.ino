@@ -17,10 +17,12 @@
  * that has bleuart as peripheral is required for the demo.
  */
 #include <bluefruit.h>
+#include <bluefruit_example_log.h>
 
 BLEClientBas  clientBas;  // battery client
 BLEClientDis  clientDis;  // device information client
 BLEClientUart clientUart; // bleuart client
+BluefruitExampleLogQueue<24, 96> logQueue;
 
 void setup()
 {
@@ -75,7 +77,7 @@ void scan_callback(ble_gap_evt_adv_report_t* report)
   // Check if advertising contain BleUart service
   if ( Bluefruit.Scanner.checkReportForService(report, clientUart) )
   {
-    Serial.print("BLE UART service detected. Connecting ... ");
+    logQueue.queue("BLE UART service detected. Connecting ...");
 
     // Connect to device with bleuart service in advertising
     Bluefruit.Central.connect(report);
@@ -93,60 +95,53 @@ void scan_callback(ble_gap_evt_adv_report_t* report)
  */
 void connect_callback(uint16_t conn_handle)
 {
-  Serial.println("Connected");
+  logQueue.queue("Connected");
 
-  Serial.print("Dicovering Device Information ... ");
+  logQueue.queue("Dicovering Device Information ...");
   if ( clientDis.discover(conn_handle) )
   {
-    Serial.println("Found it");
+    logQueue.queue("Found Device Information");
     char buffer[32+1];
     
     // read and print out Manufacturer
     memset(buffer, 0, sizeof(buffer));
     if ( clientDis.getManufacturer(buffer, sizeof(buffer)) )
     {
-      Serial.print("Manufacturer: ");
-      Serial.println(buffer);
+      logQueue.queuef("Manufacturer: %s", buffer);
     }
 
     // read and print out Model Number
     memset(buffer, 0, sizeof(buffer));
     if ( clientDis.getModel(buffer, sizeof(buffer)) )
     {
-      Serial.print("Model: ");
-      Serial.println(buffer);
+      logQueue.queuef("Model: %s", buffer);
     }
-
-    Serial.println();
   }else
   {
-    Serial.println("Found NONE");
+    logQueue.queue("Device Information not found");
   }
 
-  Serial.print("Dicovering Battery ... ");
+  logQueue.queue("Dicovering Battery ...");
   if ( clientBas.discover(conn_handle) )
   {
-    Serial.println("Found it");
-    Serial.print("Battery level: ");
-    Serial.print(clientBas.read());
-    Serial.println("%");
+    logQueue.queuef("Battery level: %u%%", clientBas.read());
   }else
   {
-    Serial.println("Found NONE");
+    logQueue.queue("Battery not found");
   }
 
-  Serial.print("Discovering BLE Uart Service ... ");
+  logQueue.queue("Discovering BLE Uart Service ...");
   if ( clientUart.discover(conn_handle) )
   {
-    Serial.println("Found it");
+    logQueue.queue("Found BLE Uart Service");
 
-    Serial.println("Enable TXD's notify");
+    logQueue.queue("Enable TXD notify");
     clientUart.enableTXD();
 
-    Serial.println("Ready to receive from peripheral");
+    logQueue.queue("Ready to receive from peripheral");
   }else
   {
-    Serial.println("Found NONE");
+    logQueue.queue("BLE Uart Service not found");
     
     // disconnect since we couldn't find bleuart service
     Bluefruit.disconnect(conn_handle);
@@ -161,9 +156,8 @@ void connect_callback(uint16_t conn_handle)
 void disconnect_callback(uint16_t conn_handle, uint8_t reason)
 {
   (void) conn_handle;
-  (void) reason;
-  
-  Serial.print("Disconnected, reason = 0x"); Serial.println(reason, HEX);
+
+  logQueue.queuef("Disconnected, reason = 0x%02X", reason);
 }
 
 /**
@@ -173,18 +167,24 @@ void disconnect_callback(uint16_t conn_handle, uint8_t reason)
  */
 void bleuart_rx_callback(BLEClientUart& uart_svc)
 {
-  Serial.print("[RX]: ");
-  
+  char line[96] = "[RX]: ";
+  size_t used = strlen(line);
+
   while ( uart_svc.available() )
   {
-    Serial.print( (char) uart_svc.read() );
+    const int c = uart_svc.read();
+    if ( c < 0 ) break;
+    if ( used + 1 >= sizeof(line) ) break;
+    line[used++] = (char) c;
   }
-
-  Serial.println();
+  line[used] = 0;
+  logQueue.queue(line);
 }
 
 void loop()
 {
+  logQueue.flush(Serial);
+
   if ( Bluefruit.Central.connected() )
   {
     // Not discovered yet

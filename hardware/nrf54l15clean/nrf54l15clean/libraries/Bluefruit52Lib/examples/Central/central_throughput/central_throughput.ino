@@ -17,10 +17,12 @@
  * that has bleuart as peripheral is required for the demo.
  */
 #include <bluefruit.h>
+#include <bluefruit_example_log.h>
 
 BLEClientUart clientUart; // bleuart client
 
 uint32_t rx_count = 0;
+BluefruitExampleLogQueue<16, 96> logQueue;
 
 void setup()
 {
@@ -74,7 +76,7 @@ void scan_callback(ble_gap_evt_adv_report_t* report)
   // Check if advertising contain BleUart service
   if ( Bluefruit.Scanner.checkReportForService(report, clientUart) )
   {
-    Serial.print("BLE UART service detected. Connecting ... ");
+    logQueue.queue("BLE UART service detected. Connecting ...");
 
     // Connect to device with bleuart service in advertising
     Bluefruit.Central.connect(report);
@@ -92,20 +94,20 @@ void scan_callback(ble_gap_evt_adv_report_t* report)
  */
 void connect_callback(uint16_t conn_handle)
 {
-  Serial.println("Connected");
+  logQueue.queue("Connected");
 
-  Serial.print("Discovering BLE Uart Service ... ");
+  logQueue.queue("Discovering BLE Uart Service ...");
   if ( clientUart.discover(conn_handle) )
   {
-    Serial.println("Found it");
+    logQueue.queue("Found BLE Uart Service");
 
-    Serial.println("Enable TXD's notify");
+    logQueue.queue("Enable TXD notify");
     clientUart.enableTXD();
 
-    Serial.println("Ready to receive from peripheral");
+    logQueue.queue("Ready to receive from peripheral");
   }else
   {
-    Serial.println("Found NONE");
+    logQueue.queue("BLE Uart Service not found");
     
     // disconnect since we couldn't find bleuart service
     Bluefruit.disconnect(conn_handle);
@@ -120,9 +122,8 @@ void connect_callback(uint16_t conn_handle)
 void disconnect_callback(uint16_t conn_handle, uint8_t reason)
 {
   (void) conn_handle;
-  (void) reason;
-  
-  Serial.print("Disconnected, reason = 0x"); Serial.println(reason, HEX);
+
+  logQueue.queuef("Disconnected, reason = 0x%02X", reason);
 }
 
 /**
@@ -139,6 +140,8 @@ void bleuart_rx_callback(BLEClientUart& uart_svc)
 
 void loop()
 {
+  logQueue.flush(Serial);
+
   if ( Bluefruit.Central.connected() )
   {
     // Not discovered yet
