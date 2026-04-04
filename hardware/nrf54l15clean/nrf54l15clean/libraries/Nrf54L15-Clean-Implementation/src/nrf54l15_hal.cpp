@@ -1455,6 +1455,11 @@ constexpr uint32_t kBleConnEventSpinFloor = 450000UL;
 // With fast ramp-up enabled, trigger TXEN ~115 us after RX end so packet start
 // lands near the BLE 150 us inter-frame spacing.
 constexpr uint32_t kBleConnTxenAfterRxUs = 95U;
+// SCAN_RSP T_IFS: advertising path has ~5 us software overhead between rxEndUs
+// capture and this wait, so TXEN fires at rxEndUs+110 us and the SCAN_RSP
+// preamble starts at rxEndUs+150 us — exactly T_IFS.  Connection-event paths
+// carry more pre-T_IFS work so they keep kBleConnTxenAfterRxUs = 95.
+constexpr uint32_t kBleScanRspTxenAfterRxUs = 110U;
 // Legacy advertising request/response exchanges should complete within hundreds
 // of microseconds around T_IFS. Bound RX listen windows so advertising cadence
 // does not become host-CPU-spin dependent.
@@ -12884,7 +12889,7 @@ bool BleRadio::advertiseInteractOncePrepared(BleAdvertisingChannel channel,
          RADIO_SHORTS_PHYEND_DISABLE_Msk);
 
     // Wait for T_IFS turnaround (150us nominal).
-    const uint32_t txTriggerTargetUs = rxEndUs + kBleConnTxenAfterRxUs;
+    const uint32_t txTriggerTargetUs = rxEndUs + kBleScanRspTxenAfterRxUs;
     uint32_t txTriggerNowUs = bleTimingUs();
     while (!timeReachedUs(txTriggerNowUs, txTriggerTargetUs)) {
       txTriggerNowUs = bleTimingUs();
@@ -18373,7 +18378,7 @@ bool BleRadio::handleRequestAndMaybeRespond(BleAdvertisingChannel channel,
          RADIO_SHORTS_PHYEND_DISABLE_Msk);
 
     // Wait for T_IFS turnaround (150us nominal).
-    const uint32_t txTriggerTargetUs = rxEndUs + kBleConnTxenAfterRxUs;
+    const uint32_t txTriggerTargetUs = rxEndUs + kBleScanRspTxenAfterRxUs;
     uint32_t txTriggerNowUs = bleTimingUs();
     while (!timeReachedUs(txTriggerNowUs, txTriggerTargetUs)) {
       txTriggerNowUs = bleTimingUs();
