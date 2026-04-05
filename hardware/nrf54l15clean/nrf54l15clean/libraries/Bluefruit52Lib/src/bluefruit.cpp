@@ -3455,7 +3455,8 @@ bool BLEHidGamepad::report(uint16_t conn_hdl, hid_gamepad_report_t* report) {
   return report != nullptr && Bluefruit.connected();
 }
 
-BLEDis::BLEDis() : BLEService(UUID16_SVC_DEVICE_INFORMATION), values_{nullptr}, lengths_{0} {}
+BLEDis::BLEDis()
+    : BLEService(UUID16_SVC_DEVICE_INFORMATION), values_{nullptr}, lengths_{0}, auto_serial_{0} {}
 
 void BLEDis::setSystemID(const char* system_id, uint8_t length) {
   values_[0] = system_id;
@@ -3509,10 +3510,34 @@ err_t BLEDis::begin() {
       UUID16_CHR_HARDWARE_REVISION_STRING, UUID16_CHR_SOFTWARE_REVISION_STRING,
       UUID16_CHR_MANUFACTURER_NAME_STRING, UUID16_CHR_REGULATORY_CERT_DATA_LIST,
       UUID16_CHR_PNP_ID};
+  static constexpr char kDefaultManufacturer[] = "Seeed Studio";
+  static constexpr char kDefaultModel[] = "XIAO nRF54L15";
+  static constexpr char kDefaultHardwareRev[] = "XIAO nRF54L15";
 
   const err_t status = BLEService::begin();
   if (status != ERROR_NONE) {
     return status;
+  }
+
+  if (values_[1] == nullptr || lengths_[1] == 0U) {
+    setModel(kDefaultModel);
+  }
+  if (values_[2] == nullptr || lengths_[2] == 0U) {
+    snprintf(auto_serial_, sizeof(auto_serial_), "%08" PRIX32 "%08" PRIX32,
+             NRF_FICR->INFO.DEVICEID[1], NRF_FICR->INFO.DEVICEID[0]);
+    setSerialNum(auto_serial_);
+  }
+  if (values_[3] == nullptr || lengths_[3] == 0U) {
+    setFirmwareRev(NRF54L15_CLEAN_CORE_VERSION_STRING);
+  }
+  if (values_[4] == nullptr || lengths_[4] == 0U) {
+    setHardwareRev(kDefaultHardwareRev);
+  }
+  if (values_[5] == nullptr || lengths_[5] == 0U) {
+    setSoftwareRev(NRF54L15_CLEAN_CORE_VERSION_STRING);
+  }
+  if (values_[6] == nullptr || lengths_[6] == 0U) {
+    setManufacturer(kDefaultManufacturer);
   }
 
   for (uint8_t i = 0U; i < 9U; ++i) {

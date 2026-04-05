@@ -898,11 +898,12 @@ class BLEDis : public BLEService {
   void setRegCertList(const char* reg_cert_list) { setRegCertList(reg_cert_list, strlen(reg_cert_list)); }
   void setPNPID(const char* pnp_id) { setPNPID(pnp_id, strlen(pnp_id)); }
 
-  err_t begin() override;
+ err_t begin() override;
 
  private:
   const char* values_[9];
   uint8_t lengths_[9];
+  char auto_serial_[17];
 };
 
 class BLEDfu : public BLEService {
