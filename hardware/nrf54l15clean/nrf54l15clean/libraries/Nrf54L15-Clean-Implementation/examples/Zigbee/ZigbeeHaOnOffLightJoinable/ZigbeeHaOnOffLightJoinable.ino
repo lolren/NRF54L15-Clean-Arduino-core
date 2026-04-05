@@ -199,6 +199,7 @@ static RecentInboundAps g_recentInboundAps{};
 static constexpr uint32_t kApsAckTimeoutMs = 900U;
 static constexpr uint32_t kRecentInboundApsWindowMs = 4000U;
 static constexpr uint8_t kApsAckRetryLimit = 2U;
+static constexpr uint32_t kParentRxTurnaroundDelayUs = 6000U;
 
 void clearPendingApsAck();
 void clearPendingApsAckSlot(uint8_t slot);
@@ -1237,6 +1238,7 @@ void processIncomingFrame(const ZigbeeFrame& frame) {
 
   if (aps.profileId == kZigbeeProfileZdo) {
     if (aps.deliveryMode == kZigbeeApsDeliveryUnicast && aps.ackRequested) {
+      delayMicroseconds(kParentRxTurnaroundDelayUs);
       const bool ackSent = sendApsAcknowledgement(nwk.sourceShort, aps);
       Serial.print("zdo_aps_ack cluster=0x");
       Serial.print(aps.clusterId, HEX);
@@ -1295,6 +1297,7 @@ void processIncomingFrame(const ZigbeeFrame& frame) {
     return;
   }
   if (aps.deliveryMode == kZigbeeApsDeliveryUnicast && aps.ackRequested) {
+    delayMicroseconds(kParentRxTurnaroundDelayUs);
     (void)sendApsAcknowledgement(nwk.sourceShort, aps);
   }
   if (duplicateAps) {
@@ -1318,6 +1321,7 @@ void processIncomingFrame(const ZigbeeFrame& frame) {
   bool responseSent = false;
   if (responseLength > 0U &&
       aps.deliveryMode == kZigbeeApsDeliveryUnicast) {
+    delayMicroseconds(kParentRxTurnaroundDelayUs);
     responseSent =
         sendApsFrame(nwk.sourceShort, aps.sourceEndpoint, aps.clusterId,
                      aps.profileId, aps.destinationEndpoint, responseFrame,

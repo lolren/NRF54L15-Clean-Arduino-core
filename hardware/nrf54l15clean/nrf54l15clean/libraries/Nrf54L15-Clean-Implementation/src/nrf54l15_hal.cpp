@@ -8539,6 +8539,10 @@ bool ZigbeeRadio::transmitThenReceive(const uint8_t* psdu, uint8_t length,
   uint8_t acknowledgementSequence = 0U;
   bool awaitingMacAcknowledgement = enableMacAcknowledgementRequest(
       &txPacket_[1], length, &acknowledgementSequence);
+  lastTransmitDebug_ = {};
+  lastTransmitDebug_.txLength = length;
+  lastTransmitDebug_.ackRequested = awaitingMacAcknowledgement;
+  lastTransmitDebug_.ackSequence = acknowledgementSequence;
 
   clearRadioCoreEvents(radio_);
   radio_->EVENTS_FRAMESTART = 0U;
@@ -8551,9 +8555,11 @@ bool ZigbeeRadio::transmitThenReceive(const uint8_t* psdu, uint8_t length,
 
   radio_->TASKS_TXEN = RADIO_TASKS_TXEN_TASKS_TXEN_Trigger;
   const bool txEndSeen = waitRadioEndBudgeted(radio_, 12000U, spinLimit);
+  lastTransmitDebug_.endSeen = txEndSeen;
   if (!txEndSeen) {
     radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
-    waitRadioDisabledBudgeted(radio_, 3000U, spinLimit);
+    lastTransmitDebug_.disabledSeen =
+        waitRadioDisabledBudgeted(radio_, 3000U, spinLimit);
     radio_->SHORTS = 0U;
     clearRadioCoreEvents(radio_);
     return false;
@@ -8569,6 +8575,7 @@ bool ZigbeeRadio::transmitThenReceive(const uint8_t* psdu, uint8_t length,
     clearRadioCoreEvents(radio_);
     return false;
   }
+  lastTransmitDebug_.disabledSeen = txDisabled;
 
   const uint32_t receiveWindowStartUs = micros();
   while (static_cast<uint32_t>(micros() - receiveWindowStartUs) <
@@ -8633,6 +8640,11 @@ bool ZigbeeRadio::transmitThenReceive(const uint8_t* psdu, uint8_t length,
         macAcknowledgement.valid &&
         macAcknowledgement.sequence == acknowledgementSequence) {
       awaitingMacAcknowledgement = false;
+      lastTransmitDebug_.ackReceived = true;
+      lastTransmitDebug_.rxLength = rxLength;
+      if (rxLength >= 3U) {
+        lastTransmitDebug_.rxSequence = rxPacket_[3];
+      }
       continue;
     }
 
@@ -8644,6 +8656,12 @@ bool ZigbeeRadio::transmitThenReceive(const uint8_t* psdu, uint8_t length,
     frame->rssiDbm = rssiDbm;
     frame->length = rxLength;
     memcpy(frame->psdu, &rxPacket_[1], rxLength);
+    lastTransmitDebug_.ackReceived =
+        (!lastTransmitDebug_.ackRequested || !awaitingMacAcknowledgement);
+    lastTransmitDebug_.rxLength = rxLength;
+    if (rxLength >= 3U) {
+      lastTransmitDebug_.rxSequence = rxPacket_[3];
+    }
     if (sendAcknowledgement) {
       (void)sendMacAcknowledgement(responseAckSequence, false, spinLimit);
     }
@@ -8651,6 +8669,8 @@ bool ZigbeeRadio::transmitThenReceive(const uint8_t* psdu, uint8_t length,
     return true;
   }
 
+  lastTransmitDebug_.ackReceived =
+      (!lastTransmitDebug_.ackRequested || !awaitingMacAcknowledgement);
   clearRadioCoreEvents(radio_);
   return false;
 }

@@ -317,6 +317,7 @@ struct NodeEntry {
   NodeStage stage = NodeStage::kIdle;
   uint32_t stageDeadlineMs = 0U;
   uint8_t stageRetriesRemaining = 0U;
+  uint8_t basicReadBatchIndex = 0U;
 };
 
 static constexpr uint32_t kApsAckTimeoutMs = 900U;
@@ -326,6 +327,7 @@ static constexpr uint32_t kInterviewRetryDelayMs = 1500UL;
 static constexpr uint8_t kInterviewRetryLimit = 4U;
 static constexpr uint32_t kPollFollowUpListenBudgetUs = 12000UL;
 
+void processIncomingFrame(const ZigbeeFrame& frame);
 void pumpImmediateResponseWindow(uint32_t listenBudgetUs);
 
 bool sendApsFrameExtendedWithCounter(uint16_t destinationShort,
@@ -1833,14 +1835,36 @@ bool queueBasicReadRequest(NodeEntry* node) {
   if (node == nullptr || node->endpoint == 0U) {
     return false;
   }
-  const uint16_t attributes[] = {0x0000U, 0x0001U, 0x0002U, 0x0003U, 0x0004U,
-                                 0x0005U, 0x0007U, 0x4000U, 0xFFFCU, 0xFFFDU};
+  static constexpr uint16_t kBasicReadBatch0[] = {0x0004U, 0x0005U};
+  static constexpr uint16_t kBasicReadBatch1[] = {0x0000U, 0x0001U, 0x0002U,
+                                                  0x0003U, 0x0007U};
+  static constexpr uint16_t kBasicReadBatch2[] = {0x4000U, 0xFFFCU, 0xFFFDU};
+  const uint16_t* attributes = nullptr;
+  uint8_t attributeCount = 0U;
+  switch (node->basicReadBatchIndex) {
+    case 0U:
+      attributes = kBasicReadBatch0;
+      attributeCount =
+          static_cast<uint8_t>(sizeof(kBasicReadBatch0) / sizeof(kBasicReadBatch0[0]));
+      break;
+    case 1U:
+      attributes = kBasicReadBatch1;
+      attributeCount =
+          static_cast<uint8_t>(sizeof(kBasicReadBatch1) / sizeof(kBasicReadBatch1[0]));
+      break;
+    case 2U:
+      attributes = kBasicReadBatch2;
+      attributeCount =
+          static_cast<uint8_t>(sizeof(kBasicReadBatch2) / sizeof(kBasicReadBatch2[0]));
+      break;
+    default:
+      return false;
+  }
   uint8_t payload[127] = {0U};
   uint8_t payloadLength = 0U;
   if (!ZigbeeCodec::buildReadAttributesRequest(
-          attributes,
-          static_cast<uint8_t>(sizeof(attributes) / sizeof(attributes[0])),
-          g_zclSequence++, payload, &payloadLength)) {
+          attributes, attributeCount, g_zclSequence++, payload,
+          &payloadLength)) {
     return false;
   }
   const bool queued =
@@ -3509,6 +3533,7 @@ void handleZdoFrame(NodeEntry* node, const ZigbeeApsDataFrame& aps) {
     Serial.print(node->supportsTemperature ? "yes" : "no");
     Serial.print("\r\n");
 
+    node->basicReadBatchIndex = 0U;
     if (!queueBasicReadRequest(node)) {
       node->stage = NodeStage::kReady;
     }
@@ -3558,9 +3583,19 @@ void handleHaFrame(NodeEntry* node, const ZigbeeApsDataFrame& aps) {
     Serial.print("\r\n");
 
     if (aps.clusterId == kZigbeeClusterBasic) {
-      node->basicRead = true;
-      if (!queueNextReportingStep(node)) {
-        node->stage = NodeStage::kReady;
+      if (node->basicReadBatchIndex < 2U) {
+        ++node->basicReadBatchIndex;
+        if (!queueBasicReadRequest(node)) {
+          node->basicRead = true;
+          if (!queueNextReportingStep(node)) {
+            node->stage = NodeStage::kReady;
+          }
+        }
+      } else {
+        node->basicRead = true;
+        if (!queueNextReportingStep(node)) {
+          node->stage = NodeStage::kReady;
+        }
       }
     }
     return;
