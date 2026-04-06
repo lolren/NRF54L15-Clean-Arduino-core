@@ -350,9 +350,7 @@ void setup() {
          g_ble.setGattDeviceName(kGattName) &&
          g_ble.setGattBatteryLevel(100U) &&
          g_ble.clearCustomGatt() &&
-         g_nus.begin() &&
-         g_ble.setAdvertisingData(kNusAdvPayload, sizeof(kNusAdvPayload)) &&
-         g_ble.setScanResponseData(nullptr, 0U);
+         g_nus.begin();
   }
 
   Serial.print("BLE NUS loopback init: ");

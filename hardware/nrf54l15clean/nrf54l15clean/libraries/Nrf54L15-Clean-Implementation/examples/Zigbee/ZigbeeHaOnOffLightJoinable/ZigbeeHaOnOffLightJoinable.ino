@@ -122,7 +122,7 @@
 #endif
 
 #ifndef NRF54L15_CLEAN_ZIGBEE_BASIC_SW_BUILD_ID
-#define NRF54L15_CLEAN_ZIGBEE_BASIC_SW_BUILD_ID "0.3.5"
+#define NRF54L15_CLEAN_ZIGBEE_BASIC_SW_BUILD_ID "0.3.6"
 #endif
 
 using namespace xiao_nrf54l15;
