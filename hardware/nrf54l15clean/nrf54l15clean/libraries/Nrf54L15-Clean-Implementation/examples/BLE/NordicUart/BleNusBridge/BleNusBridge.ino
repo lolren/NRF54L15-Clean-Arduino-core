@@ -102,18 +102,10 @@ constexpr int8_t kTxPowerDbm = 0;
 // factory-derived BLE address is more discoverable on some phones.
 constexpr uint8_t kAddress[6] = {0x3A, 0x00, 0x15, 0x54, 0xDE, 0xC0};
 static constexpr bool kUseFixedAddress = false;
-// Device name ≤ 8 chars so it fits alongside the 128-bit NUS UUID in the 31-byte
-// ad payload (3 flags + 18 UUID + 9 name = 30 bytes). Passive scanners (e.g.
-// Windows) see the name without needing an active-scan SCAN_RSP exchange.
 constexpr char kDeviceName[] = "X54-NUS";
 // Keep the startup banner within one notification so the bridge begins from a
 // clean TX queue and the host regression script can verify a stable first read.
 static constexpr char kReadyBanner[] = "X54 NUS ready\r\n";
-static const uint8_t kAdvPayload[] = {
-    2, 0x01, 0x06,
-    8, 0x09, 'X', '5', '4', '-', 'N', 'U', 'S',
-    5, 0xFF, 0x34, 0x12, 0x54, 0x15,
-};
 static const char* disconnectReasonLabel(uint8_t reason) {
   switch (reason) {
     case 0x08:

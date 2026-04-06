@@ -50,11 +50,6 @@ static constexpr int8_t kTxPowerDbm = 0;
 static const uint8_t kAddress[6] = {0x36, 0x00, 0x15, 0x54, 0xDE, 0xC0};
 static constexpr bool kUseFixedAddress = false;
 static constexpr char kDeviceName[] = "X54-CMD";
-static const uint8_t kNusAdvPayload[] = {
-    2, 0x01, 0x06,
-    8, 0x09, 'X', '5', '4', '-', 'C', 'M', 'D',
-    5, 0xFF, 0x34, 0x12, 0x54, 0x15,
-};
 static constexpr uint32_t kConnectionPollTimeoutUs = 450000UL;
 static constexpr uint32_t kLinkWarmupMs = 500UL;
 static constexpr bool kRequestLinkSecurity = false;

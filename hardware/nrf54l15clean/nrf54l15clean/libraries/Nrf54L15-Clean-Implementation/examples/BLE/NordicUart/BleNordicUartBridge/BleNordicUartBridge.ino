@@ -103,17 +103,10 @@ static constexpr uint16_t kBleWriteChunkBytes = BleNordicUart::kMaxPayloadLength
 static constexpr uint32_t kStatusPeriodMs = 2000UL;
 static constexpr uint32_t kDebugPeriodMs = 1000UL;
 static const uint8_t kAddress[6] = {0x38, 0x00, 0x15, 0x54, 0xDE, 0xC0};
-// Keep the primary ADV payload short and self-contained so stricter phone
-// scanners do not depend on a SCAN_RSP round-trip or a 128-bit UUID filter.
 static constexpr char kDeviceName[] = "X54-NUS";
 // Keep the startup banner within one notification so the live bridge path
 // starts from a clean TX queue.
 static constexpr char kReadyBanner[] = "X54 NUS ready\r\n";
-static const uint8_t kNusAdvPayload[] = {
-    2, 0x01, 0x06,
-    8, 0x09, 'X', '5', '4', '-', 'N', 'U', 'S',
-    5, 0xFF, 0x34, 0x12, 0x54, 0x15,
-};
 
 static void printAddress(const uint8_t* addr) {
   if (addr == nullptr) {

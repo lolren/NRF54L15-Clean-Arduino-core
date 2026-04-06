@@ -62,11 +62,6 @@ bool BleNordicUart::begin() {
   // NUS is an interactive streaming service; prefer a short connection
   // interval so centrals are nudged toward a responsive, high-throughput link.
   ble_.setPreferredConnectionParameters(6U, 12U, 0U, 500U);
-  // Disable CSA#2 advertisement — matches the default used by all connectable
-  // example sketches and avoids a Qualcomm/Sony discoverability issue where
-  // ADV_IND with the ChSel bit set is not shown in some BLE scanner apps.
-  ble_.setAdvertisingChannelSelectionAlgorithm2(false);
-
   uint16_t serviceHandle = 0U;
   uint16_t rxValueHandle = 0U;
   uint16_t txValueHandle = 0U;
@@ -96,7 +91,9 @@ bool BleNordicUart::begin() {
   // Advertise the NUS service UUID so Android BLE serial apps can discover this
   // device by UUID scan filter.  The GAP device name is automatically moved to
   // the scan response, so it still appears when the central performs an active scan.
-  ble_.setAdvertisingServiceUuid128(kServiceUuid128);
+  if (!ble_.setAdvertisingServiceUuid128(kServiceUuid128)) {
+    return false;
+  }
 
   serviceHandle_ = serviceHandle;
   rxValueHandle_ = rxValueHandle;

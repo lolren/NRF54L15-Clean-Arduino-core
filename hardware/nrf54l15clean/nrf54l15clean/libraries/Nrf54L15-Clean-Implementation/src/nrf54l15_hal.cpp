@@ -1515,11 +1515,14 @@ constexpr uint32_t kBleConnEventSpinFloor = 450000UL;
 // With fast ramp-up enabled, trigger TXEN ~115 us after RX end so packet start
 // lands near the BLE 150 us inter-frame spacing.
 constexpr uint32_t kBleConnTxenAfterRxUs = 95U;
-// SCAN_RSP T_IFS: advertising path has ~5 us software overhead between rxEndUs
-// capture and this wait, so TXEN fires at rxEndUs+110 us and the SCAN_RSP
-// preamble starts at rxEndUs+150 us — exactly T_IFS.  Connection-event paths
-// carry more pre-T_IFS work so they keep kBleConnTxenAfterRxUs = 95.
-constexpr uint32_t kBleScanRspTxenAfterRxUs = 110U;
+// SCAN_RSP T_IFS: advertising path has only a few microseconds of software
+// work between rxEndUs capture and the TXEN wait, so target 100 us here to
+// land the actual over-the-air preamble near the BLE 150 us inter-frame space
+// on stricter Qualcomm-based phones.
+#ifndef BLE_SCAN_RSP_TXEN_AFTER_RX_US
+#define BLE_SCAN_RSP_TXEN_AFTER_RX_US 100U
+#endif
+constexpr uint32_t kBleScanRspTxenAfterRxUs = BLE_SCAN_RSP_TXEN_AFTER_RX_US;
 // Legacy advertising request/response exchanges should complete within hundreds
 // of microseconds around T_IFS. Bound RX listen windows so advertising cadence
 // does not become host-CPU-spin dependent.
@@ -1675,6 +1678,22 @@ static inline void bleExitCritical(uint32_t primask) {
   if ((primask & 0x1U) == 0U) {
     __enable_irq();
   }
+}
+
+static inline void bleTriggerTxAtTargetUsCritical(NRF_RADIO_Type* radio,
+                                                  uint32_t targetUs) {
+  if (radio == nullptr) {
+    return;
+  }
+
+  const uint32_t irqState = bleEnterCritical();
+  uint32_t nowUs = bleTimingUs();
+  while (static_cast<int32_t>(nowUs - targetUs) < 0) {
+    nowUs = bleTimingUs();
+  }
+  radio->TASKS_TXEN = RADIO_TASKS_TXEN_TASKS_TXEN_Trigger;
+  __DSB();
+  bleExitCritical(irqState);
 }
 
 // Keep the RADIO shortcut combinations explicit in one place. These match the
@@ -3388,6 +3407,87 @@ bool timeReachedUs(uint32_t now, uint32_t target) {
   return static_cast<int32_t>(now - target) >= 0;
 }
 
+bool isValidBleConnectionAccessAddress(uint32_t accessAddress) {
+  if (accessAddress == kBleAccessAddress ||
+      accessAddress == 0U ||
+      accessAddress == 0xFFFFFFFFUL) {
+    return false;
+  }
+
+  const uint32_t diffBits =
+      static_cast<uint32_t>(__builtin_popcount(accessAddress ^ kBleAccessAddress));
+  if (diffBits <= 1U) {
+    return false;
+  }
+
+  uint8_t transitions = 0U;
+  uint8_t runLength = 1U;
+  uint8_t maxRunLength = 1U;
+  bool lastBit = (accessAddress & 0x1U) != 0U;
+  for (uint8_t bit = 1U; bit < 32U; ++bit) {
+    const bool currentBit = ((accessAddress >> bit) & 0x1U) != 0U;
+    if (currentBit != lastBit) {
+      ++transitions;
+      runLength = 1U;
+    } else {
+      ++runLength;
+      if (runLength > maxRunLength) {
+        maxRunLength = runLength;
+      }
+    }
+    lastBit = currentBit;
+  }
+
+  if (maxRunLength > 6U || transitions > 24U) {
+    return false;
+  }
+
+  uint8_t topTransitions = 0U;
+  bool lastTopBit = ((accessAddress >> 31U) & 0x1U) != 0U;
+  for (int8_t bit = 30; bit >= 26; --bit) {
+    const bool currentBit = ((accessAddress >> bit) & 0x1U) != 0U;
+    if (currentBit != lastTopBit) {
+      ++topTransitions;
+    }
+    lastTopBit = currentBit;
+  }
+  return topTransitions >= 2U;
+}
+
+uint32_t nextPseudoRandomWord(uint32_t state) {
+  uint32_t x = state;
+  if (x == 0U) {
+    x = 0xA5A55A5AUL;
+  }
+  x ^= (x << 13U);
+  x ^= (x >> 17U);
+  x ^= (x << 5U);
+  return x;
+}
+
+uint32_t generateBleConnectionAccessAddress(uint32_t seed) {
+  uint32_t state = seed ^ 0xC3A55A3CUL;
+  for (uint8_t attempt = 0U; attempt < 64U; ++attempt) {
+    state = nextPseudoRandomWord(state);
+    if (isValidBleConnectionAccessAddress(state)) {
+      return state;
+    }
+  }
+
+  static constexpr uint32_t kFallbackCandidates[] = {
+      0xAF9A8C69UL,
+      0xD7A46C5BUL,
+      0xC59A3B6DUL,
+  };
+  for (uint32_t candidate : kFallbackCandidates) {
+    if (isValidBleConnectionAccessAddress(candidate)) {
+      return candidate;
+    }
+  }
+
+  return 0xAF9A8C69UL;
+}
+
 uint32_t bleMasterScaPpmUpperBound(uint8_t scaCode) {
   switch (scaCode & 0x07U) {
     case 0U:
@@ -3541,16 +3641,13 @@ bool waitRadioDisabledBudgeted(NRF_RADIO_Type* radio, uint32_t budgetUs, uint32_
       if ((budgetUs > 0U) && (elapsedUs >= budgetUs)) {
         break;
       }
-      if ((budgetUs == 0U) && (spinLimit == 0U)) {
+      if (spinLimit == 0U) {
         break;
       }
     }
 
-    if ((budgetUs == 0U) && (spinLimit > 0U)) {
+    if (spinLimit > 0U) {
       --spinLimit;
-      if (spinLimit == 0U) {
-        break;
-      }
     }
   }
 
@@ -10018,14 +10115,19 @@ bool BleRadio::beginUnconnectedRadioActivity(uint32_t spinLimit) {
   if (connected_) {
     return true;
   }
-  // Keep the generic connectable path lean here. Extra RF-path/background
-  // housekeeping in this boundary regressed CONNECT_IND -> first-anchor sync.
-  return ClockControl::startHfxo(true, spinLimit);
+  if (!ClockControl::startHfxo(true, spinLimit)) {
+    return false;
+  }
+  // Match the per-event RF ownership model used by the phone-visible
+  // non-connectable advertiser: enable the RF path for this event, then
+  // collapse it again once the device returns to the disconnected idle state.
+  return ensureRfPathActiveForBle();
 }
 
 void BleRadio::endUnconnectedRadioActivity() {
   if (!connected_) {
     ClockControl::stopHfxo();
+    releaseRfPathForBle();
   }
 }
 
@@ -11528,7 +11630,11 @@ bool BleRadio::buildAdvertisingPacket() {
   }
 
   uint8_t header = static_cast<uint8_t>(pduType_) & 0x0FU;
-  if (useChSel2_) {
+  // ChSel#2 is only defined on legacy ADV_IND and ADV_DIRECT_IND PDUs.
+  const bool pduAllowsChSel2 =
+      (pduType_ == BleAdvPduType::kAdvInd) ||
+      (pduType_ == BleAdvPduType::kAdvDirectInd);
+  if (useChSel2_ && pduAllowsChSel2) {
     header |= (1U << 5U);
   }
   if (addressType_ == BleAddressType::kRandomStatic) {
@@ -11636,8 +11742,6 @@ bool BleRadio::setAdvertisingServiceUuid128(
   // Total = 21 bytes, well within the 31-byte limit.
   uint8_t payload[kBleLegacyAdDataMaxLength];
   size_t used = 0U;
-
-  // AD type 0x01: Flags — LE General Discoverable, BR/EDR Not Supported.
   payload[used++] = 2U;
   payload[used++] = 0x01U;
   payload[used++] = 0x06U;
@@ -11645,8 +11749,8 @@ bool BleRadio::setAdvertisingServiceUuid128(
   // AD type 0x07: Complete List of 128-bit Service UUIDs.
   // BLE advertising encodes 128-bit UUIDs in little-endian (LSB first), which is
   // the byte-reversal of the canonical big-endian representation passed in by the caller.
-  payload[used++] = 1U + kCustomGattUuid128Length;  // length field
-  payload[used++] = 0x07U;                           // AD type
+  payload[used++] = 1U + kCustomGattUuid128Length;
+  payload[used++] = 0x07U;
   for (uint8_t i = 0U; i < kCustomGattUuid128Length; ++i) {
     payload[used++] = uuid128[kCustomGattUuid128Length - 1U - i];
   }
@@ -13480,12 +13584,7 @@ bool BleRadio::handleExtendedScanRequestAndMaybeRespond(
        RADIO_SHORTS_PHYEND_DISABLE_Msk);
 
   const uint32_t txTriggerTargetUs = rxEndUs + kBleConnTxenAfterRxUs;
-  uint32_t txTriggerNowUs = bleTimingUs();
-  while (!timeReachedUs(txTriggerNowUs, txTriggerTargetUs)) {
-    txTriggerNowUs = bleTimingUs();
-  }
-
-  radio_->TASKS_TXEN = RADIO_TASKS_TXEN_TASKS_TXEN_Trigger;
+  bleTriggerTxAtTargetUsCritical(radio_, txTriggerTargetUs);
   uint32_t scanRspReadyUs = 0U;
   bool readySeen = false;
   bool responseDisabled = false;
@@ -13674,9 +13773,19 @@ bool BleRadio::advertiseInteractOncePrepared(BleAdvertisingChannel channel,
   if (crcOk && length >= 12U) {
     const uint8_t* scannerOrInitiator = payload;
     const uint8_t* advertiserAddress = &payload[6];
-    addressMatch = bleAddressEqual(advertiserAddress, &address_[0]) &&
-                   (rxAddrRandom ==
-                    (addressType_ == BleAddressType::kRandomStatic));
+    const bool advertiserAddressMatch =
+        bleAddressEqual(advertiserAddress, &address_[0]);
+    const bool advertiserAddressTypeMatch =
+        (rxAddrRandom == (addressType_ == BleAddressType::kRandomStatic));
+    addressMatch = advertiserAddressMatch && advertiserAddressTypeMatch;
+    // Some Android/Qualcomm centrals appear to reuse the correct advertiser
+    // address bytes while misreporting the RxAdd bit in SCAN_REQ/CONNECT_IND.
+    // Accept those legacy advertising-channel requests as long as the address
+    // bytes match exactly.
+    if (!addressMatch && advertiserAddressMatch &&
+        (pduType == kBlePduScanReq || pduType == kBlePduConnectInd)) {
+      addressMatch = true;
+    }
 
     if (addressMatch && pduType == kBlePduScanReq) {
       hasScanReq = true;
@@ -13719,12 +13828,7 @@ bool BleRadio::advertiseInteractOncePrepared(BleAdvertisingChannel channel,
 
     // Wait for T_IFS turnaround (150us nominal).
     const uint32_t txTriggerTargetUs = rxEndUs + kBleScanRspTxenAfterRxUs;
-    uint32_t txTriggerNowUs = bleTimingUs();
-    while (!timeReachedUs(txTriggerNowUs, txTriggerTargetUs)) {
-      txTriggerNowUs = bleTimingUs();
-    }
-
-    radio_->TASKS_TXEN = RADIO_TASKS_TXEN_TASKS_TXEN_Trigger;
+    bleTriggerTxAtTargetUsCritical(radio_, txTriggerTargetUs);
     txScanRspOk = waitDisabled(spinLimit);
     radio_->SHORTS = 0U;
   }
@@ -18408,12 +18512,7 @@ bool BleRadio::scanActiveOnce(BleAdvertisingChannel channel,
        RADIO_SHORTS_PHYEND_DISABLE_Msk);
 
   const uint32_t txTriggerTargetUs = advEndUs + kBleConnTxenAfterRxUs;
-  uint32_t txTriggerNowUs = bleTimingUs();
-  while (!timeReachedUs(txTriggerNowUs, txTriggerTargetUs)) {
-    txTriggerNowUs = bleTimingUs();
-  }
-
-  radio_->TASKS_TXEN = RADIO_TASKS_TXEN_TASKS_TXEN_Trigger;
+  bleTriggerTxAtTargetUsCritical(radio_, txTriggerTargetUs);
   bool txDisabled = waitDisabled(spinLimit / 2U + 1U);
   if (!txDisabled) {
     radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
@@ -18895,12 +18994,7 @@ bool BleRadio::scanExtendedActiveOnce(BleAdvertisingChannel channel,
        RADIO_SHORTS_ADDRESS_RSSISTART_Msk);
 
   const uint32_t txTriggerTargetUs = secondaryEndUs + kBleConnTxenAfterRxUs;
-  uint32_t txTriggerNowUs = bleTimingUs();
-  while (!timeReachedUs(txTriggerNowUs, txTriggerTargetUs)) {
-    txTriggerNowUs = bleTimingUs();
-  }
-
-  radio_->TASKS_TXEN = RADIO_TASKS_TXEN_TASKS_TXEN_Trigger;
+  bleTriggerTxAtTargetUsCritical(radio_, txTriggerTargetUs);
   const bool txEndSeen = waitForEnd(spinLimit);
   if (!txEndSeen) {
     radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
@@ -19108,11 +19202,13 @@ bool BleRadio::initiateConnectionOnce(BleAdvertisingChannel channel,
       static_cast<uint32_t>(intervalUnits);
   fillPseudoRandomBytes(entropy, sizeof(entropy), seed);
 
-  uint32_t accessAddress = readLe32(&entropy[0]);
-  if (accessAddress == kBleAccessAddress || accessAddress == 0U ||
-      accessAddress == 0xFFFFFFFFUL) {
-    accessAddress ^= 0xC3A55A3CUL;
-  }
+  const uint32_t accessAddressSeed =
+      readLe32(&entropy[0]) ^
+      (static_cast<uint32_t>(peerAddress[1]) << 24U) ^
+      (static_cast<uint32_t>(peerAddress[4]) << 16U) ^
+      (static_cast<uint32_t>(intervalUnits) << 4U);
+  const uint32_t accessAddress =
+      generateBleConnectionAccessAddress(accessAddressSeed);
   uint32_t crcInit = readLe24(&entropy[4]);
   if (crcInit == 0U || crcInit == 0x00FFFFFFUL) {
     crcInit ^= 0x005A96A5UL;
@@ -19152,14 +19248,9 @@ bool BleRadio::initiateConnectionOnce(BleAdvertisingChannel channel,
       ((RADIO_SHORTS_PHYEND_DISABLE_Enabled << RADIO_SHORTS_PHYEND_DISABLE_Pos) &
        RADIO_SHORTS_PHYEND_DISABLE_Msk);
 
-  const uint32_t txTriggerTargetUs = advEndUs + kBleConnTxenAfterRxUs;
-  uint32_t txTriggerNowUs = bleTimingUs();
-  while (!timeReachedUs(txTriggerNowUs, txTriggerTargetUs)) {
-    txTriggerNowUs = bleTimingUs();
-  }
-
   g_ble_central_connect_debug_stage = 5U;
-  radio_->TASKS_TXEN = RADIO_TASKS_TXEN_TASKS_TXEN_Trigger;
+  const uint32_t txTriggerTargetUs = advEndUs + kBleConnTxenAfterRxUs;
+  bleTriggerTxAtTargetUsCritical(radio_, txTriggerTargetUs);
   bool txDisabled = waitDisabled(spinLimit / 2U + 1U);
   if (!txDisabled) {
     radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
@@ -19294,12 +19385,7 @@ bool BleRadio::handleRequestAndMaybeRespond(BleAdvertisingChannel channel,
 
     // Wait for T_IFS turnaround (150us nominal).
     const uint32_t txTriggerTargetUs = rxEndUs + kBleScanRspTxenAfterRxUs;
-    uint32_t txTriggerNowUs = bleTimingUs();
-    while (!timeReachedUs(txTriggerNowUs, txTriggerTargetUs)) {
-      txTriggerNowUs = bleTimingUs();
-    }
-
-    radio_->TASKS_TXEN = RADIO_TASKS_TXEN_TASKS_TXEN_Trigger;
+    bleTriggerTxAtTargetUsCritical(radio_, txTriggerTargetUs);
     txScanRspOk = waitDisabled(spinLimit);
     radio_->SHORTS = 0U;
   }
