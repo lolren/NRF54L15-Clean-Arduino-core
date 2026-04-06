@@ -23,6 +23,30 @@ namespace {
 using namespace nrf54l15;
 using namespace xiao_nrf54l15;
 
+uint64_t readLittleEndian64(const uint8_t* data, uint8_t length) {
+  if (data == nullptr) {
+    return 0U;
+  }
+  uint64_t value = 0U;
+  const uint8_t capped = (length > 8U) ? 8U : length;
+  for (uint8_t i = 0U; i < capped; ++i) {
+    value |= (static_cast<uint64_t>(data[i]) << (8U * i));
+  }
+  return value;
+}
+
+bool isAllBytes(const uint8_t* data, uint8_t length, uint8_t value) {
+  if (data == nullptr) {
+    return false;
+  }
+  for (uint8_t i = 0U; i < length; ++i) {
+    if (data[i] != value) {
+      return false;
+    }
+  }
+  return true;
+}
+
 static constexpr uint16_t kSystemOffTimeoutLfclk = 5U;
 static constexpr uint8_t kSystemOffWakeLeadLfclk = 4U;
 static constexpr uint32_t kLfclkFrequencyHz = 32768UL;
@@ -3581,11 +3605,24 @@ bool waitRadioRxDoneBudgeted(NRF_RADIO_Type* radio, uint32_t budgetUs, uint32_t 
 }
 
 uint8_t ieee802154MacPayloadLengthFromPhr(uint8_t phrLength) {
+  // The IEEE 802.15.4 PHR length counts the on-air FCS as part of the PSDU.
+  // The stack uses MAC payload lengths without the trailing two-byte FCS.
   return (phrLength >= 2U) ? static_cast<uint8_t>(phrLength - 2U) : 0U;
 }
 
 uint8_t ieee802154PhrLengthFromMacPayloadLength(uint8_t macLength) {
   return (macLength <= 125U) ? static_cast<uint8_t>(macLength + 2U) : 0U;
+}
+
+void setIeee802154CrcLengthMode(NRF_RADIO_Type* radio, bool includeFcsInLength) {
+  if (radio == nullptr) {
+    return;
+  }
+  uint32_t pcnf0 = radio->PCNF0 & ~RADIO_PCNF0_CRCINC_Msk;
+  pcnf0 |= ((includeFcsInLength ? RADIO_PCNF0_CRCINC_Include
+                                : RADIO_PCNF0_CRCINC_Exclude)
+            << RADIO_PCNF0_CRCINC_Pos) & RADIO_PCNF0_CRCINC_Msk;
+  radio->PCNF0 = pcnf0;
 }
 
 void snapshotZigbeeReceiveEvents(NRF_RADIO_Type* radio,
@@ -8292,7 +8329,9 @@ bool ZigbeeRadio::configureIeee802154() {
            RADIO_PCNF0_S1INCL_Msk;
   pcnf0 |= (RADIO_PCNF0_PLEN_32bitZero << RADIO_PCNF0_PLEN_Pos) &
            RADIO_PCNF0_PLEN_Msk;
-  pcnf0 |= (RADIO_PCNF0_CRCINC_Exclude << RADIO_PCNF0_CRCINC_Pos) &
+  // External Zigbee coordinators are only decoded reliably when the hardware
+  // treats the PHR length as including the two-byte FCS, matching 802.15.4.
+  pcnf0 |= (RADIO_PCNF0_CRCINC_Include << RADIO_PCNF0_CRCINC_Pos) &
            RADIO_PCNF0_CRCINC_Msk;
   pcnf0 |= (0UL << RADIO_PCNF0_TERMLEN_Pos) & RADIO_PCNF0_TERMLEN_Msk;
   radio_->PCNF0 = pcnf0;
@@ -8569,6 +8608,7 @@ bool ZigbeeRadio::waitForMacAcknowledgement(uint8_t sequence,
     return false;
   }
 
+  setIeee802154CrcLengthMode(radio_, true);
   clearRadioCoreEvents(radio_);
   radio_->EVENTS_FRAMESTART = 0U;
   radio_->PACKETPTR = reinterpret_cast<uint32_t>(rxPacket_);
@@ -8763,6 +8803,7 @@ bool ZigbeeRadio::transmitThenReceive(const uint8_t* psdu, uint8_t length,
   radio_->EVENTS_MHRMATCH = 0U;
   radio_->EVENTS_SYNC = 0U;
   radio_->EVENTS_DISABLED = 0U;
+  setIeee802154CrcLengthMode(radio_, true);
   radio_->PACKETPTR = reinterpret_cast<uint32_t>(rxPacket_);
   radio_->SHORTS =
       ((RADIO_SHORTS_DISABLED_RXEN_Enabled
@@ -8843,6 +8884,60 @@ bool ZigbeeRadio::transmitThenReceive(const uint8_t* psdu, uint8_t length,
     lastTransmitDebug_.rxDoneTimestampUs = rxDoneTimestampUs;
     const int8_t rssiDbm = radioRssiDbm(radio_);
 
+    const uint32_t crcStatus =
+        (radio_->CRCSTATUS & RADIO_CRCSTATUS_CRCSTATUS_Msk) >>
+        RADIO_CRCSTATUS_CRCSTATUS_Pos;
+    const bool crcOkEvent = (radio_->EVENTS_CRCOK != 0U);
+    const bool crcOk =
+        rxDone &&
+        (crcOkEvent || (crcStatus == RADIO_CRCSTATUS_CRCSTATUS_CRCOk));
+    lastTransmitDebug_.crcOk = crcOk;
+    lastTransmitDebug_.crcError = rxDone && !crcOk;
+
+    uint8_t rxLength = 0U;
+    bool validLength = false;
+    if (crcOk) {
+      rxLength = ieee802154MacPayloadLengthFromPhr(rxPacket_[0]);
+      validLength = (rxLength != 0U && rxLength <= 127U);
+    }
+
+    ZigbeeMacAcknowledgementView macAcknowledgement{};
+    const bool matchedMacAcknowledgement =
+        awaitingMacAcknowledgement && validLength &&
+        parseMacAcknowledgement(&rxPacket_[1], rxLength, &macAcknowledgement) &&
+        macAcknowledgement.valid &&
+        macAcknowledgement.sequence == acknowledgementSequence;
+    if (matchedMacAcknowledgement && macAcknowledgement.framePending) {
+      awaitingMacAcknowledgement = false;
+      lastTransmitDebug_.ackReceived = true;
+      lastTransmitDebug_.rxLength = rxLength;
+      if (rxLength >= 3U) {
+        lastTransmitDebug_.rxSequence = rxPacket_[3];
+      }
+      // Preserve the hardware DISABLED->RXEN turnaround after a frame-pending
+      // MAC ACK. Clearing DISABLED/READY/RXREADY here can race the start of
+      // the pending indirect data frame and make sleepy-child Trust Center
+      // traffic disappear on the joiner side.
+      radio_->EVENTS_FRAMESTART = 0U;
+      radio_->EVENTS_ADDRESS = 0U;
+      radio_->EVENTS_PAYLOAD = 0U;
+      radio_->EVENTS_CRCOK = 0U;
+      radio_->EVENTS_CRCERROR = 0U;
+      radio_->EVENTS_RXADDRESS = 0U;
+      radio_->EVENTS_DEVMATCH = 0U;
+      radio_->EVENTS_DEVMISS = 0U;
+      radio_->EVENTS_MHRMATCH = 0U;
+      radio_->EVENTS_SYNC = 0U;
+      const uint32_t radioState =
+          (radio_->STATE & RADIO_STATE_STATE_Msk) >> RADIO_STATE_STATE_Pos;
+      if (radioState == RADIO_STATE_STATE_Disabled) {
+        radio_->TASKS_RXEN = RADIO_TASKS_RXEN_TASKS_RXEN_Trigger;
+      }
+
+      rxPrimed = true;
+      continue;
+    }
+
     radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
     bool disabled = waitRadioDisabledBudgeted(radio_, 3000U, spinLimit);
     if (!disabled) {
@@ -8854,25 +8949,13 @@ bool ZigbeeRadio::transmitThenReceive(const uint8_t* psdu, uint8_t length,
     if (!disabled || !rxDone) {
       continue;
     }
-
-    const uint32_t crcStatus =
-        (radio_->CRCSTATUS & RADIO_CRCSTATUS_CRCSTATUS_Msk) >>
-        RADIO_CRCSTATUS_CRCSTATUS_Pos;
-    const bool crcOkEvent = (radio_->EVENTS_CRCOK != 0U);
-    const bool crcOk =
-        crcOkEvent || (crcStatus == RADIO_CRCSTATUS_CRCSTATUS_CRCOk);
-    lastTransmitDebug_.crcOk = crcOk;
-    lastTransmitDebug_.crcError = !crcOk;
     if (!crcOk) {
       continue;
     }
-
-    const uint8_t rxLength = ieee802154MacPayloadLengthFromPhr(rxPacket_[0]);
-    if (rxLength == 0U || rxLength > 127U) {
+    if (!validLength) {
       continue;
     }
 
-    ZigbeeMacAcknowledgementView macAcknowledgement{};
     if (awaitingMacAcknowledgement &&
         parseMacAcknowledgement(&rxPacket_[1], rxLength, &macAcknowledgement) &&
         macAcknowledgement.valid &&
@@ -8901,7 +8984,9 @@ bool ZigbeeRadio::transmitThenReceive(const uint8_t* psdu, uint8_t length,
       lastTransmitDebug_.rxSequence = rxPacket_[3];
     }
     if (sendAcknowledgement) {
-      (void)sendMacAcknowledgement(responseAckSequence, false, spinLimit);
+      const bool framePending =
+          ((readLe16(&rxPacket_[1]) & 0x0007U) == 0x03U);
+      (void)sendMacAcknowledgement(responseAckSequence, framePending, spinLimit);
     }
     clearRadioCoreEvents(radio_);
     return true;
@@ -8919,6 +9004,7 @@ bool ZigbeeRadio::receive(ZigbeeFrame* frame, uint32_t listenWindowUs,
     return false;
   }
 
+  setIeee802154CrcLengthMode(radio_, true);
   clearRadioCoreEvents(radio_);
   radio_->EVENTS_FRAMESTART = 0U;
   radio_->PACKETPTR = reinterpret_cast<uint32_t>(rxPacket_);
@@ -8968,7 +9054,9 @@ bool ZigbeeRadio::receive(ZigbeeFrame* frame, uint32_t listenWindowUs,
   frame->length = length;
   memcpy(frame->psdu, &rxPacket_[1], length);
   if (sendAcknowledgement) {
-    (void)sendMacAcknowledgement(acknowledgementSequence, false, spinLimit);
+    const bool framePending =
+        ((readLe16(&rxPacket_[1]) & 0x0007U) == 0x03U);
+    (void)sendMacAcknowledgement(acknowledgementSequence, framePending, spinLimit);
   }
   clearRadioCoreEvents(radio_);
   return true;
@@ -10085,6 +10173,46 @@ bool BleRadio::selectExternalAntenna(bool external) {
 
   externalAntenna_ = external;
   return true;
+}
+
+uint64_t hardwareUniqueId64() {
+  const NRF_FICR_Type* const ficr =
+      reinterpret_cast<const NRF_FICR_Type*>(static_cast<uintptr_t>(nrf54l15::FICR_BASE));
+  if (ficr == nullptr) {
+    return 0U;
+  }
+  return static_cast<uint64_t>(ficr->INFO.DEVICEID[0]) |
+         (static_cast<uint64_t>(ficr->INFO.DEVICEID[1]) << 32U);
+}
+
+uint64_t zigbeeFactoryEui64() {
+  const NRF_FICR_Type* const ficr =
+      reinterpret_cast<const NRF_FICR_Type*>(static_cast<uintptr_t>(nrf54l15::FICR_BASE));
+  if (ficr == nullptr) {
+    return 0U;
+  }
+
+  const uint32_t lo = ficr->DEVICEADDR[0];
+  const uint32_t hi = ficr->DEVICEADDR[1];
+  const uint8_t address[6] = {
+      static_cast<uint8_t>(lo & 0xFFU),
+      static_cast<uint8_t>((lo >> 8U) & 0xFFU),
+      static_cast<uint8_t>((lo >> 16U) & 0xFFU),
+      static_cast<uint8_t>((lo >> 24U) & 0xFFU),
+      static_cast<uint8_t>(hi & 0xFFU),
+      static_cast<uint8_t>((hi >> 8U) & 0xFFU),
+  };
+
+  if (!isAllBytes(address, sizeof(address), 0x00U) &&
+      !isAllBytes(address, sizeof(address), 0xFFU)) {
+    const uint8_t eui[8] = {
+        address[0], address[1], address[2], 0xFFU,
+        0xFEU,      address[3], address[4], address[5],
+    };
+    return readLittleEndian64(eui, sizeof(eui));
+  }
+
+  return hardwareUniqueId64();
 }
 
 bool BleRadio::loadAddressFromFicr(bool forceRandomStatic) {

@@ -244,7 +244,9 @@ class ZigbeeCommissioning {
       ZigbeeEndDeviceCommonState* state, uint32_t nowMs);
   static bool activeScan(ZigbeeRadio& radio, uint8_t* ioMacSequence,
                          ZigbeeEndDeviceCommonState* state,
-                         ZigbeeBeaconCandidate* outResult);
+                         ZigbeeBeaconCandidate* outResult,
+                         const ZigbeeBeaconCandidate* excludedCandidates = nullptr,
+                         uint8_t excludedCount = 0U);
   static bool performJoin(ZigbeeRadio& radio, uint8_t* ioMacSequence,
                           uint64_t localIeee, uint8_t capabilityInformation,
                           ZigbeeEndDeviceCommonState* state);

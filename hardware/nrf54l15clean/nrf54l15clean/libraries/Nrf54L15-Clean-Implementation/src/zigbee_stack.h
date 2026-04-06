@@ -164,7 +164,8 @@ struct ZigbeeMacFrame {
   bool framePending = false;
   bool ackRequested = false;
   bool panCompression = false;
-  uint8_t frameVersion = 1U;
+  // Zigbee uses legacy IEEE 802.15.4 MAC framing on the air.
+  uint8_t frameVersion = 0U;
   uint8_t sequence = 0U;
   ZigbeeMacAddress destination{};
   ZigbeeMacAddress source{};
@@ -674,6 +675,10 @@ class ZigbeeCodec {
                                uint16_t coordinatorShort,
                                uint64_t deviceExtended, uint8_t* outFrame,
                                uint8_t* outLength);
+  static bool buildDataRequestShort(uint8_t sequence, uint16_t panId,
+                                    uint16_t coordinatorShort,
+                                    uint16_t deviceShort, uint8_t* outFrame,
+                                    uint8_t* outLength);
 
   static bool buildNwkFrame(const ZigbeeNetworkFrame& frame,
                             const uint8_t* payload, uint8_t payloadLength,

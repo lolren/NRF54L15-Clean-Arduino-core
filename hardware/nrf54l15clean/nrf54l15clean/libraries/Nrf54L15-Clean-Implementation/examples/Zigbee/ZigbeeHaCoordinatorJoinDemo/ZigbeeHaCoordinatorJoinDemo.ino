@@ -3891,7 +3891,8 @@ void processIncomingFrame(const ZigbeeFrame& frame) {
   bool nwkValid = (expectedKey != nullptr) &&
                   ZigbeeSecurity::parseSecuredNwkFrame(
                       macData.payload, macData.payloadLength, expectedKey, &nwk,
-                      &security, decryptedPayload, &decryptedPayloadLength);
+                      &security, decryptedPayload, &decryptedPayloadLength,
+                      node->ieeeAddress);
   if (nwkValid &&
       (!security.valid || security.sourceIeee != node->ieeeAddress ||
        security.keySequence != expectedKeySequence ||

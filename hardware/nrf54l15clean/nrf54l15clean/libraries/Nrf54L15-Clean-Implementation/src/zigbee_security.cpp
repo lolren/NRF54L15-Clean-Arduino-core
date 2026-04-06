@@ -11,8 +11,33 @@ constexpr uint8_t kCcmMicLength = 4U;
 constexpr uint8_t kCcmNonceLength = 13U;
 constexpr uint8_t kCcmLengthFieldSize = 2U;
 constexpr uint8_t kInstallCodeMaxLength = 18U;
+constexpr uint8_t kAesBlockSize = 16U;
+constexpr uint8_t kDerivedTransportKeyInput = 0x00U;
 
-using AesState = uint8_t[4][4];
+uint8_t apsSecurityControlForNonce(uint8_t securityControl) {
+  const uint8_t keyIdentifier =
+      static_cast<uint8_t>(securityControl & 0x18U);
+  const uint8_t securityLevel =
+      static_cast<uint8_t>(securityControl & 0x07U);
+  if (keyIdentifier == kZigbeeSecurityKeyIdKeyTransport &&
+      securityLevel == 0U) {
+    return static_cast<uint8_t>(securityControl |
+                                kZigbeeSecurityLevelEncMic32);
+  }
+  return securityControl;
+}
+
+uint8_t nwkSecurityControlForCrypto(uint8_t securityControl) {
+  const uint8_t keyIdentifier =
+      static_cast<uint8_t>(securityControl & 0x18U);
+  const uint8_t securityLevel =
+      static_cast<uint8_t>(securityControl & 0x07U);
+  if (keyIdentifier == kZigbeeSecurityKeyIdNetwork && securityLevel == 0U) {
+    return static_cast<uint8_t>(securityControl |
+                                kZigbeeSecurityLevelEncMic32);
+  }
+  return securityControl;
+}
 
 constexpr uint8_t kAesSbox[256] = {
     0x63U, 0x7CU, 0x77U, 0x7BU, 0xF2U, 0x6BU, 0x6FU, 0xC5U, 0x30U, 0x01U,
@@ -126,67 +151,73 @@ uint8_t aesXtime(uint8_t x) {
   return static_cast<uint8_t>((x << 1U) ^ (((x >> 7U) & 1U) * 0x1BU));
 }
 
-void aesAddRoundKey(uint8_t round, AesState* state,
+uint8_t aesStateIndex(uint8_t row, uint8_t col) {
+  return static_cast<uint8_t>((col * 4U) + row);
+}
+
+void aesAddRoundKey(uint8_t round, uint8_t state[16],
                     const uint8_t* roundKey) {
-  for (uint8_t col = 0U; col < 4U; ++col) {
-    for (uint8_t row = 0U; row < 4U; ++row) {
-      (*state)[row][col] ^= roundKey[(round * 16U) + (col * 4U) + row];
-    }
+  if (state == nullptr || roundKey == nullptr) {
+    return;
+  }
+  const uint8_t* roundStart = &roundKey[round * 16U];
+  for (uint8_t i = 0U; i < 16U; ++i) {
+    state[i] ^= roundStart[i];
   }
 }
 
-void aesSubBytes(AesState* state) {
-  for (uint8_t row = 0U; row < 4U; ++row) {
-    for (uint8_t col = 0U; col < 4U; ++col) {
-      (*state)[row][col] = kAesSbox[(*state)[row][col]];
-    }
+void aesSubBytes(uint8_t state[16]) {
+  if (state == nullptr) {
+    return;
+  }
+  for (uint8_t i = 0U; i < 16U; ++i) {
+    state[i] = kAesSbox[state[i]];
   }
 }
 
-void aesShiftRows(AesState* state) {
-  uint8_t temp = (*state)[1][0];
-  (*state)[1][0] = (*state)[1][1];
-  (*state)[1][1] = (*state)[1][2];
-  (*state)[1][2] = (*state)[1][3];
-  (*state)[1][3] = temp;
-
-  temp = (*state)[2][0];
-  (*state)[2][0] = (*state)[2][2];
-  (*state)[2][2] = temp;
-  temp = (*state)[2][1];
-  (*state)[2][1] = (*state)[2][3];
-  (*state)[2][3] = temp;
-
-  temp = (*state)[3][3];
-  (*state)[3][3] = (*state)[3][2];
-  (*state)[3][2] = (*state)[3][1];
-  (*state)[3][1] = (*state)[3][0];
-  (*state)[3][0] = temp;
+void aesShiftRows(uint8_t state[16]) {
+  if (state == nullptr) {
+    return;
+  }
+  uint8_t original[16] = {0U};
+  memcpy(original, state, sizeof(original));
+  for (uint8_t col = 0U; col < 4U; ++col) {
+    state[aesStateIndex(0U, col)] = original[aesStateIndex(0U, col)];
+    state[aesStateIndex(1U, col)] =
+        original[aesStateIndex(1U, static_cast<uint8_t>((col + 1U) & 0x03U))];
+    state[aesStateIndex(2U, col)] =
+        original[aesStateIndex(2U, static_cast<uint8_t>((col + 2U) & 0x03U))];
+    state[aesStateIndex(3U, col)] =
+        original[aesStateIndex(3U, static_cast<uint8_t>((col + 3U) & 0x03U))];
+  }
 }
 
-void aesMixColumns(AesState* state) {
+void aesMixColumns(uint8_t state[16]) {
+  if (state == nullptr) {
+    return;
+  }
   for (uint8_t col = 0U; col < 4U; ++col) {
-    const uint8_t s0 = (*state)[0][col];
-    const uint8_t s1 = (*state)[1][col];
-    const uint8_t s2 = (*state)[2][col];
-    const uint8_t s3 = (*state)[3][col];
+    const uint8_t s0 = state[aesStateIndex(0U, col)];
+    const uint8_t s1 = state[aesStateIndex(1U, col)];
+    const uint8_t s2 = state[aesStateIndex(2U, col)];
+    const uint8_t s3 = state[aesStateIndex(3U, col)];
     const uint8_t t = static_cast<uint8_t>(s0 ^ s1 ^ s2 ^ s3);
 
     uint8_t tm = static_cast<uint8_t>(s0 ^ s1);
     tm = aesXtime(tm);
-    (*state)[0][col] ^= static_cast<uint8_t>(tm ^ t);
+    state[aesStateIndex(0U, col)] ^= static_cast<uint8_t>(tm ^ t);
 
     tm = static_cast<uint8_t>(s1 ^ s2);
     tm = aesXtime(tm);
-    (*state)[1][col] ^= static_cast<uint8_t>(tm ^ t);
+    state[aesStateIndex(1U, col)] ^= static_cast<uint8_t>(tm ^ t);
 
     tm = static_cast<uint8_t>(s2 ^ s3);
     tm = aesXtime(tm);
-    (*state)[2][col] ^= static_cast<uint8_t>(tm ^ t);
+    state[aesStateIndex(2U, col)] ^= static_cast<uint8_t>(tm ^ t);
 
     tm = static_cast<uint8_t>(s3 ^ s0);
     tm = aesXtime(tm);
-    (*state)[3][col] ^= static_cast<uint8_t>(tm ^ t);
+    state[aesStateIndex(3U, col)] ^= static_cast<uint8_t>(tm ^ t);
   }
 }
 
@@ -230,11 +261,10 @@ bool aesEncryptBlock(const uint8_t key[16], const uint8_t plaintext[16],
   }
 
   uint8_t roundKey[176] = {0U};
-  uint8_t stateBuffer[16] = {0U};
+  uint8_t state[16] = {0U};
   aesKeyExpansion128(key, roundKey);
-  memcpy(stateBuffer, plaintext, sizeof(stateBuffer));
+  memcpy(state, plaintext, sizeof(state));
 
-  auto* state = reinterpret_cast<AesState*>(&stateBuffer[0]);
   aesAddRoundKey(0U, state, roundKey);
   for (uint8_t round = 1U; round < 10U; ++round) {
     aesSubBytes(state);
@@ -245,7 +275,7 @@ bool aesEncryptBlock(const uint8_t key[16], const uint8_t plaintext[16],
   aesSubBytes(state);
   aesShiftRows(state);
   aesAddRoundKey(10U, state, roundKey);
-  memcpy(out, stateBuffer, sizeof(stateBuffer));
+  memcpy(out, state, sizeof(state));
   return true;
 }
 
@@ -397,6 +427,90 @@ bool mmoHashInstallCode(const uint8_t* installCode, uint8_t length,
   return true;
 }
 
+bool aesMmoHash(const uint8_t* data, uint16_t length, uint8_t outDigest[16]) {
+  if (outDigest == nullptr) {
+    return false;
+  }
+  if (length > 0U && data == nullptr) {
+    return false;
+  }
+
+  uint8_t digest[kAesBlockSize] = {0U};
+  uint8_t block[kAesBlockSize] = {0U};
+  uint8_t encrypted[kAesBlockSize] = {0U};
+
+  uint16_t offset = 0U;
+  const uint16_t fullLength = static_cast<uint16_t>(length & ~0x0FU);
+  while (offset < fullLength) {
+    if (!aesEncryptBlock(digest, &data[offset], encrypted)) {
+      return false;
+    }
+    for (uint8_t i = 0U; i < kAesBlockSize; ++i) {
+      digest[i] = static_cast<uint8_t>(encrypted[i] ^ data[offset + i]);
+    }
+    offset = static_cast<uint16_t>(offset + kAesBlockSize);
+  }
+
+  const uint8_t remaining = static_cast<uint8_t>(length - offset);
+  memset(block, 0, sizeof(block));
+  if (remaining > 0U) {
+    memcpy(block, &data[offset], remaining);
+  }
+  block[remaining] = 0x80U;
+  if ((kAesBlockSize - remaining) < 3U) {
+    if (!aesEncryptBlock(digest, block, encrypted)) {
+      return false;
+    }
+    for (uint8_t i = 0U; i < kAesBlockSize; ++i) {
+      digest[i] = static_cast<uint8_t>(encrypted[i] ^ block[i]);
+    }
+    memset(block, 0, sizeof(block));
+  }
+
+  const uint16_t bitLength = static_cast<uint16_t>(length * 8U);
+  block[kAesBlockSize - 2U] = static_cast<uint8_t>((bitLength >> 8U) & 0xFFU);
+  block[kAesBlockSize - 1U] = static_cast<uint8_t>(bitLength & 0xFFU);
+  if (!aesEncryptBlock(digest, block, encrypted)) {
+    return false;
+  }
+  for (uint8_t i = 0U; i < kAesBlockSize; ++i) {
+    outDigest[i] = static_cast<uint8_t>(encrypted[i] ^ block[i]);
+  }
+  return true;
+}
+
+bool hmacAesMmo(const uint8_t key[16], const uint8_t* data, uint8_t length,
+                uint8_t outDigest[16]) {
+  if (key == nullptr || outDigest == nullptr) {
+    return false;
+  }
+  if (length > 0U && data == nullptr) {
+    return false;
+  }
+
+  uint8_t innerInput[48] = {0U};
+  uint8_t outerInput[32] = {0U};
+  uint8_t innerDigest[16] = {0U};
+
+  for (uint8_t i = 0U; i < kAesBlockSize; ++i) {
+    innerInput[i] = static_cast<uint8_t>(key[i] ^ 0x36U);
+    outerInput[i] = static_cast<uint8_t>(key[i] ^ 0x5CU);
+  }
+  if (length > 0U) {
+    memcpy(&innerInput[kAesBlockSize], data, length);
+  }
+  if (!aesMmoHash(innerInput, static_cast<uint16_t>(kAesBlockSize + length),
+                  innerDigest)) {
+    return false;
+  }
+  memcpy(&outerInput[kAesBlockSize], innerDigest, sizeof(innerDigest));
+  return aesMmoHash(outerInput, sizeof(outerInput), outDigest);
+}
+
+bool deriveKeyTransportKey(const uint8_t linkKey[16], uint8_t outKey[16]) {
+  return hmacAesMmo(linkKey, &kDerivedTransportKeyInput, 1U, outKey);
+}
+
 }  // namespace
 
 bool ZigbeeSecurity::loadZigbeeAlliance09LinkKey(uint8_t outKey[16]) {
@@ -494,8 +608,13 @@ bool ZigbeeSecurity::parseNwkSecurityHeader(const uint8_t* data, uint8_t length,
   outHeader->frameCounter = readLe32(&data[offset]);
   offset = static_cast<uint8_t>(offset + 4U);
 
+  const uint8_t keyIdentifier =
+      static_cast<uint8_t>(outHeader->securityControl & 0x18U);
   const uint8_t securityLevel = static_cast<uint8_t>(outHeader->securityControl & 0x07U);
-  if (securityLevel != kZigbeeSecurityLevelEncMic32) {
+  const bool validSecurityLevel =
+      securityLevel == kZigbeeSecurityLevelEncMic32 ||
+      (keyIdentifier == kZigbeeSecurityKeyIdNetwork && securityLevel == 0U);
+  if (!validSecurityLevel) {
     return false;
   }
   outHeader->micLength = kCcmMicLength;
@@ -508,7 +627,7 @@ bool ZigbeeSecurity::parseNwkSecurityHeader(const uint8_t* data, uint8_t length,
     offset = static_cast<uint8_t>(offset + 8U);
   }
 
-  if ((outHeader->securityControl & 0x18U) == kZigbeeSecurityKeyIdNetwork) {
+  if (keyIdentifier == kZigbeeSecurityKeyIdNetwork) {
     if (length < static_cast<uint8_t>(offset + 1U)) {
       return false;
     }
@@ -534,6 +653,11 @@ bool ZigbeeSecurity::buildApsSecurityHeader(
 
   if ((header.securityControl & kZigbeeSecurityExtendedNonce) != 0U &&
       !appendLe64(outHeader, 32U, &offset, header.sourceIeee)) {
+    return false;
+  }
+
+  if ((header.securityControl & 0x18U) == kZigbeeSecurityKeyIdNetwork &&
+      !appendBytes(outHeader, 32U, &offset, &header.keySequence, 1U)) {
     return false;
   }
 
@@ -563,12 +687,25 @@ bool ZigbeeSecurity::parseApsSecurityHeader(const uint8_t* data, uint8_t length,
 
   const uint8_t securityLevel =
       static_cast<uint8_t>(outHeader->securityControl & 0x07U);
-  if (securityLevel != kZigbeeSecurityLevelEncMic32) {
+  const uint8_t keyIdentifier =
+      static_cast<uint8_t>(outHeader->securityControl & 0x18U);
+  const bool isDataKeyFrame =
+      (keyIdentifier == kZigbeeSecurityKeyIdData &&
+       securityLevel == kZigbeeSecurityLevelEncMic32);
+  const bool isNetworkKeyFrame =
+      (keyIdentifier == kZigbeeSecurityKeyIdNetwork &&
+       securityLevel == kZigbeeSecurityLevelEncMic32);
+  const bool isKeyTransportFrame =
+      (keyIdentifier == kZigbeeSecurityKeyIdKeyTransport &&
+       securityLevel == 0U);
+  if (!isDataKeyFrame && !isNetworkKeyFrame && !isKeyTransportFrame) {
     return false;
   }
   outHeader->micLength = kCcmMicLength;
 
-  if ((outHeader->securityControl & 0x18U) != kZigbeeSecurityKeyIdData) {
+  if (keyIdentifier != kZigbeeSecurityKeyIdData &&
+      keyIdentifier != kZigbeeSecurityKeyIdNetwork &&
+      keyIdentifier != kZigbeeSecurityKeyIdKeyTransport) {
     return false;
   }
 
@@ -578,6 +715,13 @@ bool ZigbeeSecurity::parseApsSecurityHeader(const uint8_t* data, uint8_t length,
     }
     outHeader->sourceIeee = readLe64(&data[offset]);
     offset = static_cast<uint8_t>(offset + 8U);
+  }
+
+  if (keyIdentifier == kZigbeeSecurityKeyIdNetwork) {
+    if (length < static_cast<uint8_t>(offset + 1U)) {
+      return false;
+    }
+    outHeader->keySequence = data[offset++];
   }
 
   *outHeaderLength = offset;
@@ -728,18 +872,26 @@ bool ZigbeeSecurity::buildSecuredNwkFrame(const ZigbeeNetworkFrame& frame,
   if (!buildNwkSecurityHeader(security, securityHeader, &securityHeaderLength)) {
     return false;
   }
+  uint8_t authenticatedSecurityHeader[32] = {0U};
+  memcpy(authenticatedSecurityHeader, securityHeader,
+         sizeof(authenticatedSecurityHeader));
+  if (securityHeaderLength > 0U) {
+    authenticatedSecurityHeader[0] =
+        nwkSecurityControlForCrypto(authenticatedSecurityHeader[0]);
+  }
 
   uint8_t aad[64] = {0U};
   uint8_t aadLength = 0U;
   if (!appendBytes(aad, sizeof(aad), &aadLength, nwkHeader, nwkHeaderLength) ||
-      !appendBytes(aad, sizeof(aad), &aadLength, securityHeader,
+      !appendBytes(aad, sizeof(aad), &aadLength, authenticatedSecurityHeader,
                    securityHeaderLength)) {
     return false;
   }
 
   uint8_t nonce[kCcmNonceLength] = {0U};
   if (!buildNwkNonce(security.sourceIeee, security.frameCounter,
-                     security.securityControl, nonce)) {
+                     nwkSecurityControlForCrypto(security.securityControl),
+                     nonce)) {
     return false;
   }
 
@@ -766,7 +918,8 @@ bool ZigbeeSecurity::parseSecuredNwkFrame(const uint8_t* frame, uint8_t length,
                                           ZigbeeNetworkFrame* outFrame,
                                           ZigbeeNwkSecurityHeader* outSecurity,
                                           uint8_t* outPayload,
-                                          uint8_t* outPayloadLength) {
+                                          uint8_t* outPayloadLength,
+                                          uint64_t defaultSourceIeee) {
   if (outFrame != nullptr) {
     memset(outFrame, 0, sizeof(*outFrame));
   }
@@ -839,11 +992,27 @@ bool ZigbeeSecurity::parseSecuredNwkFrame(const uint8_t* frame, uint8_t length,
                               outSecurity, &securityHeaderLength)) {
     return false;
   }
+  if (outSecurity->sourceIeee == 0U) {
+    if (outFrame->extendedSource) {
+      outSecurity->sourceIeee = outFrame->sourceExtended;
+    } else if (defaultSourceIeee != 0U) {
+      outSecurity->sourceIeee = defaultSourceIeee;
+    }
+  }
 
   uint8_t aad[64] = {0U};
   uint8_t aadLength = 0U;
+  uint8_t authenticatedSecurityHeader[32] = {0U};
+  if (securityHeaderLength > sizeof(authenticatedSecurityHeader)) {
+    return false;
+  }
+  memcpy(authenticatedSecurityHeader, &frame[offset], securityHeaderLength);
+  if (securityHeaderLength > 0U) {
+    authenticatedSecurityHeader[0] =
+        nwkSecurityControlForCrypto(authenticatedSecurityHeader[0]);
+  }
   if (!appendBytes(aad, sizeof(aad), &aadLength, frame, offset) ||
-      !appendBytes(aad, sizeof(aad), &aadLength, &frame[offset],
+      !appendBytes(aad, sizeof(aad), &aadLength, authenticatedSecurityHeader,
                    securityHeaderLength)) {
     return false;
   }
@@ -854,7 +1023,8 @@ bool ZigbeeSecurity::parseSecuredNwkFrame(const uint8_t* frame, uint8_t length,
 
   uint8_t nonce[kCcmNonceLength] = {0U};
   if (!buildNwkNonce(outSecurity->sourceIeee, outSecurity->frameCounter,
-                     outSecurity->securityControl, nonce)) {
+                     nwkSecurityControlForCrypto(outSecurity->securityControl),
+                     nonce)) {
     return false;
   }
 
@@ -900,6 +1070,12 @@ bool ZigbeeSecurity::buildSecuredApsCommandFrame(
   if (!buildApsSecurityHeader(security, securityHeader, &securityHeaderLength)) {
     return false;
   }
+  uint8_t authenticatedSecurityHeader[32] = {0U};
+  memcpy(authenticatedSecurityHeader, securityHeader, sizeof(authenticatedSecurityHeader));
+  if (securityHeaderLength > 0U) {
+    authenticatedSecurityHeader[0] =
+        apsSecurityControlForNonce(authenticatedSecurityHeader[0]);
+  }
 
   uint8_t plaintext[127] = {0U};
   uint8_t plaintextLength = 0U;
@@ -913,14 +1089,15 @@ bool ZigbeeSecurity::buildSecuredApsCommandFrame(
   uint8_t aad[64] = {0U};
   uint8_t aadLength = 0U;
   if (!appendBytes(aad, sizeof(aad), &aadLength, header, headerLength) ||
-      !appendBytes(aad, sizeof(aad), &aadLength, securityHeader,
+      !appendBytes(aad, sizeof(aad), &aadLength, authenticatedSecurityHeader,
                    securityHeaderLength)) {
     return false;
   }
 
   uint8_t nonce[kCcmNonceLength] = {0U};
   if (!buildNwkNonce(security.sourceIeee, security.frameCounter,
-                     security.securityControl, nonce)) {
+                     apsSecurityControlForNonce(security.securityControl),
+                     nonce)) {
     return false;
   }
 
@@ -989,8 +1166,17 @@ bool ZigbeeSecurity::parseSecuredApsCommandFrame(
 
   uint8_t aad[64] = {0U};
   uint8_t aadLength = 0U;
+  uint8_t authenticatedSecurityHeader[32] = {0U};
+  if (securityHeaderLength > sizeof(authenticatedSecurityHeader)) {
+    return false;
+  }
+  memcpy(authenticatedSecurityHeader, &frame[offset], securityHeaderLength);
+  if (securityHeaderLength > 0U) {
+    authenticatedSecurityHeader[0] =
+        apsSecurityControlForNonce(authenticatedSecurityHeader[0]);
+  }
   if (!appendBytes(aad, sizeof(aad), &aadLength, frame, offset) ||
-      !appendBytes(aad, sizeof(aad), &aadLength, &frame[offset],
+      !appendBytes(aad, sizeof(aad), &aadLength, authenticatedSecurityHeader,
                    securityHeaderLength)) {
     return false;
   }
@@ -1001,7 +1187,8 @@ bool ZigbeeSecurity::parseSecuredApsCommandFrame(
 
   uint8_t nonce[kCcmNonceLength] = {0U};
   if (!buildNwkNonce(outSecurity->sourceIeee, outSecurity->frameCounter,
-                     outSecurity->securityControl, nonce)) {
+                     apsSecurityControlForNonce(outSecurity->securityControl),
+                     nonce)) {
     return false;
   }
 
@@ -1052,7 +1239,11 @@ bool ZigbeeSecurity::buildSecuredApsTransportKeyCommand(
   command.deliveryMode = kZigbeeApsDeliveryUnicast;
   command.counter = counter;
   command.commandId = kZigbeeApsCommandTransportKey;
-  return buildSecuredApsCommandFrame(command, security, key, payload,
+  uint8_t transportKeyKey[16] = {0U};
+  if (!deriveKeyTransportKey(key, transportKeyKey)) {
+    return false;
+  }
+  return buildSecuredApsCommandFrame(command, security, transportKeyKey, payload,
                                      payloadLength, outFrame, outLength);
 }
 
@@ -1074,7 +1265,12 @@ bool ZigbeeSecurity::parseSecuredApsTransportKeyCommand(
   ZigbeeApsCommandFrame command{};
   uint8_t payload[64] = {0U};
   uint8_t payloadLength = 0U;
-  if (!parseSecuredApsCommandFrame(frame, length, key, &command, outSecurity,
+  uint8_t transportKeyKey[16] = {0U};
+  if (!deriveKeyTransportKey(key, transportKeyKey)) {
+    return false;
+  }
+  if (!parseSecuredApsCommandFrame(frame, length, transportKeyKey, &command,
+                                   outSecurity,
                                    payload, &payloadLength) ||
       !command.valid ||
       command.commandId != kZigbeeApsCommandTransportKey ||

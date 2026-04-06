@@ -1481,7 +1481,10 @@ bool makeGlobalAttributeValueForCluster(uint16_t clusterId, uint16_t attributeId
 
 uint8_t buildMacCapabilityFlags(const ZigbeeHomeAutomationConfig& config) {
   const bool mainsPowered = !config.power.batteryBacked;
-  const bool receiverOnWhenIdle = mainsPowered && config.onOff.enabled;
+  // The current HA end-device examples are poll-driven children. Even when
+  // externally powered, they are not continuously listening between polls.
+  const bool receiverOnWhenIdle =
+      config.logicalType != ZigbeeLogicalType::kEndDevice;
   uint8_t flags = 0U;
   flags |= mainsPowered ? (1U << 2U) : 0U;
   flags |= receiverOnWhenIdle ? (1U << 3U) : 0U;
@@ -1711,7 +1714,8 @@ bool ZigbeeCodec::parseAssociationResponse(
       parsed.frameType != ZigbeeMacFrameType::kCommand ||
       parsed.commandId != kZigbeeMacCommandAssociationResponse ||
       parsed.destination.mode != ZigbeeMacAddressMode::kExtended ||
-      parsed.source.mode != ZigbeeMacAddressMode::kShort ||
+      (parsed.source.mode != ZigbeeMacAddressMode::kShort &&
+       parsed.source.mode != ZigbeeMacAddressMode::kExtended) ||
       parsed.payloadLength != 3U) {
     return false;
   }
@@ -1719,7 +1723,10 @@ bool ZigbeeCodec::parseAssociationResponse(
   outView->valid = true;
   outView->sequence = parsed.sequence;
   outView->panId = parsed.destination.panId;
-  outView->coordinatorShort = parsed.source.shortAddress;
+  outView->coordinatorShort =
+      (parsed.source.mode == ZigbeeMacAddressMode::kShort)
+          ? parsed.source.shortAddress
+          : 0U;
   outView->destinationExtended = parsed.destination.extendedAddress;
   outView->assignedShort = readLe16(parsed.payload);
   outView->status = parsed.payload[2];
@@ -1939,6 +1946,26 @@ bool ZigbeeCodec::buildDataRequest(uint8_t sequence, uint16_t panId,
   frame.source.mode = ZigbeeMacAddressMode::kExtended;
   frame.source.panId = panId;
   frame.source.extendedAddress = deviceExtended;
+  frame.commandId = kZigbeeMacCommandDataRequest;
+  return buildMacFrame(frame, nullptr, 0U, outFrame, outLength);
+}
+
+bool ZigbeeCodec::buildDataRequestShort(uint8_t sequence, uint16_t panId,
+                                        uint16_t coordinatorShort,
+                                        uint16_t deviceShort,
+                                        uint8_t* outFrame,
+                                        uint8_t* outLength) {
+  ZigbeeMacFrame frame{};
+  frame.frameType = ZigbeeMacFrameType::kCommand;
+  frame.ackRequested = true;
+  frame.panCompression = true;
+  frame.sequence = sequence;
+  frame.destination.mode = ZigbeeMacAddressMode::kShort;
+  frame.destination.panId = panId;
+  frame.destination.shortAddress = coordinatorShort;
+  frame.source.mode = ZigbeeMacAddressMode::kShort;
+  frame.source.panId = panId;
+  frame.source.shortAddress = deviceShort;
   frame.commandId = kZigbeeMacCommandDataRequest;
   return buildMacFrame(frame, nullptr, 0U, outFrame, outLength);
 }

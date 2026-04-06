@@ -17,6 +17,25 @@ constexpr uint8_t kPersistentFlagActiveKeyPresent = 0x04U;
 constexpr uint8_t kPersistentFlagAlternateKeyPresent = 0x08U;
 constexpr uint8_t kMinZigbeeChannel = 11U;
 constexpr uint8_t kMaxZigbeeChannel = 26U;
+constexpr uint8_t kMaxAssociationCandidateAttempts = 4U;
+
+void printHexByte(uint8_t value) {
+  static const char kHex[] = "0123456789ABCDEF";
+  Serial.write(kHex[(value >> 4) & 0x0F]);
+  Serial.write(kHex[value & 0x0F]);
+}
+
+void printHexBytes(const uint8_t* data, uint8_t length) {
+  if (data == nullptr) {
+    return;
+  }
+  for (uint8_t i = 0U; i < length; ++i) {
+    if (i != 0U) {
+      Serial.write(' ');
+    }
+    printHexByte(data[i]);
+  }
+}
 
 const char* beaconRejectReason(const ZigbeeCommissioningPolicy& policy,
                                uint8_t channel,
@@ -50,12 +69,6 @@ const char* beaconRejectReason(const ZigbeeCommissioningPolicy& policy,
 }
 
 #if NRF54L15_CLEAN_ZIGBEE_SCAN_TRACE
-void traceHexByte(uint8_t value) {
-  static const char kHex[] = "0123456789ABCDEF";
-  Serial.write(kHex[(value >> 4) & 0x0F]);
-  Serial.write(kHex[value & 0x0F]);
-}
-
 void traceRawScanFrame(uint8_t channel, const ZigbeeFrame& frame) {
   Serial.print("scan raw ch=");
   Serial.print(channel);
@@ -69,7 +82,7 @@ void traceRawScanFrame(uint8_t channel, const ZigbeeFrame& frame) {
     if (i != 0U) {
       Serial.write(' ');
     }
-    traceHexByte(frame.psdu[i]);
+    printHexByte(frame.psdu[i]);
   }
   Serial.print("\r\n");
 }
@@ -165,9 +178,33 @@ void normalizeSteeringScanMasks(const ZigbeeCommissioningPolicy& policy,
   *outSecondaryMask = secondaryMask;
 }
 
+bool candidateIsExcluded(uint8_t channel, const ZigbeeMacBeaconView& beacon,
+                         const ZigbeeBeaconCandidate* excludedCandidates,
+                         uint8_t excludedCount) {
+  if (!beacon.valid || excludedCandidates == nullptr || excludedCount == 0U) {
+    return false;
+  }
+  for (uint8_t i = 0U; i < excludedCount; ++i) {
+    const ZigbeeBeaconCandidate& excluded = excludedCandidates[i];
+    if (!excluded.valid) {
+      continue;
+    }
+    if (excluded.channel != channel || excluded.beacon.panId != beacon.panId ||
+        excluded.beacon.sourceShort != beacon.sourceShort ||
+        excluded.beacon.network.extendedPanId !=
+            beacon.network.extendedPanId) {
+      continue;
+    }
+    return true;
+  }
+  return false;
+}
+
 bool activeScanForMask(ZigbeeRadio& radio, uint8_t* ioMacSequence,
                        uint32_t channelMask,
                        const ZigbeeCommissioningPolicy& policy,
+                       const ZigbeeBeaconCandidate* excludedCandidates,
+                       uint8_t excludedCount,
                        ZigbeeBeaconCandidate* outResult) {
   if (ioMacSequence == nullptr || outResult == nullptr || channelMask == 0UL) {
     return false;
@@ -189,6 +226,8 @@ bool activeScanForMask(ZigbeeRadio& radio, uint8_t* ioMacSequence,
 
   const uint32_t scanWindowMs =
       (policy.activeScanWindowMs != 0UL) ? policy.activeScanWindowMs : 120UL;
+  const uint32_t requestRetryIntervalMs =
+      (scanWindowMs >= 240UL) ? 80UL : ((scanWindowMs >= 160UL) ? 60UL : 45UL);
   bool found = false;
   for (uint8_t i = 0U; i < channelCount; ++i) {
     const uint8_t channel = channels[i];
@@ -201,15 +240,19 @@ bool activeScanForMask(ZigbeeRadio& radio, uint8_t* ioMacSequence,
     Serial.print("\r\n");
 #endif
     const uint32_t deadline = millis() + scanWindowMs;
-    bool initialListen = true;
+    uint32_t nextRequestAt = millis();
     while (static_cast<int32_t>(millis() - deadline) < 0) {
       ZigbeeFrame frame{};
-      const bool received =
-          initialListen
-              ? radio.transmitThenReceive(request, requestLength, &frame,
-                                          12000U, false, 1200000UL)
-              : radio.receive(&frame, 4000U, 300000UL);
-      initialListen = false;
+      const bool issueRequest =
+          static_cast<int32_t>(millis() - nextRequestAt) >= 0;
+      const bool received = issueRequest
+                                ? radio.transmitThenReceive(
+                                      request, requestLength, &frame, 16000U,
+                                      false, 1200000UL)
+                                : radio.receive(&frame, 5000U, 300000UL);
+      if (issueRequest) {
+        nextRequestAt += requestRetryIntervalMs;
+      }
       if (!received) {
         continue;
       }
@@ -234,6 +277,14 @@ bool activeScanForMask(ZigbeeRadio& radio, uint8_t* ioMacSequence,
                              score);
       }
 #endif
+      if (candidateIsExcluded(channel, beacon, excludedCandidates,
+                              excludedCount)) {
+#if NRF54L15_CLEAN_ZIGBEE_SCAN_TRACE
+        traceBeaconCandidate(channel, frame.rssiDbm, beacon, "excluded_parent",
+                             score);
+#endif
+        continue;
+      }
       if (rejectReason != nullptr ||
           !ZigbeeCommissioning::scoreBeacon(policy, channel, frame.rssiDbm,
                                             beacon, &score)) {
@@ -263,6 +314,8 @@ bool activeScanForMask(ZigbeeRadio& radio, uint8_t* ioMacSequence,
 bool scanKnownNetworkForMask(ZigbeeRadio& radio, uint8_t* ioMacSequence,
                              uint32_t channelMask,
                              const ZigbeeEndDeviceCommonState& state,
+                             const ZigbeeBeaconCandidate* excludedCandidates,
+                             uint8_t excludedCount,
                              ZigbeeBeaconCandidate* outResult) {
   if (ioMacSequence == nullptr || outResult == nullptr || channelMask == 0UL) {
     return false;
@@ -312,6 +365,10 @@ bool scanKnownNetworkForMask(ZigbeeRadio& radio, uint8_t* ioMacSequence,
       }
 
       int16_t score = 0;
+      if (candidateIsExcluded(channel, beacon, excludedCandidates,
+                              excludedCount)) {
+        continue;
+      }
       if (!ZigbeeCommissioning::scoreKnownNetworkBeacon(state, channel,
                                                         frame.rssiDbm, beacon,
                                                         &score)) {
@@ -443,6 +500,7 @@ bool waitForAssociationResponse(const ZigbeeCommissioningPolicy& policy,
   const uint32_t listenWindowMs =
       (policy.associationPollListenMs != 0UL) ? policy.associationPollListenMs
                                               : 120UL;
+  const uint32_t listenWindowUs = listenWindowMs * 1000UL;
   const uint32_t retryDelayMs =
       (policy.associationPollRetryDelayMs != 0UL)
           ? policy.associationPollRetryDelayMs
@@ -456,12 +514,26 @@ bool waitForAssociationResponse(const ZigbeeCommissioningPolicy& policy,
                                        localIeee, pollFrame, &pollLength)) {
       return false;
     }
-    (void)radio.transmit(pollFrame, pollLength, false, 1200000UL);
+    const uint32_t listenWindowStartUs = micros();
+    bool firstWindowReceive = true;
+    while (static_cast<uint32_t>(micros() - listenWindowStartUs) <
+           listenWindowUs) {
+      const uint32_t elapsedUs =
+          static_cast<uint32_t>(micros() - listenWindowStartUs);
+      const uint32_t remainingUs =
+          (elapsedUs < listenWindowUs) ? (listenWindowUs - elapsedUs) : 0U;
+      if (remainingUs == 0U) {
+        break;
+      }
 
-    const uint32_t listenDeadline = millis() + listenWindowMs;
-    while (static_cast<int32_t>(millis() - listenDeadline) < 0) {
       ZigbeeFrame frame{};
-      if (!radio.receive(&frame, 5000U, 350000UL)) {
+      const bool received =
+          firstWindowReceive
+              ? radio.transmitThenReceive(pollFrame, pollLength, &frame,
+                                          remainingUs, false, 1200000UL)
+              : radio.receive(&frame, remainingUs, 350000UL);
+      firstWindowReceive = false;
+      if (!received) {
         continue;
       }
 
@@ -526,13 +598,19 @@ bool validTrustCenterSource(const ZigbeeEndDeviceCommonState& state,
       return false;
     }
 
-    if (state.parentShort != 0U) {
-      return sourceShort == state.parentShort;
+    // Trust Center APS-secured commissioning commands can legitimately arrive
+    // either via the associated parent or directly from the coordinator. Some
+    // Zigbee2MQTT / HA topologies with router parents deliver Transport Key /
+    // Update Device from coordinator short 0x0000 even when parentShort is a
+    // router.
+    if (state.coordinatorShort != 0U && sourceShort == state.coordinatorShort) {
+      return true;
     }
-    if (state.coordinatorShort != 0U) {
-      return sourceShort == state.coordinatorShort;
+    if (state.parentShort != 0U && sourceShort == state.parentShort) {
+      return true;
     }
-    return sourceShort == 0U;
+    return (state.parentShort == 0U && state.coordinatorShort == 0U &&
+            sourceShort == 0U);
   }
 
   if (state.coordinatorShort != 0U && sourceShort != state.coordinatorShort) {
@@ -693,6 +771,7 @@ bool attemptOrphanRecovery(ZigbeeRadio& radio, uint8_t* ioMacSequence,
   state->rejoinPending = true;
   state->securityEnabled = true;
   state->state = ZigbeeCommissioningState::kWaitingUpdateDevice;
+  state->lastJoinAttemptMs = millis();
   state->lastFailure = ZigbeeCommissioningFailure::kNone;
   return true;
 }
@@ -738,7 +817,7 @@ bool waitForNwkRejoinResponse(ZigbeeRadio& radio, uint16_t panId,
     uint8_t decryptedPayloadLength = 0U;
     if (!ZigbeeSecurity::parseSecuredNwkFrame(
             macData.payload, macData.payloadLength, networkKey, &nwk, &security,
-            decryptedPayload, &decryptedPayloadLength) ||
+            decryptedPayload, &decryptedPayloadLength, expectedParentIeee) ||
         !nwk.valid || !security.valid ||
         nwk.frameType != ZigbeeNwkFrameType::kCommand ||
         nwk.destinationShort != localShort ||
@@ -837,6 +916,7 @@ bool attemptNwkRejoin(ZigbeeRadio& radio, uint8_t* ioMacSequence,
   state->rejoinPending = true;
   state->securityEnabled = true;
   state->state = ZigbeeCommissioningState::kWaitingUpdateDevice;
+  state->lastJoinAttemptMs = millis();
   state->lastFailure = ZigbeeCommissioningFailure::kNone;
   return true;
 }
@@ -903,7 +983,10 @@ bool tryParseSecuredSwitchKeyCommand(
 
 bool scanForKnownNetwork(ZigbeeRadio& radio, uint8_t* ioMacSequence,
                          ZigbeeEndDeviceCommonState* state,
-                         ZigbeeBeaconCandidate* outResult) {
+                         ZigbeeBeaconCandidate* outResult,
+                         const ZigbeeBeaconCandidate* excludedCandidates =
+                             nullptr,
+                         uint8_t excludedCount = 0U) {
   if (ioMacSequence == nullptr || state == nullptr || outResult == nullptr) {
     return false;
   }
@@ -920,7 +1003,8 @@ bool scanForKnownNetwork(ZigbeeRadio& radio, uint8_t* ioMacSequence,
   bool found = false;
   for (uint8_t maskIndex = 0U; maskIndex < maskCount; ++maskIndex) {
     if (!scanKnownNetworkForMask(radio, ioMacSequence, scanMasks[maskIndex],
-                                 *state, outResult)) {
+                                 *state, excludedCandidates, excludedCount,
+                                 outResult)) {
       continue;
     }
     found = outResult->valid;
@@ -937,6 +1021,56 @@ bool scanForKnownNetwork(ZigbeeRadio& radio, uint8_t* ioMacSequence,
   radio.setChannel(state->channel);
   state->lastFailure = ZigbeeCommissioningFailure::kNoCandidate;
   state->state = ZigbeeCommissioningState::kFailed;
+  return false;
+}
+
+bool attemptAssociationViaCandidates(
+    ZigbeeRadio& radio, uint8_t* ioMacSequence, uint64_t localIeee,
+    uint8_t capabilityInformation, ZigbeeEndDeviceCommonState* state,
+    bool knownNetworkOnly, uint16_t* outAssignedShort) {
+  if (ioMacSequence == nullptr || state == nullptr || outAssignedShort == nullptr) {
+    return false;
+  }
+
+  ZigbeeBeaconCandidate attempted[kMaxAssociationCandidateAttempts] = {};
+  uint8_t attemptedCount = 0U;
+
+  while (attemptedCount < kMaxAssociationCandidateAttempts) {
+    ZigbeeBeaconCandidate candidate{};
+    const bool found =
+        knownNetworkOnly
+            ? scanForKnownNetwork(radio, ioMacSequence, state, &candidate,
+                                  attempted, attemptedCount)
+            : ZigbeeCommissioning::activeScan(radio, ioMacSequence, state,
+                                              &candidate, attempted,
+                                              attemptedCount);
+    if (!found || !candidate.valid) {
+      return false;
+    }
+
+    state->channel = candidate.channel;
+    state->panId = candidate.beacon.panId;
+    state->parentShort = candidate.beacon.sourceShort;
+    state->extendedPanId = candidate.beacon.network.extendedPanId;
+    state->state = ZigbeeCommissioningState::kAssociating;
+
+    uint16_t assignedShort = 0U;
+    if (attemptAssociationRequest(radio, ioMacSequence, state->panId,
+                                  state->parentShort, localIeee,
+                                  capabilityInformation, state,
+                                  &assignedShort)) {
+      *outAssignedShort = assignedShort;
+      return true;
+    }
+
+    attempted[attemptedCount++] = candidate;
+    if (state->lastFailure != ZigbeeCommissioningFailure::kAssociationTimeout &&
+        state->lastFailure !=
+            ZigbeeCommissioningFailure::kAssociationRequestFailed) {
+      return false;
+    }
+  }
+
   return false;
 }
 
@@ -987,6 +1121,7 @@ bool ZigbeeCommissioning::scoreBeacon(const ZigbeeCommissioningPolicy& policy,
   score += inPrimary ? 32 : 0;
   score += inSecondary ? 8 : 0;
   score += beacon.associationPermit ? 12 : 0;
+  score += beacon.panCoordinator ? 96 : 0;
   score += beacon.network.routerCapacity ? 4 : 0;
   score += beacon.network.endDeviceCapacity ? 4 : 0;
   if (policy.preferredPanId != 0U && beacon.panId == policy.preferredPanId) {
@@ -1282,6 +1417,25 @@ void ZigbeeCommissioning::requestNetworkSteering(
     return;
   }
 
+  // Fresh network steering must not carry over an old network-key context.
+  // Otherwise the joiner can enter waiting_transport_key while still behaving
+  // like a secured member and silently drop the legitimate unsecured NWK
+  // Transport Key from the Trust Center.
+  clearNetworkKey(state);
+  clearAlternateNetworkKey(state);
+  state->incomingNwkFrameCounter = 0U;
+  state->incomingApsFrameCounter = 0U;
+  state->securityEnabled = false;
+  state->trustCenterIeee = state->policy.pinnedTrustCenterIeee;
+  state->preconfiguredKeyMode = ZigbeePreconfiguredKeyMode::kNone;
+  state->deviceAnnouncePending = false;
+  state->endDeviceTimeoutPending = false;
+  state->endDeviceTimeoutNegotiated = false;
+  state->lastDeviceAnnounceMs = 0U;
+  state->lastEndDeviceTimeoutRequestMs = 0U;
+  state->parentInformation = 0U;
+  state->parentPollIntervalMs = defaultPollIntervalMs(*state);
+
   state->joined = false;
   state->rejoinPending = false;
   state->networkSteeringRequested = true;
@@ -1549,7 +1703,9 @@ ZigbeeCommissioningAction ZigbeeCommissioning::nextAction(
 bool ZigbeeCommissioning::activeScan(ZigbeeRadio& radio,
                                      uint8_t* ioMacSequence,
                                      ZigbeeEndDeviceCommonState* state,
-                                     ZigbeeBeaconCandidate* outResult) {
+                                     ZigbeeBeaconCandidate* outResult,
+                                     const ZigbeeBeaconCandidate* excludedCandidates,
+                                     uint8_t excludedCount) {
   if (ioMacSequence == nullptr || state == nullptr || outResult == nullptr) {
     return false;
   }
@@ -1565,7 +1721,8 @@ bool ZigbeeCommissioning::activeScan(ZigbeeRadio& radio,
   bool found = false;
   for (uint8_t maskIndex = 0U; maskIndex < maskCount; ++maskIndex) {
     if (!activeScanForMask(radio, ioMacSequence, scanMasks[maskIndex],
-                           state->policy, outResult)) {
+                           state->policy, excludedCandidates, excludedCount,
+                           outResult)) {
       continue;
     }
     found = outResult->valid;
@@ -1597,22 +1754,10 @@ bool ZigbeeCommissioning::performJoin(ZigbeeRadio& radio,
   ++state->joinAttempts;
   state->lastJoinAttemptMs = millis();
 
-  ZigbeeBeaconCandidate candidate{};
-  if (!activeScan(radio, ioMacSequence, state, &candidate) || !candidate.valid) {
-    return false;
-  }
-
-  state->channel = candidate.channel;
-  state->panId = candidate.beacon.panId;
-  state->parentShort = candidate.beacon.sourceShort;
-  state->extendedPanId = candidate.beacon.network.extendedPanId;
-  state->state = ZigbeeCommissioningState::kAssociating;
-
   uint16_t assignedShort = 0U;
-  if (!attemptAssociationRequest(radio, ioMacSequence, state->panId,
-                                 state->parentShort, localIeee,
-                                 capabilityInformation, state,
-                                 &assignedShort)) {
+  if (!attemptAssociationViaCandidates(radio, ioMacSequence, localIeee,
+                                       capabilityInformation, state, false,
+                                       &assignedShort)) {
     return false;
   }
 
@@ -1621,6 +1766,7 @@ bool ZigbeeCommissioning::performJoin(ZigbeeRadio& radio,
   state->rejoinPending = false;
   state->securityEnabled = false;
   state->state = ZigbeeCommissioningState::kWaitingTransportKey;
+  state->lastJoinAttemptMs = millis();
   state->lastFailure = ZigbeeCommissioningFailure::kNone;
   return true;
 }
@@ -1661,28 +1807,9 @@ bool ZigbeeCommissioning::performSecureRejoin(
       radio, ioMacSequence, state->panId, state->parentShort, localIeee,
       capabilityInformation, state, &assignedShort);
   if (!associated) {
-    ZigbeeBeaconCandidate candidate{};
-    if (!scanForKnownNetwork(radio, ioMacSequence, state, &candidate) ||
-        !candidate.valid) {
-      return false;
-    }
-
-    state->channel = candidate.channel;
-    state->panId = candidate.beacon.panId;
-    state->parentShort = candidate.beacon.sourceShort;
-    state->extendedPanId = candidate.beacon.network.extendedPanId;
-    if (attemptOrphanRecovery(radio, ioMacSequence, localIeee, state,
-                              candidate.channel)) {
-      return true;
-    }
-    if (attemptNwkRejoin(radio, ioMacSequence, localIeee,
-                         capabilityInformation, state)) {
-      return true;
-    }
-    state->state = ZigbeeCommissioningState::kAssociating;
-    associated = attemptAssociationRequest(
-        radio, ioMacSequence, state->panId, state->parentShort, localIeee,
-        capabilityInformation, state, &assignedShort);
+    associated = attemptAssociationViaCandidates(
+        radio, ioMacSequence, localIeee, capabilityInformation, state, true,
+        &assignedShort);
     if (!associated) {
       return false;
     }
@@ -1693,6 +1820,7 @@ bool ZigbeeCommissioning::performSecureRejoin(
   state->rejoinPending = true;
   state->securityEnabled = true;
   state->state = ZigbeeCommissioningState::kWaitingUpdateDevice;
+  state->lastJoinAttemptMs = millis();
   state->lastFailure = ZigbeeCommissioningFailure::kNone;
   return true;
 }
@@ -1744,6 +1872,17 @@ bool ZigbeeCommissioning::acceptTransportKeyCommand(
   if (!transportKeyParsed) {
     Serial.print("transport_key_reject reason=parse_fail state=");
     Serial.print(stateName(state.state));
+    Serial.print(" len=");
+    Serial.print(length);
+    Serial.print(" src=0x");
+    Serial.print(sourceShort, HEX);
+    Serial.print(" nwk_sec=");
+    Serial.print(nwkSecured ? "1" : "0");
+    Serial.print(" secured_ieee=0x");
+    Serial.print(static_cast<uint32_t>(securedSourceIeee >> 32U), HEX);
+    Serial.print(static_cast<uint32_t>(securedSourceIeee & 0xFFFFFFFFUL), HEX);
+    Serial.print(" frame=");
+    printHexBytes(frame, length);
     Serial.print("\r\n");
     return false;
   }
@@ -1814,7 +1953,10 @@ bool ZigbeeCommissioning::acceptTransportKeyCommand(
     Serial.print("\r\n");
     return false;
   }
-  if (apsSecurity.valid &&
+  // The first secured APS trust-center command of a fresh join may legally
+  // start at frame counter 0. Only enforce monotonic replay checks once an
+  // active network key has already been installed.
+  if (apsSecurity.valid && state.haveActiveNetworkKey &&
       apsSecurity.frameCounter <= state.incomingApsFrameCounter) {
     Serial.print("transport_key_reject reason=aps_frame_counter fc=");
     Serial.print(apsSecurity.frameCounter);

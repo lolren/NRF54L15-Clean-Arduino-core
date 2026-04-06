@@ -16,6 +16,9 @@ extern "C" void nrf54l15_ble_clock_irq_service(void);
 extern "C" uint32_t nrf54l15_ble_grtc_reserved_cc_mask(void);
 extern "C" void PendSV_Handler(void);
 
+uint64_t hardwareUniqueId64();
+uint64_t zigbeeFactoryEui64();
+
 enum class CpuFrequency : uint32_t {
   k64MHz = 64000000UL,
   k128MHz = 128000000UL,

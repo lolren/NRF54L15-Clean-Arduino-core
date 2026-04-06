@@ -9,10 +9,14 @@ namespace xiao_nrf54l15 {
 constexpr uint8_t kZigbeeSecurityLevelEncMic32 = 0x05U;
 constexpr uint8_t kZigbeeSecurityKeyIdData = 0x00U;
 constexpr uint8_t kZigbeeSecurityKeyIdNetwork = 0x08U;
+constexpr uint8_t kZigbeeSecurityKeyIdKeyTransport = 0x10U;
 constexpr uint8_t kZigbeeSecurityExtendedNonce = 0x20U;
 constexpr uint8_t kZigbeeSecurityControlApsEncMic32 =
     static_cast<uint8_t>(kZigbeeSecurityLevelEncMic32 |
                          kZigbeeSecurityKeyIdData |
+                         kZigbeeSecurityExtendedNonce);
+constexpr uint8_t kZigbeeSecurityControlApsKeyTransport =
+    static_cast<uint8_t>(kZigbeeSecurityKeyIdKeyTransport |
                          kZigbeeSecurityExtendedNonce);
 constexpr uint8_t kZigbeeSecurityControlNwkEncMic32 =
     static_cast<uint8_t>(kZigbeeSecurityLevelEncMic32 |
@@ -33,6 +37,7 @@ struct ZigbeeApsSecurityHeader {
   uint8_t securityControl = kZigbeeSecurityControlApsEncMic32;
   uint32_t frameCounter = 0U;
   uint64_t sourceIeee = 0U;
+  uint8_t keySequence = 0U;
   uint8_t micLength = 4U;
 };
 
@@ -83,7 +88,8 @@ class ZigbeeSecurity {
                                    ZigbeeNetworkFrame* outFrame,
                                    ZigbeeNwkSecurityHeader* outSecurity,
                                    uint8_t* outPayload,
-                                   uint8_t* outPayloadLength);
+                                   uint8_t* outPayloadLength,
+                                   uint64_t defaultSourceIeee = 0U);
   static bool buildSecuredApsCommandFrame(
       const ZigbeeApsCommandFrame& frame,
       const ZigbeeApsSecurityHeader& security, const uint8_t key[16],
