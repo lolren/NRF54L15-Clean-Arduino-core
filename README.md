@@ -49,40 +49,65 @@ arduino-cli core install nrf54l15clean:nrf54l15clean \
   --additional-urls https://raw.githubusercontent.com/lolren/NRF54L15-Clean-Arduino-core/main/package_nrf54l15clean_index.json
 ```
 
+## Board Peripheral Status
+
+The board-level Arduino peripheral story is in usable shape now. The core is no
+longer just a wireless bring-up experiment.
+
+Working and exercised in shipped examples:
+
+- GPIO, interrupts, and GPIOTE-based event handling
+- `Serial` / UART, including runtime pin remap paths
+- SPI master
+- I2C controller, repeated-start flows, and basic target/responder examples
+- ADC, VBAT sampling, and on-chip temperature reads
+- hardware PWM plus the software/timer-backed fallback paths used on the XIAO
+  pinout
+- TIMER, watchdog, clock, reset, regulators, and GRTC-backed wake/sleep paths
+- PDM and I2S low-level bring-up helpers
+- board-control helpers for RF switch, antenna path, battery sampling, and
+  other XIAO-specific rails/pins
+
+What still needs more work:
+
+- broader third-party library compatibility on top of the core peripherals
+- more “finished product” examples around less-common blocks like I2S and PDM
+- more measured documentation around edge cases, especially low-power
+  combinations and mixed peripheral use
+
 ## BLE Status
 
-BLE is no longer in first-pass bring-up. The practical BLE paths shipped in the
-core are working on real XIAO hardware and are the main feature set that should
-be used today.
+BLE is stable enough now to be one of the main reasons to use this core.
 
-Validated and working:
+Tested and working on real hardware:
 
-- legacy advertising, scannable/connectable advertising, and extended
-  advertising examples
+- legacy advertising, connectable/scannable advertising, and the validated
+  extended advertising/scanning examples
 - active and passive scanning
-- stable peripheral and central links on nRF54<->nRF54 and nRF54<->nRF52840
-  pairs
-- bundled ATT/GATT examples for 16-bit and 128-bit custom services
-- Nordic UART Service (NUS), including the native bridge sketches and the
-  Bluefruit BLE UART wrapper flow
-- Bluefruit-style central/peripheral wrapper examples used for nRF52 sketch
-  compatibility
+- peripheral and central links on both nRF54<->nRF54 and nRF54<->nRF52840
+  combinations
+- bundled ATT/GATT examples for both 16-bit and 128-bit custom services
+- native Nordic UART Service (NUS) sketches, including the bridge and loopback
+  paths
+- Bluefruit BLEUart / central / notify flows used for common nRF52 sketch ports
 
-What that means in practice:
+Practical status today:
 
-- advertising and discovery work on the normal tested paths
-- central-side discovery/notify regressions from earlier releases are fixed
-- NUS transport works in both directions on the validated host and board tests
-- Bluefruit compatibility is good enough that most BLE sketch ports do not need
-  to be rewritten from scratch
+- the common BLE paths are usable without rewriting the whole sketch
+- the major central discovery/notify regressions from older releases are fixed
+- the Qualcomm visibility/connectivity problem on the native NUS sketches was
+  fixed in `0.3.8`
+- ordinary user sketches should not have to tiptoe around BLE timing just
+  because they print status over `Serial`
 
-What is still not “complete BLE coverage”:
+Still incomplete:
 
 - not every Bluetooth LE feature in the spec is implemented
-- phone-specific scanner quirks may still exist on some devices
-- channel sounding is only partial/experimental, not full end-user support
-- the supported BLE API surface is the tested shipped surface, not a promise
-  that every possible Bluefruit example from upstream has full runtime parity
+- not every upstream Bluefruit example has full runtime parity
+- some optional Bluefruit examples still depend on extra third-party libraries
+- channel sounding is still experimental and not finished as a user-facing BLE
+  feature
+- broader phone/runtime coverage is still worth adding over time
 
 ## nRF52840 Sketch Compatibility
 
@@ -118,68 +143,60 @@ dependencies, not the wrapper itself.
 
 ## Zigbee Status
 
-Zigbee is now past demo-only radio bring-up and into real interoperability
-work.
+Zigbee is no longer just local two-board bring-up. It now has a validated Home
+Assistant / Zigbee2MQTT path for the shipped HA light examples.
 
-What is working and tested:
+Working and tested:
 
-- local coordinator / joinable end-device flows on two XIAO nRF54L15 boards
-- Home Assistant / Zigbee2MQTT style join and interview on the validated HA
-  light path
-- on/off light control after join
-- retained network state and secure rejoin on the tested HA examples
-- example coverage for coordinator, router, end device, lights, sensors,
-  low-power sleepy devices, and simple interoperability demos
+- two-board local coordinator / joinable device flows on XIAO nRF54L15 boards
+- Home Assistant / Zigbee2MQTT join, interview, and on/off control on the
+  validated HA light path
+- retained network state and secure rejoin on the shipped HA examples
+- coordinator, router, end-device, light, sensor, and low-power example groups
+- sleepy-device style examples that wake, report battery/status, poll, and go
+  back to sleep
 
-The shipped Zigbee examples are now organized by device role and use case so
-they read more like real products than lab fragments. There are dedicated
-examples for:
+What still needs work:
 
-- coordinator bring-up
-- basic routers and end devices
-- HA on/off and dimmable lights
-- temperature/battery sensor style endpoints
-- sleepy low-power sensor examples with periodic wake/report cycles
-- simple ping/pong style interoperability tests
-
-Still incomplete on Zigbee:
-
-- this is not full Zigbee 3.0 parity yet
-- color / RGB light clusters are not implemented
-- the external coordinator story is now real for the validated path, but not
-  every cluster/profile combination has been exercised
-- Matter over Thread / Matter over Wi-Fi is not implemented here
+- this is not full Zigbee 3.0 device/cluster coverage yet
+- RGB / color-light clusters are still missing
+- more coordinator combinations should be exercised beyond the validated path
+- more sensor/device personalities can still be added
+- battery-tuned sleepy devices still need more real current characterization
 
 ## Low Power Status
 
-Low-power support is present and usable, but it should be understood in layers.
+Low-power support is usable and already feeds into the Zigbee sleepy-device
+examples.
 
 Working:
 
-- `WFI` idle examples
+- `WFI` idle paths
 - true `SYSTEM OFF` examples with wake sources
-- Zigbee sleepy end-device examples with configurable wake/report intervals
+- low-power BLE advertiser patterns
+- Zigbee sleepy-device examples with configurable wake/report intervals
 
-Not yet fully productized:
+Still to do:
 
-- there is no full board-by-board current table in the README
-- the examples are validated functionally first; some scenarios still need more
-  current-draw characterization
+- broaden the published current-draw tables
+- measure more full-system scenarios instead of only focused low-power probes
+- keep tightening the interaction between low power and long-running wireless
+  roles
 
-## What Is Still Missing
+## Future Wireless Work
 
-This project is already useful for real BLE and Zigbee work, but it is not a
-finished “everything included” wireless stack.
+The main wireless gaps now are feature-completeness gaps, not “does the radio
+basically work” gaps.
 
-Still missing or intentionally incomplete:
+Not finished yet:
 
-- full user-facing channel sounding support
-- Matter
-- broad color-light / richer Zigbee HA device coverage
-- complete parity with every upstream Bluefruit example and every optional
-  dependency
-- broader automated runtime coverage across more phones and external Zigbee
-  coordinators
+- user-facing channel sounding support; the current work is still partial and
+  experimental
+- Thread; it has not been implemented in this repo yet
+- Matter; it has not been started here yet and will follow later work on the
+  underlying wireless stack
+- richer Zigbee HA device coverage, especially color-light style devices
+- broader automated BLE phone/interoperability coverage
 
 ## Examples
 

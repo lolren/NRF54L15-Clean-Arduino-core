@@ -1512,9 +1512,9 @@ constexpr uint16_t kBleL2capLeSignalingMtu = 23U;
 constexpr uint32_t kBleConnSlaveScaPpm = 50UL;
 constexpr uint8_t kBleConnMicrosPollDivider = 32U;
 constexpr uint32_t kBleConnEventSpinFloor = 450000UL;
-// With fast ramp-up enabled, trigger TXEN ~115 us after RX end so packet start
-// lands near the BLE 150 us inter-frame spacing.
-constexpr uint32_t kBleConnTxenAfterRxUs = 95U;
+// With fast ramp-up enabled, trigger TXEN ~100 us after RX end so packet start
+// lands near the BLE 150 us inter-frame spacing on strict centrals too.
+constexpr uint32_t kBleConnTxenAfterRxUs = 100U;
 // SCAN_RSP T_IFS: advertising path has only a few microseconds of software
 // work between rxEndUs capture and the TXEN wait, so target 100 us here to
 // land the actual over-the-air preamble near the BLE 150 us inter-frame space
@@ -13529,8 +13529,9 @@ bool BleRadio::handleExtendedScanRequestAndMaybeRespond(
     radio_->TASKS_RXEN = RADIO_TASKS_RXEN_TASKS_RXEN_Trigger;
   }
 
+  uint32_t rxEndUs = 0U;
   const bool endSeen = waitRadioEndBudgeted(
-      radio_, kBleAdvRequestListenMaxUs, requestListenSpinLimit);
+      radio_, kBleAdvRequestListenMaxUs, requestListenSpinLimit, &rxEndUs);
   if (!endSeen) {
     radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
     waitDisabled(spinLimit / 2U + 1U);
@@ -13538,7 +13539,9 @@ bool BleRadio::handleExtendedScanRequestAndMaybeRespond(
     clearRadioCoreEvents(radio_);
     return true;
   }
-  const uint32_t rxEndUs = bleTimingUs();
+  if (rxEndUs == 0U) {
+    rxEndUs = bleTimingUs();
+  }
 
   const uint32_t crcStatus =
       (radio_->CRCSTATUS & RADIO_CRCSTATUS_CRCSTATUS_Msk) >>
@@ -13731,8 +13734,9 @@ bool BleRadio::advertiseInteractOncePrepared(BleAdvertisingChannel channel,
     radio_->TASKS_RXEN = RADIO_TASKS_RXEN_TASKS_RXEN_Trigger;
   }
 
+  uint32_t rxEndUs = 0U;
   const bool endSeen = waitRadioEndBudgeted(
-      radio_, kBleAdvRequestListenMaxUs, requestListenSpinLimit);
+      radio_, kBleAdvRequestListenMaxUs, requestListenSpinLimit, &rxEndUs);
   if (!endSeen) {
     radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
     waitDisabled(spinLimit / 2U + 1U);
@@ -13740,7 +13744,9 @@ bool BleRadio::advertiseInteractOncePrepared(BleAdvertisingChannel channel,
     clearRadioCoreEvents(radio_);
     return true;
   }
-  const uint32_t rxEndUs = bleTimingUs();
+  if (rxEndUs == 0U) {
+    rxEndUs = bleTimingUs();
+  }
 
   const uint32_t crcStatus =
       (radio_->CRCSTATUS & RADIO_CRCSTATUS_CRCSTATUS_Msk) >>
@@ -17057,11 +17063,7 @@ bool BleRadio::pollConnectionEventInternal(BleConnectionEvent* event,
       encDebug_.encRspTxenLagMaxUs = txLagUs;
     }
   }
-  uint32_t txTriggerNowUs = bleTimingUs();
-  while (!timeReachedUs(txTriggerNowUs, txTriggerTargetUs)) {
-    txTriggerNowUs = bleTimingUs();
-  }
-  radio_->TASKS_TXEN = RADIO_TASKS_TXEN_TASKS_TXEN_Trigger;
+  bleTriggerTxAtTargetUsCritical(radio_, txTriggerTargetUs);
   // Keep ENC_RSP timing deterministic while ensuring encrypted follow-up PDUs
   // (e.g. LL_START_ENC_REQ) can be decrypted in the same event window.
   derivePendingEncSessionKey();
@@ -17311,7 +17313,7 @@ bool BleRadio::pollConnectionEventInternal(BleConnectionEvent* event,
                         ? static_cast<uint32_t>(txFollowArmUs -
                                                 txFollowTriggerTargetUs)
                         : 0U);
-        radio_->TASKS_TXEN = RADIO_TASKS_TXEN_TASKS_TXEN_Trigger;
+        bleTriggerTxAtTargetUsCritical(radio_, txFollowTriggerTargetUs);
 
         const uint32_t txFollowEndBudgetUs =
             bleConnectionTxEndBudgetUs(txFollowLengthOnAir);
@@ -17770,7 +17772,7 @@ bool BleRadio::pollConnectionEventInternal(BleConnectionEvent* event,
             while (!timeReachedUs(txFollowTriggerNowUs, txFollowTriggerTargetUs)) {
               txFollowTriggerNowUs = bleTimingUs();
             }
-            radio_->TASKS_TXEN = RADIO_TASKS_TXEN_TASKS_TXEN_Trigger;
+            bleTriggerTxAtTargetUsCritical(radio_, txFollowTriggerTargetUs);
 
             const uint32_t txFollowEndBudgetUs =
                 bleConnectionTxEndBudgetUs(txFollowLength);
@@ -19340,9 +19342,18 @@ bool BleRadio::handleRequestAndMaybeRespond(BleAdvertisingChannel channel,
   if (crcOk && length >= 12U) {
     const uint8_t* scannerOrInitiator = payload;
     const uint8_t* advertiserAddress = &payload[6];
-    addressMatch = bleAddressEqual(advertiserAddress, &address_[0]) &&
-                   (rxAddrRandom ==
-                    (addressType_ == BleAddressType::kRandomStatic));
+    const bool advertiserAddressMatch =
+        bleAddressEqual(advertiserAddress, &address_[0]);
+    const bool advertiserAddressTypeMatch =
+        (rxAddrRandom == (addressType_ == BleAddressType::kRandomStatic));
+    addressMatch = advertiserAddressMatch && advertiserAddressTypeMatch;
+    // Keep the Qualcomm/Sony RxAdd fallback consistent with the other ADV_IND
+    // interaction path. Some centrals reuse the correct address bytes while
+    // misreporting the RxAdd bit in SCAN_REQ/CONNECT_IND.
+    if (!addressMatch && advertiserAddressMatch &&
+        (pduType == kBlePduScanReq || pduType == kBlePduConnectInd)) {
+      addressMatch = true;
+    }
 
     if (addressMatch && pduType == kBlePduScanReq) {
       hasScanReq = true;
