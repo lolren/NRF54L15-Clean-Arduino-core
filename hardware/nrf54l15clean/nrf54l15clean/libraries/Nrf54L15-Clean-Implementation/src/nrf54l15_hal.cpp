@@ -1,4 +1,5 @@
 #include "nrf54l15_hal.h"
+#include "nrf54l15_hal_support_internal.h"
 
 #include <Arduino.h>
 #include <string.h>
@@ -22,6 +23,7 @@ namespace {
 
 using namespace nrf54l15;
 using namespace xiao_nrf54l15;
+using namespace xiao_nrf54l15::hal_internal;
 
 uint64_t readLittleEndian64(const uint8_t* data, uint8_t length) {
   if (data == nullptr) {
@@ -438,6 +440,7 @@ static inline void blePendSvClearPending() {
   __ISB();
 }
 
+#if 0
 uint32_t gpioBaseForPort(uint8_t port) {
   switch (port) {
     case 0:
@@ -1080,6 +1083,7 @@ uint32_t gpioteSubscribeClrOffset(uint8_t channel) {
   return gpiote::SUBSCRIBE_CLR +
          (static_cast<uint32_t>(channel) * sizeof(uint32_t));
 }
+#endif
 
 enum class ComparatorOwner : uint8_t {
   kNone = 0U,

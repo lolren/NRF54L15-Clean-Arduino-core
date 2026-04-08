@@ -19,6 +19,20 @@ These changes are intended to be behavior-preserving:
 3. Make comparator ownership changes IRQ-safe.
 4. Make BLE GRTC one-time init safer against concurrent first use.
 
+Completed:
+
+- generic support helpers have been split into
+  `src/nrf54l15_hal_support.cpp` with declarations in
+  `src/nrf54l15_hal_support_internal.h`
+- native NUS host regression still passes after the split
+
+Temporary cleanup note:
+
+- the old support block in `nrf54l15_hal.cpp` is currently wrapped out with
+  `#if 0` as a mechanical transition step
+- next pass should delete that dead block entirely once the new split remains
+  stable
+
 ## Planned follow-up
 
 1. Tighten invalid-argument handling in peripheral helpers such as
