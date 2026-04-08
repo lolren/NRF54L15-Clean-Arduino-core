@@ -60,6 +60,96 @@
       0x10U, 0x21U, 0x32U, 0x43U, 0x54U, 0xDCU, 0xB9U
 #endif
 
+#ifndef NRF54L15_CLEAN_ZIGBEE_RGB_MOOD_LIGHT_IEEE
+#define NRF54L15_CLEAN_ZIGBEE_RGB_MOOD_LIGHT_IEEE 0xA4B1000000000021ULL
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_RGB_MOOD_LIGHT_INSTALL_CODE_BYTES
+#define NRF54L15_CLEAN_ZIGBEE_RGB_MOOD_LIGHT_INSTALL_CODE_BYTES                 \
+  0x10U, 0xACU, 0x21U, 0x01U, 0x24U, 0x4BU, 0x00U, 0x12U, 0x34U, 0x56U, 0x78U, \
+      0x9AU, 0xBCU, 0xDEU, 0xF0U, 0x11U, 0xD8U, 0x8EU
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_RGBW_CEILING_LIGHT_IEEE
+#define NRF54L15_CLEAN_ZIGBEE_RGBW_CEILING_LIGHT_IEEE 0xA4B1000000000022ULL
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_RGBW_CEILING_LIGHT_INSTALL_CODE_BYTES
+#define NRF54L15_CLEAN_ZIGBEE_RGBW_CEILING_LIGHT_INSTALL_CODE_BYTES             \
+  0x10U, 0xACU, 0x22U, 0x01U, 0x24U, 0x4BU, 0x00U, 0x22U, 0x44U, 0x66U, 0x88U, \
+      0xAAU, 0xCCU, 0xEEU, 0x10U, 0x32U, 0x3FU, 0xAAU
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_TEMPERATURE_HUMIDITY_SENSOR_IEEE
+#define NRF54L15_CLEAN_ZIGBEE_TEMPERATURE_HUMIDITY_SENSOR_IEEE 0xA4B1000000000031ULL
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_TEMPERATURE_HUMIDITY_SENSOR_INSTALL_CODE_BYTES
+#define NRF54L15_CLEAN_ZIGBEE_TEMPERATURE_HUMIDITY_SENSOR_INSTALL_CODE_BYTES    \
+  0x10U, 0xACU, 0x31U, 0x01U, 0x24U, 0x4BU, 0x00U, 0x31U, 0x53U, 0x75U, 0x97U, \
+      0xB9U, 0xDBU, 0xFDU, 0x1FU, 0x41U, 0x83U, 0x2DU
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_CLIMATE_BATTERY_SENSOR_IEEE
+#define NRF54L15_CLEAN_ZIGBEE_CLIMATE_BATTERY_SENSOR_IEEE 0xA4B1000000000032ULL
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_CLIMATE_BATTERY_SENSOR_INSTALL_CODE_BYTES
+#define NRF54L15_CLEAN_ZIGBEE_CLIMATE_BATTERY_SENSOR_INSTALL_CODE_BYTES         \
+  0x10U, 0xACU, 0x32U, 0x01U, 0x24U, 0x4BU, 0x00U, 0x42U, 0x54U, 0x66U, 0x78U, \
+      0x8AU, 0x9CU, 0xAEU, 0xC0U, 0xD2U, 0xADU, 0xFDU
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_SLEEPY_CLIMATE_SENSOR_15S_IEEE
+#define NRF54L15_CLEAN_ZIGBEE_SLEEPY_CLIMATE_SENSOR_15S_IEEE 0xA4B1000000000041ULL
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_SLEEPY_CLIMATE_SENSOR_15S_INSTALL_CODE_BYTES
+#define NRF54L15_CLEAN_ZIGBEE_SLEEPY_CLIMATE_SENSOR_15S_INSTALL_CODE_BYTES      \
+  0x10U, 0xACU, 0x41U, 0x01U, 0x24U, 0x4BU, 0x00U, 0x14U, 0x28U, 0x3CU, 0x50U, \
+      0x64U, 0x78U, 0x8CU, 0xA0U, 0xB4U, 0x19U, 0x26U
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_SLEEPY_CLIMATE_SENSOR_60S_IEEE
+#define NRF54L15_CLEAN_ZIGBEE_SLEEPY_CLIMATE_SENSOR_60S_IEEE 0xA4B1000000000042ULL
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_SLEEPY_CLIMATE_SENSOR_60S_INSTALL_CODE_BYTES
+#define NRF54L15_CLEAN_ZIGBEE_SLEEPY_CLIMATE_SENSOR_60S_INSTALL_CODE_BYTES      \
+  0x10U, 0xACU, 0x42U, 0x01U, 0x24U, 0x4BU, 0x00U, 0x24U, 0x48U, 0x6CU, 0x90U, \
+      0xB4U, 0xD8U, 0xFCU, 0x20U, 0x44U, 0xA6U, 0xADU
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_SLEEPY_ROOM_SENSOR_15S_IEEE
+#define NRF54L15_CLEAN_ZIGBEE_SLEEPY_ROOM_SENSOR_15S_IEEE 0xA4B1000000000043ULL
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_SLEEPY_ROOM_SENSOR_15S_INSTALL_CODE_BYTES
+#define NRF54L15_CLEAN_ZIGBEE_SLEEPY_ROOM_SENSOR_15S_INSTALL_CODE_BYTES         \
+  0x10U, 0xACU, 0x43U, 0x01U, 0x24U, 0x4BU, 0x00U, 0x36U, 0x4CU, 0x62U, 0x78U, \
+      0x8EU, 0xA4U, 0xBAU, 0xD0U, 0xE6U, 0x21U, 0xFBU
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_SLEEPY_ROOM_SENSOR_60S_IEEE
+#define NRF54L15_CLEAN_ZIGBEE_SLEEPY_ROOM_SENSOR_60S_IEEE 0xA4B1000000000044ULL
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_SLEEPY_ROOM_SENSOR_60S_INSTALL_CODE_BYTES
+#define NRF54L15_CLEAN_ZIGBEE_SLEEPY_ROOM_SENSOR_60S_INSTALL_CODE_BYTES         \
+  0x10U, 0xACU, 0x44U, 0x01U, 0x24U, 0x4BU, 0x00U, 0x48U, 0x60U, 0x78U, 0x90U, \
+      0xA8U, 0xC0U, 0xD8U, 0xF0U, 0x08U, 0x4DU, 0xE1U
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_SLEEPY_ONOFF_BUTTON_IEEE
+#define NRF54L15_CLEAN_ZIGBEE_SLEEPY_ONOFF_BUTTON_IEEE 0xA4B1000000000051ULL
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_SLEEPY_ONOFF_BUTTON_INSTALL_CODE_BYTES
+#define NRF54L15_CLEAN_ZIGBEE_SLEEPY_ONOFF_BUTTON_INSTALL_CODE_BYTES            \
+  0x10U, 0xACU, 0x51U, 0x01U, 0x24U, 0x4BU, 0x00U, 0x57U, 0x68U, 0x79U, 0x8AU, \
+      0x9BU, 0xACU, 0xBDU, 0xCEU, 0xDFU, 0x1FU, 0x7FU
+#endif
+
 #ifndef NRF54L15_CLEAN_ZIGBEE_REQUIRE_UNIQUE_LINK_KEY_FOR_REJOIN
 #define NRF54L15_CLEAN_ZIGBEE_REQUIRE_UNIQUE_LINK_KEY_FOR_REJOIN 1
 #endif
@@ -148,8 +238,14 @@ static constexpr uint8_t kIdentifyEffectStopEffect = 0xFFU;
 static constexpr uint8_t kGroupsCommandAddGroup = 0x00U;
 static constexpr uint8_t kLevelControlCommandMoveToLevelWithOnOff = 0x04U;
 static constexpr uint8_t kLevelControlCommandStepWithOnOff = 0x06U;
+static constexpr uint8_t kColorControlCommandMoveToHue = 0x00U;
+static constexpr uint8_t kColorControlCommandMoveToSaturation = 0x03U;
+static constexpr uint8_t kColorControlCommandMoveToHueAndSaturation = 0x06U;
+static constexpr uint8_t kColorControlCommandMoveToColorTemperature = 0x0AU;
 static constexpr uint16_t kDemoGroupId = 0x1001U;
 static constexpr uint32_t kPermitJoinWindowMs = 120000UL;
+static constexpr uint32_t kRouterDirectDeliverRetryMs = 40UL;
+static constexpr uint32_t kRouterPostAssocDeliverDelayUs = 6000UL;
 
 struct PreconfiguredNodePolicy {
   uint64_t ieeeAddress;
@@ -163,6 +259,24 @@ static const PreconfiguredNodePolicy kPreconfiguredNodePolicies[] = {
      {NRF54L15_CLEAN_ZIGBEE_DIMMABLE_LIGHT_INSTALL_CODE_BYTES}},
     {static_cast<uint64_t>(NRF54L15_CLEAN_ZIGBEE_TEMPERATURE_SENSOR_IEEE),
      {NRF54L15_CLEAN_ZIGBEE_TEMPERATURE_SENSOR_INSTALL_CODE_BYTES}},
+    {static_cast<uint64_t>(NRF54L15_CLEAN_ZIGBEE_RGB_MOOD_LIGHT_IEEE),
+     {NRF54L15_CLEAN_ZIGBEE_RGB_MOOD_LIGHT_INSTALL_CODE_BYTES}},
+    {static_cast<uint64_t>(NRF54L15_CLEAN_ZIGBEE_RGBW_CEILING_LIGHT_IEEE),
+     {NRF54L15_CLEAN_ZIGBEE_RGBW_CEILING_LIGHT_INSTALL_CODE_BYTES}},
+    {static_cast<uint64_t>(NRF54L15_CLEAN_ZIGBEE_TEMPERATURE_HUMIDITY_SENSOR_IEEE),
+     {NRF54L15_CLEAN_ZIGBEE_TEMPERATURE_HUMIDITY_SENSOR_INSTALL_CODE_BYTES}},
+    {static_cast<uint64_t>(NRF54L15_CLEAN_ZIGBEE_CLIMATE_BATTERY_SENSOR_IEEE),
+     {NRF54L15_CLEAN_ZIGBEE_CLIMATE_BATTERY_SENSOR_INSTALL_CODE_BYTES}},
+    {static_cast<uint64_t>(NRF54L15_CLEAN_ZIGBEE_SLEEPY_CLIMATE_SENSOR_15S_IEEE),
+     {NRF54L15_CLEAN_ZIGBEE_SLEEPY_CLIMATE_SENSOR_15S_INSTALL_CODE_BYTES}},
+    {static_cast<uint64_t>(NRF54L15_CLEAN_ZIGBEE_SLEEPY_CLIMATE_SENSOR_60S_IEEE),
+     {NRF54L15_CLEAN_ZIGBEE_SLEEPY_CLIMATE_SENSOR_60S_INSTALL_CODE_BYTES}},
+    {static_cast<uint64_t>(NRF54L15_CLEAN_ZIGBEE_SLEEPY_ROOM_SENSOR_15S_IEEE),
+     {NRF54L15_CLEAN_ZIGBEE_SLEEPY_ROOM_SENSOR_15S_INSTALL_CODE_BYTES}},
+    {static_cast<uint64_t>(NRF54L15_CLEAN_ZIGBEE_SLEEPY_ROOM_SENSOR_60S_IEEE),
+     {NRF54L15_CLEAN_ZIGBEE_SLEEPY_ROOM_SENSOR_60S_INSTALL_CODE_BYTES}},
+    {static_cast<uint64_t>(NRF54L15_CLEAN_ZIGBEE_SLEEPY_ONOFF_BUTTON_IEEE),
+     {NRF54L15_CLEAN_ZIGBEE_SLEEPY_ONOFF_BUTTON_INSTALL_CODE_BYTES}},
 };
 
 enum class NodeStage : uint8_t {
@@ -243,6 +357,7 @@ struct NodeEntry {
   bool pendingSecureRejoin = false;
   bool pendingAssociationResponse = false;
   bool pendingNwkResponse = false;
+  uint32_t lastDirectDeliverAttemptMs = 0U;
   uint16_t pendingAssignedShort = 0U;
   uint8_t pendingAssociationStatus = 0U;
   PendingApsFrame pending{};
@@ -278,6 +393,9 @@ struct NodeEntry {
   bool supportsLevelControl = false;
   bool supportsIdentify = false;
   bool supportsTemperature = false;
+  bool supportsHumidity = false;
+  bool supportsColorControl = false;
+  bool supportsColorTemperature = false;
   bool supportsPowerConfiguration = false;
   bool haveIdentifyTime = false;
   uint16_t identifyTimeSeconds = 0U;
@@ -285,14 +403,20 @@ struct NodeEntry {
   bool onOffBindingConfigured = false;
   bool levelBindingConfigured = false;
   bool temperatureBindingConfigured = false;
+  bool humidityBindingConfigured = false;
+  bool colorBindingConfigured = false;
   bool powerBindingConfigured = false;
   bool onOffReportingConfigured = false;
   bool levelReportingConfigured = false;
   bool temperatureReportingConfigured = false;
+  bool humidityReportingConfigured = false;
+  bool colorReportingConfigured = false;
   bool powerReportingConfigured = false;
   bool onOffReportingVerified = false;
   bool levelReportingVerified = false;
   bool temperatureReportingVerified = false;
+  bool humidityReportingVerified = false;
+  bool colorReportingVerified = false;
   bool powerReportingVerified = false;
   bool awaitingBindResponse = false;
   uint16_t awaitingClusterId = 0U;
@@ -302,6 +426,14 @@ struct NodeEntry {
   uint8_t levelState = 0U;
   bool haveTemperatureState = false;
   int16_t temperatureCentiDegrees = 0;
+  bool haveHumidityState = false;
+  uint16_t humidityCentiPercent = 0U;
+  bool haveCurrentHue = false;
+  uint8_t currentHue = 0U;
+  bool haveCurrentSaturation = false;
+  uint8_t currentSaturation = 0U;
+  bool haveColorTemperature = false;
+  uint16_t colorTemperatureMireds = 0U;
   bool haveBatteryVoltage = false;
   uint8_t batteryVoltageDecivolts = 0U;
   bool haveBatteryPercentage = false;
@@ -344,6 +476,11 @@ bool buildTransportKeyPsdu(NodeEntry* node, uint8_t* outPsdu,
                            bool* outNwkSecurityEnabled);
 bool buildUpdateDevicePsdu(NodeEntry* node, uint8_t* outPsdu,
                            uint8_t* outPsduLength);
+bool sendPendingApsFrame(NodeEntry* node);
+bool nodeUsesParentPolling(const NodeEntry& node);
+bool maybeDeliverPendingDirect(NodeEntry* node, uint32_t nowMs,
+                               bool immediateAfterAssoc = false);
+bool queueNextReportingStep(NodeEntry* node);
 
 static NodeEntry g_nodes[kMaxNodes] = {};
 static uint16_t g_nextShortAddress = 0x1000U;
@@ -363,6 +500,18 @@ NodeEntry* findNodeByShort(uint16_t shortAddress) {
       return &g_nodes[i];
     }
   }
+  return nullptr;
+}
+
+NodeEntry* findNodeForDataRequest(const ZigbeeMacFrame& frame) {
+  if (frame.source.mode == ZigbeeMacAddressMode::kExtended) {
+    return findNodeByIeee(frame.source.extendedAddress);
+  }
+
+  if (frame.source.mode == ZigbeeMacAddressMode::kShort) {
+    return findNodeByShort(frame.source.shortAddress);
+  }
+
   return nullptr;
 }
 
@@ -561,6 +710,12 @@ bool sendPsdu(const uint8_t* psdu, uint8_t length) {
   }
 #endif
   return sent;
+}
+
+bool lastMacTxLooksDeliveredButUnacked() {
+  const ZigbeeTransmitDebug debug = g_radio.lastTransmitDebug();
+  return debug.endSeen && debug.disabledSeen && debug.ackRequested &&
+         !debug.ackReceived;
 }
 
 bool sendBeacon() {
@@ -1069,7 +1224,16 @@ bool sendApsFrameExtendedWithCounter(uint16_t destinationShort,
 #endif
     return false;
   }
-  const bool sent = sendPsdu(psdu, psduLength);
+  bool sent = sendPsdu(psdu, psduLength);
+  if (!sent && deliveryMode == kZigbeeApsDeliveryUnicast &&
+      lastMacTxLooksDeliveredButUnacked()) {
+    sent = true;
+    Serial.print("aps_tx soft_ok short=0x");
+    Serial.print(destinationShort, HEX);
+    Serial.print(" cluster=0x");
+    Serial.print(clusterId, HEX);
+    Serial.print(" ack=MISS\r\n");
+  }
 #if NRF54L15_CLEAN_ZIGBEE_TX_DEBUG != 0
   if (!sent) {
     Serial.print("aps_tx send FAIL short=0x");
@@ -1427,6 +1591,83 @@ bool queuePendingTransportKey(NodeEntry* node, bool networkKeyUpdate = false) {
   return true;
 }
 
+bool nodeUsesParentPolling(const NodeEntry& node) {
+  if (node.logicalType ==
+      static_cast<uint8_t>(ZigbeeLogicalType::kEndDevice)) {
+    return true;
+  }
+  if (node.logicalType == static_cast<uint8_t>(ZigbeeLogicalType::kRouter) ||
+      node.logicalType ==
+          static_cast<uint8_t>(ZigbeeLogicalType::kCoordinator)) {
+    return false;
+  }
+  return (node.macCapabilityFlags & (1U << 3U)) == 0U;
+}
+
+bool maybeDeliverPendingDirect(NodeEntry* node, uint32_t nowMs,
+                               bool immediateAfterAssoc) {
+  if (node == nullptr || node->shortAddress == 0U ||
+      nodeUsesParentPolling(*node) ||
+      !(node->pending.used || node->pendingTransportKey ||
+        node->pendingSecureRejoin || node->pendingSwitchKey ||
+        node->pendingNwkResponse)) {
+    return false;
+  }
+
+  if (!immediateAfterAssoc &&
+      static_cast<uint32_t>(nowMs - node->lastDirectDeliverAttemptMs) <
+          kRouterDirectDeliverRetryMs) {
+    return false;
+  }
+
+  if (immediateAfterAssoc) {
+    delayMicroseconds(kRouterPostAssocDeliverDelayUs);
+  }
+
+  node->lastDirectDeliverAttemptMs = nowMs;
+
+  if (node->pendingNwkResponse && node->pendingMac.used) {
+    bool sent = sendPsdu(node->pendingMac.psdu, node->pendingMac.length);
+    if (!sent && lastMacTxLooksDeliveredButUnacked()) {
+      sent = true;
+      Serial.print("router_deliver soft_ok dst=0x");
+      Serial.print(node->shortAddress, HEX);
+      Serial.print(" ack=MISS\r\n");
+    }
+    if (sent) {
+      node->pendingNwkResponse = false;
+      node->pendingMac.used = false;
+      node->pendingMac.length = 0U;
+      pumpImmediateResponseWindow(kPollFollowUpListenBudgetUs);
+    }
+    Serial.print("router_deliver ");
+    Serial.print(sent ? "OK" : "FAIL");
+    Serial.print(" type=nwk_rsp dst=0x");
+    Serial.print(node->shortAddress, HEX);
+    Serial.print("\r\n");
+    return sent;
+  }
+
+  const bool readyForSend =
+      !node->pending.used ||
+      node->pending.deliveryMode != kZigbeeApsDeliveryUnicast ||
+      pendingApsAckSlotAvailable(*node, nowMs);
+  if (!readyForSend) {
+    return false;
+  }
+
+  const bool sent = sendPendingApsFrame(node);
+  if (sent) {
+    pumpImmediateResponseWindow(kPollFollowUpListenBudgetUs);
+  }
+  Serial.print("router_deliver ");
+  Serial.print(sent ? "OK" : "FAIL");
+  Serial.print(" type=aps dst=0x");
+  Serial.print(node->shortAddress, HEX);
+  Serial.print("\r\n");
+  return sent;
+}
+
 bool queueNetworkKeyUpdateRollout() {
   if (!deriveAlternateNetworkKey()) {
     return false;
@@ -1648,26 +1889,46 @@ bool sendPendingAssociationResponse(NodeEntry* node) {
   if (!built) {
     return false;
   }
-  const bool sent = sendPsdu(frame, length);
+  bool sent = sendPsdu(frame, length);
+  if (!sent && node->pendingAssociationStatus == 0x00U) {
+    // Some sleepy end-device association responses land on-air but the
+    // immediate MAC ACK is still missed. If TX completed cleanly, keep the
+    // assigned short and allow the next poll / secured follow-up to prove the
+    // node is actually alive.
+    if (lastMacTxLooksDeliveredButUnacked()) {
+      sent = true;
+      Serial.print("assoc_rsp soft_ok short=0x");
+      Serial.print(node->pendingAssignedShort, HEX);
+      Serial.print(" ack=MISS\r\n");
+    }
+  }
   if (sent) {
     node->pendingAssociationResponse = false;
     node->shortAddress = node->pendingAssignedShort;
     node->lastSeenMs = millis();
-      if (node->pendingAssociationStatus == 0x00U) {
-        if (node->pendingSecureRejoin && secureRejoinAllowed(node)) {
-          node->trustCenterState = TrustCenterNodeState::kWaitingUpdateDevice;
-          node->pendingMac.used =
-              buildUpdateDevicePsdu(node, node->pendingMac.psdu, &node->pendingMac.length);
-          Serial.print("assoc_rejoin short=0x");
-          Serial.print(node->shortAddress, HEX);
-          Serial.print(" tc=");
-          Serial.print(trustCenterStateName(node->trustCenterState));
-          Serial.print(" prepared=");
-          Serial.print(node->pendingMac.used ? "yes" : "no");
-          Serial.print("\r\n");
-        } else {
-          node->pendingSecureRejoin = false;
+    if (node->pendingAssociationStatus == 0x00U) {
+      // Sleepy end devices that factory-reset and rejoin through normal MAC
+      // association need a fresh Transport Key, not an Update Device. Keep
+      // the retained secure-rejoin shortcut only for always-on devices; sleepy
+      // rejoin is already handled by orphan recovery / NWK rejoin.
+      if (node->pendingSecureRejoin && secureRejoinAllowed(node) &&
+          !nodeUsesParentPolling(*node)) {
+        node->trustCenterState = TrustCenterNodeState::kWaitingUpdateDevice;
+        node->pendingMac.used = buildUpdateDevicePsdu(
+            node, node->pendingMac.psdu, &node->pendingMac.length);
+        Serial.print("assoc_rejoin short=0x");
+        Serial.print(node->shortAddress, HEX);
+        Serial.print(" tc=");
+        Serial.print(trustCenterStateName(node->trustCenterState));
+        Serial.print(" prepared=");
+        Serial.print(node->pendingMac.used ? "yes" : "no");
+        Serial.print("\r\n");
+      } else {
+        node->pendingSecureRejoin = false;
         (void)queuePendingTransportKey(node);
+      }
+      if (!nodeUsesParentPolling(*node)) {
+        (void)maybeDeliverPendingDirect(node, millis(), true);
       }
     }
   }
@@ -1679,9 +1940,17 @@ bool sendPendingApsFrame(NodeEntry* node) {
     return false;
   }
   if (node->pendingTransportKey) {
-    const bool sent =
+    bool sent =
         node->pendingMac.used ? sendPsdu(node->pendingMac.psdu, node->pendingMac.length)
                               : sendTransportKey(node);
+    if (!sent && nodeUsesParentPolling(*node) &&
+        node->pendingAssociationStatus == 0x00U &&
+        lastMacTxLooksDeliveredButUnacked()) {
+      sent = true;
+      Serial.print("transport_key soft_ok short=0x");
+      Serial.print(node->shortAddress, HEX);
+      Serial.print(" ack=MISS\r\n");
+    }
     if (node->pendingMac.used) {
       Serial.print("transport_key ");
       Serial.print(sent ? "OK" : "FAIL");
@@ -1718,9 +1987,15 @@ bool sendPendingApsFrame(NodeEntry* node) {
     return sent;
   }
   if (node->pendingSecureRejoin) {
-    const bool sent =
+    bool sent =
         node->pendingMac.used ? sendPsdu(node->pendingMac.psdu, node->pendingMac.length)
                               : sendUpdateDevice(node);
+    if (!sent && lastMacTxLooksDeliveredButUnacked()) {
+      sent = true;
+      Serial.print("update_device soft_ok short=0x");
+      Serial.print(node->shortAddress, HEX);
+      Serial.print(" ack=MISS\r\n");
+    }
     if (sent) {
       node->pendingSecureRejoin = false;
       node->pendingMac.used = false;
@@ -1948,6 +2223,12 @@ void maybeRetryInterviewStage(NodeEntry* node, uint32_t nowMs) {
     Serial.print(" stage=");
     Serial.print(nodeStageName(node->stage));
     Serial.print("\r\n");
+    if (node->stage == NodeStage::kAwaitingBasicRead) {
+      node->basicRead = true;
+      if (!queueNextReportingStep(node)) {
+        node->stage = NodeStage::kReady;
+      }
+    }
     node->stageDeadlineMs = 0U;
     return;
   }
@@ -2095,6 +2376,88 @@ bool queueTemperatureConfigureReporting(NodeEntry* node) {
   return queued;
 }
 
+bool queueHumidityConfigureReporting(NodeEntry* node) {
+  if (node == nullptr || node->endpoint == 0U || !node->supportsHumidity) {
+    return false;
+  }
+  ZigbeeReportingConfiguration configuration{};
+  configuration.used = true;
+  configuration.clusterId = kZigbeeClusterRelativeHumidityMeasurement;
+  configuration.attributeId = 0x0000U;
+  configuration.dataType = ZigbeeZclDataType::kUint16;
+  configuration.minimumIntervalSeconds = 10U;
+  configuration.maximumIntervalSeconds = 120U;
+  configuration.reportableChange = 100U;
+
+  uint8_t payload[127] = {0U};
+  uint8_t payloadLength = 0U;
+  if (!ZigbeeCodec::buildConfigureReportingRequest(
+          &configuration, 1U, g_zclSequence++, payload, &payloadLength)) {
+    return false;
+  }
+  const bool queued = queuePendingApsFrame(
+      node, kZigbeeClusterRelativeHumidityMeasurement,
+      kZigbeeProfileHomeAutomation, node->endpoint, kCoordinatorEndpoint,
+      payload, payloadLength);
+  if (queued) {
+    node->awaitingBindResponse = false;
+    node->awaitingClusterId = kZigbeeClusterRelativeHumidityMeasurement;
+    node->stage = NodeStage::kAwaitingReporting;
+  }
+  return queued;
+}
+
+bool queueColorConfigureReporting(NodeEntry* node) {
+  if (node == nullptr || node->endpoint == 0U || !node->supportsColorControl) {
+    return false;
+  }
+
+  ZigbeeReportingConfiguration configurations[3];
+  memset(configurations, 0, sizeof(configurations));
+  configurations[0].used = true;
+  configurations[0].clusterId = kZigbeeClusterColorControl;
+  configurations[0].attributeId = 0x0000U;
+  configurations[0].dataType = ZigbeeZclDataType::kUint8;
+  configurations[0].minimumIntervalSeconds = 1U;
+  configurations[0].maximumIntervalSeconds = 30U;
+  configurations[0].reportableChange = 4U;
+  configurations[1].used = true;
+  configurations[1].clusterId = kZigbeeClusterColorControl;
+  configurations[1].attributeId = 0x0001U;
+  configurations[1].dataType = ZigbeeZclDataType::kUint8;
+  configurations[1].minimumIntervalSeconds = 1U;
+  configurations[1].maximumIntervalSeconds = 30U;
+  configurations[1].reportableChange = 4U;
+  uint8_t configCount = 2U;
+  if (node->supportsColorTemperature) {
+    configurations[2].used = true;
+    configurations[2].clusterId = kZigbeeClusterColorControl;
+    configurations[2].attributeId = 0x0007U;
+    configurations[2].dataType = ZigbeeZclDataType::kUint16;
+    configurations[2].minimumIntervalSeconds = 1U;
+    configurations[2].maximumIntervalSeconds = 30U;
+    configurations[2].reportableChange = 8U;
+    configCount = 3U;
+  }
+
+  uint8_t payload[127] = {0U};
+  uint8_t payloadLength = 0U;
+  if (!ZigbeeCodec::buildConfigureReportingRequest(
+          configurations, configCount, g_zclSequence++, payload,
+          &payloadLength)) {
+    return false;
+  }
+  const bool queued = queuePendingApsFrame(
+      node, kZigbeeClusterColorControl, kZigbeeProfileHomeAutomation,
+      node->endpoint, kCoordinatorEndpoint, payload, payloadLength);
+  if (queued) {
+    node->awaitingBindResponse = false;
+    node->awaitingClusterId = kZigbeeClusterColorControl;
+    node->stage = NodeStage::kAwaitingReporting;
+  }
+  return queued;
+}
+
 bool queuePowerConfigureReporting(NodeEntry* node) {
   if (node == nullptr || node->endpoint == 0U ||
       !node->supportsPowerConfiguration) {
@@ -2141,16 +2504,29 @@ bool queueReadReportingConfiguration(NodeEntry* node, uint16_t clusterId) {
     return false;
   }
 
-  ZigbeeReadReportingConfigurationRecord records[2];
+  ZigbeeReadReportingConfigurationRecord records[4];
   memset(records, 0, sizeof(records));
   uint8_t recordCount = 0U;
   switch (clusterId) {
     case kZigbeeClusterOnOff:
     case kZigbeeClusterLevelControl:
     case kZigbeeClusterTemperatureMeasurement:
+    case kZigbeeClusterRelativeHumidityMeasurement:
       records[0].direction = 0U;
       records[0].attributeId = 0x0000U;
       recordCount = 1U;
+      break;
+    case kZigbeeClusterColorControl:
+      records[0].direction = 0U;
+      records[0].attributeId = 0x0000U;
+      records[1].direction = 0U;
+      records[1].attributeId = 0x0001U;
+      recordCount = 2U;
+      if (node->supportsColorTemperature) {
+        records[2].direction = 0U;
+        records[2].attributeId = 0x0007U;
+        recordCount = 3U;
+      }
       break;
     case kZigbeeClusterPowerConfiguration:
       records[0].direction = 0U;
@@ -2210,6 +2586,40 @@ bool reportingConfigurationMatches(
              records[0].minimumIntervalSeconds == 5U &&
              records[0].maximumIntervalSeconds == 60U &&
              records[0].reportableChange == 25U;
+    case kZigbeeClusterRelativeHumidityMeasurement:
+      return recordCount == 1U && records[0].status == 0x00U &&
+             records[0].direction == 0U && records[0].attributeId == 0x0000U &&
+             records[0].dataType == ZigbeeZclDataType::kUint16 &&
+             records[0].minimumIntervalSeconds == 10U &&
+             records[0].maximumIntervalSeconds == 120U &&
+             records[0].reportableChange == 100U;
+    case kZigbeeClusterColorControl:
+      if (recordCount != 2U && recordCount != 3U) {
+        return false;
+      }
+      if (!(records[0].status == 0x00U && records[0].direction == 0U &&
+            records[0].attributeId == 0x0000U &&
+            records[0].dataType == ZigbeeZclDataType::kUint8 &&
+            records[0].minimumIntervalSeconds == 1U &&
+            records[0].maximumIntervalSeconds == 30U &&
+            records[0].reportableChange == 4U &&
+            records[1].status == 0x00U && records[1].direction == 0U &&
+            records[1].attributeId == 0x0001U &&
+            records[1].dataType == ZigbeeZclDataType::kUint8 &&
+            records[1].minimumIntervalSeconds == 1U &&
+            records[1].maximumIntervalSeconds == 30U &&
+            records[1].reportableChange == 4U)) {
+        return false;
+      }
+      if (recordCount == 3U) {
+        return records[2].status == 0x00U && records[2].direction == 0U &&
+               records[2].attributeId == 0x0007U &&
+               records[2].dataType == ZigbeeZclDataType::kUint16 &&
+               records[2].minimumIntervalSeconds == 1U &&
+               records[2].maximumIntervalSeconds == 30U &&
+               records[2].reportableChange == 8U;
+      }
+      return true;
     case kZigbeeClusterPowerConfiguration:
       return recordCount == 2U && records[0].status == 0x00U &&
              records[0].direction == 0U && records[0].attributeId == 0x0020U &&
@@ -2291,6 +2701,60 @@ bool queueLevelStep(NodeEntry* node, bool increase, uint8_t stepSize) {
   }
 
   return queuePendingApsFrame(node, kZigbeeClusterLevelControl,
+                              kZigbeeProfileHomeAutomation, node->endpoint,
+                              kCoordinatorEndpoint, payload, payloadLength);
+}
+
+bool queueColorMoveToHueAndSaturation(NodeEntry* node, uint8_t hue,
+                                      uint8_t saturation) {
+  if (node == nullptr || node->endpoint == 0U || !node->supportsColorControl) {
+    return false;
+  }
+
+  const uint8_t commandPayload[] = {hue, saturation, 0x00U, 0x00U};
+  uint8_t payload[127] = {0U};
+  uint8_t payloadLength = 0U;
+  ZigbeeZclFrame frame{};
+  frame.frameType = ZigbeeZclFrameType::kClusterSpecific;
+  frame.disableDefaultResponse = false;
+  frame.transactionSequence = g_zclSequence++;
+  frame.commandId = kColorControlCommandMoveToHueAndSaturation;
+  if (!ZigbeeCodec::buildZclFrame(frame, commandPayload,
+                                  static_cast<uint8_t>(sizeof(commandPayload)),
+                                  payload, &payloadLength)) {
+    return false;
+  }
+
+  return queuePendingApsFrame(node, kZigbeeClusterColorControl,
+                              kZigbeeProfileHomeAutomation, node->endpoint,
+                              kCoordinatorEndpoint, payload, payloadLength);
+}
+
+bool queueColorMoveToTemperature(NodeEntry* node,
+                                 uint16_t colorTemperatureMireds) {
+  if (node == nullptr || node->endpoint == 0U ||
+      !node->supportsColorTemperature) {
+    return false;
+  }
+
+  const uint8_t commandPayload[] = {
+      static_cast<uint8_t>(colorTemperatureMireds & 0xFFU),
+      static_cast<uint8_t>((colorTemperatureMireds >> 8U) & 0xFFU), 0x00U,
+      0x00U};
+  uint8_t payload[127] = {0U};
+  uint8_t payloadLength = 0U;
+  ZigbeeZclFrame frame{};
+  frame.frameType = ZigbeeZclFrameType::kClusterSpecific;
+  frame.disableDefaultResponse = false;
+  frame.transactionSequence = g_zclSequence++;
+  frame.commandId = kColorControlCommandMoveToColorTemperature;
+  if (!ZigbeeCodec::buildZclFrame(frame, commandPayload,
+                                  static_cast<uint8_t>(sizeof(commandPayload)),
+                                  payload, &payloadLength)) {
+    return false;
+  }
+
+  return queuePendingApsFrame(node, kZigbeeClusterColorControl,
                               kZigbeeProfileHomeAutomation, node->endpoint,
                               kCoordinatorEndpoint, payload, payloadLength);
 }
@@ -2598,10 +3062,16 @@ bool queueDemoGroupLevelStep(bool increase, uint8_t stepSize) {
   return queuedAny;
 }
 
+bool isRemoteControllerDevice(const NodeEntry& node) {
+  return node.deviceId == kZigbeeDeviceIdOnOffLightSwitch ||
+         node.deviceId == kZigbeeDeviceIdDimmerSwitch;
+}
+
 NodeEntry* firstOnOffNode() {
   for (uint8_t i = 0U; i < kMaxNodes; ++i) {
     if (g_nodes[i].used && g_nodes[i].shortAddress != 0U &&
-        g_nodes[i].supportsOnOff && g_nodes[i].endpoint != 0U) {
+        g_nodes[i].supportsOnOff && g_nodes[i].endpoint != 0U &&
+        !isRemoteControllerDevice(g_nodes[i])) {
       return &g_nodes[i];
     }
   }
@@ -2612,6 +3082,26 @@ NodeEntry* firstLevelNode() {
   for (uint8_t i = 0U; i < kMaxNodes; ++i) {
     if (g_nodes[i].used && g_nodes[i].shortAddress != 0U &&
         g_nodes[i].supportsLevelControl && g_nodes[i].endpoint != 0U) {
+      return &g_nodes[i];
+    }
+  }
+  return nullptr;
+}
+
+NodeEntry* firstColorNode() {
+  for (uint8_t i = 0U; i < kMaxNodes; ++i) {
+    if (g_nodes[i].used && g_nodes[i].shortAddress != 0U &&
+        g_nodes[i].supportsColorControl && g_nodes[i].endpoint != 0U) {
+      return &g_nodes[i];
+    }
+  }
+  return nullptr;
+}
+
+NodeEntry* firstColorTemperatureNode() {
+  for (uint8_t i = 0U; i < kMaxNodes; ++i) {
+    if (g_nodes[i].used && g_nodes[i].shortAddress != 0U &&
+        g_nodes[i].supportsColorTemperature && g_nodes[i].endpoint != 0U) {
       return &g_nodes[i];
     }
   }
@@ -2646,6 +3136,7 @@ void clearNodeInterviewState(NodeEntry* node) {
   if (node == nullptr) {
     return;
   }
+  node->lastDirectDeliverAttemptMs = 0U;
   node->haveNodeDescriptor = false;
   node->logicalType = 0U;
   node->macCapabilityFlags = 0U;
@@ -2673,6 +3164,14 @@ void clearNodeInterviewState(NodeEntry* node) {
   node->levelState = 0U;
   node->haveTemperatureState = false;
   node->temperatureCentiDegrees = 0;
+  node->haveHumidityState = false;
+  node->humidityCentiPercent = 0U;
+  node->haveCurrentHue = false;
+  node->currentHue = 0U;
+  node->haveCurrentSaturation = false;
+  node->currentSaturation = 0U;
+  node->haveColorTemperature = false;
+  node->colorTemperatureMireds = 0U;
   node->haveBatteryVoltage = false;
   node->batteryVoltageDecivolts = 0U;
   node->haveBatteryPercentage = false;
@@ -2791,6 +3290,35 @@ void updateNodeAttributeState(NodeEntry* node, uint16_t clusterId,
     return;
   }
 
+  if (clusterId == kZigbeeClusterRelativeHumidityMeasurement &&
+      attributeId == 0x0000U && value.type == ZigbeeZclDataType::kUint16) {
+    node->haveHumidityState = true;
+    node->humidityCentiPercent = value.data.u16;
+    return;
+  }
+
+  if (clusterId == kZigbeeClusterColorControl && attributeId == 0x0000U &&
+      value.type == ZigbeeZclDataType::kUint8) {
+    node->haveCurrentHue = true;
+    node->currentHue = value.data.u8;
+    return;
+  }
+
+  if (clusterId == kZigbeeClusterColorControl && attributeId == 0x0001U &&
+      value.type == ZigbeeZclDataType::kUint8) {
+    node->haveCurrentSaturation = true;
+    node->currentSaturation = value.data.u8;
+    return;
+  }
+
+  if (clusterId == kZigbeeClusterColorControl && attributeId == 0x0007U &&
+      value.type == ZigbeeZclDataType::kUint16) {
+    node->haveColorTemperature = true;
+    node->colorTemperatureMireds = value.data.u16;
+    node->supportsColorTemperature = true;
+    return;
+  }
+
   if (clusterId == kZigbeeClusterPowerConfiguration &&
       attributeId == 0x0020U && value.type == ZigbeeZclDataType::kUint8) {
     node->haveBatteryVoltage = true;
@@ -2855,11 +3383,23 @@ bool queueNextReportingStep(NodeEntry* node) {
   if (node->supportsLevelControl && !node->levelReportingConfigured) {
     return queueLevelConfigureReporting(node);
   }
+  if (node->supportsColorControl && !node->colorBindingConfigured) {
+    return queueBindRequest(node, kZigbeeClusterColorControl);
+  }
+  if (node->supportsColorControl && !node->colorReportingConfigured) {
+    return queueColorConfigureReporting(node);
+  }
   if (node->supportsTemperature && !node->temperatureBindingConfigured) {
     return queueBindRequest(node, kZigbeeClusterTemperatureMeasurement);
   }
   if (node->supportsTemperature && !node->temperatureReportingConfigured) {
     return queueTemperatureConfigureReporting(node);
+  }
+  if (node->supportsHumidity && !node->humidityBindingConfigured) {
+    return queueBindRequest(node, kZigbeeClusterRelativeHumidityMeasurement);
+  }
+  if (node->supportsHumidity && !node->humidityReportingConfigured) {
+    return queueHumidityConfigureReporting(node);
   }
   if (node->supportsPowerConfiguration && !node->powerBindingConfigured) {
     return queueBindRequest(node, kZigbeeClusterPowerConfiguration);
@@ -2942,6 +3482,51 @@ void listNodes() {
     } else {
       Serial.print("no");
     }
+    Serial.print(" hum=");
+    if (g_nodes[i].supportsHumidity) {
+      if (g_nodes[i].haveHumidityState) {
+        Serial.print(g_nodes[i].humidityCentiPercent / 100U);
+        Serial.print(".");
+        const uint8_t fraction =
+            static_cast<uint8_t>(g_nodes[i].humidityCentiPercent % 100U);
+        if (fraction < 10U) {
+          Serial.print("0");
+        }
+        Serial.print(fraction);
+        Serial.print("%");
+      } else {
+        Serial.print("?");
+      }
+    } else {
+      Serial.print("no");
+    }
+    Serial.print(" color=");
+    if (g_nodes[i].supportsColorControl) {
+      if (g_nodes[i].haveCurrentHue) {
+        Serial.print("h=");
+        Serial.print(g_nodes[i].currentHue);
+      } else {
+        Serial.print("h=?");
+      }
+      Serial.print("/");
+      if (g_nodes[i].haveCurrentSaturation) {
+        Serial.print("s=");
+        Serial.print(g_nodes[i].currentSaturation);
+      } else {
+        Serial.print("s=?");
+      }
+      if (g_nodes[i].supportsColorTemperature) {
+        Serial.print("/");
+        if (g_nodes[i].haveColorTemperature) {
+          Serial.print("ct=");
+          Serial.print(g_nodes[i].colorTemperatureMireds);
+        } else {
+          Serial.print("ct=?");
+        }
+      }
+    } else {
+      Serial.print("no");
+    }
     Serial.print(" batt=");
     if (g_nodes[i].haveBatteryVoltage || g_nodes[i].haveBatteryPercentage) {
       if (g_nodes[i].haveBatteryVoltage) {
@@ -3001,6 +3586,12 @@ void listNodes() {
     }
     if (g_nodes[i].supportsTemperature) {
       Serial.print(g_nodes[i].temperatureReportingVerified ? "T" : "t");
+    }
+    if (g_nodes[i].supportsHumidity) {
+      Serial.print(g_nodes[i].humidityReportingVerified ? "H" : "h");
+    }
+    if (g_nodes[i].supportsColorControl) {
+      Serial.print(g_nodes[i].colorReportingVerified ? "C" : "c");
     }
     if (g_nodes[i].supportsPowerConfiguration) {
       Serial.print(g_nodes[i].powerReportingVerified ? "P" : "p");
@@ -3081,19 +3672,28 @@ void handleAssociationRequest(const ZigbeeMacAssociationRequestView& request,
   node->supportsLevelControl = false;
   node->supportsIdentify = false;
   node->supportsTemperature = false;
+  node->supportsHumidity = false;
+  node->supportsColorControl = false;
+  node->supportsColorTemperature = false;
   node->supportsPowerConfiguration = false;
   node->basicRead = false;
   node->onOffBindingConfigured = false;
   node->levelBindingConfigured = false;
   node->temperatureBindingConfigured = false;
+  node->humidityBindingConfigured = false;
+  node->colorBindingConfigured = false;
   node->powerBindingConfigured = false;
   node->onOffReportingConfigured = false;
   node->levelReportingConfigured = false;
   node->temperatureReportingConfigured = false;
+  node->humidityReportingConfigured = false;
+  node->colorReportingConfigured = false;
   node->powerReportingConfigured = false;
   node->onOffReportingVerified = false;
   node->levelReportingVerified = false;
   node->temperatureReportingVerified = false;
+  node->humidityReportingVerified = false;
+  node->colorReportingVerified = false;
   node->powerReportingVerified = false;
   node->awaitingBindResponse = false;
   node->awaitingClusterId = 0U;
@@ -3117,6 +3717,11 @@ void handleAssociationRequest(const ZigbeeMacAssociationRequestView& request,
   }
   node->pendingAssociationStatus = 0U;
   node->pendingAssociationResponse = true;
+  node->logicalType =
+      (request.capabilityInformation & (1U << 1U))
+          ? static_cast<uint8_t>(ZigbeeLogicalType::kRouter)
+          : static_cast<uint8_t>(ZigbeeLogicalType::kEndDevice);
+  node->macCapabilityFlags = request.capabilityInformation;
   node->lastSeenMs = millis();
 
   Serial.print("assoc ieee=0x");
@@ -3134,16 +3739,41 @@ void handleAssociationRequest(const ZigbeeMacAssociationRequestView& request,
 }
 
 void handleDataRequest(const ZigbeeMacFrame& frame) {
-  if (frame.source.mode != ZigbeeMacAddressMode::kExtended) {
-    return;
-  }
-
-  NodeEntry* node = findNodeByIeee(frame.source.extendedAddress);
+  NodeEntry* node = findNodeForDataRequest(frame);
   if (node == nullptr) {
+    Serial.print("data_req unknown src_mode=");
+    Serial.print(static_cast<uint8_t>(frame.source.mode));
+    if (frame.source.mode == ZigbeeMacAddressMode::kExtended) {
+      Serial.print(" ieee=0x");
+      Serial.print(static_cast<uint32_t>(frame.source.extendedAddress >> 32U),
+                   HEX);
+      Serial.print(
+          static_cast<uint32_t>(frame.source.extendedAddress & 0xFFFFFFFFUL),
+          HEX);
+    } else if (frame.source.mode == ZigbeeMacAddressMode::kShort) {
+      Serial.print(" short=0x");
+      Serial.print(frame.source.shortAddress, HEX);
+    }
+    Serial.print("\r\n");
     return;
   }
 
   node->lastSeenMs = millis();
+  Serial.print("data_req short=0x");
+  Serial.print(node->shortAddress, HEX);
+  Serial.print(" src_mode=");
+  Serial.print(static_cast<uint8_t>(frame.source.mode));
+  Serial.print(" assoc=");
+  Serial.print(node->pendingAssociationResponse ? "yes" : "no");
+  Serial.print(" tk=");
+  Serial.print(node->pendingTransportKey ? "yes" : "no");
+  Serial.print(" upd=");
+  Serial.print(node->pendingSecureRejoin ? "yes" : "no");
+  Serial.print(" swk=");
+  Serial.print(node->pendingSwitchKey ? "yes" : "no");
+  Serial.print(" aps=");
+  Serial.print(node->pending.used ? "yes" : "no");
+  Serial.print("\r\n");
   if (node->pendingAssociationResponse) {
     const bool sent = sendPendingAssociationResponse(node);
     Serial.print("assoc_rsp ");
@@ -3158,7 +3788,13 @@ void handleDataRequest(const ZigbeeMacFrame& frame) {
       node->pendingSecureRejoin || node->pendingSwitchKey ||
       node->pendingNwkResponse) {
     if (node->pendingNwkResponse && node->pendingMac.used) {
-      const bool sent = sendPsdu(node->pendingMac.psdu, node->pendingMac.length);
+      bool sent = sendPsdu(node->pendingMac.psdu, node->pendingMac.length);
+      if (!sent && lastMacTxLooksDeliveredButUnacked()) {
+        sent = true;
+        Serial.print("poll_deliver soft_ok dst=0x");
+        Serial.print(node->shortAddress, HEX);
+        Serial.print(" ack=MISS\r\n");
+      }
       if (sent) {
         node->pendingNwkResponse = false;
         node->pendingMac.used = false;
@@ -3427,9 +4063,14 @@ void handleZdoFrame(NodeEntry* node, const ZigbeeApsDataFrame& aps) {
       node->onOffBindingConfigured = true;
     } else if (node->awaitingClusterId == kZigbeeClusterLevelControl) {
       node->levelBindingConfigured = true;
+    } else if (node->awaitingClusterId == kZigbeeClusterColorControl) {
+      node->colorBindingConfigured = true;
     } else if (node->awaitingClusterId ==
                kZigbeeClusterTemperatureMeasurement) {
       node->temperatureBindingConfigured = true;
+    } else if (node->awaitingClusterId ==
+               kZigbeeClusterRelativeHumidityMeasurement) {
+      node->humidityBindingConfigured = true;
     } else if (node->awaitingClusterId == kZigbeeClusterPowerConfiguration) {
       node->powerBindingConfigured = true;
     }
@@ -3483,20 +4124,29 @@ void handleZdoFrame(NodeEntry* node, const ZigbeeApsDataFrame& aps) {
     node->supportsLevelControl = false;
     node->supportsIdentify = false;
     node->supportsTemperature = false;
+    node->supportsHumidity = false;
+    node->supportsColorControl = false;
+    node->supportsColorTemperature = false;
     node->supportsPowerConfiguration = false;
     node->haveIdentifyTime = false;
     node->identifyTimeSeconds = 0U;
     node->onOffBindingConfigured = false;
     node->levelBindingConfigured = false;
     node->temperatureBindingConfigured = false;
+    node->humidityBindingConfigured = false;
+    node->colorBindingConfigured = false;
     node->powerBindingConfigured = false;
     node->onOffReportingConfigured = false;
     node->levelReportingConfigured = false;
     node->temperatureReportingConfigured = false;
+    node->humidityReportingConfigured = false;
+    node->colorReportingConfigured = false;
     node->powerReportingConfigured = false;
     node->onOffReportingVerified = false;
     node->levelReportingVerified = false;
     node->temperatureReportingVerified = false;
+    node->humidityReportingVerified = false;
+    node->colorReportingVerified = false;
     node->powerReportingVerified = false;
     node->awaitingBindResponse = false;
     node->awaitingClusterId = 0U;
@@ -3510,10 +4160,17 @@ void handleZdoFrame(NodeEntry* node, const ZigbeeApsDataFrame& aps) {
         node->supportsIdentify = true;
       } else if (view.inputClusters[i] == kZigbeeClusterTemperatureMeasurement) {
         node->supportsTemperature = true;
+      } else if (view.inputClusters[i] ==
+                 kZigbeeClusterRelativeHumidityMeasurement) {
+        node->supportsHumidity = true;
+      } else if (view.inputClusters[i] == kZigbeeClusterColorControl) {
+        node->supportsColorControl = true;
       } else if (view.inputClusters[i] == kZigbeeClusterPowerConfiguration) {
         node->supportsPowerConfiguration = true;
       }
     }
+    node->supportsColorTemperature =
+        (node->deviceId == kZigbeeDeviceIdExtendedColorLight);
 
     Serial.print("simple_desc short=0x");
     Serial.print(node->shortAddress, HEX);
@@ -3531,6 +4188,12 @@ void handleZdoFrame(NodeEntry* node, const ZigbeeApsDataFrame& aps) {
     Serial.print(node->supportsLevelControl ? "yes" : "no");
     Serial.print(" temp=");
     Serial.print(node->supportsTemperature ? "yes" : "no");
+    Serial.print(" hum=");
+    Serial.print(node->supportsHumidity ? "yes" : "no");
+    Serial.print(" color=");
+    Serial.print(node->supportsColorControl ? "yes" : "no");
+    Serial.print(" ct=");
+    Serial.print(node->supportsColorTemperature ? "yes" : "no");
     Serial.print("\r\n");
 
     node->basicReadBatchIndex = 0U;
@@ -3697,8 +4360,12 @@ void handleHaFrame(NodeEntry* node, const ZigbeeApsDataFrame& aps) {
       node->onOffReportingConfigured = true;
     } else if (aps.clusterId == kZigbeeClusterLevelControl) {
       node->levelReportingConfigured = true;
+    } else if (aps.clusterId == kZigbeeClusterColorControl) {
+      node->colorReportingConfigured = true;
     } else if (aps.clusterId == kZigbeeClusterTemperatureMeasurement) {
       node->temperatureReportingConfigured = true;
+    } else if (aps.clusterId == kZigbeeClusterRelativeHumidityMeasurement) {
+      node->humidityReportingConfigured = true;
     } else if (aps.clusterId == kZigbeeClusterPowerConfiguration) {
       node->powerReportingConfigured = true;
     }
@@ -3743,8 +4410,12 @@ void handleHaFrame(NodeEntry* node, const ZigbeeApsDataFrame& aps) {
       node->onOffReportingVerified = verified;
     } else if (aps.clusterId == kZigbeeClusterLevelControl) {
       node->levelReportingVerified = verified;
+    } else if (aps.clusterId == kZigbeeClusterColorControl) {
+      node->colorReportingVerified = verified;
     } else if (aps.clusterId == kZigbeeClusterTemperatureMeasurement) {
       node->temperatureReportingVerified = verified;
+    } else if (aps.clusterId == kZigbeeClusterRelativeHumidityMeasurement) {
+      node->humidityReportingVerified = verified;
     } else if (aps.clusterId == kZigbeeClusterPowerConfiguration) {
       node->powerReportingVerified = verified;
     }
@@ -3788,6 +4459,39 @@ void handleHaFrame(NodeEntry* node, const ZigbeeApsDataFrame& aps) {
     Serial.print(" status=0x");
     Serial.print(status, HEX);
     Serial.print("\r\n");
+    return;
+  }
+
+  if (aps.clusterId == kZigbeeClusterOnOff &&
+      zcl.frameType == ZigbeeZclFrameType::kClusterSpecific) {
+    const char* commandName = "unknown";
+    if (zcl.commandId == kOnOffCommandOn) {
+      commandName = "on";
+    } else if (zcl.commandId == kOnOffCommandOff) {
+      commandName = "off";
+    } else if (zcl.commandId == kOnOffCommandToggle) {
+      commandName = "toggle";
+    }
+
+    Serial.print("remote_onoff_cmd short=0x");
+    Serial.print(node->shortAddress, HEX);
+    Serial.print(" device=0x");
+    Serial.print(node->deviceId, HEX);
+    Serial.print(" cmd=");
+    Serial.print(commandName);
+    Serial.print("\r\n");
+
+    if (isRemoteControllerDevice(*node)) {
+      NodeEntry* target = firstOnOffNode();
+      if (target != nullptr) {
+        const bool forwarded = queueOnOffCommand(target, zcl.commandId);
+        Serial.print("remote_onoff_forward short=0x");
+        Serial.print(target->shortAddress, HEX);
+        Serial.print(" queued=");
+        Serial.print(forwarded ? "yes" : "no");
+        Serial.print("\r\n");
+      }
+    }
     return;
   }
 
@@ -3839,7 +4543,18 @@ void processIncomingFrame(const ZigbeeFrame& frame) {
 
   if (mac.frameType == ZigbeeMacFrameType::kCommand) {
     if (mac.commandId == kZigbeeMacCommandBeaconRequest) {
-      (void)sendBeacon();
+      Serial.print("beacon_req seq=0x");
+      Serial.print(mac.sequence, HEX);
+      Serial.print(" src_mode=");
+      Serial.print(static_cast<uint8_t>(mac.source.mode));
+      Serial.print("\r\n");
+      const bool sent = sendBeacon();
+      Serial.print("beacon_rsp sent=");
+      Serial.print(sent ? "yes" : "no");
+      Serial.print("\r\n");
+      if (sent) {
+        pumpImmediateResponseWindow(20000U);
+      }
       return;
     }
 
@@ -3854,6 +4569,7 @@ void processIncomingFrame(const ZigbeeFrame& frame) {
     if (ZigbeeCodec::parseAssociationRequest(frame.psdu, frame.length,
                                              &association)) {
       handleAssociationRequest(association, frame.rssiDbm);
+      pumpImmediateResponseWindow(kPollFollowUpListenBudgetUs);
       return;
     }
 
@@ -4146,6 +4862,34 @@ void handleSerialCommands() {
       Serial.print("queue_level ");
       Serial.print(queued ? "OK" : "FAIL");
       Serial.print("\r\n");
+    } else if (ch == 'h' || ch == 'n' || ch == 'B' || ch == 'A' ||
+               ch == 'N') {
+      bool queued = false;
+      if (ch == 'A' || ch == 'N') {
+        NodeEntry* node = firstColorTemperatureNode();
+        const uint16_t mireds = (ch == 'A') ? 370U : 180U;
+        queued = (node != nullptr) && queueColorMoveToTemperature(node, mireds);
+        Serial.print("queue_color_temp ");
+        Serial.print(queued ? "OK" : "FAIL");
+        Serial.print(" mireds=");
+        Serial.print(mireds);
+      } else {
+        NodeEntry* node = firstColorNode();
+        uint8_t hue = 0U;
+        if (ch == 'n') {
+          hue = 85U;
+        } else if (ch == 'B') {
+          hue = 170U;
+        }
+        queued = (node != nullptr) &&
+                 queueColorMoveToHueAndSaturation(node, hue, 254U);
+        Serial.print("queue_color_hs ");
+        Serial.print(queued ? "OK" : "FAIL");
+        Serial.print(" hue=");
+        Serial.print(hue);
+        Serial.print(" sat=254");
+      }
+      Serial.print("\r\n");
     } else if (ch == 'g') {
       const bool queued = queueDemoGroupEnrollment();
       Serial.print("queue_group_enroll ");
@@ -4186,7 +4930,7 @@ void handleSerialCommands() {
 
 void pumpRadio() {
   ZigbeeFrame frame{};
-  if (!g_radio.receive(&frame, 5000U, 900000UL)) {
+  if (!g_radio.receive(&frame, 30000U, 900000UL)) {
     return;
   }
   processIncomingFrame(frame);
@@ -4215,7 +4959,7 @@ void setup() {
   Serial.print(" nwk_seq=");
   Serial.print(g_activeNetworkKeySequence);
   Serial.print("\r\n");
-  Serial.print("serial commands: b=beacon l=list p=permit_join c=clear_nodes x=close_join d=discover i=identify_5s e=identify_discover_attr_ext u=write_identify_5s_undivided j=write_identify_5s_undivided_fail w=write_identify_5s W=write_identify_5s_no_rsp s=identify_query S=identify_stop I=effect_blink R=effect_breathe C=effect_channel v=leave V=leave_rejoin k=key_update t=toggle o=on f=off U=brighter D=dimmer M=mid g=enroll_group O/F/T=group on/off/toggle +/-/m=group level\r\n");
+  Serial.print("serial commands: b=beacon l=list p=permit_join c=clear_nodes x=close_join d=discover i=identify_5s e=identify_discover_attr_ext u=write_identify_5s_undivided j=write_identify_5s_undivided_fail w=write_identify_5s W=write_identify_5s_no_rsp s=identify_query S=identify_stop I=effect_blink R=effect_breathe C=effect_channel v=leave V=leave_rejoin k=key_update t=toggle o=on f=off U=brighter D=dimmer M=mid h/n/B=color_hs A/N=color_temp g=enroll_group O/F/T=group on/off/toggle +/-/m=group level\r\n");
   g_permitJoinEnabled = true;
   g_permitJoinDeadlineMs = millis() + kPermitJoinWindowMs;
 }
@@ -4241,6 +4985,7 @@ void loop() {
     }
     maybeExpirePendingApsAck(&g_nodes[i], now);
     maybeRetryInterviewStage(&g_nodes[i], now);
+    (void)maybeDeliverPendingDirect(&g_nodes[i], now);
   }
 
   if ((now - g_lastStatusMs) >= 5000U) {

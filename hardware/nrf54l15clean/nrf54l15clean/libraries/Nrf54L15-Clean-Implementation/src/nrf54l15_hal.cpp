@@ -3602,7 +3602,7 @@ bool waitRadioEndBudgeted(NRF_RADIO_Type* radio, uint32_t budgetUs, uint32_t spi
       }
     }
 
-    if ((budgetUs == 0U) && (spinLimit > 0U)) {
+    if (spinLimit > 0U) {
       --spinLimit;
       if (spinLimit == 0U) {
         break;
@@ -3686,7 +3686,7 @@ bool waitRadioRxDoneBudgeted(NRF_RADIO_Type* radio, uint32_t budgetUs, uint32_t 
       }
     }
 
-    if ((budgetUs == 0U) && (spinLimit > 0U)) {
+    if (spinLimit > 0U) {
       --spinLimit;
       if (spinLimit == 0U) {
         break;
@@ -3699,6 +3699,32 @@ bool waitRadioRxDoneBudgeted(NRF_RADIO_Type* radio, uint32_t budgetUs, uint32_t 
     *outDoneTimestampUs = bleTimingUs();
   }
   return doneSeen;
+}
+
+void forceRadioDisabled(NRF_RADIO_Type* radio, uint32_t spinLimit) {
+  if (radio == nullptr) {
+    return;
+  }
+
+  radio->SHORTS = 0U;
+  radio->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
+  (void)waitRadioDisabledBudgeted(radio, 3000U, spinLimit);
+  radio->EVENTS_READY = 0U;
+  radio->EVENTS_TXREADY = 0U;
+  radio->EVENTS_RXREADY = 0U;
+  radio->EVENTS_ADDRESS = 0U;
+  radio->EVENTS_PAYLOAD = 0U;
+  radio->EVENTS_END = 0U;
+  radio->EVENTS_DISABLED = 0U;
+  radio->EVENTS_PHYEND = 0U;
+  radio->EVENTS_PLLREADY = 0U;
+  radio->EVENTS_CRCOK = 0U;
+  radio->EVENTS_CRCERROR = 0U;
+  radio->EVENTS_RXADDRESS = 0U;
+  radio->EVENTS_DEVMATCH = 0U;
+  radio->EVENTS_DEVMISS = 0U;
+  radio->EVENTS_MHRMATCH = 0U;
+  radio->EVENTS_SYNC = 0U;
 }
 
 uint8_t ieee802154MacPayloadLengthFromPhr(uint8_t phrLength) {
@@ -8791,6 +8817,8 @@ bool ZigbeeRadio::transmit(const uint8_t* psdu, uint8_t length, bool performCca,
     return false;
   }
 
+  forceRadioDisabled(radio_, spinLimit);
+
   if (performCca && !performCcaCheck(spinLimit / 2U + 1U)) {
     return false;
   }
@@ -8847,6 +8875,8 @@ bool ZigbeeRadio::transmitThenReceive(const uint8_t* psdu, uint8_t length,
   if (length == 0U || length > 125U) {
     return false;
   }
+
+  forceRadioDisabled(radio_, spinLimit);
 
   if (performCca && !performCcaCheck(spinLimit / 2U + 1U)) {
     return false;
@@ -9091,6 +9121,9 @@ bool ZigbeeRadio::transmitThenReceive(const uint8_t* psdu, uint8_t length,
 
   lastTransmitDebug_.ackReceived =
       (!lastTransmitDebug_.ackRequested || !awaitingMacAcknowledgement);
+  radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
+  (void)waitRadioDisabledBudgeted(radio_, 3000U, spinLimit);
+  radio_->SHORTS = 0U;
   clearRadioCoreEvents(radio_);
   return false;
 }
@@ -9100,6 +9133,8 @@ bool ZigbeeRadio::receive(ZigbeeFrame* frame, uint32_t listenWindowUs,
   if (!initialized_ || radio_ == nullptr || frame == nullptr) {
     return false;
   }
+
+  forceRadioDisabled(radio_, spinLimit);
 
   setIeee802154CrcLengthMode(radio_, true);
   clearRadioCoreEvents(radio_);

@@ -8,7 +8,7 @@
 #include "zigbee_stack.h"
 
 #if defined(NRF54L15_CLEAN_ZIGBEE_ENABLED) && (NRF54L15_CLEAN_ZIGBEE_ENABLED == 0)
-#error "Enable Tools > Zigbee Support to build ZigbeeHaTemperatureBatterySensor."
+#error "Enable Tools > Zigbee Support to build ZigbeeSleepyClimateSensor15s."
 #endif
 
 #ifndef NRF54L15_CLEAN_ZIGBEE_CHANNEL
@@ -44,7 +44,7 @@
 #endif
 
 #ifndef NRF54L15_CLEAN_ZIGBEE_PARENT_POLL_FOLLOWUP_LISTEN_US
-#define NRF54L15_CLEAN_ZIGBEE_PARENT_POLL_FOLLOWUP_LISTEN_US 40000UL
+#define NRF54L15_CLEAN_ZIGBEE_PARENT_POLL_FOLLOWUP_LISTEN_US 80000UL
 #endif
 
 #ifndef NRF54L15_CLEAN_ZIGBEE_COORDINATOR_REALIGNMENT_TIMEOUT_MS
@@ -83,8 +83,24 @@
 #define NRF54L15_CLEAN_ZIGBEE_COORDINATOR_SHORT 0x0000U
 #endif
 
+#ifndef NRF54L15_CLEAN_ZIGBEE_BASIC_MANUFACTURER_NAME
+#define NRF54L15_CLEAN_ZIGBEE_BASIC_MANUFACTURER_NAME "CleanCore"
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_BASIC_MODEL_IDENTIFIER
+#define NRF54L15_CLEAN_ZIGBEE_BASIC_MODEL_IDENTIFIER "X54-SLEEP-CL15"
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_BASIC_SW_BUILD_ID
+#define NRF54L15_CLEAN_ZIGBEE_BASIC_SW_BUILD_ID "0.3.8"
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_INCLUDE_HUMIDITY
+#define NRF54L15_CLEAN_ZIGBEE_INCLUDE_HUMIDITY 1
+#endif
+
 #ifndef NRF54L15_CLEAN_ZIGBEE_LOCAL_SHORT
-#define NRF54L15_CLEAN_ZIGBEE_LOCAL_SHORT 0x7E11U
+#define NRF54L15_CLEAN_ZIGBEE_LOCAL_SHORT 0x7E41U
 #endif
 
 #ifndef NRF54L15_CLEAN_ZIGBEE_LOCAL_IEEE
@@ -93,28 +109,40 @@
 
 #ifndef NRF54L15_CLEAN_ZIGBEE_INSTALL_CODE_BYTES
 #define NRF54L15_CLEAN_ZIGBEE_INSTALL_CODE_BYTES                                  \
-  0x10U, 0xACU, 0x03U, 0x01U, 0x24U, 0x4BU, 0x00U, 0xCAU, 0xFEU, 0xBAU, 0xBEU, \
-      0x10U, 0x21U, 0x32U, 0x43U, 0x54U, 0xDCU, 0xB9U
-#endif
-
-#ifndef NRF54L15_CLEAN_ZIGBEE_BASIC_MANUFACTURER_NAME
-#define NRF54L15_CLEAN_ZIGBEE_BASIC_MANUFACTURER_NAME "CleanCore"
-#endif
-
-#ifndef NRF54L15_CLEAN_ZIGBEE_BASIC_MODEL_IDENTIFIER
-#define NRF54L15_CLEAN_ZIGBEE_BASIC_MODEL_IDENTIFIER "X54-TEMP-BATT"
-#endif
-
-#ifndef NRF54L15_CLEAN_ZIGBEE_BASIC_SW_BUILD_ID
-#define NRF54L15_CLEAN_ZIGBEE_BASIC_SW_BUILD_ID "0.3.8"
+  0x10U, 0xACU, 0x41U, 0x01U, 0x24U, 0x4BU, 0x00U, 0x14U, 0x28U, 0x3CU, 0x50U, \
+      0x64U, 0x78U, 0x8CU, 0xA0U, 0xB4U, 0x19U, 0x26U
 #endif
 
 #ifndef NRF54L15_CLEAN_ZIGBEE_TEMP_REPORT_MIN_S
-#define NRF54L15_CLEAN_ZIGBEE_TEMP_REPORT_MIN_S 10U
+#define NRF54L15_CLEAN_ZIGBEE_TEMP_REPORT_MIN_S 15U
 #endif
 
 #ifndef NRF54L15_CLEAN_ZIGBEE_TEMP_REPORT_MAX_S
-#define NRF54L15_CLEAN_ZIGBEE_TEMP_REPORT_MAX_S 120U
+#define NRF54L15_CLEAN_ZIGBEE_TEMP_REPORT_MAX_S 60U
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_HUMIDITY_REPORT_MIN_S
+#define NRF54L15_CLEAN_ZIGBEE_HUMIDITY_REPORT_MIN_S 15U
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_HUMIDITY_REPORT_MAX_S
+#define NRF54L15_CLEAN_ZIGBEE_HUMIDITY_REPORT_MAX_S 60U
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_LOW_POWER_WAKE_WINDOW_MS
+#define NRF54L15_CLEAN_ZIGBEE_LOW_POWER_WAKE_WINDOW_MS 2500UL
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_LOW_POWER_SLEEP_MS
+#define NRF54L15_CLEAN_ZIGBEE_LOW_POWER_SLEEP_MS 15000UL
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_ACTIVITY_AWAKE_EXTENSION_MS
+#define NRF54L15_CLEAN_ZIGBEE_ACTIVITY_AWAKE_EXTENSION_MS 8000UL
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_COMMISSIONING_AWAKE_MS
+#define NRF54L15_CLEAN_ZIGBEE_COMMISSIONING_AWAKE_MS 180000UL
 #endif
 
 #ifndef NRF54L15_CLEAN_ZIGBEE_TEMP_REPORT_CHANGE_CENTI
@@ -126,7 +154,7 @@
 #endif
 
 #ifndef NRF54L15_CLEAN_ZIGBEE_BATTERY_REPORT_MAX_S
-#define NRF54L15_CLEAN_ZIGBEE_BATTERY_REPORT_MAX_S 600U
+#define NRF54L15_CLEAN_ZIGBEE_BATTERY_REPORT_MAX_S 300U
 #endif
 
 #ifndef NRF54L15_CLEAN_ZIGBEE_BATTERY_VOLTAGE_REPORT_CHANGE
@@ -135,6 +163,18 @@
 
 #ifndef NRF54L15_CLEAN_ZIGBEE_BATTERY_PERCENT_REPORT_CHANGE
 #define NRF54L15_CLEAN_ZIGBEE_BATTERY_PERCENT_REPORT_CHANGE 2U
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_HUMIDITY_REPORT_MIN_S
+#define NRF54L15_CLEAN_ZIGBEE_HUMIDITY_REPORT_MIN_S 10U
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_HUMIDITY_REPORT_MAX_S
+#define NRF54L15_CLEAN_ZIGBEE_HUMIDITY_REPORT_MAX_S 120U
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_HUMIDITY_REPORT_CHANGE_CENTI
+#define NRF54L15_CLEAN_ZIGBEE_HUMIDITY_REPORT_CHANGE_CENTI 100U
 #endif
 
 #ifndef NRF54L15_CLEAN_ZIGBEE_SENSOR_SAMPLE_INTERVAL_MS
@@ -147,14 +187,6 @@
 
 #ifndef NRF54L15_CLEAN_ZIGBEE_BOOT_REPORT_DELAY_MS
 #define NRF54L15_CLEAN_ZIGBEE_BOOT_REPORT_DELAY_MS 0UL
-#endif
-
-#ifndef NRF54L15_CLEAN_ZIGBEE_LOW_POWER_WAKE_WINDOW_MS
-#define NRF54L15_CLEAN_ZIGBEE_LOW_POWER_WAKE_WINDOW_MS 0UL
-#endif
-
-#ifndef NRF54L15_CLEAN_ZIGBEE_LOW_POWER_SLEEP_MS
-#define NRF54L15_CLEAN_ZIGBEE_LOW_POWER_SLEEP_MS 0UL
 #endif
 
 using namespace xiao_nrf54l15;
@@ -181,6 +213,7 @@ static uint32_t g_lastStatusMs = 0U;
 static uint32_t g_lastPollMs = 0U;
 static uint32_t g_lastSampleMs = 0U;
 static uint32_t g_bootMs = 0U;
+static uint32_t g_awakeUntilMs = 0U;
 static uint8_t (&g_activeNetworkKey)[16] = g_network.activeNetworkKey;
 static uint8_t& g_activeNetworkKeySequence = g_network.activeNetworkKeySequence;
 static uint8_t (&g_alternateNetworkKey)[16] = g_network.alternateNetworkKey;
@@ -199,6 +232,9 @@ static uint32_t& g_parentPollIntervalMs = g_network.parentPollIntervalMs;
 static ZigbeePersistentState g_restoredState{};
 static bool g_haveRestoredState = false;
 static bool g_bootReportsPending = true;
+static bool g_bootTempReported = false;
+static bool g_bootHumidityReported = false;
+static bool g_bootPowerReported = false;
 
 static constexpr uint8_t kPreferredChannel =
     static_cast<uint8_t>(NRF54L15_CLEAN_ZIGBEE_CHANNEL);
@@ -266,8 +302,10 @@ static RecentInboundAps g_recentInboundAps{};
 static constexpr uint32_t kApsAckTimeoutMs = 900U;
 static constexpr uint32_t kRecentInboundApsWindowMs = 4000U;
 static constexpr uint8_t kApsAckRetryLimit = 2U;
-static constexpr uint32_t kParentRxTurnaroundDelayUs = 6000U;
+static constexpr uint32_t kParentRxAcknowledgeDelayUs = 3000U;
+static constexpr uint32_t kParentRxResponseDelayUs = 12000U;
 
+void extendAwakeWindow(uint32_t durationMs);
 void clearPendingApsAck();
 void clearPendingApsAckSlot(uint8_t slot);
 void clearRecentInboundAps();
@@ -298,6 +336,7 @@ ZigbeeCommissioningPolicy commissioningPolicy() {
       NRF54L15_CLEAN_ZIGBEE_COORDINATOR_REALIGNMENT_TIMEOUT_MS);
   policy.nwkRejoinResponseTimeoutMs = static_cast<uint32_t>(
       NRF54L15_CLEAN_ZIGBEE_NWK_REJOIN_RESPONSE_TIMEOUT_MS);
+  policy.initialPollIntervalMs = 100UL;
   policy.preferredPanId = kPreferredPanId;
   policy.preferredExtendedPanId =
       (g_extendedPanId != 0U) ? g_extendedPanId
@@ -315,7 +354,7 @@ ZigbeeCommissioningPolicy commissioningPolicy() {
       (NRF54L15_CLEAN_ZIGBEE_ALLOW_DEMO_PLAINTEXT_TC_CMDS == 0);
   policy.requireEncryptedSwitchKey =
       (NRF54L15_CLEAN_ZIGBEE_ALLOW_DEMO_PLAINTEXT_TC_CMDS == 0);
-  policy.requirePanCoordinator = false;
+  policy.requirePanCoordinator = true;
   policy.requireUniqueTrustCenterForRejoin = true;
   return policy;
 }
@@ -368,6 +407,15 @@ void applyDefaultReporting() {
                                   NRF54L15_CLEAN_ZIGBEE_BATTERY_REPORT_MAX_S),
                               static_cast<uint32_t>(
                                   NRF54L15_CLEAN_ZIGBEE_BATTERY_PERCENT_REPORT_CHANGE));
+#if NRF54L15_CLEAN_ZIGBEE_INCLUDE_HUMIDITY
+  g_device.configureReporting(
+      kZigbeeClusterRelativeHumidityMeasurement, 0x0000U,
+      ZigbeeZclDataType::kUint16,
+      static_cast<uint16_t>(NRF54L15_CLEAN_ZIGBEE_HUMIDITY_REPORT_MIN_S),
+      static_cast<uint16_t>(NRF54L15_CLEAN_ZIGBEE_HUMIDITY_REPORT_MAX_S),
+      static_cast<uint32_t>(
+          NRF54L15_CLEAN_ZIGBEE_HUMIDITY_REPORT_CHANGE_CENTI));
+#endif
 }
 
 void applyReportingState() {
@@ -413,6 +461,24 @@ void sampleSensors() {
     g_device.setTemperatureState(static_cast<int16_t>(tempMilliC / 10L), -4000,
                                  12500, 50U);
   }
+
+#if NRF54L15_CLEAN_ZIGBEE_INCLUDE_HUMIDITY
+  // The board exposes on-chip temperature but not a dedicated humidity sensor.
+  // This demo synthesizes a stable room-humidity signal so HA reporting,
+  // interviews, and sleepy-device behavior can be exercised end-to-end.
+  const int32_t tempCentiDegrees = tempMilliC / 10L;
+  int32_t humidityCentiPercent = 4600L;
+  humidityCentiPercent -= (tempCentiDegrees - 2200L) / 4L;
+  humidityCentiPercent += static_cast<int32_t>((millis() / 5000UL) % 11UL) * 12L;
+  if (humidityCentiPercent < 2500L) {
+    humidityCentiPercent = 2500L;
+  }
+  if (humidityCentiPercent > 7500L) {
+    humidityCentiPercent = 7500L;
+  }
+  g_device.setHumidityState(static_cast<uint16_t>(humidityCentiPercent), 0U,
+                            10000U, 200U);
+#endif
 
   int32_t vbatMv = 0;
   uint8_t vbatPercent = 0;
@@ -464,8 +530,13 @@ void configureDeviceForCurrentNetwork() {
   basic.modelIdentifier = NRF54L15_CLEAN_ZIGBEE_BASIC_MODEL_IDENTIFIER;
   basic.swBuildId = NRF54L15_CLEAN_ZIGBEE_BASIC_SW_BUILD_ID;
   basic.powerSource = 0x03U;
+#if NRF54L15_CLEAN_ZIGBEE_INCLUDE_HUMIDITY
+  g_device.configureTemperatureHumiditySensor(
+      kLocalEndpoint, kIeeeAddress, g_localShort, g_panId, basic, 0x0000U);
+#else
   g_device.configureTemperatureSensor(kLocalEndpoint, kIeeeAddress, g_localShort,
                                       g_panId, basic, 0x0000U);
+#endif
   applyReportingState();
   applyBindingState();
   sampleSensors();
@@ -1114,6 +1185,8 @@ bool handleApsCommand(const uint8_t* frame, uint8_t length, uint16_t sourceShort
       Serial.print(transportInstall.apsSecurity.frameCounter);
     }
     Serial.print("\r\n");
+    extendAwakeWindow(static_cast<uint32_t>(
+        NRF54L15_CLEAN_ZIGBEE_COMMISSIONING_AWAKE_MS));
     return true;
   }
 
@@ -1144,6 +1217,8 @@ bool handleApsCommand(const uint8_t* frame, uint8_t length, uint16_t sourceShort
       Serial.print(updateDevice.apsSecurity.frameCounter);
     }
     Serial.print("\r\n");
+    extendAwakeWindow(static_cast<uint32_t>(
+        NRF54L15_CLEAN_ZIGBEE_COMMISSIONING_AWAKE_MS));
     return true;
   }
 
@@ -1165,6 +1240,8 @@ bool handleApsCommand(const uint8_t* frame, uint8_t length, uint16_t sourceShort
       Serial.print(switchKey.apsSecurity.frameCounter);
     }
     Serial.print("\r\n");
+    extendAwakeWindow(static_cast<uint32_t>(
+        NRF54L15_CLEAN_ZIGBEE_COMMISSIONING_AWAKE_MS));
     return true;
   }
 
@@ -1203,6 +1280,13 @@ bool activeScan(ScanResult* outResult) {
   outResult->score = candidate.score;
   outResult->beacon = candidate.beacon;
   return true;
+}
+
+void extendAwakeWindow(uint32_t durationMs) {
+  const uint32_t targetMs = millis() + durationMs;
+  if (static_cast<int32_t>(targetMs - g_awakeUntilMs) > 0) {
+    g_awakeUntilMs = targetMs;
+  }
 }
 
 bool waitForAssociationResponse(uint16_t* outAssignedShort) {
@@ -1255,6 +1339,8 @@ bool performJoin() {
   configureDeviceForCurrentNetwork();
   applyJoinLed();
   persistState();
+  extendAwakeWindow(static_cast<uint32_t>(
+      NRF54L15_CLEAN_ZIGBEE_COMMISSIONING_AWAKE_MS));
   return true;
 }
 
@@ -1267,6 +1353,8 @@ bool performSecureRejoin() {
   configureDeviceForCurrentNetwork();
   applyJoinLed();
   persistState();
+  extendAwakeWindow(static_cast<uint32_t>(
+      NRF54L15_CLEAN_ZIGBEE_COMMISSIONING_AWAKE_MS));
   return true;
 }
 
@@ -1306,6 +1394,8 @@ void processIncomingFrame(const ZigbeeFrame& frame) {
   if (!nwkValid || !nwk.valid || nwk.destinationShort != g_localShort) {
     return;
   }
+  extendAwakeWindow(static_cast<uint32_t>(
+      NRF54L15_CLEAN_ZIGBEE_ACTIVITY_AWAKE_EXTENSION_MS));
   if (security.valid) {
     g_lastInboundSecurityFrameCounter = security.frameCounter;
   }
@@ -1361,7 +1451,7 @@ void processIncomingFrame(const ZigbeeFrame& frame) {
 
   if (aps.profileId == kZigbeeProfileZdo) {
     if (aps.deliveryMode == kZigbeeApsDeliveryUnicast && aps.ackRequested) {
-      delayMicroseconds(kParentRxTurnaroundDelayUs);
+      delayMicroseconds(kParentRxAcknowledgeDelayUs);
       (void)sendApsAcknowledgement(nwk.sourceShort, aps);
     }
     if (duplicateAps) {
@@ -1369,10 +1459,10 @@ void processIncomingFrame(const ZigbeeFrame& frame) {
       Serial.print(aps.clusterId, HEX);
       Serial.print(" src=0x");
       Serial.print(nwk.sourceShort, HEX);
-      Serial.print("\r\n");
-      return;
+      Serial.print(" replay=yes\r\n");
+    } else {
+      rememberRecentInboundAps(nwk.sourceShort, aps);
     }
-    rememberRecentInboundAps(nwk.sourceShort, aps);
     uint16_t responseClusterId = 0U;
     uint8_t responsePayload[127] = {0U};
     uint8_t responseLength = 0U;
@@ -1380,6 +1470,7 @@ void processIncomingFrame(const ZigbeeFrame& frame) {
                                   &responseClusterId, responsePayload,
                                   &responseLength) &&
         responseLength > 0U) {
+      delayMicroseconds(kParentRxResponseDelayUs);
       (void)sendApsFrame(nwk.sourceShort, 0U, responseClusterId,
                          kZigbeeProfileZdo, 0U, responsePayload, responseLength);
       uint8_t leaveFlags = 0U;
@@ -1395,7 +1486,7 @@ void processIncomingFrame(const ZigbeeFrame& frame) {
     return;
   }
   if (aps.deliveryMode == kZigbeeApsDeliveryUnicast && aps.ackRequested) {
-    delayMicroseconds(kParentRxTurnaroundDelayUs);
+    delayMicroseconds(kParentRxAcknowledgeDelayUs);
     (void)sendApsAcknowledgement(nwk.sourceShort, aps);
   }
   if (duplicateAps) {
@@ -1403,10 +1494,10 @@ void processIncomingFrame(const ZigbeeFrame& frame) {
     Serial.print(aps.clusterId, HEX);
     Serial.print(" src=0x");
     Serial.print(nwk.sourceShort, HEX);
-    Serial.print("\r\n");
-    return;
+    Serial.print(" replay=yes\r\n");
+  } else {
+    rememberRecentInboundAps(nwk.sourceShort, aps);
   }
-  rememberRecentInboundAps(nwk.sourceShort, aps);
 
   uint8_t responseFrame[127] = {0U};
   uint8_t responseLength = 0U;
@@ -1420,7 +1511,7 @@ void processIncomingFrame(const ZigbeeFrame& frame) {
   Serial.print(aps.clusterId, HEX);
   Serial.print("\r\n");
   if (responseLength > 0U) {
-    delayMicroseconds(kParentRxTurnaroundDelayUs);
+    delayMicroseconds(kParentRxResponseDelayUs);
     (void)sendApsFrame(nwk.sourceShort, aps.sourceEndpoint, aps.clusterId,
                        aps.profileId, aps.destinationEndpoint, responseFrame,
                        responseLength);
@@ -1435,7 +1526,8 @@ void pollCoordinator() {
 
   uint8_t request[127] = {0U};
   uint8_t requestLength = 0U;
-  const bool joinedPoll = g_joined;
+  const bool joinedPoll =
+      g_joined || (g_localShort != 0U && g_localShort != kTempShort);
   const bool built =
       joinedPoll
           ? ZigbeeCodec::buildDataRequestShort(g_macSequence++, g_panId,
@@ -1495,11 +1587,33 @@ void maybeSendBootReports(uint32_t nowMs) {
     return;
   }
 
-  const bool tempOk = sendAttributeReport(kZigbeeClusterTemperatureMeasurement);
-  const bool powerOk = sendAttributeReport(kZigbeeClusterPowerConfiguration);
-  g_bootReportsPending = false;
+  bool tempOk = g_bootTempReported;
+  bool humidityOk = g_bootHumidityReported;
+  bool powerOk = g_bootPowerReported;
+  if (!g_bootTempReported) {
+    tempOk = sendAttributeReport(kZigbeeClusterTemperatureMeasurement);
+    if (tempOk) {
+      g_bootTempReported = true;
+    }
+  }
+  if (!g_bootHumidityReported) {
+    humidityOk = sendAttributeReport(kZigbeeClusterRelativeHumidityMeasurement);
+    if (humidityOk) {
+      g_bootHumidityReported = true;
+    }
+  }
+  if (!g_bootPowerReported) {
+    powerOk = sendAttributeReport(kZigbeeClusterPowerConfiguration);
+    if (powerOk) {
+      g_bootPowerReported = true;
+    }
+  }
+  g_bootReportsPending =
+      !(g_bootTempReported && g_bootHumidityReported && g_bootPowerReported);
   Serial.print("boot_report temp=");
   Serial.print(tempOk ? "OK" : "FAIL");
+  Serial.print(" hum=");
+  Serial.print(humidityOk ? "OK" : "FAIL");
   Serial.print(" power=");
   Serial.print(powerOk ? "OK" : "FAIL");
   Serial.print("\r\n");
@@ -1510,8 +1624,7 @@ void maybeEnterLowPowerCycle(uint32_t nowMs) {
       hasPendingApsAcks() || g_device.identifying()) {
     return;
   }
-  if ((nowMs - g_bootMs) <
-      static_cast<uint32_t>(NRF54L15_CLEAN_ZIGBEE_LOW_POWER_WAKE_WINDOW_MS)) {
+  if (static_cast<int32_t>(g_awakeUntilMs - nowMs) > 0) {
     return;
   }
 
@@ -1584,6 +1697,12 @@ void handleSerialCommands() {
 void setup() {
   g_bootMs = millis();
   g_bootReportsPending = true;
+  g_bootTempReported = false;
+  g_bootHumidityReported = false;
+  g_bootPowerReported = false;
+  g_awakeUntilMs = g_bootMs +
+                   static_cast<uint32_t>(
+                       NRF54L15_CLEAN_ZIGBEE_LOW_POWER_WAKE_WINDOW_MS);
   Serial.begin(115200);
   delay(300);
 
@@ -1596,7 +1715,7 @@ void setup() {
   restoreState();
 
   const bool ok = g_radio.begin(g_channel, 8);
-  Serial.print("\r\nZigbeeHaTemperatureBatterySensor start\r\n");
+  Serial.print("\r\nZigbeeSleepyClimateSensor15s start\r\n");
   Serial.print("radio=");
   Serial.print(ok ? "OK" : "FAIL");
   Serial.print(" preferred_channel=");

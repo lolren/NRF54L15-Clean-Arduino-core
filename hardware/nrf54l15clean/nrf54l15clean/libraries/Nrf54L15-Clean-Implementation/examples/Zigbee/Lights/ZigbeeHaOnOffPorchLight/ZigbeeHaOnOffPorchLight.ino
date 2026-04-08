@@ -8,7 +8,7 @@
 #include "zigbee_stack.h"
 
 #if defined(NRF54L15_CLEAN_ZIGBEE_ENABLED) && (NRF54L15_CLEAN_ZIGBEE_ENABLED == 0)
-#error "Enable Tools > Zigbee Support to build ZigbeeHaOnOffLightJoinable."
+#error "Enable Tools > Zigbee Support to build ZigbeeHaOnOffPorchLight."
 #endif
 
 #ifndef NRF54L15_CLEAN_ZIGBEE_CHANNEL
@@ -57,6 +57,14 @@
 
 #ifndef NRF54L15_CLEAN_ZIGBEE_INTERVIEW_DIRECT_LISTEN_US
 #define NRF54L15_CLEAN_ZIGBEE_INTERVIEW_DIRECT_LISTEN_US 25000UL
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_ROUTER_IDLE_LISTEN_US
+#define NRF54L15_CLEAN_ZIGBEE_ROUTER_IDLE_LISTEN_US 4000UL
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_ROUTER_DEVICE
+#define NRF54L15_CLEAN_ZIGBEE_ROUTER_DEVICE 1
 #endif
 
 #ifndef NRF54L15_CLEAN_ZIGBEE_COORDINATOR_REALIGNMENT_TIMEOUT_MS
@@ -122,7 +130,7 @@
 #endif
 
 #ifndef NRF54L15_CLEAN_ZIGBEE_BASIC_SW_BUILD_ID
-#define NRF54L15_CLEAN_ZIGBEE_BASIC_SW_BUILD_ID "0.3.6"
+#define NRF54L15_CLEAN_ZIGBEE_BASIC_SW_BUILD_ID "0.3.8"
 #endif
 
 using namespace xiao_nrf54l15;
@@ -238,7 +246,10 @@ static constexpr uint32_t kApsAckTimeoutMs = 900U;
 static constexpr uint32_t kRecentInboundApsWindowMs = 4000U;
 static constexpr uint8_t kApsAckRetryLimit = 2U;
 static constexpr uint32_t kParentRxTurnaroundDelayUs = 6000U;
-static constexpr uint8_t kSleepyEndDeviceCapability = 0xC4U;
+static constexpr ZigbeeLogicalType kDeviceLogicalType =
+    (NRF54L15_CLEAN_ZIGBEE_ROUTER_DEVICE != 0)
+        ? ZigbeeLogicalType::kRouter
+        : ZigbeeLogicalType::kEndDevice;
 
 void armInterviewGraceWindow();
 bool interviewGraceActive(uint32_t nowMs);
@@ -298,6 +309,12 @@ void refreshCommissioningState() {
   g_network.defaultShort = kTempShort;
   g_network.coordinatorShort = kCoordinatorShort;
 }
+
+bool usesParentPolling() {
+  return ZigbeeCommissioning::usesParentPolling(g_network);
+}
+
+uint8_t currentMacCapabilityFlags() { return g_device.macCapabilityFlags(); }
 
 bool loadInstallCodeLinkKey(uint8_t outKey[16]) {
 #if NRF54L15_CLEAN_ZIGBEE_USE_INSTALL_CODE
@@ -363,7 +380,7 @@ void configureDeviceForCurrentNetwork() {
   basic.swBuildId = NRF54L15_CLEAN_ZIGBEE_BASIC_SW_BUILD_ID;
   basic.powerSource = 0x01U;
   g_device.configureOnOffLight(kLocalEndpoint, kIeeeAddress, g_localShort, g_panId,
-                               basic, 0x0000U);
+                               basic, 0x0000U, kDeviceLogicalType);
   applyReportingState();
   applyBindingState();
   g_device.setOnOff(g_savedOnOffState);
@@ -405,7 +422,7 @@ bool persistState() {
   refreshCommissioningState();
   ZigbeePersistentState state{};
   ZigbeeCommissioning::populatePersistentState(
-      g_network, kIeeeAddress, ZigbeeLogicalType::kEndDevice,
+      g_network, kIeeeAddress, g_device.config().logicalType,
       g_device.config().manufacturerCode, &state);
   state.onOffState = g_device.onOff();
 
@@ -438,7 +455,8 @@ void restoreState() {
                                                 commissioningPolicy(),
                                                 kPreferredChannel,
                                                 kPreferredPanId, kTempShort,
-                                                kCoordinatorShort);
+                                                kCoordinatorShort,
+                                                kDeviceLogicalType);
 
   ZigbeePersistentState state{};
   if (g_store.load(&state) && state.ieeeAddress == kIeeeAddress) {
@@ -1174,7 +1192,7 @@ bool waitForAssociationResponse(uint16_t* outAssignedShort) {
 bool performJoin() {
   refreshCommissioningState();
   if (!ZigbeeCommissioning::performJoin(g_radio, &g_macSequence, kIeeeAddress,
-                                        kSleepyEndDeviceCapability,
+                                        currentMacCapabilityFlags(),
                                         &g_network)) {
     return false;
   }
@@ -1189,7 +1207,7 @@ bool performSecureRejoin() {
   refreshCommissioningState();
   if (!ZigbeeCommissioning::performSecureRejoin(
           g_radio, &g_macSequence, kIeeeAddress,
-          kSleepyEndDeviceCapability, &g_network)) {
+          currentMacCapabilityFlags(), &g_network)) {
     return false;
   }
   armInterviewGraceWindow();
@@ -1500,23 +1518,28 @@ void armInterviewGraceWindow() {
 }
 
 bool interviewGraceActive(uint32_t nowMs) {
-  if (!g_joined) {
-    return false;
-  }
   return static_cast<int32_t>(g_interviewGraceUntilMs - nowMs) > 0;
 }
 
 void maybeReceiveDirectInterviewTraffic(uint32_t nowMs) {
-  if (!interviewGraceActive(nowMs)) {
+  const bool directCommissioning =
+      g_network.state == ZigbeeCommissioningState::kWaitingTransportKey ||
+      g_network.state == ZigbeeCommissioningState::kWaitingUpdateDevice ||
+      g_network.state == ZigbeeCommissioningState::kRejoinVerify;
+  if (!(interviewGraceActive(nowMs) ||
+        (!usesParentPolling() && (directCommissioning || g_joined)))) {
     return;
   }
 
+  const uint32_t listenUs =
+      interviewGraceActive(nowMs)
+          ? static_cast<uint32_t>(
+                NRF54L15_CLEAN_ZIGBEE_INTERVIEW_DIRECT_LISTEN_US)
+          : static_cast<uint32_t>(
+                NRF54L15_CLEAN_ZIGBEE_ROUTER_IDLE_LISTEN_US);
+
   ZigbeeFrame frame{};
-  if (!g_radio.receive(
-          &frame,
-          static_cast<uint32_t>(
-              NRF54L15_CLEAN_ZIGBEE_INTERVIEW_DIRECT_LISTEN_US),
-          350000UL)) {
+  if (!g_radio.receive(&frame, listenUs, 350000UL)) {
     return;
   }
   processIncomingFrame(frame);
@@ -1603,7 +1626,7 @@ void setup() {
   restoreState();
 
   const bool ok = g_radio.begin(g_channel, 8);
-  Serial.print("\r\nZigbeeHaOnOffLightJoinable start\r\n");
+  Serial.print("\r\nZigbeeHaOnOffPorchLight start\r\n");
   Serial.print("radio=");
   Serial.print(ok ? "OK" : "FAIL");
   Serial.print(" preferred_channel=");
@@ -1696,6 +1719,7 @@ void loop() {
       Serial.print(g_network.coordinatorShort, HEX);
       Serial.print("\r\n");
     }
+    maybeReceiveDirectInterviewTraffic(now);
     delay(1);
     return;
   }
@@ -1712,7 +1736,7 @@ void loop() {
     Serial.print("\r\n");
   }
 
-  if ((now - g_lastPollMs) >= effectivePollIntervalMs) {
+  if (usesParentPolling() && (now - g_lastPollMs) >= effectivePollIntervalMs) {
     g_lastPollMs = now;
     pollCoordinator();
   }

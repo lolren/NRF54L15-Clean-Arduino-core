@@ -151,6 +151,8 @@ Working and tested:
 - two-board local coordinator / joinable device flows on XIAO nRF54L15 boards
 - Home Assistant / Zigbee2MQTT join, interview, and on/off control on the
   validated HA light path
+- Home Assistant / Zigbee2MQTT sleepy end-device interview on the new low-power
+  button path
 - retained network state and secure rejoin on the shipped HA examples
 - coordinator, router, end-device, light, sensor, and low-power example groups
 - sleepy-device style examples that wake, report battery/status, poll, and go
@@ -161,6 +163,8 @@ What still needs work:
 - this is not full Zigbee 3.0 device/cluster coverage yet
 - RGB / color-light clusters are still missing
 - more coordinator combinations should be exercised beyond the validated path
+- richer Zigbee2MQTT / Home Assistant device typing for some generated devices,
+  especially sleepy remotes
 - more sensor/device personalities can still be added
 - battery-tuned sleepy devices still need more real current characterization
 
@@ -175,6 +179,8 @@ Working:
 - true `SYSTEM OFF` examples with wake sources
 - low-power BLE advertiser patterns
 - Zigbee sleepy-device examples with configurable wake/report intervals
+- low-power Zigbee button and sensor examples that use the XIAO button for
+  pairing / action wake flows
 
 Still to do:
 

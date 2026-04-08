@@ -106,7 +106,59 @@
 #endif
 
 #ifndef NRF54L15_CLEAN_ZIGBEE_BASIC_SW_BUILD_ID
-#define NRF54L15_CLEAN_ZIGBEE_BASIC_SW_BUILD_ID "0.3.6"
+#define NRF54L15_CLEAN_ZIGBEE_BASIC_SW_BUILD_ID "0.3.8"
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_COLOR_LIGHT
+#define NRF54L15_CLEAN_ZIGBEE_COLOR_LIGHT 0
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_COLOR_TEMPERATURE
+#define NRF54L15_CLEAN_ZIGBEE_COLOR_TEMPERATURE 0
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_HUE_REPORT_MIN_S
+#define NRF54L15_CLEAN_ZIGBEE_HUE_REPORT_MIN_S 1U
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_HUE_REPORT_MAX_S
+#define NRF54L15_CLEAN_ZIGBEE_HUE_REPORT_MAX_S 30U
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_HUE_REPORT_CHANGE
+#define NRF54L15_CLEAN_ZIGBEE_HUE_REPORT_CHANGE 4U
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_SATURATION_REPORT_CHANGE
+#define NRF54L15_CLEAN_ZIGBEE_SATURATION_REPORT_CHANGE 4U
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_COLOR_TEMPERATURE_REPORT_MIN_S
+#define NRF54L15_CLEAN_ZIGBEE_COLOR_TEMPERATURE_REPORT_MIN_S 1U
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_COLOR_TEMPERATURE_REPORT_MAX_S
+#define NRF54L15_CLEAN_ZIGBEE_COLOR_TEMPERATURE_REPORT_MAX_S 30U
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_COLOR_TEMPERATURE_REPORT_CHANGE
+#define NRF54L15_CLEAN_ZIGBEE_COLOR_TEMPERATURE_REPORT_CHANGE 8U
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_DEFAULT_HUE
+#define NRF54L15_CLEAN_ZIGBEE_DEFAULT_HUE 12U
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_DEFAULT_SATURATION
+#define NRF54L15_CLEAN_ZIGBEE_DEFAULT_SATURATION 220U
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_DEFAULT_COLOR_TEMPERATURE_MIREDS
+#define NRF54L15_CLEAN_ZIGBEE_DEFAULT_COLOR_TEMPERATURE_MIREDS 370U
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_DEFAULT_USE_COLOR_TEMPERATURE
+#define NRF54L15_CLEAN_ZIGBEE_DEFAULT_USE_COLOR_TEMPERATURE 0
 #endif
 
 using namespace xiao_nrf54l15;
@@ -294,6 +346,34 @@ void applyDefaultReporting() {
                               ZigbeeZclDataType::kBoolean, 0U, 30U, 0U);
   g_device.configureReporting(kZigbeeClusterLevelControl, 0x0000U,
                               ZigbeeZclDataType::kUint8, 0U, 30U, 16U);
+#if NRF54L15_CLEAN_ZIGBEE_COLOR_LIGHT
+  g_device.configureReporting(kZigbeeClusterColorControl, 0x0000U,
+                              ZigbeeZclDataType::kUint8,
+                              static_cast<uint16_t>(
+                                  NRF54L15_CLEAN_ZIGBEE_HUE_REPORT_MIN_S),
+                              static_cast<uint16_t>(
+                                  NRF54L15_CLEAN_ZIGBEE_HUE_REPORT_MAX_S),
+                              static_cast<uint32_t>(
+                                  NRF54L15_CLEAN_ZIGBEE_HUE_REPORT_CHANGE));
+  g_device.configureReporting(kZigbeeClusterColorControl, 0x0001U,
+                              ZigbeeZclDataType::kUint8,
+                              static_cast<uint16_t>(
+                                  NRF54L15_CLEAN_ZIGBEE_HUE_REPORT_MIN_S),
+                              static_cast<uint16_t>(
+                                  NRF54L15_CLEAN_ZIGBEE_HUE_REPORT_MAX_S),
+                              static_cast<uint32_t>(
+                                  NRF54L15_CLEAN_ZIGBEE_SATURATION_REPORT_CHANGE));
+#if NRF54L15_CLEAN_ZIGBEE_COLOR_TEMPERATURE
+  g_device.configureReporting(
+      kZigbeeClusterColorControl, 0x0007U, ZigbeeZclDataType::kUint16,
+      static_cast<uint16_t>(
+          NRF54L15_CLEAN_ZIGBEE_COLOR_TEMPERATURE_REPORT_MIN_S),
+      static_cast<uint16_t>(
+          NRF54L15_CLEAN_ZIGBEE_COLOR_TEMPERATURE_REPORT_MAX_S),
+      static_cast<uint32_t>(
+          NRF54L15_CLEAN_ZIGBEE_COLOR_TEMPERATURE_REPORT_CHANGE));
+#endif
+#endif
 }
 
 void applyReportingState() {
@@ -391,6 +471,20 @@ void applyLedState() {
   (void)Gpio::write(kPinUserLed, dutyPermille == 0U);
 }
 
+void applyDefaultColorState() {
+#if NRF54L15_CLEAN_ZIGBEE_COLOR_LIGHT
+  (void)g_device.setColorHueSaturation(
+      static_cast<uint8_t>(NRF54L15_CLEAN_ZIGBEE_DEFAULT_HUE),
+      static_cast<uint8_t>(NRF54L15_CLEAN_ZIGBEE_DEFAULT_SATURATION));
+#if NRF54L15_CLEAN_ZIGBEE_COLOR_TEMPERATURE
+#if NRF54L15_CLEAN_ZIGBEE_DEFAULT_USE_COLOR_TEMPERATURE
+  (void)g_device.setColorTemperatureMireds(static_cast<uint16_t>(
+      NRF54L15_CLEAN_ZIGBEE_DEFAULT_COLOR_TEMPERATURE_MIREDS));
+#endif
+#endif
+#endif
+}
+
 void clearActiveNetworkKey() {
   memset(g_activeNetworkKey, 0, sizeof(g_activeNetworkKey));
   g_activeNetworkKeySequence = 0U;
@@ -403,12 +497,23 @@ void configureDeviceForCurrentNetwork() {
   basic.modelIdentifier = NRF54L15_CLEAN_ZIGBEE_BASIC_MODEL_IDENTIFIER;
   basic.swBuildId = NRF54L15_CLEAN_ZIGBEE_BASIC_SW_BUILD_ID;
   basic.powerSource = 0x01U;
+#if NRF54L15_CLEAN_ZIGBEE_COLOR_LIGHT
+#if NRF54L15_CLEAN_ZIGBEE_COLOR_TEMPERATURE
+  g_device.configureExtendedColorLight(kLocalEndpoint, kIeeeAddress,
+                                       g_localShort, g_panId, basic, 0x0000U);
+#else
+  g_device.configureColorDimmableLight(kLocalEndpoint, kIeeeAddress,
+                                       g_localShort, g_panId, basic, 0x0000U);
+#endif
+#else
   g_device.configureDimmableLight(kLocalEndpoint, kIeeeAddress, g_localShort,
                                   g_panId, basic, 0x0000U);
+#endif
   applyReportingState();
   applyBindingState();
   (void)g_device.setLevel(g_savedLevelState);
   (void)g_device.setOnOff(g_savedOnOffState);
+  applyDefaultColorState();
 }
 
 bool persistState() {
@@ -1487,6 +1592,11 @@ void handleSerialCommands() {
       Serial.print(onOffOk ? "OK" : "FAIL");
       Serial.print(" level=");
       Serial.print(levelOk ? "OK" : "FAIL");
+#if NRF54L15_CLEAN_ZIGBEE_COLOR_LIGHT
+      const bool colorOk = sendAttributeReport(kZigbeeClusterColorControl);
+      Serial.print(" color=");
+      Serial.print(colorOk ? "OK" : "FAIL");
+#endif
       Serial.print("\r\n");
     } else if (ch == 'j') {
       const ZigbeeCommissioningStartRequest request =

@@ -8,7 +8,7 @@
 #include "zigbee_stack.h"
 
 #if defined(NRF54L15_CLEAN_ZIGBEE_ENABLED) && (NRF54L15_CLEAN_ZIGBEE_ENABLED == 0)
-#error "Enable Tools > Zigbee Support to build ZigbeeHaTemperatureSensorJoinable."
+#error "Enable Tools > Zigbee Support to build ZigbeeSleepyRoomSensor60s."
 #endif
 
 #ifndef NRF54L15_CLEAN_ZIGBEE_CHANNEL
@@ -44,7 +44,7 @@
 #endif
 
 #ifndef NRF54L15_CLEAN_ZIGBEE_PARENT_POLL_FOLLOWUP_LISTEN_US
-#define NRF54L15_CLEAN_ZIGBEE_PARENT_POLL_FOLLOWUP_LISTEN_US 40000UL
+#define NRF54L15_CLEAN_ZIGBEE_PARENT_POLL_FOLLOWUP_LISTEN_US 80000UL
 #endif
 
 #ifndef NRF54L15_CLEAN_ZIGBEE_COORDINATOR_REALIGNMENT_TIMEOUT_MS
@@ -84,7 +84,7 @@
 #endif
 
 #ifndef NRF54L15_CLEAN_ZIGBEE_LOCAL_SHORT
-#define NRF54L15_CLEAN_ZIGBEE_LOCAL_SHORT 0x7E11U
+#define NRF54L15_CLEAN_ZIGBEE_LOCAL_SHORT 0x7E44U
 #endif
 
 #ifndef NRF54L15_CLEAN_ZIGBEE_LOCAL_IEEE
@@ -93,8 +93,8 @@
 
 #ifndef NRF54L15_CLEAN_ZIGBEE_INSTALL_CODE_BYTES
 #define NRF54L15_CLEAN_ZIGBEE_INSTALL_CODE_BYTES                                  \
-  0x10U, 0xACU, 0x03U, 0x01U, 0x24U, 0x4BU, 0x00U, 0xCAU, 0xFEU, 0xBAU, 0xBEU, \
-      0x10U, 0x21U, 0x32U, 0x43U, 0x54U, 0xDCU, 0xB9U
+  0x10U, 0xACU, 0x44U, 0x01U, 0x24U, 0x4BU, 0x00U, 0x48U, 0x60U, 0x78U, 0x90U, \
+      0xA8U, 0xC0U, 0xD8U, 0xF0U, 0x08U, 0x4DU, 0xE1U
 #endif
 
 #ifndef NRF54L15_CLEAN_ZIGBEE_BASIC_MANUFACTURER_NAME
@@ -106,7 +106,7 @@
 #endif
 
 #ifndef NRF54L15_CLEAN_ZIGBEE_BASIC_SW_BUILD_ID
-#define NRF54L15_CLEAN_ZIGBEE_BASIC_SW_BUILD_ID "0.3.6"
+#define NRF54L15_CLEAN_ZIGBEE_BASIC_SW_BUILD_ID "0.3.8"
 #endif
 
 #ifndef NRF54L15_CLEAN_ZIGBEE_TEMP_REPORT_MIN_S
@@ -157,6 +157,10 @@
 #define NRF54L15_CLEAN_ZIGBEE_LOW_POWER_SLEEP_MS 60000UL
 #endif
 
+#ifndef NRF54L15_CLEAN_ZIGBEE_ACTIVITY_AWAKE_EXTENSION_MS
+#define NRF54L15_CLEAN_ZIGBEE_ACTIVITY_AWAKE_EXTENSION_MS 8000UL
+#endif
+
 using namespace xiao_nrf54l15;
 
 namespace {
@@ -181,6 +185,7 @@ static uint32_t g_lastStatusMs = 0U;
 static uint32_t g_lastPollMs = 0U;
 static uint32_t g_lastSampleMs = 0U;
 static uint32_t g_bootMs = 0U;
+static uint32_t g_awakeUntilMs = 0U;
 static uint8_t (&g_activeNetworkKey)[16] = g_network.activeNetworkKey;
 static uint8_t& g_activeNetworkKeySequence = g_network.activeNetworkKeySequence;
 static uint8_t (&g_alternateNetworkKey)[16] = g_network.alternateNetworkKey;
@@ -199,6 +204,8 @@ static uint32_t& g_parentPollIntervalMs = g_network.parentPollIntervalMs;
 static ZigbeePersistentState g_restoredState{};
 static bool g_haveRestoredState = false;
 static bool g_bootReportsPending = true;
+static bool g_bootTempReported = false;
+static bool g_bootPowerReported = false;
 
 static constexpr uint8_t kPreferredChannel =
     static_cast<uint8_t>(NRF54L15_CLEAN_ZIGBEE_CHANNEL);
@@ -266,7 +273,8 @@ static RecentInboundAps g_recentInboundAps{};
 static constexpr uint32_t kApsAckTimeoutMs = 900U;
 static constexpr uint32_t kRecentInboundApsWindowMs = 4000U;
 static constexpr uint8_t kApsAckRetryLimit = 2U;
-static constexpr uint32_t kParentRxTurnaroundDelayUs = 6000U;
+static constexpr uint32_t kParentRxAcknowledgeDelayUs = 3000U;
+static constexpr uint32_t kParentRxResponseDelayUs = 12000U;
 
 void clearPendingApsAck();
 void clearPendingApsAckSlot(uint8_t slot);
@@ -298,6 +306,7 @@ ZigbeeCommissioningPolicy commissioningPolicy() {
       NRF54L15_CLEAN_ZIGBEE_COORDINATOR_REALIGNMENT_TIMEOUT_MS);
   policy.nwkRejoinResponseTimeoutMs = static_cast<uint32_t>(
       NRF54L15_CLEAN_ZIGBEE_NWK_REJOIN_RESPONSE_TIMEOUT_MS);
+  policy.initialPollIntervalMs = 100UL;
   policy.preferredPanId = kPreferredPanId;
   policy.preferredExtendedPanId =
       (g_extendedPanId != 0U) ? g_extendedPanId
@@ -315,7 +324,7 @@ ZigbeeCommissioningPolicy commissioningPolicy() {
       (NRF54L15_CLEAN_ZIGBEE_ALLOW_DEMO_PLAINTEXT_TC_CMDS == 0);
   policy.requireEncryptedSwitchKey =
       (NRF54L15_CLEAN_ZIGBEE_ALLOW_DEMO_PLAINTEXT_TC_CMDS == 0);
-  policy.requirePanCoordinator = false;
+  policy.requirePanCoordinator = true;
   policy.requireUniqueTrustCenterForRejoin = true;
   return policy;
 }
@@ -1205,6 +1214,13 @@ bool activeScan(ScanResult* outResult) {
   return true;
 }
 
+void extendAwakeWindow(uint32_t durationMs) {
+  const uint32_t targetMs = millis() + durationMs;
+  if (static_cast<int32_t>(targetMs - g_awakeUntilMs) > 0) {
+    g_awakeUntilMs = targetMs;
+  }
+}
+
 bool waitForAssociationResponse(uint16_t* outAssignedShort) {
   if (outAssignedShort == nullptr) {
     return false;
@@ -1255,6 +1271,8 @@ bool performJoin() {
   configureDeviceForCurrentNetwork();
   applyJoinLed();
   persistState();
+  extendAwakeWindow(static_cast<uint32_t>(
+      NRF54L15_CLEAN_ZIGBEE_ACTIVITY_AWAKE_EXTENSION_MS));
   return true;
 }
 
@@ -1267,6 +1285,8 @@ bool performSecureRejoin() {
   configureDeviceForCurrentNetwork();
   applyJoinLed();
   persistState();
+  extendAwakeWindow(static_cast<uint32_t>(
+      NRF54L15_CLEAN_ZIGBEE_ACTIVITY_AWAKE_EXTENSION_MS));
   return true;
 }
 
@@ -1306,6 +1326,8 @@ void processIncomingFrame(const ZigbeeFrame& frame) {
   if (!nwkValid || !nwk.valid || nwk.destinationShort != g_localShort) {
     return;
   }
+  extendAwakeWindow(static_cast<uint32_t>(
+      NRF54L15_CLEAN_ZIGBEE_ACTIVITY_AWAKE_EXTENSION_MS));
   if (security.valid) {
     g_lastInboundSecurityFrameCounter = security.frameCounter;
   }
@@ -1361,7 +1383,7 @@ void processIncomingFrame(const ZigbeeFrame& frame) {
 
   if (aps.profileId == kZigbeeProfileZdo) {
     if (aps.deliveryMode == kZigbeeApsDeliveryUnicast && aps.ackRequested) {
-      delayMicroseconds(kParentRxTurnaroundDelayUs);
+      delayMicroseconds(kParentRxAcknowledgeDelayUs);
       (void)sendApsAcknowledgement(nwk.sourceShort, aps);
     }
     if (duplicateAps) {
@@ -1369,10 +1391,10 @@ void processIncomingFrame(const ZigbeeFrame& frame) {
       Serial.print(aps.clusterId, HEX);
       Serial.print(" src=0x");
       Serial.print(nwk.sourceShort, HEX);
-      Serial.print("\r\n");
-      return;
+      Serial.print(" replay=yes\r\n");
+    } else {
+      rememberRecentInboundAps(nwk.sourceShort, aps);
     }
-    rememberRecentInboundAps(nwk.sourceShort, aps);
     uint16_t responseClusterId = 0U;
     uint8_t responsePayload[127] = {0U};
     uint8_t responseLength = 0U;
@@ -1380,6 +1402,7 @@ void processIncomingFrame(const ZigbeeFrame& frame) {
                                   &responseClusterId, responsePayload,
                                   &responseLength) &&
         responseLength > 0U) {
+      delayMicroseconds(kParentRxResponseDelayUs);
       (void)sendApsFrame(nwk.sourceShort, 0U, responseClusterId,
                          kZigbeeProfileZdo, 0U, responsePayload, responseLength);
       uint8_t leaveFlags = 0U;
@@ -1395,7 +1418,7 @@ void processIncomingFrame(const ZigbeeFrame& frame) {
     return;
   }
   if (aps.deliveryMode == kZigbeeApsDeliveryUnicast && aps.ackRequested) {
-    delayMicroseconds(kParentRxTurnaroundDelayUs);
+    delayMicroseconds(kParentRxAcknowledgeDelayUs);
     (void)sendApsAcknowledgement(nwk.sourceShort, aps);
   }
   if (duplicateAps) {
@@ -1403,10 +1426,10 @@ void processIncomingFrame(const ZigbeeFrame& frame) {
     Serial.print(aps.clusterId, HEX);
     Serial.print(" src=0x");
     Serial.print(nwk.sourceShort, HEX);
-    Serial.print("\r\n");
-    return;
+    Serial.print(" replay=yes\r\n");
+  } else {
+    rememberRecentInboundAps(nwk.sourceShort, aps);
   }
-  rememberRecentInboundAps(nwk.sourceShort, aps);
 
   uint8_t responseFrame[127] = {0U};
   uint8_t responseLength = 0U;
@@ -1420,7 +1443,7 @@ void processIncomingFrame(const ZigbeeFrame& frame) {
   Serial.print(aps.clusterId, HEX);
   Serial.print("\r\n");
   if (responseLength > 0U) {
-    delayMicroseconds(kParentRxTurnaroundDelayUs);
+    delayMicroseconds(kParentRxResponseDelayUs);
     (void)sendApsFrame(nwk.sourceShort, aps.sourceEndpoint, aps.clusterId,
                        aps.profileId, aps.destinationEndpoint, responseFrame,
                        responseLength);
@@ -1435,7 +1458,8 @@ void pollCoordinator() {
 
   uint8_t request[127] = {0U};
   uint8_t requestLength = 0U;
-  const bool joinedPoll = g_joined;
+  const bool joinedPoll =
+      g_joined || (g_localShort != 0U && g_localShort != kTempShort);
   const bool built =
       joinedPoll
           ? ZigbeeCodec::buildDataRequestShort(g_macSequence++, g_panId,
@@ -1495,9 +1519,21 @@ void maybeSendBootReports(uint32_t nowMs) {
     return;
   }
 
-  const bool tempOk = sendAttributeReport(kZigbeeClusterTemperatureMeasurement);
-  const bool powerOk = sendAttributeReport(kZigbeeClusterPowerConfiguration);
-  g_bootReportsPending = false;
+  bool tempOk = g_bootTempReported;
+  bool powerOk = g_bootPowerReported;
+  if (!g_bootTempReported) {
+    tempOk = sendAttributeReport(kZigbeeClusterTemperatureMeasurement);
+    if (tempOk) {
+      g_bootTempReported = true;
+    }
+  }
+  if (!g_bootPowerReported) {
+    powerOk = sendAttributeReport(kZigbeeClusterPowerConfiguration);
+    if (powerOk) {
+      g_bootPowerReported = true;
+    }
+  }
+  g_bootReportsPending = !(g_bootTempReported && g_bootPowerReported);
   Serial.print("boot_report temp=");
   Serial.print(tempOk ? "OK" : "FAIL");
   Serial.print(" power=");
@@ -1510,8 +1546,7 @@ void maybeEnterLowPowerCycle(uint32_t nowMs) {
       hasPendingApsAcks() || g_device.identifying()) {
     return;
   }
-  if ((nowMs - g_bootMs) <
-      static_cast<uint32_t>(NRF54L15_CLEAN_ZIGBEE_LOW_POWER_WAKE_WINDOW_MS)) {
+  if (static_cast<int32_t>(g_awakeUntilMs - nowMs) > 0) {
     return;
   }
 
@@ -1584,6 +1619,11 @@ void handleSerialCommands() {
 void setup() {
   g_bootMs = millis();
   g_bootReportsPending = true;
+  g_bootTempReported = false;
+  g_bootPowerReported = false;
+  g_awakeUntilMs = g_bootMs +
+                   static_cast<uint32_t>(
+                       NRF54L15_CLEAN_ZIGBEE_LOW_POWER_WAKE_WINDOW_MS);
   Serial.begin(115200);
   delay(300);
 
@@ -1596,7 +1636,7 @@ void setup() {
   restoreState();
 
   const bool ok = g_radio.begin(g_channel, 8);
-  Serial.print("\r\nZigbeeHaTemperatureSensorJoinable start\r\n");
+  Serial.print("\r\nZigbeeSleepyRoomSensor60s start\r\n");
   Serial.print("radio=");
   Serial.print(ok ? "OK" : "FAIL");
   Serial.print(" preferred_channel=");

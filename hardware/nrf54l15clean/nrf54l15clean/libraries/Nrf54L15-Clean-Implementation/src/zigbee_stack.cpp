@@ -91,6 +91,10 @@ constexpr uint8_t kLevelControlCommandMoveToLevelWithOnOff = 0x04U;
 constexpr uint8_t kLevelControlCommandMoveWithOnOff = 0x05U;
 constexpr uint8_t kLevelControlCommandStepWithOnOff = 0x06U;
 constexpr uint8_t kLevelControlCommandStopWithOnOff = 0x07U;
+constexpr uint8_t kColorControlCommandMoveToHue = 0x00U;
+constexpr uint8_t kColorControlCommandMoveToSaturation = 0x03U;
+constexpr uint8_t kColorControlCommandMoveToHueAndSaturation = 0x06U;
+constexpr uint8_t kColorControlCommandMoveToColorTemperature = 0x0AU;
 constexpr uint32_t kZclFeatureMapNone = 0U;
 constexpr uint16_t kZclClusterRevision1 = 1U;
 
@@ -116,12 +120,18 @@ constexpr uint16_t kTemperatureDiscoverAttributeIds[] = {0x0000U, 0x0001U,
                                                          0x0002U, 0x0003U,
                                                          kZclGlobalAttributeFeatureMap,
                                                          kZclGlobalAttributeClusterRevision};
+constexpr uint16_t kRelativeHumidityDiscoverAttributeIds[] = {
+    0x0000U, 0x0001U, 0x0002U, 0x0003U, kZclGlobalAttributeFeatureMap,
+    kZclGlobalAttributeClusterRevision};
 constexpr uint16_t kOnOffDiscoverAttributeIds[] = {
     0x0000U, kZclGlobalAttributeFeatureMap,
     kZclGlobalAttributeClusterRevision};
 constexpr uint16_t kLevelControlDiscoverAttributeIds[] = {
     0x0000U, 0x0002U, 0x0003U, kZclGlobalAttributeFeatureMap,
     kZclGlobalAttributeClusterRevision};
+constexpr uint16_t kColorControlDiscoverAttributeIds[] = {
+    0x0000U, 0x0001U, 0x0007U, 0x0008U, 0x400AU, 0x400BU, 0x400CU,
+    kZclGlobalAttributeFeatureMap, kZclGlobalAttributeClusterRevision};
 constexpr uint8_t kIdentifyReceivedCommandIds[] = {
     kIdentifyCommandIdentify, kIdentifyCommandIdentifyQuery,
     kIdentifyCommandTriggerEffect};
@@ -151,6 +161,10 @@ constexpr uint8_t kLevelControlReceivedCommandIds[] = {
     kLevelControlCommandMoveWithOnOff,
     kLevelControlCommandStepWithOnOff,
     kLevelControlCommandStopWithOnOff};
+constexpr uint8_t kColorControlReceivedCommandIds[] = {
+    kColorControlCommandMoveToHue, kColorControlCommandMoveToSaturation,
+    kColorControlCommandMoveToHueAndSaturation,
+    kColorControlCommandMoveToColorTemperature};
 
 struct ParsedSceneExtensionData {
   bool hasOnOff = false;
@@ -1375,6 +1389,12 @@ bool attributeCatalogForCluster(uint16_t clusterId,
           static_cast<uint8_t>(sizeof(kTemperatureDiscoverAttributeIds) /
                                sizeof(kTemperatureDiscoverAttributeIds[0]));
       return true;
+    case kZigbeeClusterRelativeHumidityMeasurement:
+      *outAttributeIds = kRelativeHumidityDiscoverAttributeIds;
+      *outCount = static_cast<uint8_t>(
+          sizeof(kRelativeHumidityDiscoverAttributeIds) /
+          sizeof(kRelativeHumidityDiscoverAttributeIds[0]));
+      return true;
     case kZigbeeClusterOnOff:
       *outAttributeIds = kOnOffDiscoverAttributeIds;
       *outCount = static_cast<uint8_t>(sizeof(kOnOffDiscoverAttributeIds) /
@@ -1385,6 +1405,12 @@ bool attributeCatalogForCluster(uint16_t clusterId,
       *outCount = static_cast<uint8_t>(
           sizeof(kLevelControlDiscoverAttributeIds) /
           sizeof(kLevelControlDiscoverAttributeIds[0]));
+      return true;
+    case kZigbeeClusterColorControl:
+      *outAttributeIds = kColorControlDiscoverAttributeIds;
+      *outCount = static_cast<uint8_t>(
+          sizeof(kColorControlDiscoverAttributeIds) /
+          sizeof(kColorControlDiscoverAttributeIds[0]));
       return true;
     default:
       return false;
@@ -1404,6 +1430,7 @@ bool commandCatalogForCluster(uint16_t clusterId, bool generated,
     case kZigbeeClusterBasic:
     case kZigbeeClusterPowerConfiguration:
     case kZigbeeClusterTemperatureMeasurement:
+    case kZigbeeClusterRelativeHumidityMeasurement:
       return true;
     case kZigbeeClusterIdentify:
       *outCommandIds = generated ? kIdentifyGeneratedCommandIds
@@ -1447,6 +1474,14 @@ bool commandCatalogForCluster(uint16_t clusterId, bool generated,
             sizeof(kLevelControlReceivedCommandIds[0]));
       }
       return true;
+    case kZigbeeClusterColorControl:
+      if (!generated) {
+        *outCommandIds = kColorControlReceivedCommandIds;
+        *outCount = static_cast<uint8_t>(
+            sizeof(kColorControlReceivedCommandIds) /
+            sizeof(kColorControlReceivedCommandIds[0]));
+      }
+      return true;
     default:
       return false;
   }
@@ -1481,11 +1516,12 @@ bool makeGlobalAttributeValueForCluster(uint16_t clusterId, uint16_t attributeId
 
 uint8_t buildMacCapabilityFlags(const ZigbeeHomeAutomationConfig& config) {
   const bool mainsPowered = !config.power.batteryBacked;
-  // The current HA end-device examples are poll-driven children. Even when
-  // externally powered, they are not continuously listening between polls.
+  const bool fullFunctionDevice =
+      config.logicalType != ZigbeeLogicalType::kEndDevice;
   const bool receiverOnWhenIdle =
       config.logicalType != ZigbeeLogicalType::kEndDevice;
   uint8_t flags = 0U;
+  flags |= fullFunctionDevice ? (1U << 1U) : 0U;
   flags |= mainsPowered ? (1U << 2U) : 0U;
   flags |= receiverOnWhenIdle ? (1U << 3U) : 0U;
   flags |= (1U << 6U);  // Security capable.
@@ -4084,16 +4120,42 @@ ZigbeeHomeAutomationDevice::ZigbeeHomeAutomationDevice()
                                kZigbeeClusterGroups, kZigbeeClusterScenes,
                                kZigbeeClusterOnOff},
       onOffLightOutputClusters_{0U},
+      onOffLightSwitchInputClusters_{kZigbeeClusterBasic,
+                                     kZigbeeClusterPowerConfiguration,
+                                     kZigbeeClusterIdentify,
+                                     kZigbeeClusterGroups,
+                                     kZigbeeClusterScenes,
+                                     kZigbeeClusterOnOff},
+      onOffLightSwitchOutputClusters_{kZigbeeClusterIdentify,
+                                      kZigbeeClusterGroups,
+                                      kZigbeeClusterScenes,
+                                      kZigbeeClusterOnOff},
       dimmableLightInputClusters_{kZigbeeClusterBasic, kZigbeeClusterIdentify,
                                   kZigbeeClusterGroups, kZigbeeClusterScenes,
                                   kZigbeeClusterOnOff,
                                   kZigbeeClusterLevelControl},
       dimmableLightOutputClusters_{0U},
+      colorLightInputClusters_{kZigbeeClusterBasic, kZigbeeClusterIdentify,
+                               kZigbeeClusterGroups, kZigbeeClusterScenes,
+                               kZigbeeClusterOnOff, kZigbeeClusterLevelControl,
+                               kZigbeeClusterColorControl},
+      colorLightOutputClusters_{0U},
+      extendedColorLightInputClusters_{
+          kZigbeeClusterBasic,          kZigbeeClusterIdentify,
+          kZigbeeClusterGroups,         kZigbeeClusterScenes,
+          kZigbeeClusterOnOff,          kZigbeeClusterLevelControl,
+          kZigbeeClusterColorControl},
+      extendedColorLightOutputClusters_{0U},
       temperatureSensorInputClusters_{kZigbeeClusterBasic,
                                       kZigbeeClusterPowerConfiguration,
                                       kZigbeeClusterIdentify,
                                       kZigbeeClusterTemperatureMeasurement},
       temperatureSensorOutputClusters_{0U},
+      temperatureHumiditySensorInputClusters_{
+          kZigbeeClusterBasic,      kZigbeeClusterPowerConfiguration,
+          kZigbeeClusterIdentify,   kZigbeeClusterTemperatureMeasurement,
+          kZigbeeClusterRelativeHumidityMeasurement},
+      temperatureHumiditySensorOutputClusters_{0U},
       identifyLastTickMs_(0U),
       leaveRequested_(false),
       leaveRequestFlags_(0U) {}
@@ -4101,7 +4163,7 @@ ZigbeeHomeAutomationDevice::ZigbeeHomeAutomationDevice()
 bool ZigbeeHomeAutomationDevice::configureOnOffLight(
     uint8_t endpoint, uint64_t ieeeAddress, uint16_t nwkAddress,
     uint16_t panId, const ZigbeeBasicClusterConfig& basic,
-    uint16_t manufacturerCode) {
+    uint16_t manufacturerCode, ZigbeeLogicalType logicalType) {
   if (endpoint == 0U) {
     return false;
   }
@@ -4112,7 +4174,7 @@ bool ZigbeeHomeAutomationDevice::configureOnOffLight(
   identifyLastTickMs_ = 0U;
   leaveRequested_ = false;
   leaveRequestFlags_ = 0U;
-  config_.logicalType = ZigbeeLogicalType::kEndDevice;
+  config_.logicalType = logicalType;
   config_.manufacturerCode = manufacturerCode;
   config_.ieeeAddress = ieeeAddress;
   config_.nwkAddress = nwkAddress;
@@ -4148,13 +4210,16 @@ bool ZigbeeHomeAutomationDevice::configureOnOffLight(
   config_.level.currentLevel = 0U;
   config_.level.minLevel = 1U;
   config_.level.maxLevel = 0xFEU;
+  config_.temperature.enabled = false;
+  config_.humidity.enabled = false;
+  config_.color.enabled = false;
   return true;
 }
 
-bool ZigbeeHomeAutomationDevice::configureDimmableLight(
+bool ZigbeeHomeAutomationDevice::configureOnOffLightSwitch(
     uint8_t endpoint, uint64_t ieeeAddress, uint16_t nwkAddress,
     uint16_t panId, const ZigbeeBasicClusterConfig& basic,
-    uint16_t manufacturerCode) {
+    uint16_t manufacturerCode, ZigbeeLogicalType logicalType) {
   if (endpoint == 0U) {
     return false;
   }
@@ -4165,7 +4230,67 @@ bool ZigbeeHomeAutomationDevice::configureDimmableLight(
   identifyLastTickMs_ = 0U;
   leaveRequested_ = false;
   leaveRequestFlags_ = 0U;
-  config_.logicalType = ZigbeeLogicalType::kEndDevice;
+  config_.logicalType = logicalType;
+  config_.manufacturerCode = manufacturerCode;
+  config_.ieeeAddress = ieeeAddress;
+  config_.nwkAddress = nwkAddress;
+  config_.panId = panId;
+  config_.endpointCount = 1U;
+  config_.endpointDescriptors[0].endpoint = endpoint;
+  config_.endpointDescriptors[0].profileId = kZigbeeProfileHomeAutomation;
+  config_.endpointDescriptors[0].deviceId = kZigbeeDeviceIdOnOffLightSwitch;
+  config_.endpointDescriptors[0].deviceVersion = 1U;
+  config_.endpointDescriptors[0].inputClusters = onOffLightSwitchInputClusters_;
+  config_.endpointDescriptors[0].inputClusterCount =
+      static_cast<uint8_t>(sizeof(onOffLightSwitchInputClusters_) /
+                           sizeof(onOffLightSwitchInputClusters_[0]));
+  config_.endpointDescriptors[0].outputClusters =
+      onOffLightSwitchOutputClusters_;
+  config_.endpointDescriptors[0].outputClusterCount =
+      static_cast<uint8_t>(sizeof(onOffLightSwitchOutputClusters_) /
+                           sizeof(onOffLightSwitchOutputClusters_[0]));
+  config_.basic = basic;
+  if (config_.basic.powerSource == 0U) {
+    config_.basic.powerSource = kBasicPowerSourceBattery;
+  }
+  config_.power.batteryBacked = true;
+  config_.power.batteryVoltageDecivolts = 30U;
+  config_.power.batteryPercentageRemainingHalf = 200U;
+  config_.identify.enabled = true;
+  config_.identify.identifyTimeSeconds = 0U;
+  config_.identify.effectIdentifier = kZigbeeIdentifyEffectNone;
+  config_.groups.enabled = true;
+  config_.scenes.enabled = true;
+  config_.scenes.currentGroupId = 0U;
+  config_.scenes.currentSceneId = 0U;
+  config_.scenes.sceneValid = false;
+  config_.onOff.enabled = true;
+  config_.onOff.on = false;
+  config_.level.enabled = false;
+  config_.level.currentLevel = 0U;
+  config_.level.minLevel = 1U;
+  config_.level.maxLevel = 0xFEU;
+  config_.temperature.enabled = false;
+  config_.humidity.enabled = false;
+  config_.color.enabled = false;
+  return true;
+}
+
+bool ZigbeeHomeAutomationDevice::configureDimmableLight(
+    uint8_t endpoint, uint64_t ieeeAddress, uint16_t nwkAddress,
+    uint16_t panId, const ZigbeeBasicClusterConfig& basic,
+    uint16_t manufacturerCode, ZigbeeLogicalType logicalType) {
+  if (endpoint == 0U) {
+    return false;
+  }
+
+  memset(&config_, 0, sizeof(config_));
+  memset(reporting_, 0, sizeof(reporting_));
+  memset(reportingState_, 0, sizeof(reportingState_));
+  identifyLastTickMs_ = 0U;
+  leaveRequested_ = false;
+  leaveRequestFlags_ = 0U;
+  config_.logicalType = logicalType;
   config_.manufacturerCode = manufacturerCode;
   config_.ieeeAddress = ieeeAddress;
   config_.nwkAddress = nwkAddress;
@@ -4201,13 +4326,73 @@ bool ZigbeeHomeAutomationDevice::configureDimmableLight(
   config_.level.currentLevel = 0xFEU;
   config_.level.minLevel = 1U;
   config_.level.maxLevel = 0xFEU;
+  config_.color.enabled = false;
+  config_.humidity.enabled = false;
+  return true;
+}
+
+bool ZigbeeHomeAutomationDevice::configureColorDimmableLight(
+    uint8_t endpoint, uint64_t ieeeAddress, uint16_t nwkAddress,
+    uint16_t panId, const ZigbeeBasicClusterConfig& basic,
+    uint16_t manufacturerCode, ZigbeeLogicalType logicalType) {
+  if (!configureDimmableLight(endpoint, ieeeAddress, nwkAddress, panId, basic,
+                              manufacturerCode, logicalType)) {
+    return false;
+  }
+
+  config_.endpointDescriptors[0].deviceId = kZigbeeDeviceIdColorDimmableLight;
+  config_.endpointDescriptors[0].inputClusters = colorLightInputClusters_;
+  config_.endpointDescriptors[0].inputClusterCount =
+      static_cast<uint8_t>(sizeof(colorLightInputClusters_) /
+                           sizeof(colorLightInputClusters_[0]));
+  config_.endpointDescriptors[0].outputClusters = colorLightOutputClusters_;
+  config_.endpointDescriptors[0].outputClusterCount = 0U;
+  config_.color.enabled = true;
+  config_.color.hueSaturationSupported = true;
+  config_.color.colorTemperatureSupported = false;
+  config_.color.currentHue = 0U;
+  config_.color.currentSaturation = 0xFEU;
+  config_.color.currentColorTemperatureMireds = 370U;
+  config_.color.minColorTemperatureMireds = 153U;
+  config_.color.maxColorTemperatureMireds = 500U;
+  config_.color.colorMode = 0x00U;
+  config_.color.capabilities = 0x0001U;
+  return true;
+}
+
+bool ZigbeeHomeAutomationDevice::configureExtendedColorLight(
+    uint8_t endpoint, uint64_t ieeeAddress, uint16_t nwkAddress,
+    uint16_t panId, const ZigbeeBasicClusterConfig& basic,
+    uint16_t manufacturerCode, ZigbeeLogicalType logicalType) {
+  if (!configureDimmableLight(endpoint, ieeeAddress, nwkAddress, panId, basic,
+                              manufacturerCode, logicalType)) {
+    return false;
+  }
+
+  config_.endpointDescriptors[0].deviceId = kZigbeeDeviceIdExtendedColorLight;
+  config_.endpointDescriptors[0].inputClusters = extendedColorLightInputClusters_;
+  config_.endpointDescriptors[0].inputClusterCount =
+      static_cast<uint8_t>(sizeof(extendedColorLightInputClusters_) /
+                           sizeof(extendedColorLightInputClusters_[0]));
+  config_.endpointDescriptors[0].outputClusters = extendedColorLightOutputClusters_;
+  config_.endpointDescriptors[0].outputClusterCount = 0U;
+  config_.color.enabled = true;
+  config_.color.hueSaturationSupported = true;
+  config_.color.colorTemperatureSupported = true;
+  config_.color.currentHue = 0U;
+  config_.color.currentSaturation = 0xFEU;
+  config_.color.currentColorTemperatureMireds = 370U;
+  config_.color.minColorTemperatureMireds = 153U;
+  config_.color.maxColorTemperatureMireds = 500U;
+  config_.color.colorMode = 0x02U;
+  config_.color.capabilities = 0x0011U;
   return true;
 }
 
 bool ZigbeeHomeAutomationDevice::configureTemperatureSensor(
     uint8_t endpoint, uint64_t ieeeAddress, uint16_t nwkAddress,
     uint16_t panId, const ZigbeeBasicClusterConfig& basic,
-    uint16_t manufacturerCode) {
+    uint16_t manufacturerCode, ZigbeeLogicalType logicalType) {
   if (endpoint == 0U) {
     return false;
   }
@@ -4218,7 +4403,7 @@ bool ZigbeeHomeAutomationDevice::configureTemperatureSensor(
   identifyLastTickMs_ = 0U;
   leaveRequested_ = false;
   leaveRequestFlags_ = 0U;
-  config_.logicalType = ZigbeeLogicalType::kEndDevice;
+  config_.logicalType = logicalType;
   config_.manufacturerCode = manufacturerCode;
   config_.ieeeAddress = ieeeAddress;
   config_.nwkAddress = nwkAddress;
@@ -4251,11 +4436,38 @@ bool ZigbeeHomeAutomationDevice::configureTemperatureSensor(
   config_.temperature.minMeasuredValueCentiDegrees = -4000;
   config_.temperature.maxMeasuredValueCentiDegrees = 12500;
   config_.temperature.toleranceCentiDegrees = 50U;
+  config_.humidity.enabled = false;
   config_.onOff.enabled = false;
   config_.level.enabled = false;
   config_.level.currentLevel = 0U;
   config_.level.minLevel = 1U;
   config_.level.maxLevel = 0xFEU;
+  config_.color.enabled = false;
+  return true;
+}
+
+bool ZigbeeHomeAutomationDevice::configureTemperatureHumiditySensor(
+    uint8_t endpoint, uint64_t ieeeAddress, uint16_t nwkAddress,
+    uint16_t panId, const ZigbeeBasicClusterConfig& basic,
+    uint16_t manufacturerCode, ZigbeeLogicalType logicalType) {
+  if (!configureTemperatureSensor(endpoint, ieeeAddress, nwkAddress, panId,
+                                  basic, manufacturerCode, logicalType)) {
+    return false;
+  }
+
+  config_.endpointDescriptors[0].inputClusters =
+      temperatureHumiditySensorInputClusters_;
+  config_.endpointDescriptors[0].inputClusterCount =
+      static_cast<uint8_t>(sizeof(temperatureHumiditySensorInputClusters_) /
+                           sizeof(temperatureHumiditySensorInputClusters_[0]));
+  config_.endpointDescriptors[0].outputClusters =
+      temperatureHumiditySensorOutputClusters_;
+  config_.endpointDescriptors[0].outputClusterCount = 0U;
+  config_.humidity.enabled = true;
+  config_.humidity.measuredValueCentiPercent = 4500U;
+  config_.humidity.minMeasuredValueCentiPercent = 0U;
+  config_.humidity.maxMeasuredValueCentiPercent = 10000U;
+  config_.humidity.toleranceCentiPercent = 200U;
   return true;
 }
 
@@ -4281,6 +4493,21 @@ bool ZigbeeHomeAutomationDevice::setTemperatureState(
   config_.temperature.maxMeasuredValueCentiDegrees =
       maxMeasuredValueCentiDegrees;
   config_.temperature.toleranceCentiDegrees = toleranceCentiDegrees;
+  return true;
+}
+
+bool ZigbeeHomeAutomationDevice::setHumidityState(
+    uint16_t measuredValueCentiPercent, uint16_t minMeasuredValueCentiPercent,
+    uint16_t maxMeasuredValueCentiPercent, uint16_t toleranceCentiPercent) {
+  if (!config_.humidity.enabled) {
+    return false;
+  }
+  config_.humidity.measuredValueCentiPercent = measuredValueCentiPercent;
+  config_.humidity.minMeasuredValueCentiPercent =
+      minMeasuredValueCentiPercent;
+  config_.humidity.maxMeasuredValueCentiPercent =
+      maxMeasuredValueCentiPercent;
+  config_.humidity.toleranceCentiPercent = toleranceCentiPercent;
   return true;
 }
 
@@ -4316,6 +4543,35 @@ bool ZigbeeHomeAutomationDevice::setLevel(uint8_t level) {
   if (config_.onOff.enabled) {
     config_.onOff.on = (level > 0U);
   }
+  invalidateCurrentScene(&config_);
+  return true;
+}
+
+bool ZigbeeHomeAutomationDevice::setColorHueSaturation(uint8_t hue,
+                                                       uint8_t saturation) {
+  if (!config_.color.enabled || !config_.color.hueSaturationSupported) {
+    return false;
+  }
+  config_.color.currentHue = hue;
+  config_.color.currentSaturation = saturation;
+  config_.color.colorMode = 0x00U;
+  invalidateCurrentScene(&config_);
+  return true;
+}
+
+bool ZigbeeHomeAutomationDevice::setColorTemperatureMireds(
+    uint16_t colorTemperatureMireds) {
+  if (!config_.color.enabled || !config_.color.colorTemperatureSupported) {
+    return false;
+  }
+  if (colorTemperatureMireds < config_.color.minColorTemperatureMireds) {
+    colorTemperatureMireds = config_.color.minColorTemperatureMireds;
+  }
+  if (colorTemperatureMireds > config_.color.maxColorTemperatureMireds) {
+    colorTemperatureMireds = config_.color.maxColorTemperatureMireds;
+  }
+  config_.color.currentColorTemperatureMireds = colorTemperatureMireds;
+  config_.color.colorMode = 0x02U;
   invalidateCurrentScene(&config_);
   return true;
 }
@@ -4365,6 +4621,10 @@ bool ZigbeeHomeAutomationDevice::onOff() const { return config_.onOff.on; }
 
 uint8_t ZigbeeHomeAutomationDevice::level() const {
   return config_.level.currentLevel;
+}
+
+uint8_t ZigbeeHomeAutomationDevice::macCapabilityFlags() const {
+  return buildMacCapabilityFlags(config_);
 }
 
 const ZigbeeHomeAutomationConfig& ZigbeeHomeAutomationDevice::config() const {
@@ -5038,6 +5298,31 @@ bool ZigbeeHomeAutomationDevice::makeAttributeValueForCluster(
           break;
       }
       break;
+    case kZigbeeClusterRelativeHumidityMeasurement:
+      if (!config_.humidity.enabled) {
+        break;
+      }
+      switch (attributeId) {
+        case 0x0000U:
+          outValue->type = ZigbeeZclDataType::kUint16;
+          outValue->data.u16 = config_.humidity.measuredValueCentiPercent;
+          return true;
+        case 0x0001U:
+          outValue->type = ZigbeeZclDataType::kUint16;
+          outValue->data.u16 = config_.humidity.minMeasuredValueCentiPercent;
+          return true;
+        case 0x0002U:
+          outValue->type = ZigbeeZclDataType::kUint16;
+          outValue->data.u16 = config_.humidity.maxMeasuredValueCentiPercent;
+          return true;
+        case 0x0003U:
+          outValue->type = ZigbeeZclDataType::kUint16;
+          outValue->data.u16 = config_.humidity.toleranceCentiPercent;
+          return true;
+        default:
+          break;
+      }
+      break;
     case kZigbeeClusterOnOff:
       if (!config_.onOff.enabled) {
         break;
@@ -5064,6 +5349,58 @@ bool ZigbeeHomeAutomationDevice::makeAttributeValueForCluster(
         case 0x0003U:
           outValue->type = ZigbeeZclDataType::kUint8;
           outValue->data.u8 = config_.level.maxLevel;
+          return true;
+        default:
+          break;
+      }
+      break;
+    case kZigbeeClusterColorControl:
+      if (!config_.color.enabled) {
+        break;
+      }
+      switch (attributeId) {
+        case 0x0000U:
+          if (!config_.color.hueSaturationSupported) {
+            break;
+          }
+          outValue->type = ZigbeeZclDataType::kUint8;
+          outValue->data.u8 = config_.color.currentHue;
+          return true;
+        case 0x0001U:
+          if (!config_.color.hueSaturationSupported) {
+            break;
+          }
+          outValue->type = ZigbeeZclDataType::kUint8;
+          outValue->data.u8 = config_.color.currentSaturation;
+          return true;
+        case 0x0007U:
+          if (!config_.color.colorTemperatureSupported) {
+            break;
+          }
+          outValue->type = ZigbeeZclDataType::kUint16;
+          outValue->data.u16 = config_.color.currentColorTemperatureMireds;
+          return true;
+        case 0x0008U:
+          outValue->type = ZigbeeZclDataType::kUint8;
+          outValue->data.u8 = config_.color.colorMode;
+          return true;
+        case 0x400AU:
+          outValue->type = ZigbeeZclDataType::kBitmap16;
+          outValue->data.u16 = config_.color.capabilities;
+          return true;
+        case 0x400BU:
+          if (!config_.color.colorTemperatureSupported) {
+            break;
+          }
+          outValue->type = ZigbeeZclDataType::kUint16;
+          outValue->data.u16 = config_.color.minColorTemperatureMireds;
+          return true;
+        case 0x400CU:
+          if (!config_.color.colorTemperatureSupported) {
+            break;
+          }
+          outValue->type = ZigbeeZclDataType::kUint16;
+          outValue->data.u16 = config_.color.maxColorTemperatureMireds;
           return true;
         default:
           break;
@@ -6241,6 +6578,68 @@ bool ZigbeeHomeAutomationDevice::handleZclRequest(
         handled = false;
         break;
     }
+    if (invalidField) {
+      return ZigbeeCodec::buildDefaultResponse(
+          frame.transactionSequence, true, frame.commandId,
+          kZclStatusInvalidField, outFrame, outLength);
+    }
+    if (!handled) {
+      if (frame.disableDefaultResponse) {
+        *outLength = 0U;
+        return true;
+      }
+      return ZigbeeCodec::buildDefaultResponse(
+          frame.transactionSequence, true, frame.commandId,
+          kZclStatusUnsupportedClusterCommand, outFrame, outLength);
+    }
+    if (frame.disableDefaultResponse) {
+      *outLength = 0U;
+      return true;
+    }
+    return ZigbeeCodec::buildDefaultResponse(frame.transactionSequence, true,
+                                             frame.commandId,
+                                             kZclStatusSuccess, outFrame,
+                                             outLength);
+  }
+
+  if (clusterId == kZigbeeClusterColorControl && config_.color.enabled) {
+    bool handled = true;
+    bool invalidField = false;
+    switch (frame.commandId) {
+      case kColorControlCommandMoveToHue:
+        if (frame.payloadLength < 4U || !config_.color.hueSaturationSupported) {
+          invalidField = true;
+          break;
+        }
+        (void)setColorHueSaturation(frame.payload[0], config_.color.currentSaturation);
+        break;
+      case kColorControlCommandMoveToSaturation:
+        if (frame.payloadLength < 3U || !config_.color.hueSaturationSupported) {
+          invalidField = true;
+          break;
+        }
+        (void)setColorHueSaturation(config_.color.currentHue, frame.payload[0]);
+        break;
+      case kColorControlCommandMoveToHueAndSaturation:
+        if (frame.payloadLength < 4U || !config_.color.hueSaturationSupported) {
+          invalidField = true;
+          break;
+        }
+        (void)setColorHueSaturation(frame.payload[0], frame.payload[1]);
+        break;
+      case kColorControlCommandMoveToColorTemperature:
+        if (frame.payloadLength < 4U ||
+            !config_.color.colorTemperatureSupported) {
+          invalidField = true;
+          break;
+        }
+        (void)setColorTemperatureMireds(readLe16(frame.payload));
+        break;
+      default:
+        handled = false;
+        break;
+    }
+
     if (invalidField) {
       return ZigbeeCodec::buildDefaultResponse(
           frame.transactionSequence, true, frame.commandId,

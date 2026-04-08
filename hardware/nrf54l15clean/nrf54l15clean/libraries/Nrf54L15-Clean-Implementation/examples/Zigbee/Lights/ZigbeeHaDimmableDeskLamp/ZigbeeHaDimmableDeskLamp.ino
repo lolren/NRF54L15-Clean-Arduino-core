@@ -8,7 +8,7 @@
 #include "zigbee_stack.h"
 
 #if defined(NRF54L15_CLEAN_ZIGBEE_ENABLED) && (NRF54L15_CLEAN_ZIGBEE_ENABLED == 0)
-#error "Enable Tools > Zigbee Support to build ZigbeeHaDimmableLightJoinable."
+#error "Enable Tools > Zigbee Support to build ZigbeeHaDimmableDeskLamp."
 #endif
 
 #ifndef NRF54L15_CLEAN_ZIGBEE_CHANNEL
@@ -43,6 +43,22 @@
 #define NRF54L15_CLEAN_ZIGBEE_ASSOCIATION_POLL_RETRY_DELAY_MS 40UL
 #endif
 
+#ifndef NRF54L15_CLEAN_ZIGBEE_INTERVIEW_GRACE_MS
+#define NRF54L15_CLEAN_ZIGBEE_INTERVIEW_GRACE_MS 90000UL
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_INTERVIEW_DIRECT_LISTEN_US
+#define NRF54L15_CLEAN_ZIGBEE_INTERVIEW_DIRECT_LISTEN_US 25000UL
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_ROUTER_IDLE_LISTEN_US
+#define NRF54L15_CLEAN_ZIGBEE_ROUTER_IDLE_LISTEN_US 4000UL
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_ROUTER_DEVICE
+#define NRF54L15_CLEAN_ZIGBEE_ROUTER_DEVICE 1
+#endif
+
 #ifndef NRF54L15_CLEAN_ZIGBEE_PARENT_POLL_FOLLOWUP_LISTEN_US
 #define NRF54L15_CLEAN_ZIGBEE_PARENT_POLL_FOLLOWUP_LISTEN_US 40000UL
 #endif
@@ -73,6 +89,10 @@
 
 #ifndef NRF54L15_CLEAN_ZIGBEE_TRUST_CENTER_IEEE
 #define NRF54L15_CLEAN_ZIGBEE_TRUST_CENTER_IEEE 0ULL
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_REQUIRE_PAN_COORDINATOR
+#define NRF54L15_CLEAN_ZIGBEE_REQUIRE_PAN_COORDINATOR 0
 #endif
 
 #ifndef NRF54L15_CLEAN_ZIGBEE_PREFERRED_EXTENDED_PAN_ID
@@ -106,7 +126,7 @@
 #endif
 
 #ifndef NRF54L15_CLEAN_ZIGBEE_BASIC_SW_BUILD_ID
-#define NRF54L15_CLEAN_ZIGBEE_BASIC_SW_BUILD_ID "0.3.6"
+#define NRF54L15_CLEAN_ZIGBEE_BASIC_SW_BUILD_ID "0.3.8"
 #endif
 
 using namespace xiao_nrf54l15;
@@ -145,6 +165,7 @@ static bool& g_haveAlternateNetworkKey = g_network.haveAlternateNetworkKey;
 static bool g_savedOnOffState = false;
 static uint8_t g_savedLevelState = 0x80U;
 static bool g_pwmReady = false;
+static uint32_t g_interviewGraceUntilMs = 0U;
 static uint64_t& g_trustCenterIeee = g_network.trustCenterIeee;
 static ZigbeePreconfiguredKeyMode& g_preconfiguredKeyMode =
     g_network.preconfiguredKeyMode;
@@ -220,8 +241,14 @@ static constexpr uint32_t kApsAckTimeoutMs = 900U;
 static constexpr uint32_t kRecentInboundApsWindowMs = 4000U;
 static constexpr uint8_t kApsAckRetryLimit = 2U;
 static constexpr uint32_t kParentRxTurnaroundDelayUs = 6000U;
-static constexpr uint8_t kSleepyEndDeviceCapability = 0xC4U;
+static constexpr ZigbeeLogicalType kDeviceLogicalType =
+    (NRF54L15_CLEAN_ZIGBEE_ROUTER_DEVICE != 0)
+        ? ZigbeeLogicalType::kRouter
+        : ZigbeeLogicalType::kEndDevice;
 
+void armInterviewGraceWindow();
+bool interviewGraceActive(uint32_t nowMs);
+void maybeReceiveDirectInterviewTraffic(uint32_t nowMs);
 void clearPendingApsAck();
 void clearPendingApsAckSlot(uint8_t slot);
 void clearRecentInboundAps();
@@ -261,7 +288,8 @@ ZigbeeCommissioningPolicy commissioningPolicy() {
       (NRF54L15_CLEAN_ZIGBEE_ALLOW_DEMO_PLAINTEXT_TC_CMDS == 0);
   policy.requireEncryptedSwitchKey =
       (NRF54L15_CLEAN_ZIGBEE_ALLOW_DEMO_PLAINTEXT_TC_CMDS == 0);
-  policy.requirePanCoordinator = false;
+  policy.requirePanCoordinator =
+      (NRF54L15_CLEAN_ZIGBEE_REQUIRE_PAN_COORDINATOR != 0);
   policy.requireUniqueTrustCenterForRejoin = true;
   return policy;
 }
@@ -273,6 +301,12 @@ void refreshCommissioningState() {
   g_network.defaultShort = kLightShort;
   g_network.coordinatorShort = kCoordinatorShort;
 }
+
+bool usesParentPolling() {
+  return ZigbeeCommissioning::usesParentPolling(g_network);
+}
+
+uint8_t currentMacCapabilityFlags() { return g_device.macCapabilityFlags(); }
 
 bool loadInstallCodeLinkKey(uint8_t outKey[16]) {
 #if NRF54L15_CLEAN_ZIGBEE_USE_INSTALL_CODE
@@ -404,7 +438,8 @@ void configureDeviceForCurrentNetwork() {
   basic.swBuildId = NRF54L15_CLEAN_ZIGBEE_BASIC_SW_BUILD_ID;
   basic.powerSource = 0x01U;
   g_device.configureDimmableLight(kLocalEndpoint, kIeeeAddress, g_localShort,
-                                  g_panId, basic, 0x0000U);
+                                  g_panId, basic, 0x0000U,
+                                  kDeviceLogicalType);
   applyReportingState();
   applyBindingState();
   (void)g_device.setLevel(g_savedLevelState);
@@ -415,7 +450,7 @@ bool persistState() {
   refreshCommissioningState();
   ZigbeePersistentState state{};
   ZigbeeCommissioning::populatePersistentState(
-      g_network, kIeeeAddress, ZigbeeLogicalType::kEndDevice,
+      g_network, kIeeeAddress, g_device.config().logicalType,
       g_device.config().manufacturerCode, &state);
   state.onOffState = g_device.onOff();
   state.levelState = g_device.level();
@@ -450,7 +485,8 @@ void restoreState() {
                                                 commissioningPolicy(),
                                                 kPreferredChannel,
                                                 kPreferredPanId, kLightShort,
-                                                kCoordinatorShort);
+                                                kCoordinatorShort,
+                                                kDeviceLogicalType);
 
   ZigbeePersistentState state{};
   if (g_store.load(&state) && state.ieeeAddress == kIeeeAddress) {
@@ -1192,10 +1228,11 @@ bool waitForAssociationResponse(uint16_t* outAssignedShort) {
 bool performJoin() {
   refreshCommissioningState();
   if (!ZigbeeCommissioning::performJoin(g_radio, &g_macSequence, kIeeeAddress,
-                                        kSleepyEndDeviceCapability,
+                                        currentMacCapabilityFlags(),
                                         &g_network)) {
     return false;
   }
+  armInterviewGraceWindow();
   configureDeviceForCurrentNetwork();
   applyLedState();
   persistState();
@@ -1205,10 +1242,11 @@ bool performJoin() {
 bool performSecureRejoin() {
   refreshCommissioningState();
   if (!ZigbeeCommissioning::performSecureRejoin(
-          g_radio, &g_macSequence, kIeeeAddress,
-          kSleepyEndDeviceCapability, &g_network)) {
+          g_radio, &g_macSequence, kIeeeAddress, currentMacCapabilityFlags(),
+          &g_network)) {
     return false;
   }
+  armInterviewGraceWindow();
   configureDeviceForCurrentNetwork();
   applyLedState();
   persistState();
@@ -1444,6 +1482,39 @@ void maybeSendScheduledReports(uint32_t nowMs) {
   }
 }
 
+void armInterviewGraceWindow() {
+  g_interviewGraceUntilMs =
+      millis() + static_cast<uint32_t>(NRF54L15_CLEAN_ZIGBEE_INTERVIEW_GRACE_MS);
+}
+
+bool interviewGraceActive(uint32_t nowMs) {
+  return static_cast<int32_t>(g_interviewGraceUntilMs - nowMs) > 0;
+}
+
+void maybeReceiveDirectInterviewTraffic(uint32_t nowMs) {
+  const bool directCommissioning =
+      g_network.state == ZigbeeCommissioningState::kWaitingTransportKey ||
+      g_network.state == ZigbeeCommissioningState::kWaitingUpdateDevice ||
+      g_network.state == ZigbeeCommissioningState::kRejoinVerify;
+  if (!(interviewGraceActive(nowMs) ||
+        (!usesParentPolling() && (directCommissioning || g_joined)))) {
+    return;
+  }
+
+  const uint32_t listenUs =
+      interviewGraceActive(nowMs)
+          ? static_cast<uint32_t>(
+                NRF54L15_CLEAN_ZIGBEE_INTERVIEW_DIRECT_LISTEN_US)
+          : static_cast<uint32_t>(
+                NRF54L15_CLEAN_ZIGBEE_ROUTER_IDLE_LISTEN_US);
+
+  ZigbeeFrame frame{};
+  if (!g_radio.receive(&frame, listenUs, 350000UL)) {
+    return;
+  }
+  processIncomingFrame(frame);
+}
+
 void handleSerialCommands() {
   while (Serial.available() > 0) {
     const int ch = Serial.read();
@@ -1556,7 +1627,7 @@ void setup() {
   restoreState();
 
   const bool ok = g_radio.begin(g_channel, 8);
-  Serial.print("\r\nZigbeeHaDimmableLightJoinable start\r\n");
+  Serial.print("\r\nZigbeeHaDimmableDeskLamp start\r\n");
   Serial.print("radio=");
   Serial.print(ok ? "OK" : "FAIL");
   Serial.print(" pwm=");
@@ -1582,6 +1653,9 @@ void loop() {
   const uint32_t now = millis();
   const ZigbeeCommissioningAction action =
       ZigbeeCommissioning::nextAction(&g_network, now);
+  const uint32_t effectivePollIntervalMs =
+      interviewGraceActive(now) ? min(g_parentPollIntervalMs, 250UL)
+                                : g_parentPollIntervalMs;
   if (!g_joined) {
     clearPendingApsAck();
     clearRecentInboundAps();
@@ -1623,6 +1697,7 @@ void loop() {
       Serial.print(g_localShort, HEX);
       Serial.print("\r\n");
     }
+    maybeReceiveDirectInterviewTraffic(now);
     delay(1);
     return;
   }
@@ -1639,10 +1714,11 @@ void loop() {
     Serial.print("\r\n");
   }
 
-  if ((now - g_lastPollMs) >= g_parentPollIntervalMs) {
+  if (usesParentPolling() && (now - g_lastPollMs) >= effectivePollIntervalMs) {
     g_lastPollMs = now;
     pollCoordinator();
   }
+  maybeReceiveDirectInterviewTraffic(now);
   maybeExpirePendingApsAck(now);
   maybeSendScheduledReports(now);
   applyLedState();

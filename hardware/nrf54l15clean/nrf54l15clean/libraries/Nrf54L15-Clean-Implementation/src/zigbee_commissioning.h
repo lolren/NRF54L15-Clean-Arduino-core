@@ -112,6 +112,7 @@ struct ZigbeeBeaconCandidate {
 
 struct ZigbeeEndDeviceCommonState {
   ZigbeeCommissioningPolicy policy{};
+  ZigbeeLogicalType logicalType = ZigbeeLogicalType::kEndDevice;
   uint8_t preferredChannel = 11U;
   uint16_t preferredPanId = 0U;
   uint16_t defaultShort = 0U;
@@ -200,7 +201,8 @@ class ZigbeeCommissioning {
       ZigbeeEndDeviceCommonState* state,
       const ZigbeeCommissioningPolicy& policy, uint8_t preferredChannel,
       uint16_t preferredPanId, uint16_t defaultShort,
-      uint16_t coordinatorShort);
+      uint16_t coordinatorShort,
+      ZigbeeLogicalType logicalType = ZigbeeLogicalType::kEndDevice);
   static void restoreEndDeviceState(ZigbeeEndDeviceCommonState* state,
                                     const ZigbeePersistentState& persistent,
                                     uint64_t localIeee);
@@ -222,6 +224,7 @@ class ZigbeeCommissioning {
   static void requestSecureRejoin(ZigbeeEndDeviceCommonState* state);
   static ZigbeeAcceptedLeaveDisposition applyAcceptedLeaveRequest(
       ZigbeeEndDeviceCommonState* state, uint8_t leaveFlags);
+  static bool usesParentPolling(const ZigbeeEndDeviceCommonState& state);
   static bool shouldPollParent(const ZigbeeEndDeviceCommonState& state);
   static bool shouldRequestEndDeviceTimeout(
       const ZigbeeEndDeviceCommonState& state);

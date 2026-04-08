@@ -8,7 +8,7 @@
 #include "zigbee_stack.h"
 
 #if defined(NRF54L15_CLEAN_ZIGBEE_ENABLED) && (NRF54L15_CLEAN_ZIGBEE_ENABLED == 0)
-#error "Enable Tools > Zigbee Support to build ZigbeeHaTemperatureBatterySensor."
+#error "Enable Tools > Zigbee Support to build ZigbeeHaTemperatureHumiditySensor."
 #endif
 
 #ifndef NRF54L15_CLEAN_ZIGBEE_CHANNEL
@@ -83,38 +83,42 @@
 #define NRF54L15_CLEAN_ZIGBEE_COORDINATOR_SHORT 0x0000U
 #endif
 
-#ifndef NRF54L15_CLEAN_ZIGBEE_LOCAL_SHORT
-#define NRF54L15_CLEAN_ZIGBEE_LOCAL_SHORT 0x7E11U
-#endif
-
-#ifndef NRF54L15_CLEAN_ZIGBEE_LOCAL_IEEE
-#define NRF54L15_CLEAN_ZIGBEE_LOCAL_IEEE 0ULL
-#endif
-
-#ifndef NRF54L15_CLEAN_ZIGBEE_INSTALL_CODE_BYTES
-#define NRF54L15_CLEAN_ZIGBEE_INSTALL_CODE_BYTES                                  \
-  0x10U, 0xACU, 0x03U, 0x01U, 0x24U, 0x4BU, 0x00U, 0xCAU, 0xFEU, 0xBAU, 0xBEU, \
-      0x10U, 0x21U, 0x32U, 0x43U, 0x54U, 0xDCU, 0xB9U
-#endif
-
 #ifndef NRF54L15_CLEAN_ZIGBEE_BASIC_MANUFACTURER_NAME
 #define NRF54L15_CLEAN_ZIGBEE_BASIC_MANUFACTURER_NAME "CleanCore"
 #endif
 
 #ifndef NRF54L15_CLEAN_ZIGBEE_BASIC_MODEL_IDENTIFIER
-#define NRF54L15_CLEAN_ZIGBEE_BASIC_MODEL_IDENTIFIER "X54-TEMP-BATT"
+#define NRF54L15_CLEAN_ZIGBEE_BASIC_MODEL_IDENTIFIER "X54-TEMP-HUM"
 #endif
 
 #ifndef NRF54L15_CLEAN_ZIGBEE_BASIC_SW_BUILD_ID
 #define NRF54L15_CLEAN_ZIGBEE_BASIC_SW_BUILD_ID "0.3.8"
 #endif
 
+#ifndef NRF54L15_CLEAN_ZIGBEE_INCLUDE_HUMIDITY
+#define NRF54L15_CLEAN_ZIGBEE_INCLUDE_HUMIDITY 1
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_LOCAL_SHORT
+#define NRF54L15_CLEAN_ZIGBEE_LOCAL_SHORT 0x7E31U
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_LOCAL_IEEE
+#define NRF54L15_CLEAN_ZIGBEE_LOCAL_IEEE 0xA4B1000000000031ULL
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_INSTALL_CODE_BYTES
+#define NRF54L15_CLEAN_ZIGBEE_INSTALL_CODE_BYTES                                  \
+  0x10U, 0xACU, 0x31U, 0x01U, 0x24U, 0x4BU, 0x00U, 0x31U, 0x53U, 0x75U, 0x97U, \
+      0xB9U, 0xDBU, 0xFDU, 0x1FU, 0x41U, 0x84U, 0xE6U
+#endif
+
 #ifndef NRF54L15_CLEAN_ZIGBEE_TEMP_REPORT_MIN_S
-#define NRF54L15_CLEAN_ZIGBEE_TEMP_REPORT_MIN_S 10U
+#define NRF54L15_CLEAN_ZIGBEE_TEMP_REPORT_MIN_S 5U
 #endif
 
 #ifndef NRF54L15_CLEAN_ZIGBEE_TEMP_REPORT_MAX_S
-#define NRF54L15_CLEAN_ZIGBEE_TEMP_REPORT_MAX_S 120U
+#define NRF54L15_CLEAN_ZIGBEE_TEMP_REPORT_MAX_S 60U
 #endif
 
 #ifndef NRF54L15_CLEAN_ZIGBEE_TEMP_REPORT_CHANGE_CENTI
@@ -126,7 +130,7 @@
 #endif
 
 #ifndef NRF54L15_CLEAN_ZIGBEE_BATTERY_REPORT_MAX_S
-#define NRF54L15_CLEAN_ZIGBEE_BATTERY_REPORT_MAX_S 600U
+#define NRF54L15_CLEAN_ZIGBEE_BATTERY_REPORT_MAX_S 300U
 #endif
 
 #ifndef NRF54L15_CLEAN_ZIGBEE_BATTERY_VOLTAGE_REPORT_CHANGE
@@ -135,6 +139,18 @@
 
 #ifndef NRF54L15_CLEAN_ZIGBEE_BATTERY_PERCENT_REPORT_CHANGE
 #define NRF54L15_CLEAN_ZIGBEE_BATTERY_PERCENT_REPORT_CHANGE 2U
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_HUMIDITY_REPORT_MIN_S
+#define NRF54L15_CLEAN_ZIGBEE_HUMIDITY_REPORT_MIN_S 10U
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_HUMIDITY_REPORT_MAX_S
+#define NRF54L15_CLEAN_ZIGBEE_HUMIDITY_REPORT_MAX_S 120U
+#endif
+
+#ifndef NRF54L15_CLEAN_ZIGBEE_HUMIDITY_REPORT_CHANGE_CENTI
+#define NRF54L15_CLEAN_ZIGBEE_HUMIDITY_REPORT_CHANGE_CENTI 100U
 #endif
 
 #ifndef NRF54L15_CLEAN_ZIGBEE_SENSOR_SAMPLE_INTERVAL_MS
@@ -368,6 +384,15 @@ void applyDefaultReporting() {
                                   NRF54L15_CLEAN_ZIGBEE_BATTERY_REPORT_MAX_S),
                               static_cast<uint32_t>(
                                   NRF54L15_CLEAN_ZIGBEE_BATTERY_PERCENT_REPORT_CHANGE));
+#if NRF54L15_CLEAN_ZIGBEE_INCLUDE_HUMIDITY
+  g_device.configureReporting(
+      kZigbeeClusterRelativeHumidityMeasurement, 0x0000U,
+      ZigbeeZclDataType::kUint16,
+      static_cast<uint16_t>(NRF54L15_CLEAN_ZIGBEE_HUMIDITY_REPORT_MIN_S),
+      static_cast<uint16_t>(NRF54L15_CLEAN_ZIGBEE_HUMIDITY_REPORT_MAX_S),
+      static_cast<uint32_t>(
+          NRF54L15_CLEAN_ZIGBEE_HUMIDITY_REPORT_CHANGE_CENTI));
+#endif
 }
 
 void applyReportingState() {
@@ -413,6 +438,24 @@ void sampleSensors() {
     g_device.setTemperatureState(static_cast<int16_t>(tempMilliC / 10L), -4000,
                                  12500, 50U);
   }
+
+#if NRF54L15_CLEAN_ZIGBEE_INCLUDE_HUMIDITY
+  // The board exposes on-chip temperature but not a dedicated humidity sensor.
+  // This demo synthesizes a stable room-humidity signal so HA reporting,
+  // interviews, and sleepy-device behavior can be exercised end-to-end.
+  const int32_t tempCentiDegrees = tempMilliC / 10L;
+  int32_t humidityCentiPercent = 4600L;
+  humidityCentiPercent -= (tempCentiDegrees - 2200L) / 4L;
+  humidityCentiPercent += static_cast<int32_t>((millis() / 5000UL) % 11UL) * 12L;
+  if (humidityCentiPercent < 2500L) {
+    humidityCentiPercent = 2500L;
+  }
+  if (humidityCentiPercent > 7500L) {
+    humidityCentiPercent = 7500L;
+  }
+  g_device.setHumidityState(static_cast<uint16_t>(humidityCentiPercent), 0U,
+                            10000U, 200U);
+#endif
 
   int32_t vbatMv = 0;
   uint8_t vbatPercent = 0;
@@ -464,8 +507,13 @@ void configureDeviceForCurrentNetwork() {
   basic.modelIdentifier = NRF54L15_CLEAN_ZIGBEE_BASIC_MODEL_IDENTIFIER;
   basic.swBuildId = NRF54L15_CLEAN_ZIGBEE_BASIC_SW_BUILD_ID;
   basic.powerSource = 0x03U;
+#if NRF54L15_CLEAN_ZIGBEE_INCLUDE_HUMIDITY
+  g_device.configureTemperatureHumiditySensor(
+      kLocalEndpoint, kIeeeAddress, g_localShort, g_panId, basic, 0x0000U);
+#else
   g_device.configureTemperatureSensor(kLocalEndpoint, kIeeeAddress, g_localShort,
                                       g_panId, basic, 0x0000U);
+#endif
   applyReportingState();
   applyBindingState();
   sampleSensors();
@@ -1596,7 +1644,7 @@ void setup() {
   restoreState();
 
   const bool ok = g_radio.begin(g_channel, 8);
-  Serial.print("\r\nZigbeeHaTemperatureBatterySensor start\r\n");
+  Serial.print("\r\nZigbeeHaTemperatureHumiditySensor start\r\n");
   Serial.print("radio=");
   Serial.print(ok ? "OK" : "FAIL");
   Serial.print(" preferred_channel=");

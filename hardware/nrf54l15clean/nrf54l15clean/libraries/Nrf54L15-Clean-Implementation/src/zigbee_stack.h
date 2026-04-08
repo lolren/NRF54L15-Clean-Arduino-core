@@ -14,9 +14,12 @@ constexpr uint16_t kZigbeeClusterIdentify = 0x0003U;
 constexpr uint16_t kZigbeeClusterGroups = 0x0004U;
 constexpr uint16_t kZigbeeClusterScenes = 0x0005U;
 constexpr uint16_t kZigbeeClusterOnOff = 0x0006U;
+constexpr uint16_t kZigbeeClusterOnOffSwitchConfiguration = 0x0007U;
 constexpr uint16_t kZigbeeClusterLevelControl = 0x0008U;
 constexpr uint16_t kZigbeeClusterOtaUpgrade = 0x0019U;
+constexpr uint16_t kZigbeeClusterColorControl = 0x0300U;
 constexpr uint16_t kZigbeeClusterTemperatureMeasurement = 0x0402U;
+constexpr uint16_t kZigbeeClusterRelativeHumidityMeasurement = 0x0405U;
 
 constexpr uint8_t kZigbeeIdentifyEffectBlink = 0x00U;
 constexpr uint8_t kZigbeeIdentifyEffectBreathe = 0x01U;
@@ -68,6 +71,10 @@ constexpr uint8_t kZigbeeMgmtLeaveFlagRejoin = 0x80U;
 
 constexpr uint16_t kZigbeeDeviceIdOnOffLight = 0x0100U;
 constexpr uint16_t kZigbeeDeviceIdDimmableLight = 0x0101U;
+constexpr uint16_t kZigbeeDeviceIdColorDimmableLight = 0x0102U;
+constexpr uint16_t kZigbeeDeviceIdOnOffLightSwitch = 0x0103U;
+constexpr uint16_t kZigbeeDeviceIdDimmerSwitch = 0x0104U;
+constexpr uint16_t kZigbeeDeviceIdExtendedColorLight = 0x010DU;
 constexpr uint16_t kZigbeeDeviceIdTemperatureSensor = 0x0302U;
 
 constexpr uint8_t kZigbeeApsDeliveryUnicast = 0x00U;
@@ -535,6 +542,14 @@ struct ZigbeeTemperatureMeasurementState {
   uint16_t toleranceCentiDegrees = 0U;
 };
 
+struct ZigbeeRelativeHumidityMeasurementState {
+  bool enabled = false;
+  uint16_t measuredValueCentiPercent = 0U;
+  uint16_t minMeasuredValueCentiPercent = 0U;
+  uint16_t maxMeasuredValueCentiPercent = 0U;
+  uint16_t toleranceCentiPercent = 0U;
+};
+
 struct ZigbeeOnOffState {
   bool enabled = false;
   bool on = false;
@@ -551,6 +566,19 @@ struct ZigbeeLevelControlState {
   uint8_t currentLevel = 0U;
   uint8_t minLevel = 1U;
   uint8_t maxLevel = 0xFEU;
+};
+
+struct ZigbeeColorControlState {
+  bool enabled = false;
+  bool hueSaturationSupported = false;
+  bool colorTemperatureSupported = false;
+  uint8_t currentHue = 0U;
+  uint8_t currentSaturation = 0U;
+  uint16_t currentColorTemperatureMireds = 370U;
+  uint16_t minColorTemperatureMireds = 153U;
+  uint16_t maxColorTemperatureMireds = 500U;
+  uint8_t colorMode = 0x00U;
+  uint16_t capabilities = 0U;
 };
 
 struct ZigbeeGroupEntry {
@@ -615,11 +643,13 @@ struct ZigbeeHomeAutomationConfig {
   ZigbeeBasicClusterConfig basic{};
   ZigbeePowerConfigurationState power{};
   ZigbeeTemperatureMeasurementState temperature{};
+  ZigbeeRelativeHumidityMeasurementState humidity{};
   ZigbeeIdentifyState identify{};
   ZigbeeGroupsState groups{};
   ZigbeeScenesState scenes{};
   ZigbeeOnOffState onOff{};
   ZigbeeLevelControlState level{};
+  ZigbeeColorControlState color{};
   ZigbeeBindingEntry bindings[8] = {};
 };
 
@@ -973,15 +1003,44 @@ class ZigbeeHomeAutomationDevice {
   bool configureOnOffLight(uint8_t endpoint, uint64_t ieeeAddress,
                            uint16_t nwkAddress, uint16_t panId,
                            const ZigbeeBasicClusterConfig& basic,
-                           uint16_t manufacturerCode = 0U);
+                           uint16_t manufacturerCode = 0U,
+                           ZigbeeLogicalType logicalType =
+                               ZigbeeLogicalType::kEndDevice);
+  bool configureOnOffLightSwitch(uint8_t endpoint, uint64_t ieeeAddress,
+                                 uint16_t nwkAddress, uint16_t panId,
+                                 const ZigbeeBasicClusterConfig& basic,
+                                 uint16_t manufacturerCode = 0U,
+                                 ZigbeeLogicalType logicalType =
+                                     ZigbeeLogicalType::kEndDevice);
   bool configureDimmableLight(uint8_t endpoint, uint64_t ieeeAddress,
                               uint16_t nwkAddress, uint16_t panId,
                               const ZigbeeBasicClusterConfig& basic,
-                              uint16_t manufacturerCode = 0U);
+                              uint16_t manufacturerCode = 0U,
+                              ZigbeeLogicalType logicalType =
+                                  ZigbeeLogicalType::kEndDevice);
+  bool configureColorDimmableLight(uint8_t endpoint, uint64_t ieeeAddress,
+                                   uint16_t nwkAddress, uint16_t panId,
+                                   const ZigbeeBasicClusterConfig& basic,
+                                   uint16_t manufacturerCode = 0U,
+                                   ZigbeeLogicalType logicalType =
+                                       ZigbeeLogicalType::kEndDevice);
+  bool configureExtendedColorLight(uint8_t endpoint, uint64_t ieeeAddress,
+                                   uint16_t nwkAddress, uint16_t panId,
+                                   const ZigbeeBasicClusterConfig& basic,
+                                   uint16_t manufacturerCode = 0U,
+                                   ZigbeeLogicalType logicalType =
+                                       ZigbeeLogicalType::kEndDevice);
   bool configureTemperatureSensor(uint8_t endpoint, uint64_t ieeeAddress,
                                   uint16_t nwkAddress, uint16_t panId,
                                   const ZigbeeBasicClusterConfig& basic,
-                                  uint16_t manufacturerCode = 0U);
+                                  uint16_t manufacturerCode = 0U,
+                                  ZigbeeLogicalType logicalType =
+                                      ZigbeeLogicalType::kEndDevice);
+  bool configureTemperatureHumiditySensor(
+      uint8_t endpoint, uint64_t ieeeAddress, uint16_t nwkAddress,
+      uint16_t panId, const ZigbeeBasicClusterConfig& basic,
+      uint16_t manufacturerCode = 0U,
+      ZigbeeLogicalType logicalType = ZigbeeLogicalType::kEndDevice);
 
   bool setBatteryStatus(uint8_t batteryVoltageDecivolts,
                         uint8_t batteryPercentageRemainingHalf);
@@ -989,14 +1048,21 @@ class ZigbeeHomeAutomationDevice {
                            int16_t minMeasuredValueCentiDegrees,
                            int16_t maxMeasuredValueCentiDegrees,
                            uint16_t toleranceCentiDegrees);
+  bool setHumidityState(uint16_t measuredValueCentiPercent,
+                        uint16_t minMeasuredValueCentiPercent,
+                        uint16_t maxMeasuredValueCentiPercent,
+                        uint16_t toleranceCentiPercent);
   bool setOnOff(bool on);
   bool setLevel(uint8_t level);
+  bool setColorHueSaturation(uint8_t hue, uint8_t saturation);
+  bool setColorTemperatureMireds(uint16_t colorTemperatureMireds);
   void updateIdentify(uint32_t nowMs);
   bool identifying() const;
   uint16_t identifyTimeSeconds() const;
   uint8_t identifyEffect() const;
   bool onOff() const;
   uint8_t level() const;
+  uint8_t macCapabilityFlags() const;
   const ZigbeeHomeAutomationConfig& config() const;
 
   bool handleZdoRequest(uint16_t clusterId, const uint8_t* request,
@@ -1134,10 +1200,18 @@ class ZigbeeHomeAutomationDevice {
   ZigbeeHomeAutomationConfig config_;
   uint16_t onOffLightInputClusters_[5];
   uint16_t onOffLightOutputClusters_[1];
+  uint16_t onOffLightSwitchInputClusters_[6];
+  uint16_t onOffLightSwitchOutputClusters_[4];
   uint16_t dimmableLightInputClusters_[6];
   uint16_t dimmableLightOutputClusters_[1];
+  uint16_t colorLightInputClusters_[7];
+  uint16_t colorLightOutputClusters_[1];
+  uint16_t extendedColorLightInputClusters_[7];
+  uint16_t extendedColorLightOutputClusters_[1];
   uint16_t temperatureSensorInputClusters_[4];
   uint16_t temperatureSensorOutputClusters_[1];
+  uint16_t temperatureHumiditySensorInputClusters_[5];
+  uint16_t temperatureHumiditySensorOutputClusters_[1];
   ZigbeeReportingConfiguration reporting_[8];
   ZigbeeReportingRuntimeState reportingState_[8];
   uint32_t identifyLastTickMs_ = 0U;
