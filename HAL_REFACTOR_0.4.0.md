@@ -24,19 +24,23 @@ Completed:
 - generic support helpers have been split into
   `src/nrf54l15_hal_support.cpp` with declarations in
   `src/nrf54l15_hal_support_internal.h`
-- native NUS host regression still passes after the split
-
-Temporary cleanup note:
-
-- the old support block in `nrf54l15_hal.cpp` is currently wrapped out with
-  `#if 0` as a mechanical transition step
-- next pass should delete that dead block entirely once the new split remains
-  stable
+- the old duplicated support block has been removed from `nrf54l15_hal.cpp`
+- `spimPrescaler()` now rejects invalid zero-input requests instead of silently
+  defaulting them to `1 MHz`
+- native NUS host regression still passes after the split and helper cleanup:
+  `.build/v040_hal_refactor_ble_nus_runtime/summary.json`
+- Zigbee sleepy button still joins and interviews against Zigbee2MQTT on the
+  Home Assistant box at `192.168.1.100`:
+  `.build/v040_zigbee_sleepy_button_ha_validation/summary.txt`
+- local coordinator + sleepy button runtime still shows join/action traffic on
+  the two connected nRF54 boards:
+  `.build/v040_zigbee_sleepy_button_local_validation/button.log`
+  `.build/v040_zigbee_sleepy_button_local_validation/coord.log`
 
 ## Planned follow-up
 
 1. Tighten invalid-argument handling in peripheral helpers such as
-   `spimPrescaler()`.
+   timer/PWM helpers and other silent fallback paths.
 2. Audit one-time init and ownership transitions outside the BLE-specific
    critical helpers.
 3. Start carving the HAL into focused translation units:

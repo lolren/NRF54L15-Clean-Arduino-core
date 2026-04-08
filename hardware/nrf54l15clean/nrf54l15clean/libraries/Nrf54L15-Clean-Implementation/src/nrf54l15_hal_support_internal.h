@@ -16,7 +16,14 @@ void clearEvent(uint32_t base, uint32_t eventOffset);
 bool waitForNonZero(volatile uint32_t* reg, uint32_t spinLimit);
 bool tryAllocateHighestSetBit(uint32_t mask, uint8_t* outBit);
 
+bool bleHfxoRunning();
+bool grtcSyscounterReady(NRF_GRTC_Type* grtc);
+uint64_t readGrtcCounterPreserveActive(NRF_GRTC_Type* grtc);
+void ensureGrtcReady(NRF_GRTC_Type* grtc);
+uint64_t readGrtcCounter(NRF_GRTC_Type* grtc);
+
 void ensureLfxoRunning();
+void busyWaitApproxUs(uint32_t us);
 void programSystemOffWake(uint32_t delayUs);
 
 int32_t adcRawToMilliVolts(int16_t raw, AdcResolution resolution,

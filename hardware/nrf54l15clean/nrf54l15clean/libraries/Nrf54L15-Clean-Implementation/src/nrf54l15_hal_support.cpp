@@ -79,6 +79,13 @@ bool lfclkStartAlreadyRequested(NRF_CLOCK_Type* clock, uint32_t expectedSrcCopy)
   return currentSrc == expectedSrcCopy;
 }
 
+bool restoreGrtcActiveAfterRead(NRF_GRTC_Type* grtc) {
+  const uint32_t active =
+      NRF54L15_GRTC_SYSCOUNTER(grtc).ACTIVE & GRTC_SYSCOUNTER_ACTIVE_ACTIVE_Msk;
+  return active == (GRTC_SYSCOUNTER_ACTIVE_ACTIVE_NotActive
+                    << GRTC_SYSCOUNTER_ACTIVE_ACTIVE_Pos);
+}
+
 void waitForSystemOffWakeLatch() {
   const uint32_t waitUs =
       (static_cast<uint32_t>(kSystemOffTimeoutLfclk) * 1000000UL) /
@@ -279,6 +286,116 @@ bool tryAllocateHighestSetBit(uint32_t mask, uint8_t* outBit) {
   return true;
 }
 
+bool bleHfxoRunning() {
+  return (((NRF_CLOCK->XO.STAT & CLOCK_XO_STAT_STATE_Msk) >>
+           CLOCK_XO_STAT_STATE_Pos) == CLOCK_XO_STAT_STATE_Running);
+}
+
+bool grtcSyscounterReady(NRF_GRTC_Type* grtc) {
+  if (grtc == nullptr) {
+    return false;
+  }
+
+  (void)NRF54L15_GRTC_SYSCOUNTER(grtc).SYSCOUNTERL;
+  __asm volatile("dsb 0xF" ::: "memory");
+  const uint32_t high = NRF54L15_GRTC_SYSCOUNTER(grtc).SYSCOUNTERH;
+  return ((high & GRTC_SYSCOUNTER_SYSCOUNTERH_BUSY_Msk) >>
+          GRTC_SYSCOUNTER_SYSCOUNTERH_BUSY_Pos) ==
+         GRTC_SYSCOUNTER_SYSCOUNTERH_BUSY_Ready;
+}
+
+uint64_t readGrtcCounterPreserveActive(NRF_GRTC_Type* grtc) {
+  if (grtc == nullptr) {
+    return 0ULL;
+  }
+
+  const bool restoreActive = restoreGrtcActiveAfterRead(grtc);
+  if (restoreActive) {
+    grtc->TASKS_START = GRTC_TASKS_START_TASKS_START_Trigger;
+    __asm volatile("dsb 0xF" ::: "memory");
+    NRF54L15_GRTC_SYSCOUNTER(grtc).ACTIVE =
+        (GRTC_SYSCOUNTER_ACTIVE_ACTIVE_Active
+         << GRTC_SYSCOUNTER_ACTIVE_ACTIVE_Pos);
+    __asm volatile("dsb 0xF" ::: "memory");
+    while (!grtcSyscounterReady(grtc)) {
+      __asm volatile("nop");
+    }
+  }
+
+  uint64_t value = 0ULL;
+  for (uint8_t i = 0; i < 32U; ++i) {
+    const uint32_t hi0 = NRF54L15_GRTC_SYSCOUNTER(grtc).SYSCOUNTERH;
+    const uint32_t lo = NRF54L15_GRTC_SYSCOUNTER(grtc).SYSCOUNTERL;
+    const uint32_t hi1 = NRF54L15_GRTC_SYSCOUNTER(grtc).SYSCOUNTERH;
+
+    if ((hi0 & GRTC_SYSCOUNTER_SYSCOUNTERH_BUSY_Msk) != 0U ||
+        (hi1 & GRTC_SYSCOUNTER_SYSCOUNTERH_BUSY_Msk) != 0U ||
+        (hi1 & GRTC_SYSCOUNTER_SYSCOUNTERH_OVERFLOW_Msk) != 0U) {
+      continue;
+    }
+
+    const uint32_t high0 = hi0 & GRTC_SYSCOUNTER_SYSCOUNTERH_VALUE_Msk;
+    const uint32_t high1 = hi1 & GRTC_SYSCOUNTER_SYSCOUNTERH_VALUE_Msk;
+    if (high0 != high1) {
+      continue;
+    }
+
+    value = (static_cast<uint64_t>(high1) << 32U) | static_cast<uint64_t>(lo);
+    break;
+  }
+
+  if (value == 0ULL) {
+    const uint32_t hi = NRF54L15_GRTC_SYSCOUNTER(grtc).SYSCOUNTERH &
+                        GRTC_SYSCOUNTER_SYSCOUNTERH_VALUE_Msk;
+    const uint32_t lo = NRF54L15_GRTC_SYSCOUNTER(grtc).SYSCOUNTERL;
+    value = (static_cast<uint64_t>(hi) << 32U) | static_cast<uint64_t>(lo);
+  }
+
+  if (restoreActive) {
+    NRF54L15_GRTC_SYSCOUNTER(grtc).ACTIVE =
+        (GRTC_SYSCOUNTER_ACTIVE_ACTIVE_NotActive
+         << GRTC_SYSCOUNTER_ACTIVE_ACTIVE_Pos);
+    __asm volatile("dsb 0xF" ::: "memory");
+  }
+
+  return value;
+}
+
+void ensureGrtcReady(NRF_GRTC_Type* grtc) {
+  if (grtc == nullptr) {
+    return;
+  }
+
+  const bool restoreActive = restoreGrtcActiveAfterRead(grtc);
+  if (!restoreActive && grtcSyscounterReady(grtc)) {
+    return;
+  }
+
+  grtc->TASKS_START = GRTC_TASKS_START_TASKS_START_Trigger;
+  __asm volatile("dsb 0xF" ::: "memory");
+  if (restoreActive) {
+    NRF54L15_GRTC_SYSCOUNTER(grtc).ACTIVE =
+        (GRTC_SYSCOUNTER_ACTIVE_ACTIVE_Active
+         << GRTC_SYSCOUNTER_ACTIVE_ACTIVE_Pos);
+    __asm volatile("dsb 0xF" ::: "memory");
+  }
+
+  while (!grtcSyscounterReady(grtc)) {
+    __asm volatile("nop");
+  }
+
+  if (restoreActive) {
+    NRF54L15_GRTC_SYSCOUNTER(grtc).ACTIVE =
+        (GRTC_SYSCOUNTER_ACTIVE_ACTIVE_NotActive
+         << GRTC_SYSCOUNTER_ACTIVE_ACTIVE_Pos);
+    __asm volatile("dsb 0xF" ::: "memory");
+  }
+}
+
+uint64_t readGrtcCounter(NRF_GRTC_Type* grtc) {
+  return readGrtcCounterPreserveActive(grtc);
+}
+
 void ensureLfxoRunning() {
   NRF_CLOCK_Type* const clock = NRF_CLOCK;
   if (clock == nullptr) {
@@ -379,8 +496,8 @@ uint32_t saadcPselValue(const Pin& pin) {
 }
 
 uint32_t spimPrescaler(uint32_t coreHz, uint32_t targetHz, uint32_t minDivisor) {
-  if (targetHz == 0U) {
-    targetHz = 1000000U;
+  if (coreHz == 0U || targetHz == 0U || minDivisor == 0U) {
+    return 0U;
   }
 
   uint32_t divisor = coreHz / targetHz;
