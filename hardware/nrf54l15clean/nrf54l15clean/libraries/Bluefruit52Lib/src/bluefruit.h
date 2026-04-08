@@ -1011,6 +1011,9 @@ class AdafruitBluefruit {
 
   bool begin(uint8_t prph_count = 1, uint8_t central_count = 0);
 
+  ble_gap_addr_t getAddr();
+  uint8_t getAddr(uint8_t mac[6]);
+  bool setAddr(ble_gap_addr_t* gap_addr);
   void setName(const char* str);
   uint8_t getName(char* name, uint16_t bufsize);
   bool setTxPower(int8_t power);
@@ -1025,6 +1028,7 @@ class AdafruitBluefruit {
   uint8_t getConnectedHandles(uint16_t* hdl_list, uint8_t max_count) const;
   uint16_t connHandle() const;
   bool disconnect(uint16_t conn_hdl);
+  uint16_t getMaxMtu(uint8_t role);
   void setRssiCallback(void (*fp)(uint16_t conn_hdl, int8_t rssi));
   BLEConnection* Connection(uint16_t conn_hdl);
 
@@ -1034,6 +1038,7 @@ class AdafruitBluefruit {
   uint16_t appearance_;
   bool auto_conn_led_;
   uint32_t conn_led_interval_ms_;
+  uint16_t periph_requested_mtu_;
   uint16_t central_conn_interval_;
   uint16_t central_supervision_timeout_;
   uint16_t central_requested_mtu_;

@@ -3838,6 +3838,7 @@ AdafruitBluefruit::AdafruitBluefruit()
       appearance_(0),
       auto_conn_led_(false),
       conn_led_interval_ms_(500UL),
+      periph_requested_mtu_(23U),
       central_conn_interval_(24U),
       central_supervision_timeout_(200U),
       central_requested_mtu_(23U),
@@ -3879,6 +3880,13 @@ void AdafruitBluefruit::configPrphConn(uint16_t mtu_max, uint16_t event_len,
                                        uint8_t hvn_qsize, uint8_t wrcmd_qsize) {
   (void)hvn_qsize;
   (void)wrcmd_qsize;
+  uint16_t requested_mtu = mtu_max;
+  if (requested_mtu < 23U) {
+    requested_mtu = 23U;
+  } else if (requested_mtu > 247U) {
+    requested_mtu = 247U;
+  }
+  periph_requested_mtu_ = requested_mtu;
   applyPeripheralConnHint(Periph, mtu_max, event_len);
 }
 
@@ -3962,6 +3970,39 @@ bool AdafruitBluefruit::begin(uint8_t prph_count, uint8_t central_count) {
   return manager().begin(prph_count, central_count);
 }
 
+ble_gap_addr_t AdafruitBluefruit::getAddr() {
+  ble_gap_addr_t gap_addr{};
+  xiao_nrf54l15::BleAddressType type = xiao_nrf54l15::BleAddressType::kPublic;
+  if (manager().radio().getDeviceAddress(gap_addr.addr, &type)) {
+    gap_addr.addr_type = (type == xiao_nrf54l15::BleAddressType::kRandomStatic)
+                             ? BLE_GAP_ADDR_TYPE_RANDOM_STATIC
+                             : BLE_GAP_ADDR_TYPE_PUBLIC;
+  }
+  return gap_addr;
+}
+
+uint8_t AdafruitBluefruit::getAddr(uint8_t mac[6]) {
+  if (mac == nullptr) {
+    return BLE_GAP_ADDR_TYPE_PUBLIC;
+  }
+
+  ble_gap_addr_t gap_addr = getAddr();
+  memcpy(mac, gap_addr.addr, sizeof(gap_addr.addr));
+  return gap_addr.addr_type;
+}
+
+bool AdafruitBluefruit::setAddr(ble_gap_addr_t* gap_addr) {
+  if (gap_addr == nullptr) {
+    return false;
+  }
+
+  const xiao_nrf54l15::BleAddressType type =
+      (gap_addr->addr_type == BLE_GAP_ADDR_TYPE_RANDOM_STATIC)
+          ? xiao_nrf54l15::BleAddressType::kRandomStatic
+          : xiao_nrf54l15::BleAddressType::kPublic;
+  return manager().radio().setDeviceAddress(gap_addr->addr, type);
+}
+
 void AdafruitBluefruit::setName(const char* str) {
   if (str == nullptr) {
     return;
@@ -4032,6 +4073,10 @@ bool AdafruitBluefruit::disconnect(uint16_t conn_hdl) {
     return false;
   }
   return manager().radio().disconnect();
+}
+
+uint16_t AdafruitBluefruit::getMaxMtu(uint8_t role) {
+  return (role == BLE_GAP_ROLE_PERIPH) ? periph_requested_mtu_ : central_requested_mtu_;
 }
 
 void AdafruitBluefruit::setRssiCallback(void (*fp)(uint16_t conn_hdl, int8_t rssi)) {
