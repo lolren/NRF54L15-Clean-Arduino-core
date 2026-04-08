@@ -24,23 +24,50 @@ Completed:
 - generic support helpers have been split into
   `src/nrf54l15_hal_support.cpp` with declarations in
   `src/nrf54l15_hal_support_internal.h`
+- board-specific RF path, antenna, and VBAT policy now live in
+  `src/nrf54l15_hal_board_policy.cpp` with internal accessors in
+  `src/nrf54l15_hal_board_policy_internal.h`
 - the old duplicated support block has been removed from `nrf54l15_hal.cpp`
 - `spimPrescaler()` now rejects invalid zero-input requests instead of silently
   defaulting them to `1 MHz`
 - native NUS host regression still passes after the split and helper cleanup:
   `.build/v040_hal_refactor_ble_nus_runtime/summary.json`
+- native NUS host regression also passes after the board-policy split:
+  `.build/v040_final_host_nus_runtime/summary.json`
+- board-to-board BLE still works on the two connected nRF54 boards with the
+  stock Bluefruit `central_notify` / `notify_peripheral` pair; the central
+  continued printing `[Notify] count=...` after connect and discovery
 - Zigbee sleepy button still joins and interviews against Zigbee2MQTT on the
   Home Assistant box at `192.168.1.100`:
   `.build/v040_zigbee_sleepy_button_ha_validation/summary.txt`
+- Zigbee sleepy button still joins and interviews against Zigbee2MQTT after
+  the board-policy split:
+  `.build/v040_final_zigbee_ha_clean/summary.txt`
 - local coordinator + sleepy button runtime still shows join/action traffic on
   the two connected nRF54 boards:
   `.build/v040_zigbee_sleepy_button_local_validation/button.log`
   `.build/v040_zigbee_sleepy_button_local_validation/coord.log`
+- local coordinator + sleepy button runtime still shows join/action traffic
+  after the board-policy split:
+  `.build/v040_final_zigbee_local_clean/button.log`
+  `.build/v040_final_zigbee_local_clean/coord.log`
+
+Validation notes:
+
+- the sleepy-button validators still have a few false negatives
+  (`device_announce_ok`, `action_report_seen`, `alive_joined`, `sleep_cycle_logged`)
+  because they key off narrow log text or expect the full report set before the
+  script exits
+- the runtime logs themselves still show the important behavior:
+  - local button: `button_action cmd=toggle`, `boot_report onoff=OK`,
+    `state joined=yes mode=joined`
+  - HA/Zigbee2MQTT: `join_ok=true`, `transport_key_ok=true`,
+    `z2m_interview_success=true`, `ha_discovery_seen=true`
 
 ## Planned follow-up
 
-1. Tighten invalid-argument handling in peripheral helpers such as
-   timer/PWM helpers and other silent fallback paths.
+1. Tighten invalid-argument handling in remaining peripheral helpers and sweep
+   the remaining silent fallback paths.
 2. Audit one-time init and ownership transitions outside the BLE-specific
    critical helpers.
 3. Start carving the HAL into focused translation units:
@@ -51,5 +78,5 @@ Completed:
    - `hal_ble_radio.cpp`
    - `hal_ble_gatt.cpp`
    - `hal_ble_bond.cpp`
-   - `hal_board_policy.cpp`
+   - `hal_board_policy.cpp`  (started with the internal board-policy unit)
 4. Re-run BLE and Zigbee regressions after each structural step.

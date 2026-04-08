@@ -1,4 +1,5 @@
 #include "nrf54l15_hal.h"
+#include "nrf54l15_hal_board_policy_internal.h"
 #include "nrf54l15_hal_support_internal.h"
 
 #include <Arduino.h>
@@ -584,17 +585,6 @@ GpioPull gpioPullFromQdecInputPull(QdecInputPull pull) {
       return GpioPull::kDisabled;
   }
 }
-
-#if defined(NRF54L15_CLEAN_ANTENNA_EXTERNAL)
-constexpr xiao_nrf54l15::BoardAntennaPath kDefaultBoardAntennaPath =
-    xiao_nrf54l15::BoardAntennaPath::kExternal;
-#else
-constexpr xiao_nrf54l15::BoardAntennaPath kDefaultBoardAntennaPath =
-    xiao_nrf54l15::BoardAntennaPath::kCeramic;
-#endif
-
-xiao_nrf54l15::BoardAntennaPath g_boardDesiredAntennaPath =
-    kDefaultBoardAntennaPath;
 
 constexpr uint32_t kBleAccessAddress = 0x8E89BED6UL;
 constexpr uint32_t kBleAdvertisingCrcInit = 0x555555UL;
@@ -6331,148 +6321,6 @@ bool Saadc::sampleMilliVoltsSigned(int32_t* outMilliVolts,
   return true;
 }
 
-xiao_nrf54l15_antenna_t boardAntennaSelectionFromPath(BoardAntennaPath path) {
-  xiao_nrf54l15_antenna_t selection = XIAO_NRF54L15_ANTENNA_CERAMIC;
-  switch (path) {
-    case BoardAntennaPath::kExternal:
-      selection = XIAO_NRF54L15_ANTENNA_EXTERNAL;
-      break;
-    case BoardAntennaPath::kControlHighImpedance:
-      selection = XIAO_NRF54L15_ANTENNA_CONTROL_HIZ;
-      break;
-    case BoardAntennaPath::kCeramic:
-    default:
-      selection = XIAO_NRF54L15_ANTENNA_CERAMIC;
-      break;
-  }
-  return selection;
-}
-
-bool BoardControl::setAntennaPath(BoardAntennaPath path) {
-  const xiao_nrf54l15_antenna_t selection = boardAntennaSelectionFromPath(path);
-  xiaoNrf54l15SetAntenna(selection);
-  g_boardDesiredAntennaPath = path;
-  return true;
-}
-
-BoardAntennaPath BoardControl::antennaPath() {
-  switch (xiaoNrf54l15GetAntenna()) {
-    case XIAO_NRF54L15_ANTENNA_EXTERNAL:
-      return BoardAntennaPath::kExternal;
-    case XIAO_NRF54L15_ANTENNA_CONTROL_HIZ:
-      return BoardAntennaPath::kControlHighImpedance;
-    case XIAO_NRF54L15_ANTENNA_CERAMIC:
-    default:
-      return BoardAntennaPath::kCeramic;
-  }
-}
-
-bool BoardControl::setImuMicEnabled(bool enable) {
-  return arduinoXiaoNrf54l15SetImuMicEnable(enable ? 1U : 0U) != 0U;
-}
-
-bool BoardControl::imuMicEnabled() {
-  return arduinoXiaoNrf54l15GetImuMicEnable() != 0U;
-}
-
-bool BoardControl::setRfSwitchPowerEnabled(bool enable) {
-  return arduinoXiaoNrf54l15SetRfSwitchPower(enable ? 1U : 0U) != 0U;
-}
-
-bool BoardControl::rfSwitchPowerEnabled() {
-  return arduinoXiaoNrf54l15GetRfSwitchPower() != 0U;
-}
-
-bool BoardControl::enableRfPath(BoardAntennaPath path) {
-  return setRfSwitchPowerEnabled(true) && setAntennaPath(path);
-}
-
-bool BoardControl::collapseRfPathIdle(BoardAntennaPath idlePath,
-                                      bool disablePower) {
-  xiaoNrf54l15SetAntenna(boardAntennaSelectionFromPath(idlePath));
-  const bool pathOk = true;
-  if (!disablePower) {
-    return pathOk;
-  }
-  return setRfSwitchPowerEnabled(false) && pathOk;
-}
-
-void BoardControl::enterLowestPowerState() {
-  xiaoNrf54l15EnterLowestPowerBoardState();
-}
-
-bool BoardControl::setBatterySenseEnabled(bool enable) {
-  if (!Gpio::configure(kPinVbatEnable, GpioDirection::kOutput,
-                       GpioPull::kDisabled)) {
-    return false;
-  }
-  return Gpio::write(kPinVbatEnable, enable);
-}
-
-bool BoardControl::sampleBatteryMilliVolts(int32_t* outMilliVolts,
-                                           uint32_t settleDelayUs,
-                                           uint32_t spinLimit) {
-  if (outMilliVolts == nullptr) {
-    return false;
-  }
-
-  Saadc adc(nrf54l15::SAADC_BASE);
-  if (!adc.begin(AdcResolution::k12bit, spinLimit)) {
-    return false;
-  }
-
-  bool ok = setBatterySenseEnabled(true);
-  if (ok && settleDelayUs > 0U) {
-    delayMicroseconds(settleDelayUs);
-  }
-
-  int32_t halfMilliVolts = 0;
-  if (ok) {
-    ok = adc.configureSingleEnded(0U, kPinVbatSense, AdcGain::k2over8) &&
-         adc.sampleMilliVolts(&halfMilliVolts, spinLimit);
-  }
-
-  const bool disableOk = setBatterySenseEnabled(false);
-  adc.end();
-
-  if (!ok || !disableOk) {
-    return false;
-  }
-
-  *outMilliVolts = halfMilliVolts * 2;
-  return true;
-}
-
-bool BoardControl::sampleBatteryPercent(uint8_t* outPercent,
-                                        int32_t emptyMilliVolts,
-                                        int32_t fullMilliVolts,
-                                        uint32_t settleDelayUs,
-                                        uint32_t spinLimit) {
-  if (outPercent == nullptr || fullMilliVolts <= emptyMilliVolts) {
-    return false;
-  }
-
-  int32_t batteryMv = 0;
-  if (!sampleBatteryMilliVolts(&batteryMv, settleDelayUs, spinLimit)) {
-    return false;
-  }
-
-  if (batteryMv <= emptyMilliVolts) {
-    *outPercent = 0U;
-    return true;
-  }
-  if (batteryMv >= fullMilliVolts) {
-    *outPercent = 100U;
-    return true;
-  }
-
-  const int32_t span = fullMilliVolts - emptyMilliVolts;
-  const int32_t scaled = (batteryMv - emptyMilliVolts) * 100 + (span / 2);
-  const int32_t percent = scaled / span;
-  *outPercent = static_cast<uint8_t>(percent);
-  return true;
-}
-
 PowerManager::PowerManager(uint32_t powerBase, uint32_t resetBase,
                            uint32_t regulatorsBase)
     : power_(reinterpret_cast<NRF_POWER_Type*>(static_cast<uintptr_t>(powerBase))),
@@ -7897,7 +7745,7 @@ bool ZigbeeRadio::begin(uint8_t channel, int8_t txPowerDbm) {
     return false;
   }
   const bool rfPathWasPowered = BoardControl::rfSwitchPowerEnabled();
-  if (!BoardControl::enableRfPath(g_boardDesiredAntennaPath)) {
+  if (!BoardControl::enableRfPath(boardDesiredAntennaPath())) {
     initialized_ = false;
     rfPathOwnedByZigbee_ = false;
     return false;
@@ -9397,10 +9245,10 @@ BleRadio::BleRadio(uint32_t radioBase, uint32_t ficrBase)
 bool BleRadio::ensureRfPathActiveForBle() {
   const bool rfPowerEnabled = BoardControl::rfSwitchPowerEnabled();
   const BoardAntennaPath currentPath = BoardControl::antennaPath();
-  if (rfPowerEnabled && currentPath == g_boardDesiredAntennaPath) {
+  if (rfPowerEnabled && currentPath == boardDesiredAntennaPath()) {
     return true;
   }
-  if (!BoardControl::enableRfPath(g_boardDesiredAntennaPath)) {
+  if (!BoardControl::enableRfPath(boardDesiredAntennaPath())) {
     return false;
   }
   if (!rfPowerEnabled) {
@@ -9505,7 +9353,7 @@ void BleRadio::restoreBackgroundAdvertisingRfPathRestoreState() {
                                            true);
   }
 
-  g_boardDesiredAntennaPath = backgroundAdvertisingRestoreRfPath_;
+  setBoardDesiredAntennaPath(backgroundAdvertisingRestoreRfPath_);
   rfPathOwnedByBle_ = false;
   backgroundAdvertisingRestoreRfPathValid_ = false;
 }
@@ -9563,9 +9411,9 @@ bool BleRadio::begin(int8_t txPowerDbm) {
 
   // Observe the current RF switch routing without overriding sketch-managed
   // GPIO state. Tools > Antenna still sets the startup default in initVariant().
-  g_boardDesiredAntennaPath = BoardControl::antennaPath();
+  setBoardDesiredAntennaPath(BoardControl::antennaPath());
   externalAntenna_ =
-      (g_boardDesiredAntennaPath == BoardAntennaPath::kExternal);
+      (boardDesiredAntennaPath() == BoardAntennaPath::kExternal);
   initBleGrtc();
   // Re-assert GRTC ACTIVE on every begin(); initBleGrtc() is one-shot but
   // end() clears it so subsequent begin() calls must restore it explicitly.
