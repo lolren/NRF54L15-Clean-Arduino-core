@@ -313,14 +313,11 @@ Practical result on the XIAO board from local validation:
 - true `SYSTEM OFF` blink / burst-beacon paths: **tens of uA**
 - continuous low-power BLE with RF-switch duty-cycling: about **0.1 mA**
 - long-sleep phone-tuned beaconing is now available as `BleAdvertiserPhoneBeacon15s`, which keeps the payload in the primary ADV packet, avoids scan-response dependence, and spends most of its cycle in true `SYSTEM OFF`
-- `delay()` / `yield()` low-power idle path: low-power `delay()` again uses the
-  XIAO board-collapse heuristic for long idle sleeps when the bridge is inactive,
-  while `yield()` stays board-state-neutral
+- `delay()` / `yield()` low-power idle path: both now stay board-state-neutral
+  in the normal Arduino path, so sketch-controlled rails such as `VBAT_EN`,
+  `RF_SW`, and `IMU_MIC_EN` remain asserted across `delay()` in WFI mode
 
-On the XIAO low-power profile, plain `delay()` now restores the old
-save/collapse/restore behavior for sufficiently long sleeps unless
-`NRF54L15_CLEAN_DELAY_KEEP_BOARD_STATE=1` is defined at build time.
-For the explicit always-collapse helper, use `delayLowPowerIdle(ms)`.
+For the explicit XIAO save/collapse/restore helper, use `delayLowPowerIdle(ms)`.
 
 That puts the `SYSTEM OFF` path in the same broad regime as the Zephyr result on this board.
 
