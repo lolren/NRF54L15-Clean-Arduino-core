@@ -28,6 +28,57 @@ constexpr float kSpeedOfLightMetersPerSecond = 299792458.0f;
 constexpr size_t kMaxCsChannels = 37U;
 constexpr size_t kMaxSlopePairs =
     (kMaxCsChannels * (kMaxCsChannels - 1U)) / 2U;
+constexpr size_t kMaxCsControllerStepSamples = 256U;
+constexpr uint8_t kCsChmapLen = 10U;
+constexpr uint8_t kAntennaId1 = 0x1U;
+constexpr uint8_t kAntennaId2 = 0x2U;
+constexpr uint8_t kAntennaId3 = 0x3U;
+constexpr uint8_t kAntennaId4 = 0x4U;
+constexpr size_t kBleCsStepHeaderLen = 3U;
+constexpr size_t kBleCsMode1StepLen = 6U;
+constexpr size_t kBleCsMode1SsRttStepLen = 14U;
+constexpr size_t kBleCsToneInfoLen = 4U;
+constexpr size_t kBleCsMode3StepBaseLen = 7U;
+constexpr size_t kBleCsMode3SsRttStepBaseLen = 15U;
+constexpr size_t kBleCsHciSubeventResultHeaderLen = 15U;
+constexpr size_t kBleCsHciSubeventResultContinueHeaderLen = 8U;
+constexpr size_t kBleCsHciReadRemoteCapsCompleteLen = 31U;
+constexpr size_t kBleCsHciReadRemoteCapsCompleteV2Len = 34U;
+constexpr size_t kBleCsHciSecurityEnableCompleteLen = 3U;
+constexpr size_t kBleCsHciConfigCompleteLen = 33U;
+constexpr size_t kBleCsHciProcedureEnableCompleteLen = 21U;
+
+struct BleCsControllerPhasePair {
+  bool failed = false;
+  bool localPresent = false;
+  bool peerPresent = false;
+  uint8_t channel = 0U;
+  BleCsIqSample local{};
+  BleCsIqSample peer{};
+  uint8_t localQuality = kBleCsToneQualityUnavailable;
+  uint8_t peerQuality = kBleCsToneQualityUnavailable;
+};
+
+struct BleCsControllerRttPair {
+  bool failed = false;
+  bool initiatorPresent = false;
+  bool reflectorPresent = false;
+  int16_t toaTodInitiator = kBleCsTimeDifferenceNotAvailable;
+  int16_t todToaReflector = kBleCsTimeDifferenceNotAvailable;
+};
+
+struct BleCsControllerBufferParseContext {
+  BleCsControllerPhasePair* phasePairs = nullptr;
+  size_t phaseCapacity = 0U;
+  size_t* phaseCount = nullptr;
+  size_t phaseCursor = 0U;
+  BleCsControllerRttPair* rttPairs = nullptr;
+  size_t rttCapacity = 0U;
+  size_t* rttCount = nullptr;
+  size_t rttCursor = 0U;
+  bool fillingPeer = false;
+  bool bufferRoleIsInitiator = false;
+};
 
 inline uint16_t readLe16(const uint8_t* data) {
   return static_cast<uint16_t>(data[0]) |
@@ -37,6 +88,53 @@ inline uint16_t readLe16(const uint8_t* data) {
 inline void writeLe16(uint8_t* data, uint16_t value) {
   data[0] = static_cast<uint8_t>(value & 0xFFU);
   data[1] = static_cast<uint8_t>((value >> 8U) & 0xFFU);
+}
+
+inline uint32_t readLe24(const uint8_t* data) {
+  return static_cast<uint32_t>(data[0]) |
+         (static_cast<uint32_t>(data[1]) << 8U) |
+         (static_cast<uint32_t>(data[2]) << 16U);
+}
+
+inline void writeLe24(uint8_t* data, uint32_t value) {
+  data[0] = static_cast<uint8_t>(value & 0xFFU);
+  data[1] = static_cast<uint8_t>((value >> 8U) & 0xFFU);
+  data[2] = static_cast<uint8_t>((value >> 16U) & 0xFFU);
+}
+
+bool decodeHciEventFrame(const uint8_t* packet,
+                         size_t packetLen,
+                         uint8_t* outEventCode,
+                         const uint8_t** outParams,
+                         size_t* outParamsLen) {
+  if (packet == nullptr || outEventCode == nullptr || outParams == nullptr ||
+      outParamsLen == nullptr) {
+    return false;
+  }
+
+  if (packetLen >= 3U && packet[0] == kBleHciPacketTypeEvent) {
+    const size_t paramsLen = packet[2U];
+    if (packetLen < (3U + paramsLen)) {
+      return false;
+    }
+    *outEventCode = packet[1U];
+    *outParams = packet + 3U;
+    *outParamsLen = paramsLen;
+    return true;
+  }
+
+  if (packetLen >= 2U) {
+    const size_t paramsLen = packet[1U];
+    if (packetLen < (2U + paramsLen)) {
+      return false;
+    }
+    *outEventCode = packet[0U];
+    *outParams = packet + 2U;
+    *outParamsLen = paramsLen;
+    return true;
+  }
+
+  return false;
 }
 
 inline int16_t readLe16Signed(const uint8_t* data) {
@@ -83,6 +181,12 @@ uint32_t accessAddressBase(uint32_t accessAddress) {
 
 uint32_t accessAddressPrefix(uint32_t accessAddress) {
   return ((accessAddress >> 24U) & 0xFFU);
+}
+
+inline void channelMapBitSetVal(uint8_t* channelMap, uint8_t bit, uint8_t value) {
+  channelMap[bit / 8U] = static_cast<uint8_t>(
+      (channelMap[bit / 8U] & ~static_cast<uint8_t>(1U << (bit % 8U))) |
+      ((value & 0x1U) << (bit % 8U)));
 }
 
 uint32_t txPowerRegFromDbm(int8_t dbm) {
@@ -380,7 +484,7 @@ bool fitWeightedLine(const float* freqsHz,
                      float* outIntercept) {
   if (freqsHz == nullptr || phases == nullptr || weights == nullptr ||
       outSlope == nullptr || outIntercept == nullptr || count < 2U ||
-      count > kMaxCsChannels) {
+      count > kMaxCsControllerStepSamples) {
     return false;
   }
 
@@ -440,6 +544,28 @@ bool estimateMedianAndMad(const float* values,
   return true;
 }
 
+bool estimateMedianAndMadWide(const float* values,
+                              size_t count,
+                              float* outMedian,
+                              float* outMad) {
+  if (values == nullptr || outMedian == nullptr || outMad == nullptr ||
+      count == 0U || count > kMaxCsControllerStepSamples) {
+    return false;
+  }
+
+  float scratch[kMaxCsControllerStepSamples] = {0.0f};
+  for (size_t i = 0U; i < count; ++i) {
+    scratch[i] = values[i];
+  }
+  const float median = medianInPlace(scratch, count);
+  for (size_t i = 0U; i < count; ++i) {
+    scratch[i] = fabsf(values[i] - median);
+  }
+  *outMedian = median;
+  *outMad = medianInPlace(scratch, count);
+  return true;
+}
+
 void sortPhaseSamplesWithQuality(float* freqsHz,
                                  float* phases,
                                  float* quality,
@@ -484,6 +610,289 @@ float toneQualityScore(const BleCsToneSample& local, const BleCsToneSample& peer
   return minMagnitude / denom;
 }
 
+float stepToneQualityScore(uint8_t localQuality, uint8_t peerQuality) {
+  auto scoreOne = [](uint8_t quality) -> float {
+    switch (quality) {
+      case kBleCsToneQualityHigh:
+        return 1.0f;
+      case kBleCsToneQualityMedium:
+        return 0.75f;
+      case kBleCsToneQualityLow:
+        return 0.25f;
+      case kBleCsToneQualityUnavailable:
+      default:
+        return 0.0f;
+    }
+  };
+  return fminf(scoreOne(localQuality), scoreOne(peerQuality));
+}
+
+bool controllerPhaseDistanceEstimate(const BleCsControllerPhasePair* pairs,
+                                     size_t pairCount,
+                                     BleCsEstimate* outEstimate) {
+  if (pairs == nullptr || outEstimate == nullptr || pairCount == 0U) {
+    return false;
+  }
+
+  float freqsHz[kMaxCsControllerStepSamples] = {0.0f};
+  float phases[kMaxCsControllerStepSamples] = {0.0f};
+  float quality[kMaxCsControllerStepSamples] = {0.0f};
+  size_t sampleCount = 0U;
+  for (size_t i = 0U; i < pairCount && sampleCount < kMaxCsControllerStepSamples; ++i) {
+    if (pairs[i].failed || !pairs[i].localPresent || !pairs[i].peerPresent ||
+        !validDataChannel(pairs[i].channel)) {
+      continue;
+    }
+    const float localI = static_cast<float>(pairs[i].local.i);
+    const float localQ = static_cast<float>(pairs[i].local.q);
+    const float peerI = static_cast<float>(pairs[i].peer.i);
+    const float peerQ = static_cast<float>(pairs[i].peer.q);
+    const float combI = (localI * peerI) - (localQ * peerQ);
+    const float combQ = (localI * peerQ) + (peerI * localQ);
+    freqsHz[sampleCount] =
+        (2400.0f + static_cast<float>(logicalChannelToFrequency(pairs[i].channel))) *
+        1000000.0f;
+    phases[sampleCount] = atan2f(combQ, combI);
+    quality[sampleCount] =
+        stepToneQualityScore(pairs[i].localQuality, pairs[i].peerQuality);
+    ++sampleCount;
+  }
+
+  outEstimate->totalToneChannels = static_cast<uint8_t>(
+      (sampleCount <= 255U) ? sampleCount : 255U);
+  if (sampleCount < 2U) {
+    return false;
+  }
+
+  sortPhaseSamplesWithQuality(freqsHz, phases, quality, sampleCount);
+  for (size_t i = 1U; i < sampleCount; ++i) {
+    const float prev = phases[i - 1U];
+    while ((phases[i] - prev) > kPi) {
+      phases[i] -= 2.0f * kPi;
+    }
+    while ((phases[i] - prev) < -kPi) {
+      phases[i] += 2.0f * kPi;
+    }
+  }
+
+  float medianQuality = 0.0f;
+  float qualityMad = 0.0f;
+  if (estimateMedianAndMadWide(quality, sampleCount, &medianQuality, &qualityMad)) {
+    outEstimate->medianToneQuality = medianQuality;
+  }
+
+  float slope = 0.0f;
+  float intercept = 0.0f;
+  if (!fitWeightedLine(freqsHz, phases, quality, sampleCount, &slope, &intercept)) {
+    return false;
+  }
+
+  float residuals[kMaxCsControllerStepSamples] = {0.0f};
+  float residualAccum = 0.0f;
+  for (size_t i = 0U; i < sampleCount; ++i) {
+    residuals[i] = phases[i] - (intercept + (slope * freqsHz[i]));
+    residualAccum += residuals[i] * residuals[i];
+  }
+
+  const float phaseDistance =
+      fabsf(-(kSpeedOfLightMetersPerSecond * slope) / (4.0f * kPi));
+  if (!isfinite(phaseDistance) || phaseDistance <= 0.0f) {
+    return false;
+  }
+
+  outEstimate->usedChannels = static_cast<uint8_t>(
+      (sampleCount <= 255U) ? sampleCount : 255U);
+  outEstimate->phaseSlopeDistanceMeters = phaseDistance;
+  outEstimate->distanceMeters = phaseDistance;
+  outEstimate->slopeRadPerHz = slope;
+  outEstimate->residualVariance = residualAccum / static_cast<float>(sampleCount);
+  return true;
+}
+
+bool controllerRttDistanceEstimate(const BleCsControllerRttPair* pairs,
+                                   size_t pairCount,
+                                   BleCsEstimate* outEstimate) {
+  if (pairs == nullptr || outEstimate == nullptr || pairCount == 0U) {
+    return false;
+  }
+
+  float rttDistances[kMaxCsControllerStepSamples] = {0.0f};
+  size_t rttCount = 0U;
+  for (size_t i = 0U; i < pairCount && rttCount < kMaxCsControllerStepSamples; ++i) {
+    if (pairs[i].failed || !pairs[i].initiatorPresent || !pairs[i].reflectorPresent) {
+      continue;
+    }
+    const int32_t roundTripHalfNs =
+        static_cast<int32_t>(pairs[i].toaTodInitiator) -
+        static_cast<int32_t>(pairs[i].todToaReflector);
+    if (roundTripHalfNs <= 0) {
+      continue;
+    }
+    const float tofNs = static_cast<float>(roundTripHalfNs) * 0.25f;
+    const float distance =
+        tofNs * (kSpeedOfLightMetersPerSecond / 1000000000.0f);
+    if (!isfinite(distance) || distance <= 0.0f) {
+      continue;
+    }
+    rttDistances[rttCount++] = distance;
+  }
+
+  if (rttCount == 0U) {
+    return false;
+  }
+
+  float median = 0.0f;
+  float mad = 0.0f;
+  if (!estimateMedianAndMadWide(rttDistances, rttCount, &median, &mad)) {
+    return false;
+  }
+
+  float varianceAccum = 0.0f;
+  size_t inlierCount = 0U;
+  const float threshold = fmaxf(0.20f, mad * 3.0f);
+  for (size_t i = 0U; i < rttCount; ++i) {
+    if (fabsf(rttDistances[i] - median) > threshold) {
+      continue;
+    }
+    const float err = rttDistances[i] - median;
+    varianceAccum += err * err;
+    ++inlierCount;
+  }
+  if (inlierCount == 0U) {
+    return false;
+  }
+
+  outEstimate->rttChannels = static_cast<uint8_t>(
+      (inlierCount <= 255U) ? inlierCount : 255U);
+  outEstimate->rttDistanceMeters = median;
+  outEstimate->rttVariance = varianceAccum / static_cast<float>(inlierCount);
+  return true;
+}
+
+bool parseControllerStepBufferCallback(const BleCsSubeventStep* step, void* userData) {
+  BleCsControllerBufferParseContext* context =
+      static_cast<BleCsControllerBufferParseContext*>(userData);
+  if (context == nullptr || step == nullptr) {
+    return false;
+  }
+
+  if (step->mode == kBleCsMainMode2 || step->mode == kBleCsMainMode3) {
+    uint8_t toneCount = 0U;
+    if (step->mode == kBleCsMainMode2) {
+      BleCsStepMode2Data mode2{};
+      if (!BleChannelSoundingRadio::parseMode2StepData(step, &mode2)) {
+        return false;
+      }
+      toneCount = mode2.toneCount;
+    } else {
+      BleCsStepMode3Data mode3{};
+      if (!BleChannelSoundingRadio::parseMode3StepData(step, &mode3)) {
+        return false;
+      }
+      toneCount = mode3.toneCount;
+    }
+
+    for (uint8_t toneIndex = 0U; toneIndex < toneCount; ++toneIndex) {
+      BleCsStepToneInfo tone{};
+      const bool parsed =
+          (step->mode == kBleCsMainMode2)
+              ? BleChannelSoundingRadio::parseMode2ToneInfo(step, toneIndex, &tone)
+              : BleChannelSoundingRadio::parseMode3ToneInfo(step, toneIndex, &tone);
+      if (!parsed || tone.extensionIndicator != kBleCsToneExtensionNone) {
+        continue;
+      }
+
+      if (!context->fillingPeer) {
+        if (context->phasePairs == nullptr || context->phaseCount == nullptr ||
+            *context->phaseCount >= context->phaseCapacity) {
+          return false;
+        }
+        BleCsControllerPhasePair& pair = context->phasePairs[*context->phaseCount];
+        pair.failed = (tone.qualityIndicator == kBleCsToneQualityLow) ||
+                      (tone.qualityIndicator == kBleCsToneQualityUnavailable);
+        pair.localPresent = true;
+        pair.channel = step->channel;
+        pair.local = tone.pct;
+        pair.localQuality = tone.qualityIndicator;
+        ++(*context->phaseCount);
+      } else {
+        if (context->phasePairs == nullptr || context->phaseCount == nullptr ||
+            context->phaseCursor >= *context->phaseCount) {
+          return false;
+        }
+        BleCsControllerPhasePair& pair = context->phasePairs[context->phaseCursor++];
+        if (pair.channel != step->channel) {
+          pair.failed = true;
+        }
+        if ((tone.qualityIndicator == kBleCsToneQualityLow) ||
+            (tone.qualityIndicator == kBleCsToneQualityUnavailable)) {
+          pair.failed = true;
+        }
+        pair.peerPresent = true;
+        pair.peer = tone.pct;
+        pair.peerQuality = tone.qualityIndicator;
+      }
+    }
+  }
+
+  if (step->mode == kBleCsMainMode1 || step->mode == kBleCsMainMode3) {
+    BleCsStepMode1Data mode1{};
+    if (!BleChannelSoundingRadio::parseMode1StepData(step, &mode1)) {
+      return false;
+    }
+    const bool invalidRtt =
+        (mode1.aaCheckQuality != kBleCsPacketQualityAaCheckOk) ||
+        (static_cast<uint8_t>(mode1.packetRssiDbm) == kBleCsPacketRssiNotAvailable) ||
+        (mode1.timeDifferenceHalfNs == kBleCsTimeDifferenceNotAvailable);
+
+    if (!context->fillingPeer) {
+      if (context->rttPairs == nullptr || context->rttCount == nullptr ||
+          *context->rttCount >= context->rttCapacity) {
+        return false;
+      }
+      BleCsControllerRttPair& pair = context->rttPairs[*context->rttCount];
+      pair.failed = invalidRtt;
+      if (context->bufferRoleIsInitiator) {
+        pair.initiatorPresent = true;
+        pair.toaTodInitiator = mode1.timeDifferenceHalfNs;
+      } else {
+        pair.reflectorPresent = true;
+        pair.todToaReflector = mode1.timeDifferenceHalfNs;
+      }
+      ++(*context->rttCount);
+    } else {
+      if (context->rttPairs == nullptr || context->rttCount == nullptr ||
+          context->rttCursor >= *context->rttCount) {
+        return false;
+      }
+      BleCsControllerRttPair& pair = context->rttPairs[context->rttCursor++];
+      if (invalidRtt) {
+        pair.failed = true;
+      }
+      if (context->bufferRoleIsInitiator) {
+        pair.initiatorPresent = true;
+        pair.toaTodInitiator = mode1.timeDifferenceHalfNs;
+      } else {
+        pair.reflectorPresent = true;
+        pair.todToaReflector = mode1.timeDifferenceHalfNs;
+      }
+    }
+  }
+
+  return true;
+}
+
+bool parseAbortReasonNibble(uint8_t packed,
+                            uint8_t* outProcedureAbortReason,
+                            uint8_t* outSubeventAbortReason) {
+  if (outProcedureAbortReason == nullptr || outSubeventAbortReason == nullptr) {
+    return false;
+  }
+  *outProcedureAbortReason = static_cast<uint8_t>(packed & 0x0FU);
+  *outSubeventAbortReason = static_cast<uint8_t>((packed >> 4U) & 0x0FU);
+  return true;
+}
+
 bool rawBytesAllZero(const uint8_t* data, uint8_t len) {
   if (data == nullptr || len == 0U) {
     return true;
@@ -497,6 +906,74 @@ bool rawBytesAllZero(const uint8_t* data, uint8_t len) {
   return true;
 }
 
+int16_t clampSignedToBits(int16_t value, uint8_t bits) {
+  if (bits == 0U || bits >= 15U) {
+    return value;
+  }
+
+  const int16_t minValue = static_cast<int16_t>(-(1 << (bits - 1U)));
+  const int16_t maxValue = static_cast<int16_t>((1 << (bits - 1U)) - 1);
+  if (value < minValue) {
+    return minValue;
+  }
+  if (value > maxValue) {
+    return maxValue;
+  }
+  return value;
+}
+
+uint32_t encodeSignedField(int16_t value,
+                           uint8_t bits,
+                           uint32_t mask,
+                           uint8_t pos) {
+  const int16_t clamped = clampSignedToBits(value, bits);
+  const uint32_t fieldMask = mask >> pos;
+  const uint32_t encoded =
+      static_cast<uint32_t>(static_cast<uint16_t>(clamped)) & fieldMask;
+  return (encoded << pos) & mask;
+}
+
+static const uint8_t kAntennaPathLut2[2][3] = {
+    {kAntennaId1, kAntennaId2, kAntennaId2},
+    {kAntennaId2, kAntennaId1, kAntennaId1},
+};
+
+static const uint8_t kAntennaPathLut3[6][4] = {
+    {kAntennaId1, kAntennaId2, kAntennaId3, kAntennaId3},
+    {kAntennaId2, kAntennaId1, kAntennaId3, kAntennaId3},
+    {kAntennaId1, kAntennaId3, kAntennaId2, kAntennaId2},
+    {kAntennaId3, kAntennaId1, kAntennaId2, kAntennaId2},
+    {kAntennaId3, kAntennaId2, kAntennaId1, kAntennaId1},
+    {kAntennaId2, kAntennaId3, kAntennaId1, kAntennaId1},
+};
+
+static const uint8_t kAntennaPathLut4[24][5] = {
+    {kAntennaId1, kAntennaId2, kAntennaId3, kAntennaId4, kAntennaId4},
+    {kAntennaId2, kAntennaId1, kAntennaId3, kAntennaId4, kAntennaId4},
+    {kAntennaId1, kAntennaId3, kAntennaId2, kAntennaId4, kAntennaId4},
+    {kAntennaId3, kAntennaId1, kAntennaId2, kAntennaId4, kAntennaId4},
+    {kAntennaId3, kAntennaId2, kAntennaId1, kAntennaId4, kAntennaId4},
+    {kAntennaId2, kAntennaId3, kAntennaId1, kAntennaId4, kAntennaId4},
+    {kAntennaId1, kAntennaId2, kAntennaId4, kAntennaId3, kAntennaId3},
+    {kAntennaId2, kAntennaId1, kAntennaId4, kAntennaId3, kAntennaId3},
+    {kAntennaId1, kAntennaId4, kAntennaId2, kAntennaId3, kAntennaId3},
+    {kAntennaId4, kAntennaId1, kAntennaId2, kAntennaId3, kAntennaId3},
+    {kAntennaId4, kAntennaId2, kAntennaId1, kAntennaId3, kAntennaId3},
+    {kAntennaId2, kAntennaId4, kAntennaId1, kAntennaId3, kAntennaId3},
+    {kAntennaId1, kAntennaId4, kAntennaId3, kAntennaId2, kAntennaId2},
+    {kAntennaId4, kAntennaId1, kAntennaId3, kAntennaId2, kAntennaId2},
+    {kAntennaId1, kAntennaId3, kAntennaId4, kAntennaId2, kAntennaId2},
+    {kAntennaId3, kAntennaId1, kAntennaId4, kAntennaId2, kAntennaId2},
+    {kAntennaId3, kAntennaId4, kAntennaId1, kAntennaId2, kAntennaId2},
+    {kAntennaId4, kAntennaId3, kAntennaId1, kAntennaId2, kAntennaId2},
+    {kAntennaId4, kAntennaId2, kAntennaId3, kAntennaId1, kAntennaId1},
+    {kAntennaId2, kAntennaId4, kAntennaId3, kAntennaId1, kAntennaId1},
+    {kAntennaId4, kAntennaId3, kAntennaId2, kAntennaId1, kAntennaId1},
+    {kAntennaId3, kAntennaId4, kAntennaId2, kAntennaId1, kAntennaId1},
+    {kAntennaId3, kAntennaId2, kAntennaId4, kAntennaId1, kAntennaId1},
+    {kAntennaId2, kAntennaId3, kAntennaId4, kAntennaId1, kAntennaId1},
+};
+
 }  // namespace
 
 BleChannelSoundingRadio::BleChannelSoundingRadio(uint32_t radioBase)
@@ -507,7 +984,10 @@ BleChannelSoundingRadio::BleChannelSoundingRadio(uint32_t radioBase)
       txPacket_{0},
       rxPacket_{0},
       dfePacket_{0},
-      auxDataWords_{0} {}
+      auxDataWords_{0},
+      lastDfePacketAmountBytes_(0U),
+      lastDfePacketCurrentAmountBytes_(0U),
+      lastDfePacketAllZero_(true) {}
 
 bool BleChannelSoundingRadio::begin(const BleCsConfig& config) {
   if (radio_ == nullptr) {
@@ -516,7 +996,8 @@ bool BleChannelSoundingRadio::begin(const BleCsConfig& config) {
   }
   if (!validLogicalChannel(config.controlChannel) || config.maxPayloadLength == 0U ||
       config.maxPayloadLength > 48U || config.cteTimeUnits < 2U ||
-      config.cteTimeUnits > 10U) {
+      config.cteTimeUnits > 10U ||
+      config.dfeSwitchPatternCount > kBleCsMaxSwitchPatternCount) {
     initialized_ = false;
     return false;
   }
@@ -535,6 +1016,7 @@ bool BleChannelSoundingRadio::begin(const BleCsConfig& config) {
     return false;
   }
 
+  resetDfeCaptureState();
   initialized_ = true;
   return true;
 }
@@ -556,6 +1038,1966 @@ void BleChannelSoundingRadio::end() {
 bool BleChannelSoundingRadio::initialized() const { return initialized_; }
 
 const BleCsConfig& BleChannelSoundingRadio::config() const { return config_; }
+
+BleCsIqSample BleChannelSoundingRadio::parsePctSample(const uint8_t pct[3]) {
+  if (pct == nullptr) {
+    return BleCsIqSample{};
+  }
+
+  const uint32_t packed = static_cast<uint32_t>(pct[0]) |
+                          (static_cast<uint32_t>(pct[1]) << 8U) |
+                          (static_cast<uint32_t>(pct[2]) << 16U);
+  const uint16_t iBits = static_cast<uint16_t>(packed & 0x0FFFU);
+  const uint16_t qBits = static_cast<uint16_t>((packed >> 12U) & 0x0FFFU);
+  const int16_t i = static_cast<int16_t>((iBits ^ (1U << 11U)) - (1U << 11U));
+  const int16_t q = static_cast<int16_t>((qBits ^ (1U << 11U)) - (1U << 11U));
+  return BleCsIqSample{.i = i, .q = q};
+}
+
+void BleChannelSoundingRadio::fillValidChannelMap(uint8_t channelMap[kBleCsChannelMapBytes]) {
+  if (channelMap == nullptr) {
+    return;
+  }
+
+  memset(channelMap, 0xFF, kCsChmapLen);
+  channelMapBitSetVal(channelMap, 0U, 0U);
+  channelMapBitSetVal(channelMap, 1U, 0U);
+  channelMapBitSetVal(channelMap, 23U, 0U);
+  channelMapBitSetVal(channelMap, 24U, 0U);
+  channelMapBitSetVal(channelMap, 25U, 0U);
+  channelMapBitSetVal(channelMap, 77U, 0U);
+  channelMapBitSetVal(channelMap, 78U, 0U);
+  channelMapBitSetVal(channelMap, 79U, 0U);
+}
+
+bool BleChannelSoundingRadio::getAntennaPathPermutation(uint8_t antennaPathCount,
+                                                        uint8_t permutationIndex,
+                                                        uint8_t toneIndex,
+                                                        uint8_t* outAntennaId) {
+  if (outAntennaId == nullptr) {
+    return false;
+  }
+
+  switch (antennaPathCount) {
+    case 2U:
+      if (permutationIndex >= 2U || toneIndex >= 3U) {
+        return false;
+      }
+      *outAntennaId = kAntennaPathLut2[permutationIndex][toneIndex];
+      return true;
+    case 3U:
+      if (permutationIndex >= 6U || toneIndex >= 4U) {
+        return false;
+      }
+      *outAntennaId = kAntennaPathLut3[permutationIndex][toneIndex];
+      return true;
+    case 4U:
+      if (permutationIndex >= 24U || toneIndex >= 5U) {
+        return false;
+      }
+      *outAntennaId = kAntennaPathLut4[permutationIndex][toneIndex];
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool BleChannelSoundingRadio::parseMode1StepData(const BleCsSubeventStep* step,
+                                                 BleCsStepMode1Data* outData) {
+  if (step == nullptr || outData == nullptr || step->data == nullptr ||
+      step->dataLen < kBleCsMode1StepLen) {
+    return false;
+  }
+  if (step->mode != kBleCsMainMode1 && step->mode != kBleCsMainMode3) {
+    return false;
+  }
+
+  bool hasRttSoundingSequence = false;
+  if (step->mode == kBleCsMainMode1) {
+    if (step->dataLen == kBleCsMode1StepLen) {
+      hasRttSoundingSequence = false;
+    } else if (step->dataLen == kBleCsMode1SsRttStepLen) {
+      hasRttSoundingSequence = true;
+    } else {
+      return false;
+    }
+  } else {
+    if (step->dataLen >= kBleCsMode3SsRttStepBaseLen &&
+        ((step->dataLen - kBleCsMode3SsRttStepBaseLen) % kBleCsToneInfoLen) == 0U) {
+      hasRttSoundingSequence = true;
+    } else if (step->dataLen >= kBleCsMode3StepBaseLen &&
+               ((step->dataLen - kBleCsMode3StepBaseLen) % kBleCsToneInfoLen) == 0U) {
+      hasRttSoundingSequence = false;
+    } else {
+      return false;
+    }
+  }
+
+  const uint8_t quality = step->data[0];
+  outData->aaCheckQuality = static_cast<uint8_t>(quality & 0x0FU);
+  outData->bitErrors = static_cast<uint8_t>((quality >> 4U) & 0x0FU);
+  outData->nadm = step->data[1];
+  outData->packetRssiDbm = static_cast<int8_t>(step->data[2]);
+  outData->timeDifferenceHalfNs = readLe16Signed(step->data + 3U);
+  outData->packetAntenna = step->data[5];
+  outData->hasRttSoundingSequence = hasRttSoundingSequence;
+  outData->soundingPct1 = BleCsIqSample{};
+  outData->soundingPct2 = BleCsIqSample{};
+  if (hasRttSoundingSequence) {
+    outData->soundingPct1 = parsePctSample(step->data + 6U);
+    outData->soundingPct2 = parsePctSample(step->data + 10U);
+  }
+  return true;
+}
+
+bool BleChannelSoundingRadio::parseMode2StepData(const BleCsSubeventStep* step,
+                                                 BleCsStepMode2Data* outData) {
+  if (step == nullptr || outData == nullptr || step->data == nullptr ||
+      step->dataLen < 1U || step->mode != kBleCsMainMode2) {
+    return false;
+  }
+  const size_t toneBytes = static_cast<size_t>(step->dataLen - 1U);
+  if ((toneBytes % kBleCsToneInfoLen) != 0U) {
+    return false;
+  }
+
+  outData->antennaPermutationIndex = step->data[0];
+  outData->toneCount = static_cast<uint8_t>(toneBytes / kBleCsToneInfoLen);
+  return true;
+}
+
+bool BleChannelSoundingRadio::parseMode3StepData(const BleCsSubeventStep* step,
+                                                 BleCsStepMode3Data* outData) {
+  if (step == nullptr || outData == nullptr || step->data == nullptr ||
+      step->mode != kBleCsMainMode3 || step->dataLen < kBleCsMode3StepBaseLen) {
+    return false;
+  }
+
+  if (!parseMode1StepData(step, &outData->timing)) {
+    return false;
+  }
+  const uint8_t toneDataOffset = outData->timing.hasRttSoundingSequence
+                                     ? static_cast<uint8_t>(kBleCsMode3SsRttStepBaseLen)
+                                     : static_cast<uint8_t>(kBleCsMode3StepBaseLen);
+  outData->antennaPermutationIndex = step->data[toneDataOffset - 1U];
+  outData->toneCount = static_cast<uint8_t>(
+      (step->dataLen - toneDataOffset) / kBleCsToneInfoLen);
+  outData->toneDataOffset = toneDataOffset;
+  return true;
+}
+
+bool BleChannelSoundingRadio::parseToneInfo(const uint8_t* toneData,
+                                            size_t toneDataLen,
+                                            BleCsStepToneInfo* outInfo) {
+  if (toneData == nullptr || outInfo == nullptr || toneDataLen < kBleCsToneInfoLen) {
+    return false;
+  }
+
+  outInfo->pct = parsePctSample(toneData);
+  const uint8_t info = toneData[3];
+  outInfo->qualityIndicator = static_cast<uint8_t>(info & 0x0FU);
+  outInfo->extensionIndicator = static_cast<uint8_t>((info >> 4U) & 0x0FU);
+  return true;
+}
+
+bool BleChannelSoundingRadio::parseMode2ToneInfo(const BleCsSubeventStep* step,
+                                                 uint8_t toneIndex,
+                                                 BleCsStepToneInfo* outInfo) {
+  BleCsStepMode2Data mode2{};
+  if (!parseMode2StepData(step, &mode2) || outInfo == nullptr ||
+      toneIndex >= mode2.toneCount) {
+    return false;
+  }
+
+  const size_t offset = 1U + (static_cast<size_t>(toneIndex) * kBleCsToneInfoLen);
+  return parseToneInfo(step->data + offset, static_cast<size_t>(step->dataLen) - offset,
+                       outInfo);
+}
+
+bool BleChannelSoundingRadio::parseMode3ToneInfo(const BleCsSubeventStep* step,
+                                                 uint8_t toneIndex,
+                                                 BleCsStepToneInfo* outInfo) {
+  BleCsStepMode3Data mode3{};
+  if (!parseMode3StepData(step, &mode3) || outInfo == nullptr ||
+      toneIndex >= mode3.toneCount) {
+    return false;
+  }
+
+  const size_t offset =
+      static_cast<size_t>(mode3.toneDataOffset) +
+      (static_cast<size_t>(toneIndex) * kBleCsToneInfoLen);
+  return parseToneInfo(step->data + offset, static_cast<size_t>(step->dataLen) - offset,
+                       outInfo);
+}
+
+void BleChannelSoundingRadio::parseSubeventStepData(const uint8_t* stepData,
+                                                    size_t stepDataLen,
+                                                    bool (*callback)(
+                                                        const BleCsSubeventStep* step,
+                                                        void* userData),
+                                                    void* userData) {
+  if (stepData == nullptr || callback == nullptr) {
+    return;
+  }
+
+  size_t offset = 0U;
+  while ((stepDataLen - offset) >= kBleCsStepHeaderLen) {
+    BleCsSubeventStep step{};
+    step.mode = stepData[offset + 0U];
+    step.channel = stepData[offset + 1U];
+    step.dataLen = stepData[offset + 2U];
+    offset += kBleCsStepHeaderLen;
+
+    if (step.dataLen == 0U) {
+      return;
+    }
+    if ((stepDataLen - offset) < step.dataLen) {
+      return;
+    }
+
+    step.data = stepData + offset;
+    if (!callback(&step, userData)) {
+      return;
+    }
+    offset += step.dataLen;
+  }
+}
+
+bool BleChannelSoundingRadio::parseHciSubeventResultEvent(
+    const uint8_t* eventData, size_t eventLen, BleCsSubeventResult* outResult) {
+  if (eventData == nullptr || outResult == nullptr ||
+      eventLen < kBleCsHciSubeventResultHeaderLen) {
+    return false;
+  }
+
+  BleCsSubeventResult result{};
+  result.header.connHandle = readLe16(eventData + 0U);
+  result.header.configId = eventData[2U];
+  result.header.startAclConnEventCounter = readLe16(eventData + 3U);
+  result.header.procedureCounter = readLe16(eventData + 5U);
+  result.header.frequencyCompensation = readLe16(eventData + 7U);
+  result.header.referencePowerLevelDbm = static_cast<int8_t>(eventData[9U]);
+  result.header.procedureDoneStatus = eventData[10U];
+  result.header.subeventDoneStatus = eventData[11U];
+  if (!parseAbortReasonNibble(eventData[12U], &result.header.procedureAbortReason,
+                              &result.header.subeventAbortReason)) {
+    return false;
+  }
+  result.header.numAntennaPaths = eventData[13U];
+  result.header.numStepsReported = eventData[14U];
+  result.stepData = eventData + kBleCsHciSubeventResultHeaderLen;
+  result.stepDataLen =
+      static_cast<uint16_t>(eventLen - kBleCsHciSubeventResultHeaderLen);
+  result.isPartial =
+      (result.header.subeventDoneStatus == kBleCsSubeventDonePartial);
+  result.isComplete = !result.isPartial;
+  result.isContinuation = false;
+
+  if (result.header.numStepsReported == 0U) {
+    result.stepDataLen = 0U;
+    result.stepData = nullptr;
+  }
+
+  *outResult = result;
+  return true;
+}
+
+bool BleChannelSoundingRadio::parseHciSubeventResultContinueEvent(
+    const uint8_t* eventData, size_t eventLen, BleCsSubeventResult* outResult) {
+  if (eventData == nullptr || outResult == nullptr ||
+      eventLen < kBleCsHciSubeventResultContinueHeaderLen) {
+    return false;
+  }
+
+  BleCsSubeventResult result{};
+  result.header.connHandle = readLe16(eventData + 0U);
+  result.header.configId = eventData[2U];
+  result.header.procedureDoneStatus = eventData[3U];
+  result.header.subeventDoneStatus = eventData[4U];
+  if (!parseAbortReasonNibble(eventData[5U], &result.header.procedureAbortReason,
+                              &result.header.subeventAbortReason)) {
+    return false;
+  }
+  result.header.numAntennaPaths = eventData[6U];
+  result.header.numStepsReported = eventData[7U];
+  result.stepData = eventData + kBleCsHciSubeventResultContinueHeaderLen;
+  result.stepDataLen =
+      static_cast<uint16_t>(eventLen - kBleCsHciSubeventResultContinueHeaderLen);
+  result.isPartial =
+      (result.header.subeventDoneStatus == kBleCsSubeventDonePartial);
+  result.isComplete = !result.isPartial;
+  result.isContinuation = true;
+
+  if (result.header.numStepsReported == 0U) {
+    result.stepDataLen = 0U;
+    result.stepData = nullptr;
+  }
+
+  *outResult = result;
+  return true;
+}
+
+bool BleChannelSoundingRadio::estimateDistanceFromStepBuffers(
+    const uint8_t* localStepData, size_t localStepDataLen, const uint8_t* peerStepData,
+    size_t peerStepDataLen, bool localRoleIsInitiator, BleCsEstimate* outEstimate) {
+  if (localStepData == nullptr || peerStepData == nullptr || outEstimate == nullptr) {
+    return false;
+  }
+
+  *outEstimate = BleCsEstimate{};
+  outEstimate->phaseSlopeDistanceMeters = NAN;
+  outEstimate->rttDistanceMeters = NAN;
+  outEstimate->distanceMeters = NAN;
+
+  BleCsControllerPhasePair phasePairs[kMaxCsControllerStepSamples] = {};
+  BleCsControllerRttPair rttPairs[kMaxCsControllerStepSamples] = {};
+  size_t phaseCount = 0U;
+  size_t rttCount = 0U;
+
+  BleCsControllerBufferParseContext localContext{};
+  localContext.phasePairs = phasePairs;
+  localContext.phaseCapacity = kMaxCsControllerStepSamples;
+  localContext.phaseCount = &phaseCount;
+  localContext.rttPairs = rttPairs;
+  localContext.rttCapacity = kMaxCsControllerStepSamples;
+  localContext.rttCount = &rttCount;
+  localContext.fillingPeer = false;
+  localContext.bufferRoleIsInitiator = localRoleIsInitiator;
+  parseSubeventStepData(localStepData, localStepDataLen, parseControllerStepBufferCallback,
+                        &localContext);
+
+  BleCsControllerBufferParseContext peerContext{};
+  peerContext.phasePairs = phasePairs;
+  peerContext.phaseCapacity = kMaxCsControllerStepSamples;
+  peerContext.phaseCount = &phaseCount;
+  peerContext.rttPairs = rttPairs;
+  peerContext.rttCapacity = kMaxCsControllerStepSamples;
+  peerContext.rttCount = &rttCount;
+  peerContext.fillingPeer = true;
+  peerContext.bufferRoleIsInitiator = !localRoleIsInitiator;
+  parseSubeventStepData(peerStepData, peerStepDataLen, parseControllerStepBufferCallback,
+                        &peerContext);
+
+  const bool phaseOk = controllerPhaseDistanceEstimate(phasePairs, phaseCount, outEstimate);
+  const bool rttOk = controllerRttDistanceEstimate(rttPairs, rttCount, outEstimate);
+  if (!phaseOk && !rttOk) {
+    return false;
+  }
+
+  outEstimate->valid = true;
+  if (rttOk && phaseOk) {
+    const float delta =
+        fabsf(outEstimate->rttDistanceMeters - outEstimate->phaseSlopeDistanceMeters);
+    if (delta <= fmaxf(0.25f, sqrtf(outEstimate->rttVariance) + 0.20f)) {
+      outEstimate->distanceMeters =
+          (0.65f * outEstimate->rttDistanceMeters) +
+          (0.35f * outEstimate->phaseSlopeDistanceMeters);
+    } else {
+      outEstimate->distanceMeters = outEstimate->rttDistanceMeters;
+    }
+  } else if (rttOk) {
+    outEstimate->distanceMeters = outEstimate->rttDistanceMeters;
+  } else {
+    outEstimate->distanceMeters = outEstimate->phaseSlopeDistanceMeters;
+  }
+
+  return isfinite(outEstimate->distanceMeters) &&
+         (outEstimate->distanceMeters > 0.0f);
+}
+
+bool BleChannelSoundingRadio::estimateDistanceFromSubeventResults(
+    const BleCsSubeventResult& localResult, const BleCsSubeventResult& peerResult,
+    bool localRoleIsInitiator, BleCsEstimate* outEstimate) {
+  if (!localResult.isComplete || !peerResult.isComplete ||
+      localResult.stepData == nullptr || peerResult.stepData == nullptr) {
+    return false;
+  }
+
+  return estimateDistanceFromStepBuffers(localResult.stepData, localResult.stepDataLen,
+                                         peerResult.stepData, peerResult.stepDataLen,
+                                         localRoleIsInitiator, outEstimate);
+}
+
+bool BleChannelSoundingRadio::buildHciReadRemoteSupportedCapabilitiesCommand(
+    uint16_t connHandle, BleCsHciCommand* outCommand) {
+  if (outCommand == nullptr) {
+    return false;
+  }
+  *outCommand = BleCsHciCommand{};
+  outCommand->opcode = kBleCsHciOpReadRemoteSupportedCapabilities;
+  outCommand->payloadLen = 2U;
+  writeLe16(outCommand->payload, connHandle);
+  return true;
+}
+
+bool BleChannelSoundingRadio::buildHciSetDefaultSettingsCommand(
+    uint16_t connHandle, const BleCsDefaultSettings& settings, BleCsHciCommand* outCommand) {
+  if (outCommand == nullptr) {
+    return false;
+  }
+  *outCommand = BleCsHciCommand{};
+  outCommand->opcode = kBleCsHciOpSetDefaultSettings;
+  outCommand->payloadLen = 5U;
+  writeLe16(outCommand->payload, connHandle);
+  uint8_t roleEnable = 0U;
+  if (settings.enableInitiatorRole) {
+    roleEnable |= 0x01U;
+  }
+  if (settings.enableReflectorRole) {
+    roleEnable |= 0x02U;
+  }
+  outCommand->payload[2U] = roleEnable;
+  outCommand->payload[3U] = settings.csSyncAntennaSelection;
+  outCommand->payload[4U] = static_cast<uint8_t>(settings.maxTxPowerDbm);
+  return true;
+}
+
+bool BleChannelSoundingRadio::buildHciCreateConfigCommand(
+    uint16_t connHandle, const BleCsControllerCreateConfig& config, BleCsHciCommand* outCommand) {
+  if (outCommand == nullptr) {
+    return false;
+  }
+  *outCommand = BleCsHciCommand{};
+  outCommand->opcode = kBleCsHciOpCreateConfig;
+  outCommand->payloadLen = 22U;
+  writeLe16(outCommand->payload + 0U, connHandle);
+  outCommand->payload[2U] = config.configId;
+  outCommand->payload[3U] = config.createContext;
+  outCommand->payload[4U] = config.mainModeType;
+  outCommand->payload[5U] = config.subModeType;
+  outCommand->payload[6U] = config.minMainModeSteps;
+  outCommand->payload[7U] = config.maxMainModeSteps;
+  outCommand->payload[8U] = config.mainModeRepetition;
+  outCommand->payload[9U] = config.mode0Steps;
+  outCommand->payload[10U] = config.role;
+  outCommand->payload[11U] = config.rttType;
+  outCommand->payload[12U] = config.csSyncPhy;
+  memcpy(outCommand->payload + 13U, config.channelMap, kBleCsChannelMapBytes);
+  outCommand->payload[23U] = config.channelMapRepetition;
+  outCommand->payload[24U] = config.channelSelectionType;
+  outCommand->payload[25U] = config.ch3cShape;
+  outCommand->payload[26U] = config.ch3cJump;
+  outCommand->payload[27U] = config.csEnhancements1;
+  outCommand->payloadLen = 28U;
+  return true;
+}
+
+bool BleChannelSoundingRadio::buildHciRemoveConfigCommand(uint16_t connHandle,
+                                                          uint8_t configId,
+                                                          BleCsHciCommand* outCommand) {
+  if (outCommand == nullptr) {
+    return false;
+  }
+  *outCommand = BleCsHciCommand{};
+  outCommand->opcode = kBleCsHciOpRemoveConfig;
+  outCommand->payloadLen = 3U;
+  writeLe16(outCommand->payload + 0U, connHandle);
+  outCommand->payload[2U] = configId;
+  return true;
+}
+
+bool BleChannelSoundingRadio::buildHciSecurityEnableCommand(uint16_t connHandle,
+                                                            BleCsHciCommand* outCommand) {
+  if (outCommand == nullptr) {
+    return false;
+  }
+  *outCommand = BleCsHciCommand{};
+  outCommand->opcode = kBleCsHciOpSecurityEnable;
+  outCommand->payloadLen = 2U;
+  writeLe16(outCommand->payload, connHandle);
+  return true;
+}
+
+bool BleChannelSoundingRadio::buildHciSetProcedureParametersCommand(
+    uint16_t connHandle, const BleCsProcedureParameters& params, BleCsHciCommand* outCommand) {
+  if (outCommand == nullptr) {
+    return false;
+  }
+  *outCommand = BleCsHciCommand{};
+  outCommand->opcode = kBleCsHciOpSetProcedureParameters;
+  outCommand->payloadLen = 23U;
+  writeLe16(outCommand->payload + 0U, connHandle);
+  outCommand->payload[2U] = params.configId;
+  writeLe16(outCommand->payload + 3U, params.maxProcedureLen);
+  writeLe16(outCommand->payload + 5U, params.minProcedureInterval);
+  writeLe16(outCommand->payload + 7U, params.maxProcedureInterval);
+  writeLe16(outCommand->payload + 9U, params.maxProcedureCount);
+  writeLe24(outCommand->payload + 11U, params.minSubeventLen);
+  writeLe24(outCommand->payload + 14U, params.maxSubeventLen);
+  outCommand->payload[17U] = params.toneAntennaConfigSelection;
+  outCommand->payload[18U] = params.phy;
+  outCommand->payload[19U] = static_cast<uint8_t>(params.txPowerDelta);
+  outCommand->payload[20U] = params.preferredPeerAntenna;
+  outCommand->payload[21U] = params.snrControlInitiator;
+  outCommand->payload[22U] = params.snrControlReflector;
+  return true;
+}
+
+bool BleChannelSoundingRadio::buildHciProcedureEnableCommand(
+    uint16_t connHandle, const BleCsProcedureEnable& params, BleCsHciCommand* outCommand) {
+  if (outCommand == nullptr) {
+    return false;
+  }
+  *outCommand = BleCsHciCommand{};
+  outCommand->opcode = kBleCsHciOpProcedureEnable;
+  outCommand->payloadLen = 4U;
+  writeLe16(outCommand->payload + 0U, connHandle);
+  outCommand->payload[2U] = params.configId;
+  outCommand->payload[3U] = params.enable;
+  return true;
+}
+
+bool BleChannelSoundingRadio::encodeHciCommandPacket(const BleCsHciCommand& command,
+                                                     uint8_t* outPacket,
+                                                     size_t maxLen,
+                                                     size_t* outLen) {
+  if (outLen != nullptr) {
+    *outLen = 0U;
+  }
+  if (outPacket == nullptr || maxLen < (4U + command.payloadLen)) {
+    return false;
+  }
+  outPacket[0U] = kBleHciPacketTypeCommand;
+  writeLe16(outPacket + 1U, command.opcode);
+  outPacket[3U] = command.payloadLen;
+  if (command.payloadLen > 0U) {
+    memcpy(outPacket + 4U, command.payload, command.payloadLen);
+  }
+  if (outLen != nullptr) {
+    *outLen = static_cast<size_t>(4U + command.payloadLen);
+  }
+  return true;
+}
+
+bool BleChannelSoundingRadio::parseHciCommandStatusEvent(
+    const uint8_t* packet, size_t packetLen, BleCsHciCommandStatusEvent* outEvent) {
+  uint8_t eventCode = 0U;
+  const uint8_t* params = nullptr;
+  size_t paramsLen = 0U;
+  if (outEvent == nullptr ||
+      !decodeHciEventFrame(packet, packetLen, &eventCode, &params, &paramsLen) ||
+      eventCode != kBleHciEvtCommandStatus || paramsLen < 4U) {
+    return false;
+  }
+
+  BleCsHciCommandStatusEvent evt{};
+  evt.status = params[0U];
+  evt.numCommandPackets = params[1U];
+  evt.opcode = readLe16(params + 2U);
+  *outEvent = evt;
+  return true;
+}
+
+bool BleChannelSoundingRadio::parseHciCommandCompleteEvent(
+    const uint8_t* packet, size_t packetLen, BleCsHciCommandCompleteEvent* outEvent) {
+  uint8_t eventCode = 0U;
+  const uint8_t* params = nullptr;
+  size_t paramsLen = 0U;
+  if (outEvent == nullptr ||
+      !decodeHciEventFrame(packet, packetLen, &eventCode, &params, &paramsLen) ||
+      eventCode != kBleHciEvtCommandComplete || paramsLen < 3U) {
+    return false;
+  }
+
+  BleCsHciCommandCompleteEvent evt{};
+  evt.numCommandPackets = params[0U];
+  evt.opcode = readLe16(params + 1U);
+  evt.returnParams = (paramsLen > 3U) ? (params + 3U) : nullptr;
+  evt.returnParamsLen = static_cast<uint8_t>((paramsLen > 3U) ? (paramsLen - 3U) : 0U);
+  evt.status = (evt.returnParamsLen > 0U) ? evt.returnParams[0U] : 0U;
+  *outEvent = evt;
+  return true;
+}
+
+bool BleChannelSoundingRadio::parseHciLeMetaEvent(const uint8_t* packet,
+                                                  size_t packetLen,
+                                                  BleCsHciLeMetaEvent* outEvent) {
+  uint8_t eventCode = 0U;
+  const uint8_t* params = nullptr;
+  size_t paramsLen = 0U;
+  if (outEvent == nullptr ||
+      !decodeHciEventFrame(packet, packetLen, &eventCode, &params, &paramsLen) ||
+      eventCode != kBleHciEvtLeMeta || paramsLen < 1U) {
+    return false;
+  }
+
+  BleCsHciLeMetaEvent evt{};
+  evt.subeventCode = params[0U];
+  evt.payload = (paramsLen > 1U) ? (params + 1U) : nullptr;
+  evt.payloadLen = static_cast<uint8_t>((paramsLen > 1U) ? (paramsLen - 1U) : 0U);
+  *outEvent = evt;
+  return true;
+}
+
+bool BleChannelSoundingRadio::parseHciRemoteSupportedCapabilitiesCompleteEvent(
+    const uint8_t* eventData, size_t eventLen, BleCsControllerCapabilities* outCapabilities) {
+  if (eventData == nullptr || outCapabilities == nullptr ||
+      eventLen < kBleCsHciReadRemoteCapsCompleteLen) {
+    return false;
+  }
+  BleCsControllerCapabilities caps{};
+  caps.isV2 = false;
+  caps.status = eventData[0U];
+  caps.connHandle = readLe16(eventData + 1U);
+  caps.numConfigSupported = eventData[3U];
+  caps.maxConsecutiveProceduresSupported = readLe16(eventData + 4U);
+  caps.numAntennasSupported = eventData[6U];
+  caps.maxAntennaPathsSupported = eventData[7U];
+  const uint8_t roles = eventData[8U];
+  const uint8_t modes = eventData[9U];
+  caps.initiatorSupported = (roles & 0x01U) != 0U;
+  caps.reflectorSupported = (roles & 0x02U) != 0U;
+  caps.mode3Supported = (modes & 0x01U) != 0U;
+  caps.rttCapability = eventData[10U];
+  caps.rttAaOnlyN = eventData[11U];
+  caps.rttSoundingN = eventData[12U];
+  caps.rttRandomPayloadN = eventData[13U];
+  caps.nadmSoundingCapability = readLe16(eventData + 14U);
+  caps.nadmRandomCapability = readLe16(eventData + 16U);
+  const uint8_t syncPhys = eventData[18U];
+  caps.csSync2mPhySupported = (syncPhys & 0x02U) != 0U;
+  caps.csSync2m2btPhySupported = (syncPhys & 0x04U) != 0U;
+  const uint16_t subfeatures = readLe16(eventData + 19U);
+  caps.csWithoutFaeSupported = (subfeatures & 0x0002U) != 0U;
+  caps.chselAlg3cSupported = (subfeatures & 0x0004U) != 0U;
+  caps.pbrFromRttSoundingSeqSupported = (subfeatures & 0x0008U) != 0U;
+  caps.tIp1TimesSupported = readLe16(eventData + 21U);
+  caps.tIp2TimesSupported = readLe16(eventData + 23U);
+  caps.tFcsTimesSupported = readLe16(eventData + 25U);
+  caps.tPmTimesSupported = readLe16(eventData + 27U);
+  caps.valid = (caps.status == 0U);
+  if (eventLen >= 30U) {
+    caps.tSwTimeSupported = eventData[29U];
+  }
+  if (eventLen >= 31U) {
+    caps.txSnrCapability = eventData[30U];
+  }
+  *outCapabilities = caps;
+  return true;
+}
+
+bool BleChannelSoundingRadio::parseHciRemoteSupportedCapabilitiesCompleteV2Event(
+    const uint8_t* eventData, size_t eventLen, BleCsControllerCapabilities* outCapabilities) {
+  if (eventData == nullptr || outCapabilities == nullptr ||
+      eventLen < kBleCsHciReadRemoteCapsCompleteV2Len) {
+    return false;
+  }
+  BleCsControllerCapabilities caps{};
+  if (!parseHciRemoteSupportedCapabilitiesCompleteEvent(eventData, eventLen, &caps)) {
+    return false;
+  }
+  caps.isV2 = true;
+  caps.csIptReflectorSupported = (readLe16(eventData + 19U) & 0x0010U) != 0U;
+  caps.tSwTimeSupported = eventData[29U];
+  caps.txSnrCapability = eventData[30U];
+  caps.tIp2IptTimesSupported = readLe16(eventData + 31U);
+  if (eventLen >= 34U) {
+    caps.tSwIptTimeSupported = eventData[33U];
+  }
+  *outCapabilities = caps;
+  return true;
+}
+
+bool BleChannelSoundingRadio::parseHciSecurityEnableCompleteEvent(
+    const uint8_t* eventData, size_t eventLen, BleCsSecurityEnableComplete* outEvent) {
+  if (eventData == nullptr || outEvent == nullptr ||
+      eventLen < kBleCsHciSecurityEnableCompleteLen) {
+    return false;
+  }
+  BleCsSecurityEnableComplete evt{};
+  evt.status = eventData[0U];
+  evt.connHandle = readLe16(eventData + 1U);
+  *outEvent = evt;
+  return true;
+}
+
+bool BleChannelSoundingRadio::parseHciConfigCompleteEvent(const uint8_t* eventData,
+                                                          size_t eventLen,
+                                                          BleCsConfigComplete* outEvent) {
+  if (eventData == nullptr || outEvent == nullptr ||
+      eventLen < kBleCsHciConfigCompleteLen) {
+    return false;
+  }
+  BleCsConfigComplete evt{};
+  evt.status = eventData[0U];
+  evt.connHandle = readLe16(eventData + 1U);
+  evt.configId = eventData[3U];
+  evt.action = eventData[4U];
+  evt.mainModeType = eventData[5U];
+  evt.subModeType = eventData[6U];
+  evt.minMainModeSteps = eventData[7U];
+  evt.maxMainModeSteps = eventData[8U];
+  evt.mainModeRepetition = eventData[9U];
+  evt.mode0Steps = eventData[10U];
+  evt.role = eventData[11U];
+  evt.rttType = eventData[12U];
+  evt.csSyncPhy = eventData[13U];
+  memcpy(evt.channelMap, eventData + 14U, kBleCsChannelMapBytes);
+  evt.channelMapRepetition = eventData[24U];
+  evt.channelSelectionType = eventData[25U];
+  evt.ch3cShape = eventData[26U];
+  evt.ch3cJump = eventData[27U];
+  evt.csEnhancements1 = eventData[28U];
+  if (eventLen >= 33U) {
+    evt.tIp1TimeUs = eventData[29U];
+    evt.tIp2TimeUs = eventData[30U];
+    evt.tFcsTimeUs = eventData[31U];
+    evt.tPmTimeUs = eventData[32U];
+  }
+  *outEvent = evt;
+  return true;
+}
+
+bool BleChannelSoundingRadio::parseHciProcedureEnableCompleteEvent(
+    const uint8_t* eventData, size_t eventLen, BleCsProcedureEnableComplete* outEvent) {
+  if (eventData == nullptr || outEvent == nullptr ||
+      eventLen < kBleCsHciProcedureEnableCompleteLen) {
+    return false;
+  }
+  BleCsProcedureEnableComplete evt{};
+  evt.status = eventData[0U];
+  evt.connHandle = readLe16(eventData + 1U);
+  evt.configId = eventData[3U];
+  evt.state = eventData[4U];
+  evt.toneAntennaConfigSelection = eventData[5U];
+  evt.selectedTxPower = static_cast<int8_t>(eventData[6U]);
+  evt.subeventLen = readLe24(eventData + 7U);
+  evt.subeventsPerEvent = eventData[10U];
+  evt.subeventInterval = readLe16(eventData + 11U);
+  evt.eventInterval = readLe16(eventData + 13U);
+  evt.procedureInterval = readLe16(eventData + 15U);
+  if (eventLen >= 19U) {
+    evt.procedureCount = readLe16(eventData + 17U);
+  }
+  if (eventLen >= 21U) {
+    evt.maxProcedureLen = readLe16(eventData + 19U);
+  }
+  *outEvent = evt;
+  return true;
+}
+
+BleCsSubeventResultReassembler::BleCsSubeventResultReassembler()
+    : header_{}, stepData_{0}, stepDataLen_(0U), active_(false) {}
+
+void BleCsSubeventResultReassembler::reset() {
+  header_ = BleCsSubeventResultHeader{};
+  memset(stepData_, 0, sizeof(stepData_));
+  stepDataLen_ = 0U;
+  active_ = false;
+}
+
+bool BleCsSubeventResultReassembler::active() const { return active_; }
+
+bool BleCsSubeventResultReassembler::appendStepData(const uint8_t* data, size_t len) {
+  if (len == 0U) {
+    return true;
+  }
+  if (data == nullptr || (static_cast<size_t>(stepDataLen_) + len) > sizeof(stepData_)) {
+    return false;
+  }
+  memcpy(stepData_ + stepDataLen_, data, len);
+  stepDataLen_ = static_cast<uint16_t>(stepDataLen_ + len);
+  return true;
+}
+
+void BleCsSubeventResultReassembler::fillOutput(bool complete,
+                                                bool continuation,
+                                                BleCsSubeventResult* outResult) const {
+  if (outResult == nullptr) {
+    return;
+  }
+  outResult->header = header_;
+  outResult->stepData = (stepDataLen_ > 0U) ? stepData_ : nullptr;
+  outResult->stepDataLen = stepDataLen_;
+  outResult->isPartial = !complete;
+  outResult->isComplete = complete;
+  outResult->isContinuation = continuation;
+}
+
+bool BleCsSubeventResultReassembler::consumeInitialEvent(const uint8_t* eventData,
+                                                         size_t eventLen,
+                                                         BleCsSubeventResult* outResult) {
+  BleCsSubeventResult parsed{};
+  if (!BleChannelSoundingRadio::parseHciSubeventResultEvent(eventData, eventLen, &parsed)) {
+    return false;
+  }
+
+  if (!parsed.isPartial) {
+    reset();
+    header_ = parsed.header;
+    if (!appendStepData(parsed.stepData, parsed.stepDataLen)) {
+      reset();
+      return false;
+    }
+    active_ = false;
+    fillOutput(true, false, outResult);
+    return true;
+  }
+
+  if (parsed.header.procedureDoneStatus != kBleCsProcedureDonePartial ||
+      parsed.header.numStepsReported == 0U || parsed.stepData == nullptr ||
+      parsed.stepDataLen == 0U) {
+    reset();
+    return false;
+  }
+
+  reset();
+  header_ = parsed.header;
+  if (!appendStepData(parsed.stepData, parsed.stepDataLen)) {
+    reset();
+    return false;
+  }
+  active_ = true;
+  fillOutput(false, false, outResult);
+  return true;
+}
+
+bool BleCsSubeventResultReassembler::consumeContinuationEvent(const uint8_t* eventData,
+                                                              size_t eventLen,
+                                                              BleCsSubeventResult* outResult) {
+  BleCsSubeventResult parsed{};
+  if (!BleChannelSoundingRadio::parseHciSubeventResultContinueEvent(eventData, eventLen,
+                                                                    &parsed)) {
+    return false;
+  }
+  if (!active_ || parsed.header.connHandle != header_.connHandle ||
+      parsed.header.configId != header_.configId) {
+    return false;
+  }
+  if (parsed.header.numAntennaPaths != header_.numAntennaPaths) {
+    return false;
+  }
+  if (!appendStepData(parsed.stepData, parsed.stepDataLen)) {
+    reset();
+    return false;
+  }
+
+  header_.procedureDoneStatus = parsed.header.procedureDoneStatus;
+  header_.subeventDoneStatus = parsed.header.subeventDoneStatus;
+  header_.procedureAbortReason = parsed.header.procedureAbortReason;
+  header_.subeventAbortReason = parsed.header.subeventAbortReason;
+  header_.numStepsReported = static_cast<uint16_t>(
+      header_.numStepsReported + parsed.header.numStepsReported);
+
+  const bool complete = !parsed.isPartial;
+  fillOutput(complete, true, outResult);
+  if (complete) {
+    active_ = false;
+  }
+  return true;
+}
+
+BleCsControllerWorkflow::BleCsControllerWorkflow() : config_{}, state_{} {}
+
+void BleCsControllerWorkflow::reset() {
+  config_ = BleCsControllerWorkflowConfig{};
+  state_ = BleCsControllerWorkflowState{};
+}
+
+bool BleCsControllerWorkflow::begin(uint16_t connHandle,
+                                    const BleCsControllerWorkflowConfig& config) {
+  reset();
+  if (connHandle == 0U) {
+    return false;
+  }
+  config_ = config;
+  state_.connHandle = connHandle;
+  state_.phase = BleCsControllerWorkflowPhase::kNeedReadRemoteCapabilities;
+  return true;
+}
+
+bool BleCsControllerWorkflow::active() const {
+  return state_.phase != BleCsControllerWorkflowPhase::kIdle &&
+         state_.phase != BleCsControllerWorkflowPhase::kReady &&
+         state_.phase != BleCsControllerWorkflowPhase::kFailed;
+}
+
+bool BleCsControllerWorkflow::ready() const {
+  return state_.phase == BleCsControllerWorkflowPhase::kReady;
+}
+
+bool BleCsControllerWorkflow::failed() const {
+  return state_.phase == BleCsControllerWorkflowPhase::kFailed;
+}
+
+BleCsControllerWorkflowPhase BleCsControllerWorkflow::phase() const {
+  return state_.phase;
+}
+
+const BleCsControllerWorkflowState& BleCsControllerWorkflow::state() const {
+  return state_;
+}
+
+const BleCsControllerWorkflowConfig& BleCsControllerWorkflow::config() const {
+  return config_;
+}
+
+bool BleCsControllerWorkflow::buildNextCommand(BleCsHciCommand* outCommand) {
+  if (outCommand == nullptr || failed() || ready() || state_.connHandle == 0U) {
+    return false;
+  }
+
+  switch (state_.phase) {
+    case BleCsControllerWorkflowPhase::kNeedReadRemoteCapabilities:
+      if (!BleChannelSoundingRadio::buildHciReadRemoteSupportedCapabilitiesCommand(
+              state_.connHandle, outCommand)) {
+        return false;
+      }
+      state_.lastOpcode = outCommand->opcode;
+      state_.phase = BleCsControllerWorkflowPhase::kWaitingRemoteCapabilities;
+      return true;
+
+    case BleCsControllerWorkflowPhase::kNeedSetDefaultSettings:
+      if (!BleChannelSoundingRadio::buildHciSetDefaultSettingsCommand(
+              state_.connHandle, config_.defaultSettings, outCommand)) {
+        return false;
+      }
+      state_.lastOpcode = outCommand->opcode;
+      state_.phase = BleCsControllerWorkflowPhase::kWaitingSetDefaultSettings;
+      return true;
+
+    case BleCsControllerWorkflowPhase::kNeedCreateConfig:
+      if (!BleChannelSoundingRadio::buildHciCreateConfigCommand(
+              state_.connHandle, config_.createConfig, outCommand)) {
+        return false;
+      }
+      state_.lastOpcode = outCommand->opcode;
+      state_.phase = BleCsControllerWorkflowPhase::kWaitingConfigComplete;
+      return true;
+
+    case BleCsControllerWorkflowPhase::kNeedSecurityEnable:
+      if (!BleChannelSoundingRadio::buildHciSecurityEnableCommand(
+              state_.connHandle, outCommand)) {
+        return false;
+      }
+      state_.lastOpcode = outCommand->opcode;
+      state_.phase = BleCsControllerWorkflowPhase::kWaitingSecurityEnableComplete;
+      return true;
+
+    case BleCsControllerWorkflowPhase::kNeedSetProcedureParameters:
+      if (!BleChannelSoundingRadio::buildHciSetProcedureParametersCommand(
+              state_.connHandle, config_.procedureParameters, outCommand)) {
+        return false;
+      }
+      state_.lastOpcode = outCommand->opcode;
+      state_.phase = BleCsControllerWorkflowPhase::kWaitingSetProcedureParameters;
+      return true;
+
+    case BleCsControllerWorkflowPhase::kNeedProcedureEnable:
+      if (!BleChannelSoundingRadio::buildHciProcedureEnableCommand(
+              state_.connHandle, config_.procedureEnable, outCommand)) {
+        return false;
+      }
+      state_.lastOpcode = outCommand->opcode;
+      state_.phase = BleCsControllerWorkflowPhase::kWaitingProcedureEnableComplete;
+      return true;
+
+    default:
+      return false;
+  }
+}
+
+bool BleCsControllerWorkflow::acknowledgeCommandStatus(uint16_t opcode, uint8_t status) {
+  if (failed() || ready() || opcode != state_.lastOpcode) {
+    return false;
+  }
+
+  state_.lastStatus = status;
+  if (status != 0U) {
+    fail(status);
+    return true;
+  }
+
+  switch (state_.phase) {
+    case BleCsControllerWorkflowPhase::kWaitingSetDefaultSettings:
+      state_.defaultSettingsApplied = true;
+      state_.phase = BleCsControllerWorkflowPhase::kNeedCreateConfig;
+      return true;
+
+    case BleCsControllerWorkflowPhase::kWaitingSetProcedureParameters:
+      state_.procedureParametersApplied = true;
+      state_.phase = BleCsControllerWorkflowPhase::kNeedProcedureEnable;
+      return true;
+
+    case BleCsControllerWorkflowPhase::kWaitingRemoteCapabilities:
+    case BleCsControllerWorkflowPhase::kWaitingConfigComplete:
+    case BleCsControllerWorkflowPhase::kWaitingSecurityEnableComplete:
+    case BleCsControllerWorkflowPhase::kWaitingProcedureEnableComplete:
+      return true;
+
+    default:
+      return false;
+  }
+}
+
+bool BleCsControllerWorkflow::consumeEvent(uint8_t subeventCode,
+                                           const uint8_t* eventData,
+                                           size_t eventLen) {
+  if (eventData == nullptr || failed() || ready()) {
+    return false;
+  }
+
+  switch (subeventCode) {
+    case kBleCsHciEvtReadRemoteSupportedCapabilitiesComplete: {
+      BleCsControllerCapabilities capabilities{};
+      if (state_.phase != BleCsControllerWorkflowPhase::kWaitingRemoteCapabilities ||
+          !BleChannelSoundingRadio::parseHciRemoteSupportedCapabilitiesCompleteEvent(
+              eventData, eventLen, &capabilities) ||
+          capabilities.connHandle != state_.connHandle) {
+        return false;
+      }
+      state_.lastStatus = capabilities.status;
+      if (capabilities.status != 0U) {
+        fail(capabilities.status);
+        return true;
+      }
+      if (!validateConfigAgainstCapabilities(config_, capabilities)) {
+        fail(0x12U);
+        return true;
+      }
+      state_.remoteCapabilities = capabilities;
+      state_.remoteCapabilitiesValid = capabilities.valid;
+      state_.phase = config_.applyDefaultSettings
+                         ? BleCsControllerWorkflowPhase::kNeedSetDefaultSettings
+                         : BleCsControllerWorkflowPhase::kNeedCreateConfig;
+      return true;
+    }
+
+    case kBleCsHciEvtReadRemoteSupportedCapabilitiesCompleteV2: {
+      BleCsControllerCapabilities capabilities{};
+      if (state_.phase != BleCsControllerWorkflowPhase::kWaitingRemoteCapabilities ||
+          !BleChannelSoundingRadio::parseHciRemoteSupportedCapabilitiesCompleteV2Event(
+              eventData, eventLen, &capabilities) ||
+          capabilities.connHandle != state_.connHandle) {
+        return false;
+      }
+      state_.lastStatus = capabilities.status;
+      if (capabilities.status != 0U) {
+        fail(capabilities.status);
+        return true;
+      }
+      if (!validateConfigAgainstCapabilities(config_, capabilities)) {
+        fail(0x12U);
+        return true;
+      }
+      state_.remoteCapabilities = capabilities;
+      state_.remoteCapabilitiesValid = capabilities.valid;
+      state_.phase = config_.applyDefaultSettings
+                         ? BleCsControllerWorkflowPhase::kNeedSetDefaultSettings
+                         : BleCsControllerWorkflowPhase::kNeedCreateConfig;
+      return true;
+    }
+
+    case kBleCsHciEvtConfigComplete: {
+      BleCsConfigComplete complete{};
+      if (state_.phase != BleCsControllerWorkflowPhase::kWaitingConfigComplete ||
+          !BleChannelSoundingRadio::parseHciConfigCompleteEvent(eventData, eventLen,
+                                                                &complete) ||
+          complete.connHandle != state_.connHandle) {
+        return false;
+      }
+      state_.lastStatus = complete.status;
+      state_.configComplete = complete;
+      if (complete.status != 0U) {
+        fail(complete.status);
+        return true;
+      }
+      state_.configCreated = (complete.action != 0U);
+      state_.phase = config_.requireSecurityEnable
+                         ? BleCsControllerWorkflowPhase::kNeedSecurityEnable
+                         : BleCsControllerWorkflowPhase::kNeedSetProcedureParameters;
+      return true;
+    }
+
+    case kBleCsHciEvtSecurityEnableComplete: {
+      BleCsSecurityEnableComplete complete{};
+      if (state_.phase != BleCsControllerWorkflowPhase::kWaitingSecurityEnableComplete ||
+          !BleChannelSoundingRadio::parseHciSecurityEnableCompleteEvent(eventData, eventLen,
+                                                                        &complete) ||
+          complete.connHandle != state_.connHandle) {
+        return false;
+      }
+      state_.lastStatus = complete.status;
+      if (complete.status != 0U) {
+        fail(complete.status);
+        return true;
+      }
+      state_.securityEnabled = true;
+      state_.phase = BleCsControllerWorkflowPhase::kNeedSetProcedureParameters;
+      return true;
+    }
+
+    case kBleCsHciEvtProcedureEnableComplete: {
+      BleCsProcedureEnableComplete complete{};
+      if (state_.phase != BleCsControllerWorkflowPhase::kWaitingProcedureEnableComplete ||
+          !BleChannelSoundingRadio::parseHciProcedureEnableCompleteEvent(eventData, eventLen,
+                                                                         &complete) ||
+          complete.connHandle != state_.connHandle) {
+        return false;
+      }
+      state_.lastStatus = complete.status;
+      state_.procedureEnableComplete = complete;
+      if (complete.status != 0U) {
+        fail(complete.status);
+        return true;
+      }
+      state_.procedureEnabled = (complete.state != 0U);
+      state_.phase = BleCsControllerWorkflowPhase::kReady;
+      return true;
+    }
+
+    default:
+      return false;
+  }
+}
+
+bool BleCsControllerWorkflow::consumeHciEventPacket(const uint8_t* packet, size_t packetLen) {
+  BleCsHciCommandStatusEvent statusEvent{};
+  if (BleChannelSoundingRadio::parseHciCommandStatusEvent(packet, packetLen, &statusEvent)) {
+    return acknowledgeCommandStatus(statusEvent.opcode, statusEvent.status);
+  }
+
+  BleCsHciCommandCompleteEvent completeEvent{};
+  if (BleChannelSoundingRadio::parseHciCommandCompleteEvent(packet, packetLen, &completeEvent)) {
+    return acknowledgeCommandStatus(completeEvent.opcode, completeEvent.status);
+  }
+
+  BleCsHciLeMetaEvent metaEvent{};
+  if (BleChannelSoundingRadio::parseHciLeMetaEvent(packet, packetLen, &metaEvent)) {
+    return consumeEvent(metaEvent.subeventCode, metaEvent.payload, metaEvent.payloadLen);
+  }
+
+  return false;
+}
+
+const char* BleCsControllerWorkflow::phaseName(BleCsControllerWorkflowPhase phase) {
+  switch (phase) {
+    case BleCsControllerWorkflowPhase::kIdle:
+      return "idle";
+    case BleCsControllerWorkflowPhase::kNeedReadRemoteCapabilities:
+      return "need_read_remote_caps";
+    case BleCsControllerWorkflowPhase::kWaitingRemoteCapabilities:
+      return "waiting_remote_caps";
+    case BleCsControllerWorkflowPhase::kNeedSetDefaultSettings:
+      return "need_set_defaults";
+    case BleCsControllerWorkflowPhase::kWaitingSetDefaultSettings:
+      return "waiting_set_defaults";
+    case BleCsControllerWorkflowPhase::kNeedCreateConfig:
+      return "need_create_config";
+    case BleCsControllerWorkflowPhase::kWaitingConfigComplete:
+      return "waiting_config_complete";
+    case BleCsControllerWorkflowPhase::kNeedSecurityEnable:
+      return "need_security_enable";
+    case BleCsControllerWorkflowPhase::kWaitingSecurityEnableComplete:
+      return "waiting_security_enable";
+    case BleCsControllerWorkflowPhase::kNeedSetProcedureParameters:
+      return "need_set_procedure_params";
+    case BleCsControllerWorkflowPhase::kWaitingSetProcedureParameters:
+      return "waiting_set_procedure_params";
+    case BleCsControllerWorkflowPhase::kNeedProcedureEnable:
+      return "need_procedure_enable";
+    case BleCsControllerWorkflowPhase::kWaitingProcedureEnableComplete:
+      return "waiting_procedure_enable";
+    case BleCsControllerWorkflowPhase::kReady:
+      return "ready";
+    case BleCsControllerWorkflowPhase::kFailed:
+      return "failed";
+    default:
+      return "unknown";
+  }
+}
+
+bool BleCsControllerWorkflow::validateConfigAgainstCapabilities(
+    const BleCsControllerWorkflowConfig& config,
+    const BleCsControllerCapabilities& capabilities) {
+  if (!capabilities.valid) {
+    return false;
+  }
+
+  if ((config.createConfig.mainModeType == kBleCsMainMode3 ||
+       config.createConfig.subModeType == kBleCsMainMode3) &&
+      !capabilities.mode3Supported) {
+    return false;
+  }
+
+  if (config.createConfig.role == 0U && !capabilities.initiatorSupported) {
+    return false;
+  }
+  if (config.createConfig.role == 1U && !capabilities.reflectorSupported) {
+    return false;
+  }
+
+  if (config.createConfig.csSyncPhy == 2U && !capabilities.csSync2mPhySupported) {
+    return false;
+  }
+  if (config.createConfig.csSyncPhy == 3U && !capabilities.csSync2m2btPhySupported) {
+    return false;
+  }
+
+  if (config.createConfig.rttType == 1U || config.createConfig.rttType == 2U) {
+    if (capabilities.rttSoundingN == 0U) {
+      return false;
+    }
+  } else if (config.createConfig.rttType >= 3U) {
+    if (capabilities.rttRandomPayloadN == 0U) {
+      return false;
+    }
+  }
+
+  if (config.createConfig.channelSelectionType == 1U &&
+      !capabilities.chselAlg3cSupported) {
+    return false;
+  }
+
+  return true;
+}
+
+void BleCsControllerWorkflow::fail(uint8_t status) {
+  state_.lastStatus = status;
+  state_.phase = BleCsControllerWorkflowPhase::kFailed;
+}
+
+BleHciPacketStreamDecoder::BleHciPacketStreamDecoder()
+    : buffer_{0},
+      used_(0U),
+      expected_(0U),
+      acceptedTypes_(packetTypeMask(kBleHciPacketTypeCommand) |
+                     packetTypeMask(kBleHciPacketTypeEvent)),
+      deliveredPackets_(0U),
+      ignoredPackets_(0U),
+      ignoredBytes_(0U) {}
+
+void BleHciPacketStreamDecoder::reset() {
+  resetBuffer();
+  deliveredPackets_ = 0U;
+  ignoredPackets_ = 0U;
+  ignoredBytes_ = 0U;
+}
+
+void BleHciPacketStreamDecoder::setAcceptedPacketTypes(uint32_t acceptedTypes) {
+  acceptedTypes_ = acceptedTypes;
+}
+
+uint32_t BleHciPacketStreamDecoder::acceptedPacketTypes() const { return acceptedTypes_; }
+
+uint32_t BleHciPacketStreamDecoder::deliveredPacketCount() const { return deliveredPackets_; }
+
+uint32_t BleHciPacketStreamDecoder::ignoredPacketCount() const { return ignoredPackets_; }
+
+uint32_t BleHciPacketStreamDecoder::ignoredByteCount() const { return ignoredBytes_; }
+
+uint32_t BleHciPacketStreamDecoder::packetTypeMask(uint8_t packetType) {
+  return (packetType < 32U) ? (1UL << packetType) : 0UL;
+}
+
+bool BleHciPacketStreamDecoder::pushBytes(
+    const uint8_t* data, size_t len,
+    bool (*onPacket)(const uint8_t* packet, size_t packetLen, void* userData),
+    void* userData) {
+  if ((len > 0U && data == nullptr) || onPacket == nullptr) {
+    return false;
+  }
+
+  for (size_t i = 0U; i < len; ++i) {
+    if (used_ >= sizeof(buffer_)) {
+      resetBuffer();
+      return false;
+    }
+    buffer_[used_++] = data[i];
+    if (!determineExpectedLength()) {
+      resetBuffer();
+      return false;
+    }
+    if (expectedLengthKnown() && used_ == expected_) {
+      if (!packetTypeAccepted()) {
+        ++ignoredPackets_;
+        ignoredBytes_ = static_cast<uint32_t>(ignoredBytes_ + used_);
+        resetBuffer();
+        continue;
+      }
+      const bool ok = onPacket(buffer_, used_, userData);
+      resetBuffer();
+      if (!ok) {
+        return false;
+      }
+      ++deliveredPackets_;
+    } else if (expectedLengthKnown() && used_ > expected_) {
+      resetBuffer();
+      return false;
+    }
+  }
+  return true;
+}
+
+bool BleHciPacketStreamDecoder::expectedLengthKnown() const { return expected_ > 0U; }
+
+bool BleHciPacketStreamDecoder::determineExpectedLength() {
+  if (expected_ > 0U || used_ == 0U) {
+    return true;
+  }
+
+  switch (buffer_[0U]) {
+    case kBleHciPacketTypeEvent:
+      if (used_ >= 3U) {
+        expected_ = static_cast<size_t>(3U + buffer_[2U]);
+      }
+      return true;
+
+    case kBleHciPacketTypeCommand:
+      if (used_ >= 4U) {
+        expected_ = static_cast<size_t>(4U + buffer_[3U]);
+      }
+      return true;
+
+    case kBleHciPacketTypeAcl:
+      if (used_ >= 5U) {
+        expected_ = static_cast<size_t>(5U + readLe16(buffer_ + 3U));
+      }
+      return true;
+
+    case kBleHciPacketTypeSco:
+      if (used_ >= 4U) {
+        expected_ = static_cast<size_t>(4U + buffer_[3U]);
+      }
+      return true;
+
+    case kBleHciPacketTypeIso:
+      if (used_ >= 5U) {
+        expected_ = static_cast<size_t>(5U + (readLe16(buffer_ + 3U) & 0x3FFFU));
+      }
+      return true;
+
+    default:
+      return false;
+  }
+}
+
+bool BleHciPacketStreamDecoder::packetTypeAccepted() const {
+  if (used_ == 0U) {
+    return false;
+  }
+  return (acceptedTypes_ & packetTypeMask(buffer_[0U])) != 0U;
+}
+
+void BleHciPacketStreamDecoder::resetBuffer() {
+  used_ = 0U;
+  expected_ = 0U;
+}
+
+BleCsControllerSession::BleCsControllerSession()
+    : config_{},
+      state_{},
+      workflow_{},
+      workflowDecoder_{},
+      localDecoder_{},
+      peerDecoder_{},
+      localReassembler_{},
+      peerReassembler_{},
+      localResult_{},
+      peerResult_{} {}
+
+void BleCsControllerSession::reset() {
+  config_ = BleCsControllerSessionConfig{};
+  state_ = BleCsControllerSessionState{};
+  workflow_.reset();
+  workflowDecoder_.reset();
+  localDecoder_.reset();
+  peerDecoder_.reset();
+  workflowDecoder_.setAcceptedPacketTypes(1UL << kBleHciPacketTypeEvent);
+  localDecoder_.setAcceptedPacketTypes(1UL << kBleHciPacketTypeEvent);
+  peerDecoder_.setAcceptedPacketTypes(1UL << kBleHciPacketTypeEvent);
+  localReassembler_.reset();
+  peerReassembler_.reset();
+  localResult_ = BleCsSubeventResult{};
+  peerResult_ = BleCsSubeventResult{};
+}
+
+bool BleCsControllerSession::begin(uint16_t connHandle,
+                                   const BleCsControllerSessionConfig& config) {
+  reset();
+  config_ = config;
+  return workflow_.begin(connHandle, config.workflow);
+}
+
+bool BleCsControllerSession::buildNextCommandPacket(uint8_t* outPacket,
+                                                    size_t maxLen,
+                                                    size_t* outLen) {
+  BleCsHciCommand command{};
+  if (!workflow_.buildNextCommand(&command)) {
+    return false;
+  }
+  return BleChannelSoundingRadio::encodeHciCommandPacket(command, outPacket, maxLen, outLen);
+}
+
+bool BleCsControllerSession::consumeWorkflowEventPacket(const uint8_t* packet, size_t packetLen) {
+  const bool ok = workflow_.consumeHciEventPacket(packet, packetLen);
+  if (!ok) {
+    return false;
+  }
+  state_.workflowReady = workflow_.ready();
+  return true;
+}
+
+bool BleCsControllerSession::consumeWorkflowStreamBytes(const uint8_t* data, size_t len) {
+  const bool ok = workflowDecoder_.pushBytes(data, len, onWorkflowPacket, this);
+  state_.workflowIgnoredPackets = workflowDecoder_.ignoredPacketCount();
+  state_.workflowIgnoredBytes = workflowDecoder_.ignoredByteCount();
+  return ok;
+}
+
+bool BleCsControllerSession::consumeResultEventPacket(BleCsControllerResultSource source,
+                                                      const uint8_t* packet,
+                                                      size_t packetLen) {
+  return consumeResultPacket(source, packet, packetLen);
+}
+
+bool BleCsControllerSession::consumeResultStreamBytes(BleCsControllerResultSource source,
+                                                      const uint8_t* data,
+                                                      size_t len) {
+  BleHciPacketStreamDecoder& decoder =
+      (source == BleCsControllerResultSource::kLocal) ? localDecoder_ : peerDecoder_;
+  const bool ok = decoder
+      .pushBytes(data, len,
+                 (source == BleCsControllerResultSource::kLocal) ? onLocalResultPacket
+                                                                 : onPeerResultPacket,
+                 this);
+  if (source == BleCsControllerResultSource::kLocal) {
+    state_.localIgnoredPackets = decoder.ignoredPacketCount();
+    state_.localIgnoredBytes = decoder.ignoredByteCount();
+  } else {
+    state_.peerIgnoredPackets = decoder.ignoredPacketCount();
+    state_.peerIgnoredBytes = decoder.ignoredByteCount();
+  }
+  return ok;
+}
+
+bool BleCsControllerSession::ready() const { return workflow_.ready(); }
+
+bool BleCsControllerSession::failed() const { return workflow_.failed(); }
+
+bool BleCsControllerSession::estimateValid() const { return state_.estimateValid; }
+
+const BleCsControllerSessionState& BleCsControllerSession::state() const { return state_; }
+
+const BleCsControllerWorkflowState& BleCsControllerSession::workflowState() const {
+  return workflow_.state();
+}
+
+bool BleCsControllerSession::onWorkflowPacket(const uint8_t* packet,
+                                              size_t packetLen,
+                                              void* userData) {
+  BleCsControllerSession* session = static_cast<BleCsControllerSession*>(userData);
+  return (session != nullptr) && session->consumeWorkflowEventPacket(packet, packetLen);
+}
+
+bool BleCsControllerSession::onLocalResultPacket(const uint8_t* packet,
+                                                 size_t packetLen,
+                                                 void* userData) {
+  BleCsControllerSession* session = static_cast<BleCsControllerSession*>(userData);
+  return (session != nullptr) &&
+         session->consumeResultPacket(BleCsControllerResultSource::kLocal, packet, packetLen);
+}
+
+bool BleCsControllerSession::onPeerResultPacket(const uint8_t* packet,
+                                                size_t packetLen,
+                                                void* userData) {
+  BleCsControllerSession* session = static_cast<BleCsControllerSession*>(userData);
+  return (session != nullptr) &&
+         session->consumeResultPacket(BleCsControllerResultSource::kPeer, packet, packetLen);
+}
+
+bool BleCsControllerSession::consumeResultPacket(BleCsControllerResultSource source,
+                                                 const uint8_t* packet,
+                                                 size_t packetLen) {
+  BleCsHciLeMetaEvent metaEvent{};
+  if (!BleChannelSoundingRadio::parseHciLeMetaEvent(packet, packetLen, &metaEvent)) {
+    return false;
+  }
+
+  BleCsSubeventResultReassembler& reassembler =
+      (source == BleCsControllerResultSource::kLocal) ? localReassembler_ : peerReassembler_;
+  BleCsSubeventResult& result =
+      (source == BleCsControllerResultSource::kLocal) ? localResult_ : peerResult_;
+
+  bool ok = false;
+  if (metaEvent.subeventCode == kBleCsHciEvtSubeventResult) {
+    ok = reassembler.consumeInitialEvent(metaEvent.payload, metaEvent.payloadLen, &result);
+  } else if (metaEvent.subeventCode == kBleCsHciEvtSubeventResultContinue) {
+    ok = reassembler.consumeContinuationEvent(metaEvent.payload, metaEvent.payloadLen, &result);
+  } else {
+    return false;
+  }
+  if (!ok) {
+    return false;
+  }
+
+  if (source == BleCsControllerResultSource::kLocal) {
+    state_.localResultComplete = result.isComplete;
+  } else {
+    state_.peerResultComplete = result.isComplete;
+  }
+  updateEstimateIfComplete();
+  return true;
+}
+
+void BleCsControllerSession::updateEstimateIfComplete() {
+  if (!localResult_.isComplete || !peerResult_.isComplete) {
+    return;
+  }
+  if (localResult_.header.connHandle != peerResult_.header.connHandle ||
+      localResult_.header.configId != peerResult_.header.configId ||
+      localResult_.header.procedureCounter != peerResult_.header.procedureCounter) {
+    return;
+  }
+  BleCsEstimate estimate{};
+  if (!BleChannelSoundingRadio::estimateDistanceFromSubeventResults(
+          localResult_, peerResult_, config_.localRoleIsInitiator, &estimate)) {
+    return;
+  }
+  state_.estimate = estimate;
+  state_.estimateValid = estimate.valid;
+  state_.completedProcedureCounter = localResult_.header.procedureCounter;
+  state_.completedConfigId = localResult_.header.configId;
+}
+
+BleCsControllerHost::BleCsControllerHost()
+    : config_{},
+      state_{},
+      session_{},
+      controllerDecoder_{},
+      localDecoder_{},
+      peerDecoder_{} {}
+
+void BleCsControllerHost::reset() {
+  config_ = BleCsControllerHostConfig{};
+  state_ = BleCsControllerHostState{};
+  session_.reset();
+  controllerDecoder_.reset();
+  localDecoder_.reset();
+  peerDecoder_.reset();
+  controllerDecoder_.setAcceptedPacketTypes(1UL << kBleHciPacketTypeEvent);
+  localDecoder_.setAcceptedPacketTypes(1UL << kBleHciPacketTypeEvent);
+  peerDecoder_.setAcceptedPacketTypes(1UL << kBleHciPacketTypeEvent);
+}
+
+bool BleCsControllerHost::begin(uint16_t connHandle, const BleCsControllerHostConfig& config) {
+  reset();
+  if (config.sendPacket == nullptr) {
+    return false;
+  }
+  config_ = config;
+  if (!session_.begin(connHandle, config.session)) {
+    return false;
+  }
+  state_.began = true;
+  return true;
+}
+
+bool BleCsControllerHost::pumpCommands(uint8_t maxCommands) {
+  if (!state_.began || config_.sendPacket == nullptr || maxCommands == 0U) {
+    return false;
+  }
+
+  uint8_t packet[80] = {0};
+  size_t packetLen = 0U;
+  for (uint8_t i = 0U; i < maxCommands; ++i) {
+    if (!session_.buildNextCommandPacket(packet, sizeof(packet), &packetLen)) {
+      break;
+    }
+    const uint16_t opcode =
+        (packetLen >= 3U) ? readLe16(packet + 1U) : 0U;
+    if (!config_.sendPacket(packet, packetLen, config_.userData)) {
+      return false;
+    }
+    ++state_.sentCommandPackets;
+    state_.sentCommandBytes =
+        static_cast<uint32_t>(state_.sentCommandBytes + packetLen);
+    state_.lastCommandOpcode = opcode;
+  }
+  return true;
+}
+
+bool BleCsControllerHost::consumeIngressPacket(BleCsControllerIngressSource source,
+                                               const uint8_t* packet,
+                                               size_t packetLen) {
+  if (packet == nullptr || packetLen == 0U) {
+    return false;
+  }
+
+  if (source == BleCsControllerIngressSource::kController) {
+    BleCsHciLeMetaEvent metaEvent{};
+    if (BleChannelSoundingRadio::parseHciLeMetaEvent(packet, packetLen, &metaEvent) &&
+        (metaEvent.subeventCode == kBleCsHciEvtSubeventResult ||
+         metaEvent.subeventCode == kBleCsHciEvtSubeventResultContinue)) {
+      const bool ok =
+          session_.consumeResultEventPacket(BleCsControllerResultSource::kLocal, packet,
+                                            packetLen);
+      if (ok) {
+        ++state_.localResultPackets;
+      }
+      return ok;
+    }
+
+    const bool ok = session_.consumeWorkflowEventPacket(packet, packetLen);
+    if (ok) {
+      ++state_.controllerEventPackets;
+    }
+    return ok;
+  }
+
+  const BleCsControllerResultSource resultSource =
+      (source == BleCsControllerIngressSource::kPeerResult)
+          ? BleCsControllerResultSource::kPeer
+          : BleCsControllerResultSource::kLocal;
+  const bool ok = session_.consumeResultEventPacket(resultSource, packet, packetLen);
+  if (ok) {
+    if (resultSource == BleCsControllerResultSource::kLocal) {
+      ++state_.localResultPackets;
+    } else {
+      ++state_.peerResultPackets;
+    }
+  }
+  return ok;
+}
+
+bool BleCsControllerHost::consumeIngressBytes(BleCsControllerIngressSource source,
+                                              const uint8_t* data,
+                                              size_t len) {
+  if (source == BleCsControllerIngressSource::kController) {
+    const bool ok = controllerDecoder_.pushBytes(data, len, onControllerPacket, this);
+    state_.controllerIgnoredPackets = controllerDecoder_.ignoredPacketCount();
+    state_.controllerIgnoredBytes = controllerDecoder_.ignoredByteCount();
+    return ok;
+  }
+
+  BleHciPacketStreamDecoder& decoder =
+      (source == BleCsControllerIngressSource::kPeerResult) ? peerDecoder_ : localDecoder_;
+  const bool ok = decoder.pushBytes(
+      data, len,
+      (source == BleCsControllerIngressSource::kPeerResult) ? onPeerPacket : onLocalPacket,
+      this);
+  return ok;
+}
+
+bool BleCsControllerHost::ready() const { return session_.ready(); }
+
+bool BleCsControllerHost::failed() const { return session_.failed(); }
+
+bool BleCsControllerHost::estimateValid() const { return session_.estimateValid(); }
+
+const BleCsControllerHostState& BleCsControllerHost::state() const { return state_; }
+
+const BleCsControllerSessionState& BleCsControllerHost::sessionState() const {
+  return session_.state();
+}
+
+const BleCsControllerWorkflowState& BleCsControllerHost::workflowState() const {
+  return session_.workflowState();
+}
+
+bool BleCsControllerHost::onControllerPacket(const uint8_t* packet,
+                                             size_t packetLen,
+                                             void* userData) {
+  BleCsControllerHost* host = static_cast<BleCsControllerHost*>(userData);
+  return (host != nullptr) &&
+         host->consumeIngressPacket(BleCsControllerIngressSource::kController, packet,
+                                    packetLen);
+}
+
+bool BleCsControllerHost::onLocalPacket(const uint8_t* packet,
+                                        size_t packetLen,
+                                        void* userData) {
+  BleCsControllerHost* host = static_cast<BleCsControllerHost*>(userData);
+  return (host != nullptr) &&
+         host->consumeIngressPacket(BleCsControllerIngressSource::kLocalResult, packet,
+                                    packetLen);
+}
+
+bool BleCsControllerHost::onPeerPacket(const uint8_t* packet,
+                                       size_t packetLen,
+                                       void* userData) {
+  BleCsControllerHost* host = static_cast<BleCsControllerHost*>(userData);
+  return (host != nullptr) &&
+         host->consumeIngressPacket(BleCsControllerIngressSource::kPeerResult, packet,
+                                    packetLen);
+}
+
+BleCsControllerStreamHost::BleCsControllerStreamHost()
+    : config_{}, state_{}, host_{} {}
+
+void BleCsControllerStreamHost::reset() {
+  config_ = BleCsControllerStreamHostConfig{};
+  state_ = BleCsControllerStreamHostState{};
+  host_.reset();
+}
+
+bool BleCsControllerStreamHost::begin(uint16_t connHandle,
+                                      const BleCsControllerStreamHostConfig& config) {
+  reset();
+  if (config.controllerStream == nullptr) {
+    return false;
+  }
+  config_ = config;
+  config_.maxCommandsPerPump = (config_.maxCommandsPerPump == 0U) ? 1U : config_.maxCommandsPerPump;
+  config_.maxControllerBytesPerPoll = clampPollBytes(config_.maxControllerBytesPerPoll);
+  config_.maxPeerBytesPerPoll = clampPollBytes(config_.maxPeerBytesPerPoll);
+
+  BleCsControllerHostConfig hostConfig{};
+  hostConfig.session = config_.session;
+  hostConfig.sendPacket = onSendPacket;
+  hostConfig.userData = this;
+  return host_.begin(connHandle, hostConfig);
+}
+
+bool BleCsControllerStreamHost::pumpCommands() {
+  return host_.pumpCommands(config_.maxCommandsPerPump);
+}
+
+bool BleCsControllerStreamHost::pollController() {
+  if (config_.controllerStream == nullptr) {
+    return false;
+  }
+
+  uint8_t bytes[128] = {0};
+  const size_t limit = (config_.maxControllerBytesPerPoll < sizeof(bytes))
+                           ? config_.maxControllerBytesPerPoll
+                           : sizeof(bytes);
+  size_t count = 0U;
+  while (count < limit && config_.controllerStream->available() > 0) {
+    const int raw = config_.controllerStream->read();
+    if (raw < 0) {
+      break;
+    }
+    bytes[count++] = static_cast<uint8_t>(raw);
+  }
+  if (count == 0U) {
+    return true;
+  }
+  state_.controllerBytesRead = static_cast<uint32_t>(state_.controllerBytesRead + count);
+  return host_.consumeIngressBytes(BleCsControllerIngressSource::kController, bytes, count);
+}
+
+bool BleCsControllerStreamHost::pollPeerResults() {
+  if (config_.peerResultStream == nullptr) {
+    return true;
+  }
+
+  uint8_t bytes[128] = {0};
+  const size_t limit =
+      (config_.maxPeerBytesPerPoll < sizeof(bytes)) ? config_.maxPeerBytesPerPoll : sizeof(bytes);
+  size_t count = 0U;
+  while (count < limit && config_.peerResultStream->available() > 0) {
+    const int raw = config_.peerResultStream->read();
+    if (raw < 0) {
+      break;
+    }
+    bytes[count++] = static_cast<uint8_t>(raw);
+  }
+  if (count == 0U) {
+    return true;
+  }
+  state_.peerBytesRead = static_cast<uint32_t>(state_.peerBytesRead + count);
+  return host_.consumeIngressBytes(BleCsControllerIngressSource::kPeerResult, bytes, count);
+}
+
+bool BleCsControllerStreamHost::poll() {
+  return pollController() && pollPeerResults();
+}
+
+bool BleCsControllerStreamHost::loopOnce() {
+  return pumpCommands() && poll();
+}
+
+bool BleCsControllerStreamHost::ready() const { return host_.ready(); }
+
+bool BleCsControllerStreamHost::failed() const { return host_.failed(); }
+
+bool BleCsControllerStreamHost::estimateValid() const { return host_.estimateValid(); }
+
+const BleCsControllerStreamHostState& BleCsControllerStreamHost::state() const { return state_; }
+
+const BleCsControllerHostState& BleCsControllerStreamHost::hostState() const {
+  return host_.state();
+}
+
+const BleCsControllerSessionState& BleCsControllerStreamHost::sessionState() const {
+  return host_.sessionState();
+}
+
+const BleCsControllerWorkflowState& BleCsControllerStreamHost::workflowState() const {
+  return host_.workflowState();
+}
+
+bool BleCsControllerStreamHost::onSendPacket(const uint8_t* packet,
+                                             size_t packetLen,
+                                             void* userData) {
+  BleCsControllerStreamHost* transport = static_cast<BleCsControllerStreamHost*>(userData);
+  if (transport == nullptr || transport->config_.controllerStream == nullptr || packet == nullptr ||
+      packetLen == 0U) {
+    return false;
+  }
+
+  const size_t written = transport->config_.controllerStream->write(packet, packetLen);
+  if (written != packetLen) {
+    transport->state_.lastWriteError = 1U;
+    return false;
+  }
+  ++transport->state_.controllerPacketsWritten;
+  transport->state_.controllerBytesWritten =
+      static_cast<uint32_t>(transport->state_.controllerBytesWritten + written);
+  return true;
+}
+
+size_t BleCsControllerStreamHost::clampPollBytes(size_t value) {
+  if (value == 0U) {
+    return 128U;
+  }
+  return (value > 1024U) ? 1024U : value;
+}
+
+BleCsControllerVprHost::BleCsControllerVprHost()
+    : config_{}, vprState_{}, transport_{}, host_{} {}
+
+void BleCsControllerVprHost::reset() {
+  config_ = BleCsControllerVprHostConfig{};
+  vprState_ = BleCsControllerVprHostState{};
+  host_.reset();
+}
+
+bool BleCsControllerVprHost::resetTransport(bool clearScripts) {
+  const bool ok = transport_.resetSharedState(clearScripts);
+  syncVprState();
+  return ok;
+}
+
+bool BleCsControllerVprHost::addScriptResponse(uint16_t opcode,
+                                               const uint8_t* response,
+                                               size_t len) {
+  const bool ok = transport_.addScriptResponse(opcode, response, len);
+  syncVprState();
+  return ok;
+}
+
+bool BleCsControllerVprHost::loadDefaultTransportImage() {
+  const bool ok = transport_.loadDefaultCsTransportStubImage();
+  syncVprState();
+  return ok;
+}
+
+bool BleCsControllerVprHost::bootTransport(uint32_t readySpinLimit) {
+  if (!transport_.bootLoadedFirmware()) {
+    syncVprState();
+    return false;
+  }
+  const bool ok = transport_.waitReady(readySpinLimit);
+  syncVprState();
+  return ok;
+}
+
+bool BleCsControllerVprHost::beginHost(uint16_t connHandle,
+                                       const BleCsControllerVprHostConfig& config) {
+  config_ = config;
+
+  BleCsControllerStreamHostConfig streamConfig{};
+  streamConfig.session = config.session;
+  streamConfig.controllerStream = &transport_;
+  streamConfig.peerResultStream = config.peerResultStream;
+  streamConfig.maxCommandsPerPump = config.maxCommandsPerPump;
+  streamConfig.maxControllerBytesPerPoll = config.maxControllerBytesPerPoll;
+  streamConfig.maxPeerBytesPerPoll = config.maxPeerBytesPerPoll;
+
+  const bool ok = host_.begin(connHandle, streamConfig);
+  syncVprState();
+  return ok;
+}
+
+bool BleCsControllerVprHost::pumpCommands() {
+  const bool ok = host_.pumpCommands();
+  syncVprState();
+  return ok;
+}
+
+bool BleCsControllerVprHost::poll() {
+  const bool ok = host_.poll();
+  syncVprState();
+  return ok;
+}
+
+bool BleCsControllerVprHost::loopOnce() {
+  const bool ok = host_.loopOnce();
+  syncVprState();
+  return ok;
+}
+
+bool BleCsControllerVprHost::ready() const { return host_.ready(); }
+
+bool BleCsControllerVprHost::failed() const { return host_.failed(); }
+
+bool BleCsControllerVprHost::estimateValid() const { return host_.estimateValid(); }
+
+const BleCsControllerVprHostState& BleCsControllerVprHost::vprState() const {
+  return vprState_;
+}
+
+const BleCsControllerStreamHostState& BleCsControllerVprHost::streamState() const {
+  return host_.state();
+}
+
+const BleCsControllerHostState& BleCsControllerVprHost::hostState() const {
+  return host_.hostState();
+}
+
+const BleCsControllerSessionState& BleCsControllerVprHost::sessionState() const {
+  return host_.sessionState();
+}
+
+const BleCsControllerWorkflowState& BleCsControllerVprHost::workflowState() const {
+  return host_.workflowState();
+}
+
+VprSharedTransportStream& BleCsControllerVprHost::transport() { return transport_; }
+
+const VprSharedTransportStream& BleCsControllerVprHost::transport() const {
+  return transport_;
+}
+
+void BleCsControllerVprHost::syncVprState() {
+  vprState_.heartbeat = transport_.heartbeat();
+  vprState_.lastOpcode = transport_.lastOpcode();
+  vprState_.transportStatus = transport_.transportStatus();
+  vprState_.lastError = transport_.lastError();
+  vprState_.running = transport_.isRunning();
+  vprState_.secureAccessEnabled = transport_.secureAccessEnabled();
+}
+
+BleCsDfeCaptureInfo BleChannelSoundingRadio::lastDfeCaptureInfo() const {
+  BleCsDfeCaptureInfo info{};
+  info.present = (lastDfePacketAmountBytes_ > 0U);
+  info.allZero = lastDfePacketAllZero_;
+  info.amountBytes = lastDfePacketAmountBytes_;
+  info.currentAmountBytes = lastDfePacketCurrentAmountBytes_;
+  return info;
+}
+
+bool BleChannelSoundingRadio::copyLastDfePacket(uint8_t* outPacket,
+                                                size_t maxLen,
+                                                size_t* outLen) const {
+  const size_t available =
+      (lastDfePacketAmountBytes_ <= sizeof(dfePacket_))
+          ? lastDfePacketAmountBytes_
+          : sizeof(dfePacket_);
+  const size_t copyLen = (available <= maxLen) ? available : maxLen;
+  if (outLen != nullptr) {
+    *outLen = copyLen;
+  }
+  if (outPacket == nullptr) {
+    return false;
+  }
+  if (copyLen > 0U) {
+    memcpy(outPacket, dfePacket_, copyLen);
+  }
+  return (copyLen == available);
+}
 
 bool BleChannelSoundingRadio::configureBle2MCommon() {
   radio_->SHORTS = 0U;
@@ -733,10 +3175,29 @@ void BleChannelSoundingRadio::configureTxToneExtension() {
   dfectrl1 |= (RADIO_DFECTRL1_TSAMPLESPACING_500ns
                << RADIO_DFECTRL1_TSAMPLESPACING_Pos) &
               RADIO_DFECTRL1_TSAMPLESPACING_Msk;
+  if (config_.dfeSwitchPatternCount > 0U) {
+    dfectrl1 |= ((static_cast<uint32_t>(config_.dfeRepeatPattern)
+                  << RADIO_DFECTRL1_REPEATPATTERN_Pos) &
+                 RADIO_DFECTRL1_REPEATPATTERN_Msk);
+  }
   radio_->DFECTRL1 = dfectrl1;
-  radio_->DFECTRL2 = 0U;
+  radio_->DFECTRL2 =
+      encodeSignedField(config_.dfeSwitchOffset16M,
+                        13U,
+                        RADIO_DFECTRL2_TSWITCHOFFSET_Msk,
+                        RADIO_DFECTRL2_TSWITCHOFFSET_Pos) |
+      encodeSignedField(config_.dfeSampleOffset16M,
+                        12U,
+                        RADIO_DFECTRL2_TSAMPLEOFFSET_Msk,
+                        RADIO_DFECTRL2_TSAMPLEOFFSET_Pos);
 
   radio_->CLEARPATTERN = 1U;
+  for (uint8_t i = 0U; i < config_.dfeSwitchPatternCount; ++i) {
+    radio_->SWITCHPATTERN =
+        (static_cast<uint32_t>(config_.dfeSwitchPattern[i])
+         << RADIO_SWITCHPATTERN_SWITCHPATTERN_Pos) &
+        RADIO_SWITCHPATTERN_SWITCHPATTERN_Msk;
+  }
 
   const uint32_t numSamples = static_cast<uint32_t>(config_.cteTimeUnits) * 16UL;
   const uint32_t coeff =
@@ -1055,6 +3516,26 @@ void BleChannelSoundingRadio::captureAuxDataRtt(BleCsRttSample* outRtt) {
   *outRtt = candidates[selected];
 }
 
+void BleChannelSoundingRadio::resetDfeCaptureState() {
+  lastDfePacketAmountBytes_ = 0U;
+  lastDfePacketCurrentAmountBytes_ = 0U;
+  lastDfePacketAllZero_ = true;
+}
+
+void BleChannelSoundingRadio::updateDfeCaptureState() {
+  const uint16_t amount = static_cast<uint16_t>(
+      (radio_->DFEPACKET.AMOUNT & RADIO_DFEPACKET_AMOUNT_AMOUNT_Msk) >>
+      RADIO_DFEPACKET_AMOUNT_AMOUNT_Pos);
+  const uint16_t currentAmount = static_cast<uint16_t>(
+      (radio_->DFEPACKET.CURRENTAMOUNT & RADIO_DFEPACKET_CURRENTAMOUNT_AMOUNT_Msk) >>
+      RADIO_DFEPACKET_CURRENTAMOUNT_AMOUNT_Pos);
+  const uint8_t cappedAmount = static_cast<uint8_t>(
+      (amount <= sizeof(dfePacket_)) ? amount : sizeof(dfePacket_));
+  lastDfePacketAmountBytes_ = amount;
+  lastDfePacketCurrentAmountBytes_ = currentAmount;
+  lastDfePacketAllZero_ = rawBytesAllZero(dfePacket_, cappedAmount);
+}
+
 bool BleChannelSoundingRadio::receiveFrame(uint8_t logicalChannel,
                                            uint32_t listenWindowUs,
                                            bool captureTone,
@@ -1074,6 +3555,7 @@ bool BleChannelSoundingRadio::receiveFrame(uint8_t logicalChannel,
   if (outRtt != nullptr) {
     *outRtt = BleCsRttSample{};
   }
+  resetDfeCaptureState();
 
   configureRxToneCapture();
   configureRtt(captureRtt, rttReflectorRole);
@@ -1144,6 +3626,9 @@ bool BleChannelSoundingRadio::receiveFrame(uint8_t logicalChannel,
     (void)waitForRadioDisabled(radio_, kRadioDisableBudgetUs);
   } else {
     (void)waitForRadioPhyEnd(radio_, kRadioEndBudgetUs);
+    if (config_.enableRawDfeCapture) {
+      updateDfeCaptureState();
+    }
     if (crcOk && outTone != nullptr && (radio_->EVENTS_CTEPRESENT != 0U)) {
       radio_->EVENTS_CSTONESEND = 0U;
       radio_->TASKS_CSTONESSTART = RADIO_TASKS_CSTONESSTART_TASKS_CSTONESSTART_Trigger;

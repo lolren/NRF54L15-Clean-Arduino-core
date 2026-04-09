@@ -23,7 +23,7 @@ Current scope:
 - POWER / RESET / REGULATORS / GRTC control
 - BLE legacy and extended advertising, active/passive scan, stable connected-link scheduling, ATT/GATT peripheral and client flows, Nordic UART Service transport, and Bluefruit/Seeed-style wrapper support
 - Zigbee HA coordinator / light / sensor examples plus lower-level 802.15.4 bring-up helpers
-- early channel sounding bring-up hooks and examples
+- early channel sounding bring-up hooks, phase-ranging examples, and raw DFE helpers
 - Low-power `WFI` and true `SYSTEM OFF` paths on XIAO
 
 ## Install
@@ -107,6 +107,18 @@ Still incomplete:
 - some optional Bluefruit examples still depend on extra third-party libraries
 - channel sounding is still experimental and not finished as a user-facing BLE
   feature
+- the clean-core CS path now exposes raw DFE capture, DFE switch-pattern
+  controls, HCI-style subevent step parsing helpers, raw HCI subevent-result
+  parsing/reassembly, controller-style step-buffer distance estimation
+  helpers, transport-agnostic HCI CS command/completion packet helpers, and a
+  CS workflow/session/host state machine layer plus H4-style HCI framing helpers
+  for command/event byte streams and mixed H4 streams with interleaved ACL
+  traffic; controller-standard RTT step decode and RTT distance estimation from
+  HCI CS subevent results are now implemented too, and the core now includes a
+  working VPR-backed controller transport path for CS bring-up plus a small
+  VPR-side CS demo responder for the supported opcode set, but it still does
+  not have a real production BLE controller runtime, so this is not yet a full
+  controller-backed Bluetooth CS implementation
 - broader phone/runtime coverage is still worth adding over time
 
 ## nRF52840 Sketch Compatibility
@@ -316,6 +328,10 @@ Practical result on the XIAO board from local validation:
 - `delay()` / `yield()` low-power idle path: both now stay board-state-neutral
   in the normal Arduino path, so sketch-controlled rails such as `VBAT_EN`,
   `RF_SW`, and `IMU_MIC_EN` remain asserted across `delay()` in WFI mode
+- `examples/Power/SenseDelayRailRetentionProbe`: samples those rail pins
+  halfway through `delay(500)` from a GRTC interrupt and immediately probes
+  VBAT/IMU after wake, which is useful when checking the `#43` regression on
+  a Sense board without a PPK2
 
 For the explicit XIAO save/collapse/restore helper, use `delayLowPowerIdle(ms)`.
 
@@ -341,14 +357,27 @@ Relevant docs:
 
 ## Channel Sounding
 
-The channel-sounding examples are a **two-board BLE advertising-channel RSSI tool**, not phase-based ranging.
+The channel-sounding examples are a **two-board phase-based BLE bring-up path**
+for the nRF54L15 `RADIO.CSTONES` / DFE hardware, not a finished
+controller-backed Bluetooth CS stack.
 
 How it works:
 
-- The reflector advertises with a fixed static-random address and accepts scan requests.
-- The initiator actively scans channels `37`, `38`, and `39` and filters for that reflector address.
-- The initiator logs per-channel hit counts, average RSSI, scan-response RSSI, and a rough RSSI-derived distance estimate.
-- The reflector logs scan-request and scan-response activity plus per-channel RSSI seen at the reflector side.
+- The initiator and reflector exchange phase-sounding control/probe/report
+  frames over the BLE radio.
+- The initiator sweeps all 37 BLE data channels and fits a phase-vs-frequency
+  line to estimate distance.
+- Both examples can keep raw DFE packet bytes for bring-up and hardware
+  validation.
+- The clean-core library also now exposes helper utilities for valid CS
+  channel maps, antenna-path permutations, phase-correction-term parsing,
+  HCI-style subevent step parsing, raw HCI subevent-result reassembly,
+  controller-style step-buffer distance estimation, HCI CS
+  command/completion packet helpers, a CS workflow/session/host helper layer
+  for sequencing command/exchange state, a `Stream`-friendly H4 transport
+  bridge, H4-style command/event framing, a working VPR-backed controller
+  transport wrapper, and a VPR-side CS demo responder used for live CS bring-up
+  on the two-board setup.
 
 Use these library examples together:
 
@@ -357,15 +386,16 @@ Use these library examples together:
 
 What it is good for:
 
-- identifying which advertising channel is currently strongest
-- comparing channel quality between two placements
-- getting a rough distance heuristic from RSSI
+- exercising the nRF54L15 channel-sounding radio/DFE hardware on real boards
+- experimenting with phase-based ranging in a simple two-board setup
+- bringing up raw DFE capture, controller-style step-data parsing, and the
+  VPR-backed CS command/result transport path
 
 What it is not:
 
-- not time-of-flight ranging
-- not phase-based ranging
-- not a calibrated distance system
+- not full Bluetooth Channel Sounding Link Layer interoperability yet
+- not a real production BLE controller/runtime yet
+- not a calibrated production distance system yet
 
 ## Board Notes
 

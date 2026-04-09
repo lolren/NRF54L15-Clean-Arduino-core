@@ -102,6 +102,13 @@ constexpr uint32_t RESET_BASE = 0x5010E000UL;
 constexpr uint32_t REGULATORS_BASE = 0x50120000UL;
 #endif
 
+// CPUAPP-side VPR and CTRLAPPERI access is exposed through the non-secure
+// aliases on nRF54L15, even when the current Arduino runtime itself is built
+// in the secure world. Using the secure aliases from app code can fault/hang
+// the application before the VPR transport even starts.
+constexpr uint32_t VPR_BASE = 0x4004C000UL;
+constexpr uint32_t CTRLAPPERI_BASE = 0x40052000UL;
+
 constexpr uint32_t PSEL_DISCONNECTED = 0xFFFFFFFFUL;
 
 inline constexpr uint32_t make_psel(uint8_t port, uint8_t pin) {

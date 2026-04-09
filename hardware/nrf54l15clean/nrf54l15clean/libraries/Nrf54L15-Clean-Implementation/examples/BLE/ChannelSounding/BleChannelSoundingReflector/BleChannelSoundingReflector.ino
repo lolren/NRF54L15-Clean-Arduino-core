@@ -39,6 +39,7 @@ static constexpr BoardAntennaPath kAntennaPath = BoardAntennaPath::kCeramic;
 static BleChannelSoundingRadio gCs;
 static uint32_t gReplyCount = 0U;
 static uint32_t gLastLogMs = 0U;
+static BleCsDfeCaptureInfo gLastDfeInfo{};
 
 void ledOn() {
   (void)Gpio::write(kPinUserLed, false);
@@ -93,7 +94,10 @@ void setup() {
   config.probeToReportDelayUs = 1200U;// Must match the Initiator.
   config.controlListenWindowUs = 20000U; // How long to listen for a control message.
   config.probeListenWindowUs = 8000U; // How long to listen for each probe tone.
+  config.maxPayloadLength = 32U;     // Keep the stable payload size on the raw-radio path.
   config.minToneMagnitude = 16U;      // Reject probes below this signal strength.
+  config.enableRtt = false;           // Raw RADIO RTT AUXDATA is still experimental.
+  config.enableRawDfeCapture = true;  // Keep reflector-side DFE bytes for bring-up.
 
   // begin() arms the reflector; it will start listening immediately.
   if (!gCs.begin(config)) {
@@ -102,6 +106,8 @@ void setup() {
 
   Serial.println(F("CoreBleChannelSoundingReflector start"));
   Serial.println(F("mode=phase_sounding"));
+  Serial.println(F("dfe_raw_capture=enabled"));
+  Serial.println(F("rtt=controller_hci_decode_ready_raw_aux_disabled"));
   Serial.println(F("control_channel=37"));
   Serial.println(F("pair_with=CoreBleChannelSoundingInitiator"));
   pulse(1U, 45U, 80U);
@@ -113,6 +119,7 @@ void loop() {
   // This call should be as tight as possible to avoid missing probe windows.
   if (gCs.listenAndReflectOnce()) {
     ++gReplyCount;
+    gLastDfeInfo = gCs.lastDfeCaptureInfo();
     pulse(1U, 8U, 0U);  // Brief LED blink on successful reply.
   }
 
@@ -122,6 +129,10 @@ void loop() {
     Serial.print(F("t="));
     Serial.print(now);
     Serial.print(F(" replies="));
-    Serial.println(gReplyCount);
+    Serial.print(gReplyCount);
+    Serial.print(F(" dfe_bytes="));
+    Serial.print(gLastDfeInfo.amountBytes);
+    Serial.print(F(" dfe_zero="));
+    Serial.println(gLastDfeInfo.allZero ? 1 : 0);
   }
 }

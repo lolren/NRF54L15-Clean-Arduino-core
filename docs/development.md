@@ -48,7 +48,7 @@ Current gap:
 - pairing/bond persistence is still partial
 - central support is still intentionally minimal (fixed-handle client flows and basic ATT request queueing, not a full generic host stack)
 - `Bluefruit52Lib` currently targets the common peripheral/runtime subset first; central/client classes are primarily compile-compatibility shims today unless otherwise noted by specific example validation
-- full Bluetooth channel sounding / AoA / AoD parity is not implemented yet (RSSI-based two-board sounding examples are available)
+- full Bluetooth channel sounding / AoA / AoD parity is not implemented yet; the current clean-core path now includes two-board phase sounding plus raw DFE capture hooks, HCI-style step parsing helpers, raw HCI subevent-result reassembly, controller-style step-buffer estimation helpers, transport-agnostic HCI CS command/completion packet helpers, a workflow/session/host layer for sequencing CS command exchange, a `Stream`-friendly H4 transport bridge with framing helpers that can tolerate interleaved ACL traffic, controller-standard RTT step decode / RTT distance estimation from HCI CS result packets, a working VPR-backed CS controller transport path inside the core, and a VPR-side CS demo responder for the supported opcode set, but it still does not have a real production BLE controller/runtime, and raw RADIO RTT AUXDATA decode is still not reliable
 - full Zigbee stack layers (commissioning, NWK/APS/ZCL/security profiles) are not implemented yet; current support is IEEE 802.15.4 PHY/MAC-lite with coordinator/router/end-device role demos
 
 ## Validation Artifacts
@@ -56,6 +56,9 @@ Current gap:
 - [`FEATURE_PARITY.md`](../FEATURE_PARITY.md)
 - [`TODO.md`](../TODO.md)
 - [`POWER_PROFILE_MEASUREMENTS.md`](../POWER_PROFILE_MEASUREMENTS.md)
+- [`HARDWARE_IMPLEMENTATION_GAP_MAP.md`](HARDWARE_IMPLEMENTATION_GAP_MAP.md)
+- [`HARDWARE_IMPLEMENTATION_PHASES.md`](HARDWARE_IMPLEMENTATION_PHASES.md)
+- [`CHANNEL_SOUNDING_VPR_CONTINUATION.md`](CHANNEL_SOUNDING_VPR_CONTINUATION.md)
 - [`docs/BLE_CLI_MATRIX_SUMMARY.md`](BLE_CLI_MATRIX_SUMMARY.md)
 - [`docs/BLE_REGRESSION_RUNBOOK.md`](BLE_REGRESSION_RUNBOOK.md)
 - [`docs/BUG_TRACKER.md`](BUG_TRACKER.md)

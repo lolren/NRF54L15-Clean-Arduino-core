@@ -6,8 +6,16 @@
  *   - 4 KB reserved at the top for bond/preferences/EEPROM persistence
  *   - 1520 KB usable for code/rodata/data loads
  * - RAM:   256 KB total (0x20000000 - 0x20040000)
+ *   - CPUAPP runtime RAM is limited to the low 152 KB (0x20000000 - 0x20026000)
+ *   - 4 KB is reserved in application SRAM for CPUAPP<->VPR shared transport:
+ *     - VPR->host RX window  (0x20018000 - 0x20018800)
+ *     - host->VPR TX window  (0x20020000 - 0x20020800)
+ *   - The heap is capped below the first shared IPC window so the transport
+ *     buffers are not overwritten by host-side allocations
+ *   - 96 KB top-of-RAM window is reserved for VPR/FLPR execution and saved context
+ *   - 2 KB reserved for a VPR helper image (0x2003EE00 - 0x2003F600)
  *   - top 512 B reserved for VPR saved context (0x2003FE00 - 0x20040000)
- *   - 255.5 KB usable for runtime sections
+ *   - 152 KB usable for CPUAPP runtime sections when VPR support is enabled
  *
  * Licensed under the Apache License 2.0
  */
@@ -20,7 +28,7 @@ MEMORY
 {
     FLASH (rx)      : ORIGIN = 0x00000000, LENGTH = 0x17C000
     FLASH_BOND (r)  : ORIGIN = 0x0017C000, LENGTH = 0x1000
-    RAM (rwx)       : ORIGIN = 0x20000000, LENGTH = 0x3FE00
+    RAM (rwx)       : ORIGIN = 0x20000000, LENGTH = 0x26000
 }
 
 /* Stack size. Heap is not given a fixed size; it fills all RAM between
@@ -209,9 +217,8 @@ SECTIONS
     } >RAM
 
     /*
-     * Heap: grows upward from end of static sections to the bottom of the stack.
-     * __heap_end__ is placed at (top of RAM - stack), so getFreeHeap() reports
-     * the true available dynamic memory instead of a fixed 4 KB ceiling.
+     * Heap: grows upward from end of static sections, but is capped below the
+     * first CPUAPP<->VPR shared-memory window.
      * Stack: the startup code sets SP to __stack_start__ (top of RAM); the
      * linker symbol __stack_end__ marks the lowest safe stack address.
      */
@@ -221,8 +228,7 @@ SECTIONS
         PROVIDE ( __heap_start__ = . );
         PROVIDE ( end = . );
         PROVIDE ( _end = . );
-        . = ORIGIN(RAM) + LENGTH(RAM) - __stack_size__;
-        PROVIDE ( __heap_end__ = . );
+        PROVIDE ( __heap_end__ = 0x20018000 );
         . = ALIGN(8);
     } >RAM
     /*
@@ -230,6 +236,24 @@ SECTIONS
      */
     __stack_start__ = ORIGIN(RAM) + LENGTH(RAM);
     __stack_end__ = __stack_start__ - __stack_size__;
+
+    /*
+     * Fixed VPR helper memory windows reserved outside the normal M33 runtime
+     * heap range. The transport uses the same CPUAPP SRAM windows that Nordic
+     * reserves for CPUAPP<->FLPR IPC in Zephyr.
+     */
+    PROVIDE(__vpr_image_start__ = 0x2003EE00);
+    PROVIDE(__vpr_image_end__ = 0x2003F600);
+    PROVIDE(__vpr_shared_start__ = 0x20018000);
+    PROVIDE(__vpr_shared_end__ = 0x20020800);
+    PROVIDE(__vpr_shared_host_start__ = 0x20020000);
+    PROVIDE(__vpr_shared_host_end__ = 0x20020800);
+    PROVIDE(__vpr_shared_vpr_start__ = 0x20018000);
+    PROVIDE(__vpr_shared_vpr_end__ = 0x20018800);
+    PROVIDE(__vpr_context_save_start__ = 0x2003FE00);
+    PROVIDE(__vpr_context_save_end__ = 0x20040000);
+
+    ASSERT(_enoinit <= 0x20018000, "CPUAPP RAM sections overlap VPR IPC window")
 
 
     . = ALIGN(4);
