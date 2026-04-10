@@ -967,7 +967,7 @@ void printStepParserDemo() {
 }
 
 void printStepEstimateDemo() {
-  static const uint8_t demoChannels[] = {0U, 12U, 24U, 36U};
+  static const uint8_t demoChannels[] = {2U, 14U, 26U, 38U};
   static constexpr size_t kDemoChannelCount =
       sizeof(demoChannels) / sizeof(demoChannels[0]);
   static constexpr float kDemoDistanceMeters = 0.75f;
@@ -1014,7 +1014,7 @@ void printStepEstimateDemo() {
 }
 
 void printHciEstimateDemo() {
-  static const uint8_t demoChannels[] = {0U, 12U, 24U, 36U};
+  static const uint8_t demoChannels[] = {2U, 14U, 26U, 38U};
   static constexpr size_t kDemoChannelCount =
       sizeof(demoChannels) / sizeof(demoChannels[0]);
   static constexpr float kDemoDistanceMeters = 0.75f;
@@ -2226,7 +2226,7 @@ void printHciVprTransportDemo() {
   volatile Nrf54l15VprTransportHostShared* sharedHost = nrf54l15_vpr_transport_host_shared();
   volatile Nrf54l15VprTransportVprShared* sharedVpr = nrf54l15_vpr_transport_vpr_shared();
   static constexpr uint16_t kDemoConnHandle = 0x0040U;
-  static const uint8_t demoChannels[] = {0U, 12U, 24U, 36U};
+  static const uint8_t demoChannels[] = {2U, 14U, 26U, 38U};
   static constexpr size_t kDemoChannelCount =
       sizeof(demoChannels) / sizeof(demoChannels[0]);
   static constexpr float kDemoDistanceMeters = 0.75f;
@@ -2237,6 +2237,12 @@ void printHciVprTransportDemo() {
   Serial.flush();
   BleCsControllerVprHostConfig hostConfig{};
   BleCsControllerVprHost::fillDemoConfig(&hostConfig);
+  // Override the stub defaults so the VPR-side CS demo config path is exercised.
+  hostConfig.builtInPeerDemo.distanceMeters = kDemoDistanceMeters;
+  hostConfig.builtInPeerDemo.amplitude = kDemoAmplitude;
+  hostConfig.builtInPeerDemo.channelCount =
+      static_cast<uint8_t>(kDemoChannelCount);
+  memcpy(hostConfig.builtInPeerDemo.channels, demoChannels, kDemoChannelCount);
 
   bool ok = true;
 
@@ -2377,6 +2383,13 @@ void printHciVprTransportDemo() {
   Serial.print(vprHost.hostState().vendorPeerResultTriggers);
   Serial.print(F(" peer_evt="));
   Serial.print(vprHost.hostState().peerResultPackets);
+  Serial.print(F(" cfg_ch="));
+  for (size_t i = 0U; i < kDemoChannelCount; ++i) {
+    if (i != 0U) {
+      Serial.print(',');
+    }
+    Serial.print(demoChannels[i]);
+  }
   Serial.print(F(" proc="));
   Serial.print(vprHost.sessionState().completedProcedureCounter);
   Serial.print(F(" dist_m="));

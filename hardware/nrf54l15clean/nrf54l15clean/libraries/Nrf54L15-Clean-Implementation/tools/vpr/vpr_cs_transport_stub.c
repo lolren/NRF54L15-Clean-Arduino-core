@@ -429,6 +429,7 @@ static size_t build_procedure_enable_complete_payload(uint8_t *payload, size_t m
 
 static size_t build_subevent_initial_payload(uint8_t *payload, size_t max_len,
                                              uint16_t conn_handle) {
+  const uint32_t channels = g_host_transport->reserved;
   if (payload == NULL || max_len < 31U) {
     return 0U;
   }
@@ -444,13 +445,14 @@ static size_t build_subevent_initial_payload(uint8_t *payload, size_t max_len,
   payload[12] = 0U;
   payload[13] = 2U;
   payload[14] = 2U;
-  append_mode2_demo_step(&payload[15], 0U);
-  append_mode2_demo_step(&payload[23], 12U);
+  append_mode2_demo_step(&payload[15], (uint8_t)(channels & 0xFFU));
+  append_mode2_demo_step(&payload[23], (uint8_t)((channels >> 8U) & 0xFFU));
   return 31U;
 }
 
 static size_t build_subevent_continue_payload(uint8_t *payload, size_t max_len,
                                               uint16_t conn_handle) {
+  const uint32_t channels = g_host_transport->reserved;
   if (payload == NULL || max_len < 24U) {
     return 0U;
   }
@@ -462,8 +464,8 @@ static size_t build_subevent_continue_payload(uint8_t *payload, size_t max_len,
   payload[5] = 0U;
   payload[6] = 2U;
   payload[7] = 2U;
-  append_mode2_demo_step(&payload[8], 24U);
-  append_mode2_demo_step(&payload[16], 36U);
+  append_mode2_demo_step(&payload[8], (uint8_t)((channels >> 16U) & 0xFFU));
+  append_mode2_demo_step(&payload[16], (uint8_t)((channels >> 24U) & 0xFFU));
   return 24U;
 }
 

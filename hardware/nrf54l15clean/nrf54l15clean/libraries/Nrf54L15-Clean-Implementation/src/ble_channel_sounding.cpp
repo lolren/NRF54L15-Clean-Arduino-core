@@ -3191,6 +3191,22 @@ bool BleCsControllerVprHost::beginHost(uint16_t connHandle,
   connHandle_ = connHandle;
   peerTriggerCount_ = 0U;
 
+  volatile Nrf54l15VprTransportHostShared* sharedHost =
+      nrf54l15_vpr_transport_host_shared();
+  if (sharedHost != nullptr) {
+    uint32_t packedDemoChannels = 0U;
+    if (config.builtInPeerDemo.enabled && config.builtInPeerDemo.channelCount > 0U) {
+      uint8_t lastChannel = config.builtInPeerDemo.channels[0U];
+      for (uint8_t i = 0U; i < 4U; ++i) {
+        if (i < config.builtInPeerDemo.channelCount) {
+          lastChannel = config.builtInPeerDemo.channels[i];
+        }
+        packedDemoChannels |= (static_cast<uint32_t>(lastChannel) << (8U * i));
+      }
+    }
+    sharedHost->reserved = packedDemoChannels;
+  }
+
   BleCsControllerStreamHostConfig streamConfig{};
   streamConfig.session = config.session;
   streamConfig.controllerStream = &transport_;

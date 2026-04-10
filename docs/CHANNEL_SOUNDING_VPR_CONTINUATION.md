@@ -99,9 +99,10 @@ Validated logs:
 - `/home/lolren/Desktop/Nrf54L15/.build/vpr_resume_autorun/board1_swd_fix8.log`
 - `/home/lolren/Desktop/Nrf54L15/.build/vpr_resume_autorun/board2_swd_fix8.log`
 
-The key proof line from the built-in responder path is:
+The key proof lines from the current built-in responder path are:
 
 - `hcivprtransportdemo ok=1 pumped=12 wrote=6/88 read=219/63 phase=ready ... ctrl_evt=11 peer_trig=1 peer_evt=2 proc=7 dist_m=0.7501`
+- `hcivprtransportdemo ok=1 pumped=11 wrote=6/88 read=219/63 phase=ready ... ctrl_evt=11 peer_trig=1 peer_evt=2 cfg_ch=2,14,26,38 proc=7 dist_m=0.7499`
 
 That proves:
 
@@ -116,6 +117,10 @@ That proves:
   - a `fillDemoConfig(...)` helper for the default controller workflow setup
 - the peer-result injection path is now gated by a VPR-generated vendor trigger
   event instead of firing immediately when the host reaches `ready`
+- the local-result channel profile is no longer hardcoded in the stub
+  - `BleCsControllerVprHost::beginHost(...)` now packs the four demo channels
+    into the shared transport host `reserved` word
+  - the VPR stub reads that mailbox word when it builds the local mode-2 steps
 
 ## Built-In VPR Stub Behavior
 
@@ -138,6 +143,11 @@ That design is intentional. A full VPR-side peer-result publication path was
 tested, but it pushed the VPR stub past the fixed `0x1000` RAM image window.
 The current trigger-based split keeps the stub small enough to fit while still
 moving the result timing boundary onto the VPR side.
+
+The same size budget applies to CS demo configuration. A dedicated vendor opcode
+for demo-channel configuration was tested and worked functionally, but it pushed
+the stub back over the image limit. The current stable design uses the existing
+shared-transport host `reserved` word as a tiny CS demo mailbox instead.
 
 ## Known Good Design Choice
 
