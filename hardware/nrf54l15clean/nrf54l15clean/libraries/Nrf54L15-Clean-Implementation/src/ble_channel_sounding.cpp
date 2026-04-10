@@ -102,6 +102,203 @@ inline void writeLe24(uint8_t* data, uint32_t value) {
   data[2] = static_cast<uint8_t>((value >> 16U) & 0xFFU);
 }
 
+uint8_t csFrequencyOffsetMHz(uint8_t channel) {
+  if (channel <= 10U) {
+    return static_cast<uint8_t>(4U + (2U * channel));
+  }
+  return static_cast<uint8_t>(6U + (2U * channel));
+}
+
+void encodePctSampleBytes(int16_t i, int16_t q, uint8_t outPct[3]) {
+  if (outPct == nullptr) {
+    return;
+  }
+
+  auto clamp12 = [](int16_t value) -> int16_t {
+    if (value < -2048) {
+      return -2048;
+    }
+    if (value > 2047) {
+      return 2047;
+    }
+    return value;
+  };
+
+  const uint16_t i12 = static_cast<uint16_t>(clamp12(i)) & 0x0FFFU;
+  const uint16_t q12 = static_cast<uint16_t>(clamp12(q)) & 0x0FFFU;
+  const uint32_t packed =
+      static_cast<uint32_t>(i12) | (static_cast<uint32_t>(q12) << 12U);
+  outPct[0] = static_cast<uint8_t>(packed & 0xFFU);
+  outPct[1] = static_cast<uint8_t>((packed >> 8U) & 0xFFU);
+  outPct[2] = static_cast<uint8_t>((packed >> 16U) & 0xFFU);
+}
+
+bool appendMode2DemoStep(uint8_t* buffer,
+                         size_t maxLen,
+                         size_t* offset,
+                         uint8_t channel,
+                         int16_t i,
+                         int16_t q) {
+  if (buffer == nullptr || offset == nullptr || (maxLen - *offset) < 8U) {
+    return false;
+  }
+
+  buffer[*offset + 0U] = kBleCsMainMode2;
+  buffer[*offset + 1U] = channel;
+  buffer[*offset + 2U] = 5U;
+  buffer[*offset + 3U] = 0U;
+  encodePctSampleBytes(i, q, &buffer[*offset + 4U]);
+  buffer[*offset + 7U] = kBleCsToneQualityHigh;
+  *offset += 8U;
+  return true;
+}
+
+bool buildHciInitialEvent(uint8_t* out,
+                          size_t maxLen,
+                          uint16_t connHandle,
+                          uint8_t configId,
+                          uint16_t startAclConnEventCounter,
+                          uint16_t procedureCounter,
+                          uint8_t numAntennaPaths,
+                          uint8_t numStepsReported,
+                          const uint8_t* stepBytes,
+                          size_t stepLen,
+                          bool partial) {
+  if (out == nullptr || stepBytes == nullptr || maxLen < (15U + stepLen)) {
+    return false;
+  }
+  writeLe16(out + 0U, connHandle);
+  out[2U] = configId;
+  writeLe16(out + 3U, startAclConnEventCounter);
+  writeLe16(out + 5U, procedureCounter);
+  writeLe16(out + 7U, 0U);
+  out[9U] = 0U;
+  out[10U] = partial ? kBleCsProcedureDonePartial : kBleCsProcedureDoneComplete;
+  out[11U] = partial ? kBleCsSubeventDonePartial : kBleCsSubeventDoneComplete;
+  out[12U] = 0U;
+  out[13U] = numAntennaPaths;
+  out[14U] = numStepsReported;
+  memcpy(out + 15U, stepBytes, stepLen);
+  return true;
+}
+
+bool buildHciContinueEvent(uint8_t* out,
+                           size_t maxLen,
+                           uint16_t connHandle,
+                           uint8_t configId,
+                           uint8_t numAntennaPaths,
+                           uint8_t numStepsReported,
+                           const uint8_t* stepBytes,
+                           size_t stepLen,
+                           bool partial) {
+  if (out == nullptr || stepBytes == nullptr || maxLen < (8U + stepLen)) {
+    return false;
+  }
+  writeLe16(out + 0U, connHandle);
+  out[2U] = configId;
+  out[3U] = partial ? kBleCsProcedureDonePartial : kBleCsProcedureDoneComplete;
+  out[4U] = partial ? kBleCsSubeventDonePartial : kBleCsSubeventDoneComplete;
+  out[5U] = 0U;
+  out[6U] = numAntennaPaths;
+  out[7U] = numStepsReported;
+  memcpy(out + 8U, stepBytes, stepLen);
+  return true;
+}
+
+bool buildH4LeMetaEvent(uint8_t* out,
+                        size_t maxLen,
+                        uint8_t subeventCode,
+                        const uint8_t* payload,
+                        size_t payloadLen) {
+  if (out == nullptr || payload == nullptr || maxLen < (4U + payloadLen)) {
+    return false;
+  }
+  out[0U] = kBleHciPacketTypeEvent;
+  out[1U] = kBleHciEvtLeMeta;
+  out[2U] = static_cast<uint8_t>(1U + payloadLen);
+  out[3U] = subeventCode;
+  memcpy(out + 4U, payload, payloadLen);
+  return true;
+}
+
+bool buildDemoPeerResultPackets(uint16_t connHandle,
+                                const BleCsControllerVprBuiltInPeerDemoConfig& config,
+                                uint8_t* initPacket,
+                                size_t initPacketMaxLen,
+                                size_t* initPacketLen,
+                                uint8_t* contPacket,
+                                size_t contPacketMaxLen,
+                                size_t* contPacketLen) {
+  if (initPacket == nullptr || initPacketLen == nullptr || contPacket == nullptr ||
+      contPacketLen == nullptr) {
+    return false;
+  }
+
+  *initPacketLen = 0U;
+  *contPacketLen = 0U;
+
+  const uint8_t channelCount =
+      (config.channelCount <= sizeof(config.channels)) ? config.channelCount
+                                                       : sizeof(config.channels);
+  if (channelCount == 0U) {
+    return false;
+  }
+
+  uint8_t peerSteps[64] = {0};
+  size_t peerLen = 0U;
+  for (uint8_t i = 0U; i < channelCount; ++i) {
+    const uint8_t channel = config.channels[i];
+    const float freqHz =
+        (2400.0f + static_cast<float>(csFrequencyOffsetMHz(channel))) * 1000000.0f;
+    const float theta = -((4.0f * kPi * config.distanceMeters * freqHz) /
+                          kSpeedOfLightMetersPerSecond);
+    const int16_t peerI =
+        static_cast<int16_t>(lroundf(cosf(theta) * config.amplitude));
+    const int16_t peerQ =
+        static_cast<int16_t>(lroundf(sinf(theta) * config.amplitude));
+    if (!appendMode2DemoStep(peerSteps, sizeof(peerSteps), &peerLen, channel, peerI, peerQ)) {
+      return false;
+    }
+  }
+
+  const size_t splitLen = (peerLen > 16U) ? 16U : peerLen;
+  const size_t contLen = peerLen - splitLen;
+  const bool partial = contLen > 0U;
+  const uint8_t configId = 1U;
+  const uint16_t procedureCounter = 7U;
+  const uint16_t startAclConnEventCounter = 0x1234U;
+  const uint8_t numAntennaPaths = 2U;
+  const uint8_t initSteps = static_cast<uint8_t>(splitLen / 8U);
+  const uint8_t contSteps = static_cast<uint8_t>(contLen / 8U);
+  uint8_t initPayload[64] = {0};
+  uint8_t contPayload[64] = {0};
+
+  if (!buildHciInitialEvent(initPayload, sizeof(initPayload), connHandle, configId,
+                            startAclConnEventCounter, procedureCounter,
+                            numAntennaPaths, initSteps, peerSteps, splitLen, partial) ||
+      !buildH4LeMetaEvent(initPacket, initPacketMaxLen, kBleCsHciEvtSubeventResult,
+                          initPayload, 15U + splitLen)) {
+    return false;
+  }
+  *initPacketLen = 4U + 15U + splitLen;
+
+  if (contLen == 0U) {
+    return true;
+  }
+
+  if (!buildHciContinueEvent(contPayload, sizeof(contPayload), connHandle, configId,
+                             numAntennaPaths, contSteps, peerSteps + splitLen, contLen,
+                             false) ||
+      !buildH4LeMetaEvent(contPacket, contPacketMaxLen,
+                          kBleCsHciEvtSubeventResultContinue, contPayload,
+                          8U + contLen)) {
+    *initPacketLen = 0U;
+    return false;
+  }
+  *contPacketLen = 4U + 8U + contLen;
+  return true;
+}
+
 bool decodeHciEventFrame(const uint8_t* packet,
                          size_t packetLen,
                          uint8_t* outEventCode,
@@ -2800,6 +2997,14 @@ bool BleCsControllerStreamHost::pollPeerResults() {
   return host_.consumeIngressBytes(BleCsControllerIngressSource::kPeerResult, bytes, count);
 }
 
+bool BleCsControllerStreamHost::consumePeerPacket(const uint8_t* packet, size_t packetLen) {
+  if (packet == nullptr || packetLen == 0U) {
+    return false;
+  }
+  state_.peerBytesRead = static_cast<uint32_t>(state_.peerBytesRead + packetLen);
+  return host_.consumeIngressPacket(BleCsControllerIngressSource::kPeerResult, packet, packetLen);
+}
+
 bool BleCsControllerStreamHost::poll() {
   return pollController() && pollPeerResults();
 }
@@ -2856,12 +3061,14 @@ size_t BleCsControllerStreamHost::clampPollBytes(size_t value) {
 }
 
 BleCsControllerVprHost::BleCsControllerVprHost()
-    : config_{}, vprState_{}, transport_{}, host_{} {}
+    : config_{}, vprState_{}, transport_{}, host_{}, builtInPeerResultsInjected_{false}, connHandle_{0U} {}
 
 void BleCsControllerVprHost::reset() {
   config_ = BleCsControllerVprHostConfig{};
   vprState_ = BleCsControllerVprHostState{};
   host_.reset();
+  builtInPeerResultsInjected_ = false;
+  connHandle_ = 0U;
 }
 
 bool BleCsControllerVprHost::resetTransport(bool clearScripts) {
@@ -2897,6 +3104,8 @@ bool BleCsControllerVprHost::bootTransport(uint32_t readySpinLimit) {
 bool BleCsControllerVprHost::beginHost(uint16_t connHandle,
                                        const BleCsControllerVprHostConfig& config) {
   config_ = config;
+  builtInPeerResultsInjected_ = false;
+  connHandle_ = connHandle;
 
   BleCsControllerStreamHostConfig streamConfig{};
   streamConfig.session = config.session;
@@ -2918,13 +3127,19 @@ bool BleCsControllerVprHost::pumpCommands() {
 }
 
 bool BleCsControllerVprHost::poll() {
-  const bool ok = host_.poll();
+  bool ok = host_.poll();
+  if (ok) {
+    ok = injectBuiltInDemoPeerResults();
+  }
   syncVprState();
   return ok;
 }
 
 bool BleCsControllerVprHost::loopOnce() {
-  const bool ok = host_.loopOnce();
+  bool ok = host_.loopOnce();
+  if (ok) {
+    ok = injectBuiltInDemoPeerResults();
+  }
   syncVprState();
   return ok;
 }
@@ -2959,6 +3174,33 @@ VprSharedTransportStream& BleCsControllerVprHost::transport() { return transport
 
 const VprSharedTransportStream& BleCsControllerVprHost::transport() const {
   return transport_;
+}
+
+bool BleCsControllerVprHost::injectBuiltInDemoPeerResults() {
+  if (config_.peerResultStream != nullptr || !config_.builtInPeerDemo.enabled ||
+      builtInPeerResultsInjected_ || !host_.ready() || host_.failed() ||
+      host_.estimateValid()) {
+    return true;
+  }
+
+  uint8_t initPacket[96] = {0};
+  uint8_t contPacket[96] = {0};
+  size_t initPacketLen = 0U;
+  size_t contPacketLen = 0U;
+  if (!buildDemoPeerResultPackets(connHandle_, config_.builtInPeerDemo, initPacket,
+                                  sizeof(initPacket), &initPacketLen, contPacket,
+                                  sizeof(contPacket), &contPacketLen)) {
+    return false;
+  }
+  if (!host_.consumePeerPacket(initPacket, initPacketLen)) {
+    return false;
+  }
+  if (contPacketLen > 0U && !host_.consumePeerPacket(contPacket, contPacketLen)) {
+    return false;
+  }
+
+  builtInPeerResultsInjected_ = true;
+  return true;
 }
 
 void BleCsControllerVprHost::syncVprState() {

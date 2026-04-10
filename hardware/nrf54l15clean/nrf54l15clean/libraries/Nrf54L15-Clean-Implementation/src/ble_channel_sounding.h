@@ -854,6 +854,7 @@ class BleCsControllerStreamHost {
   bool pumpCommands();
   bool pollController();
   bool pollPeerResults();
+  bool consumePeerPacket(const uint8_t* packet, size_t packetLen);
   bool poll();
   bool loopOnce();
 
@@ -874,12 +875,21 @@ class BleCsControllerStreamHost {
   BleCsControllerHost host_;
 };
 
+struct BleCsControllerVprBuiltInPeerDemoConfig {
+  bool enabled = false;
+  float distanceMeters = 0.75f;
+  float amplitude = 1024.0f;
+  uint8_t channels[4] = {0U, 12U, 24U, 36U};
+  uint8_t channelCount = 4U;
+};
+
 struct BleCsControllerVprHostConfig {
   BleCsControllerSessionConfig session{};
   ::Stream* peerResultStream = nullptr;
   uint8_t maxCommandsPerPump = 1U;
   size_t maxControllerBytesPerPoll = 128U;
   size_t maxPeerBytesPerPoll = 128U;
+  BleCsControllerVprBuiltInPeerDemoConfig builtInPeerDemo{};
 };
 
 struct BleCsControllerVprHostState {
@@ -918,12 +928,15 @@ class BleCsControllerVprHost {
   const VprSharedTransportStream& transport() const;
 
  private:
+  bool injectBuiltInDemoPeerResults();
   void syncVprState();
 
   BleCsControllerVprHostConfig config_;
   BleCsControllerVprHostState vprState_;
   VprSharedTransportStream transport_;
   BleCsControllerStreamHost host_;
+  bool builtInPeerResultsInjected_ = false;
+  uint16_t connHandle_ = 0U;
 };
 
 }  // namespace xiao_nrf54l15

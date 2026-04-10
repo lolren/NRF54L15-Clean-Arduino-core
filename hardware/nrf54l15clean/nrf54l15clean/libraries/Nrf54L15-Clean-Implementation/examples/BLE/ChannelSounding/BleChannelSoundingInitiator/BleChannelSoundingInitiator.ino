@@ -2233,14 +2233,18 @@ void printHciVprTransportDemo() {
   static constexpr float kDemoAmplitude = 1024.0f;
 
   BleCsControllerVprHost vprHost;
-  ByteQueueStream peerStream;
   Serial.println(F("hcivprtransportdemo stage=begin"));
   Serial.flush();
   BleCsControllerVprHostConfig hostConfig{};
-  hostConfig.peerResultStream = &peerStream;
   hostConfig.maxCommandsPerPump = 1U;
   hostConfig.maxControllerBytesPerPoll = 128U;
   hostConfig.maxPeerBytesPerPoll = 128U;
+  hostConfig.builtInPeerDemo.enabled = true;
+  hostConfig.builtInPeerDemo.distanceMeters = kDemoDistanceMeters;
+  hostConfig.builtInPeerDemo.amplitude = kDemoAmplitude;
+  hostConfig.builtInPeerDemo.channelCount =
+      static_cast<uint8_t>(kDemoChannelCount);
+  memcpy(hostConfig.builtInPeerDemo.channels, demoChannels, kDemoChannelCount);
   hostConfig.session.localRoleIsInitiator = true;
   hostConfig.session.workflow.applyDefaultSettings = true;
   hostConfig.session.workflow.requireSecurityEnable = true;
@@ -2285,54 +2289,7 @@ void printHciVprTransportDemo() {
   hostConfig.session.workflow.procedureEnable.configId = 1U;
   hostConfig.session.workflow.procedureEnable.enable = 1U;
 
-  uint8_t localSteps[64] = {0};
-  uint8_t peerSteps[64] = {0};
-  size_t localLen = 0U;
-  size_t peerLen = 0U;
   bool ok = true;
-
-  for (size_t i = 0U; ok && i < kDemoChannelCount; ++i) {
-    const uint8_t channel = demoChannels[i];
-    const float freqHz =
-        (2400.0f + static_cast<float>(csFrequencyOffsetMHz(channel))) * 1000000.0f;
-    const float theta =
-        -((4.0f * 3.14159265358979323846f * kDemoDistanceMeters * freqHz) /
-          299792458.0f);
-    const int16_t peerI = static_cast<int16_t>(lroundf(cosf(theta) * kDemoAmplitude));
-    const int16_t peerQ = static_cast<int16_t>(lroundf(sinf(theta) * kDemoAmplitude));
-    ok &= appendMode2DemoStep(localSteps, sizeof(localSteps), &localLen, channel, 1024, 0);
-    ok &= appendMode2DemoStep(peerSteps, sizeof(peerSteps), &peerLen, channel, peerI, peerQ);
-  }
-
-  static constexpr size_t kSplitLen = 16U;
-  uint8_t localInitPayload[64] = {0};
-  uint8_t localContPayload[64] = {0};
-  uint8_t peerInitPayload[64] = {0};
-  uint8_t peerContPayload[64] = {0};
-  uint8_t localInitPacket[96] = {0};
-  uint8_t localContPacket[96] = {0};
-  uint8_t peerInitPacket[96] = {0};
-  uint8_t peerContPacket[96] = {0};
-
-  ok = ok &&
-       buildHciInitialEvent(localInitPayload, sizeof(localInitPayload), kDemoConnHandle, 1U,
-                            0x1234U, 7U, 2U, 2U, localSteps, kSplitLen, true) &&
-       buildHciContinueEvent(localContPayload, sizeof(localContPayload), kDemoConnHandle, 1U,
-                             2U, 2U, localSteps + kSplitLen, localLen - kSplitLen, false) &&
-       buildHciInitialEvent(peerInitPayload, sizeof(peerInitPayload), kDemoConnHandle, 1U,
-                            0x1234U, 7U, 2U, 2U, peerSteps, kSplitLen, true) &&
-       buildHciContinueEvent(peerContPayload, sizeof(peerContPayload), kDemoConnHandle, 1U,
-                             2U, 2U, peerSteps + kSplitLen, peerLen - kSplitLen, false) &&
-       buildH4LeMetaEvent(localInitPacket, sizeof(localInitPacket),
-                          kBleCsHciEvtSubeventResult, localInitPayload, 15U + kSplitLen) &&
-       buildH4LeMetaEvent(localContPacket, sizeof(localContPacket),
-                          kBleCsHciEvtSubeventResultContinue, localContPayload,
-                          8U + (localLen - kSplitLen)) &&
-       buildH4LeMetaEvent(peerInitPacket, sizeof(peerInitPacket),
-                          kBleCsHciEvtSubeventResult, peerInitPayload, 15U + kSplitLen) &&
-       buildH4LeMetaEvent(peerContPacket, sizeof(peerContPacket),
-                          kBleCsHciEvtSubeventResultContinue, peerContPayload,
-                          8U + (peerLen - kSplitLen));
 
   ok = ok && vprHost.resetTransport(true);
   Serial.print(F("hcivprtransportdemo stage=shared ok="));
@@ -2423,9 +2380,7 @@ void printHciVprTransportDemo() {
     ++pumpCount;
   }
 
-  ok = ok && vprHost.ready() &&
-       peerStream.enqueue(peerInitPacket, 4U + 15U + kSplitLen) &&
-       peerStream.enqueue(peerContPacket, 4U + 8U + (peerLen - kSplitLen));
+  ok = ok && vprHost.ready();
 
   for (uint8_t i = 0U; ok && !vprHost.estimateValid() && i < 8U; ++i) {
     ok = vprHost.poll();
