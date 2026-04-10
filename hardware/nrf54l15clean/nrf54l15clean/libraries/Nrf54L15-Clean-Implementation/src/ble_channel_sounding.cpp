@@ -223,6 +223,8 @@ bool buildH4LeMetaEvent(uint8_t* out,
 }
 
 bool buildDemoPeerResultPackets(uint16_t connHandle,
+                                uint8_t configId,
+                                uint16_t procedureCounter,
                                 const BleCsControllerVprBuiltInPeerDemoConfig& config,
                                 uint8_t* initPacket,
                                 size_t initPacketMaxLen,
@@ -265,8 +267,6 @@ bool buildDemoPeerResultPackets(uint16_t connHandle,
   const size_t splitLen = (peerLen > 16U) ? 16U : peerLen;
   const size_t contLen = peerLen - splitLen;
   const bool partial = contLen > 0U;
-  const uint8_t configId = 1U;
-  const uint16_t procedureCounter = 7U;
   const uint16_t startAclConnEventCounter = 0x1234U;
   const uint8_t numAntennaPaths = 2U;
   const uint8_t initSteps = static_cast<uint8_t>(splitLen / 8U);
@@ -2838,6 +2838,14 @@ bool BleCsControllerHost::consumeIngressPacket(BleCsControllerIngressSource sour
     if (BleChannelSoundingRadio::parseHciLeMetaEvent(packet, packetLen, &metaEvent) &&
         (metaEvent.subeventCode == kBleCsHciEvtSubeventResult ||
          metaEvent.subeventCode == kBleCsHciEvtSubeventResultContinue)) {
+      if (metaEvent.subeventCode == kBleCsHciEvtSubeventResult) {
+        BleCsSubeventResult result{};
+        if (BleChannelSoundingRadio::parseHciSubeventResultEvent(
+                metaEvent.payload, metaEvent.payloadLen, &result)) {
+          state_.vendorPeerResultConfigId = result.header.configId;
+          state_.vendorPeerResultProcedureCounter = result.header.procedureCounter;
+        }
+      }
       const bool ok =
           session_.consumeResultEventPacket(BleCsControllerResultSource::kLocal, packet,
                                             packetLen);
@@ -3288,9 +3296,24 @@ bool BleCsControllerVprHost::injectBuiltInDemoPeerResults() {
   uint8_t contPacket[96] = {0};
   size_t initPacketLen = 0U;
   size_t contPacketLen = 0U;
-  if (!buildDemoPeerResultPackets(connHandle_, config_.builtInPeerDemo, initPacket,
-                                  sizeof(initPacket), &initPacketLen, contPacket,
-                                  sizeof(contPacket), &contPacketLen)) {
+  const uint8_t configId =
+      (host_.hostState().vendorPeerResultConfigId != 0U)
+          ? host_.hostState().vendorPeerResultConfigId
+          : 1U;
+  const uint16_t procedureCounter =
+      (host_.hostState().vendorPeerResultProcedureCounter != 0U)
+          ? host_.hostState().vendorPeerResultProcedureCounter
+          : 7U;
+  if (!buildDemoPeerResultPackets(connHandle_,
+                                  configId,
+                                  procedureCounter,
+                                  config_.builtInPeerDemo,
+                                  initPacket,
+                                  sizeof(initPacket),
+                                  &initPacketLen,
+                                  contPacket,
+                                  sizeof(contPacket),
+                                  &contPacketLen)) {
     return false;
   }
   if (!host_.consumePeerPacket(initPacket, initPacketLen)) {

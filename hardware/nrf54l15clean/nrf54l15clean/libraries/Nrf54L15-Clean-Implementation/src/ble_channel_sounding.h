@@ -791,6 +791,8 @@ struct BleCsControllerHostState {
   uint32_t localResultPackets = 0U;
   uint32_t peerResultPackets = 0U;
   uint32_t vendorPeerResultTriggers = 0U;
+  uint8_t vendorPeerResultConfigId = 0U;
+  uint16_t vendorPeerResultProcedureCounter = 0U;
   uint32_t controllerIgnoredPackets = 0U;
   uint32_t controllerIgnoredBytes = 0U;
 };

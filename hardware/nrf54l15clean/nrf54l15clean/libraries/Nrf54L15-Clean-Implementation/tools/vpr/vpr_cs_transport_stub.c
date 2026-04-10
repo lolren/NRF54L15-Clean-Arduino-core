@@ -1049,10 +1049,8 @@ static bool publish_pending_cs_result_packet(void) {
                             payload, len);
   } else if (g_pending_cs_result_stage == 3U) {
     payload[0] = 1U;
-    payload[1] = 7U;
-    payload[2] = 0U;
     len = append_h4_vendor_event(packet, sizeof(packet),
-                                 VPR_VENDOR_EVENT_CS_PEER_RESULT_TRIGGER, payload, 3U);
+                                 VPR_VENDOR_EVENT_CS_PEER_RESULT_TRIGGER, payload, 1U);
   } else {
     return false;
   }

@@ -139,6 +139,14 @@ After the local result pair, the stub now emits a small vendor event trigger
 instead of full peer-result HCI packets. The host uses that trigger to inject
 the built-in demo peer-result packets from the library side.
 
+That host-side peer injection now keys off the local controller result header
+rather than assuming fixed metadata:
+
+- the host captures the local `configId`
+- the host captures the local `procedureCounter`
+- the built-in peer-result packets reuse those captured values before they are
+  reassembled and estimated
+
 That design is intentional. A full VPR-side peer-result publication path was
 tested, but it pushed the VPR stub past the fixed `0x1000` RAM image window.
 The current trigger-based split keeps the stub small enough to fit while still
