@@ -183,8 +183,10 @@ Still incomplete:
   dedicated CS VPR image and built-in demo responder for the supported opcode
   set; the dedicated CS image now also reflects real command-owned `Create
   Config` and `Set Procedure Parameters` state in its completion packets
-  instead of only fixed demo placeholders; it still does not have a real
-  production BLE controller runtime, so this is not yet a full
+  instead of only fixed demo placeholders, and it now rejects at least one
+  real bad sequence (`Set Procedure Parameters` before `Security Enable`)
+  instead of blindly succeeding for every CS opcode; it still does not have a
+  real production BLE controller runtime, so this is not yet a full
   controller-backed Bluetooth CS implementation
 - broader phone/runtime coverage is still worth adding over time
 

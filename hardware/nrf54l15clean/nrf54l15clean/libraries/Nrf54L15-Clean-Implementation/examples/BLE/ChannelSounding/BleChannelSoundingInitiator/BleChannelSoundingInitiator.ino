@@ -2425,6 +2425,79 @@ void printHciVprTransportDemo() {
   }
 }
 
+void printHciVprStateDemo() {
+  static constexpr uint16_t kDemoConnHandle = 0x0040U;
+
+  BleCsControllerVprHost vprHost;
+  BleCsControllerVprHostConfig hostConfig{};
+  BleCsControllerVprHost::fillDemoConfig(&hostConfig);
+
+  bool ok = vprHost.resetTransport(true);
+  ok = ok && vprHost.loadDefaultTransportImage();
+  ok = ok && vprHost.bootTransport();
+
+  uint8_t badStatus = 0xFFU;
+  bool badRejected = false;
+
+  if (ok) {
+    VprControllerServiceHost directHost(&vprHost.transport());
+    BleCsHciCommand badCommand{};
+    ok = BleChannelSoundingRadio::buildHciSetProcedureParametersCommand(
+        kDemoConnHandle, hostConfig.session.workflow.procedureParameters, &badCommand);
+    if (ok) {
+      uint8_t response[64];
+      size_t responseLen = 0U;
+      BleCsHciCommandCompleteEvent complete{};
+      badRejected = directHost.sendHciCommand(badCommand.opcode, badCommand.payload,
+                                              badCommand.payloadLen, response,
+                                              sizeof(response), &responseLen) &&
+                    BleChannelSoundingRadio::parseHciCommandCompleteEvent(
+                        response, responseLen, &complete) &&
+                    complete.opcode == badCommand.opcode && complete.status != 0U;
+      if (badRejected) {
+        badStatus = complete.status;
+      }
+    }
+  }
+
+  ok = ok && badRejected;
+  ok = ok && vprHost.resetTransport(true);
+  ok = ok && vprHost.loadDefaultTransportImage();
+  ok = ok && vprHost.bootTransport();
+  ok = ok && vprHost.beginHost(kDemoConnHandle, hostConfig);
+
+  uint8_t pumpCount = 0U;
+  while (ok && !vprHost.ready() && !vprHost.failed() && pumpCount < 48U) {
+    ok = vprHost.loopOnce();
+    ++pumpCount;
+  }
+
+  ok = ok && vprHost.ready();
+
+  for (uint8_t i = 0U; ok && !vprHost.estimateValid() && i < 8U; ++i) {
+    ok = vprHost.poll();
+  }
+
+  Serial.print(F("hcivprstatedemo ok="));
+  Serial.print((ok && badRejected && vprHost.ready() && vprHost.estimateValid()) ? 1 : 0);
+  Serial.print(F(" bad_setproc=0x"));
+  Serial.print(badStatus, HEX);
+  Serial.print(F(" phase="));
+  Serial.print(BleCsControllerWorkflow::phaseName(vprHost.workflowState().phase));
+  Serial.print(F(" proc="));
+  Serial.print(vprHost.sessionState().completedProcedureCounter);
+  Serial.print(F(" proc_cnt="));
+  Serial.print(vprHost.workflowState().procedureEnableComplete.procedureCount);
+  Serial.print(F(" cfg="));
+  Serial.print(vprHost.workflowState().configComplete.configId);
+  Serial.print(F(" dist_m="));
+  if (vprHost.estimateValid()) {
+    Serial.println(vprHost.sessionState().estimate.distanceMeters, 4);
+  } else {
+    Serial.println(F("na"));
+  }
+}
+
 void handleCalibrationCommand(const char* command) {
   if (command == nullptr) {
     return;
@@ -2507,6 +2580,11 @@ void handleCalibrationCommand(const char* command) {
     return;
   }
 
+  if (strcmp(command, "hcivprstatedemo") == 0) {
+    printHciVprStateDemo();
+    return;
+  }
+
   if (strcmp(command, "clear") == 0) {
     gCalibrationScale = 1.0f;
     gCalibrationOffsetMeters = 0.0f;
@@ -2571,7 +2649,7 @@ void handleCalibrationCommand(const char* command) {
   }
 
   Serial.println(
-      F("commands=status|raw|stepdemo|stepestdemo|hcidemo|hcirttdemo|hcipktdemo|hciworkflowdemo|hcih4demo|hcisessiondemo|hcimixdemo|hcihostdemo|hcistreamdemo|hcivprtransportdemo|clear|zero|ref <m>|offset <m>|scale <factor>"));
+      F("commands=status|raw|stepdemo|stepestdemo|hcidemo|hcirttdemo|hcipktdemo|hciworkflowdemo|hcih4demo|hcisessiondemo|hcimixdemo|hcihostdemo|hcistreamdemo|hcivprtransportdemo|hcivprstatedemo|clear|zero|ref <m>|offset <m>|scale <factor>"));
 }
 
 void pollSerialCommands() {
@@ -2663,7 +2741,7 @@ void setup() {
   Serial.println(F("dfe_raw_capture=enabled"));
   Serial.println(F("control_channel=37"));
   Serial.println(F("pair_with=CoreBleChannelSoundingReflector"));
-  Serial.println(F("commands=status|raw|stepdemo|stepestdemo|hcidemo|hcirttdemo|hcipktdemo|hciworkflowdemo|hcih4demo|hcisessiondemo|hcimixdemo|hcihostdemo|hcistreamdemo|hcivprtransportdemo|clear|zero|ref <m>|offset <m>|scale <factor>"));
+  Serial.println(F("commands=status|raw|stepdemo|stepestdemo|hcidemo|hcirttdemo|hcipktdemo|hciworkflowdemo|hcih4demo|hcisessiondemo|hcimixdemo|hcihostdemo|hcistreamdemo|hcivprtransportdemo|hcivprstatedemo|clear|zero|ref <m>|offset <m>|scale <factor>"));
   uint8_t csChannelMap[kBleCsChannelMapBytes] = {0};
   BleChannelSoundingRadio::fillValidChannelMap(csChannelMap);
   Serial.print(F("cs_chmap[0..2]="));

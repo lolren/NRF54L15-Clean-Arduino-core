@@ -134,6 +134,10 @@ static uint32_t g_cs_max_subevent_len = 0x000678UL;
 static uint8_t g_cs_tone_antenna_config_selection = 2U;
 static uint8_t g_cs_phy = 2U;
 static int8_t g_cs_tx_power_delta = -6;
+static uint8_t g_cs_config_created = 0U;
+static uint8_t g_cs_security_enabled = 0U;
+static uint8_t g_cs_procedure_params_applied = 0U;
+static uint8_t g_cs_procedure_enabled = 0U;
 #endif
 #if !VPR_CS_DEDICATED_IMAGE
 static uint32_t g_pending_hibernate = 0U;
@@ -141,6 +145,14 @@ static uint32_t g_restored_from_hibernate = 0U;
 #endif
 
 static bool host_request_pending(void);
+
+#if VPR_CS_DEDICATED_IMAGE
+enum {
+  BLE_CS_HCI_STATUS_SUCCESS = 0x00U,
+  BLE_CS_HCI_STATUS_COMMAND_DISALLOWED = 0x0CU,
+  BLE_CS_HCI_STATUS_INVALID_PARAMS = 0x12U,
+};
+#endif
 
 static inline void fence_rw(void) {
   __asm__ volatile("fence rw, rw" ::: "memory");
@@ -484,6 +496,12 @@ static void update_create_config_from_command(void) {
   g_cs_ch3c_shape = g_host_transport->hostData[29];
   g_cs_ch3c_jump = g_host_transport->hostData[30];
   g_cs_enhancements1 = g_host_transport->hostData[31];
+  g_cs_config_created = 1U;
+  g_cs_security_enabled = 0U;
+  g_cs_procedure_params_applied = 0U;
+  g_cs_procedure_enabled = 0U;
+  g_pending_cs_result_stage = 0U;
+  g_cs_procedure_counter = 0U;
   update_demo_channels_from_create_config();
 }
 
@@ -501,6 +519,49 @@ static void update_procedure_params_from_command(void) {
   g_cs_tone_antenna_config_selection = g_host_transport->hostData[21];
   g_cs_phy = g_host_transport->hostData[22];
   g_cs_tx_power_delta = (int8_t)g_host_transport->hostData[23];
+  g_cs_procedure_params_applied = 1U;
+}
+
+static uint8_t validate_security_enable_command(void) {
+  if (g_host_transport->hostLen < 6U || g_host_transport->hostData[0] != 0x01U) {
+    return BLE_CS_HCI_STATUS_INVALID_PARAMS;
+  }
+  if (g_cs_config_created == 0U) {
+    return BLE_CS_HCI_STATUS_COMMAND_DISALLOWED;
+  }
+  return BLE_CS_HCI_STATUS_SUCCESS;
+}
+
+static uint8_t validate_set_procedure_params_command(void) {
+  if (g_host_transport->hostLen < 27U || g_host_transport->hostData[0] != 0x01U) {
+    return BLE_CS_HCI_STATUS_INVALID_PARAMS;
+  }
+  if (g_cs_config_created == 0U || g_cs_security_enabled == 0U) {
+    return BLE_CS_HCI_STATUS_COMMAND_DISALLOWED;
+  }
+  if (g_host_transport->hostData[6] != g_cs_config_id) {
+    return BLE_CS_HCI_STATUS_INVALID_PARAMS;
+  }
+  return BLE_CS_HCI_STATUS_SUCCESS;
+}
+
+static uint8_t validate_procedure_enable_command(void) {
+  if (g_host_transport->hostLen < 8U || g_host_transport->hostData[0] != 0x01U) {
+    return BLE_CS_HCI_STATUS_INVALID_PARAMS;
+  }
+  if (g_cs_config_created == 0U) {
+    return BLE_CS_HCI_STATUS_COMMAND_DISALLOWED;
+  }
+  if (g_host_transport->hostData[6] != g_cs_config_id) {
+    return BLE_CS_HCI_STATUS_INVALID_PARAMS;
+  }
+  if (g_host_transport->hostData[7] == 0U) {
+    return BLE_CS_HCI_STATUS_SUCCESS;
+  }
+  if (g_cs_security_enabled == 0U || g_cs_procedure_params_applied == 0U) {
+    return BLE_CS_HCI_STATUS_COMMAND_DISALLOWED;
+  }
+  return BLE_CS_HCI_STATUS_SUCCESS;
 }
 #endif
 
@@ -630,7 +691,12 @@ static size_t build_procedure_enable_complete_payload(uint8_t *payload, size_t m
   write_le16(&payload[17], 8U);
   write_le16(&payload[19], 12U);
 #endif
-  payload[4] = 1U;
+  payload[4] =
+#if VPR_CS_DEDICATED_IMAGE
+      g_cs_procedure_enabled;
+#else
+      1U;
+#endif
   return 21U;
 }
 
@@ -1084,13 +1150,23 @@ static bool publish_builtin_response_for_opcode(uint16_t opcode) {
       break;
     }
     case BLE_CS_HCI_OP_SECURITY_ENABLE: {
+      uint8_t status = 0U;
+#if VPR_CS_DEDICATED_IMAGE
+      status = validate_security_enable_command();
+#endif
       size_t len = append_h4_command_status((uint8_t *)g_vpr_transport->vprData + offset,
                                             NRF54L15_VPR_TRANSPORT_MAX_VPR_DATA - offset,
-                                            opcode, 0U);
+                                            opcode, status);
       if (len == 0U) {
         return false;
       }
       offset += len;
+      if (status != 0U) {
+        break;
+      }
+#if VPR_CS_DEDICATED_IMAGE
+      g_cs_security_enabled = 1U;
+#endif
       len = build_security_complete_payload(payload, sizeof(payload), conn_handle);
       if (len == 0U) {
         return false;
@@ -1105,12 +1181,16 @@ static bool publish_builtin_response_for_opcode(uint16_t opcode) {
       break;
     }
     case BLE_CS_HCI_OP_SET_PROCEDURE_PARAMETERS: {
+      uint8_t status = 0U;
 #if VPR_CS_DEDICATED_IMAGE
-      update_procedure_params_from_command();
+      status = validate_set_procedure_params_command();
+      if (status == 0U) {
+        update_procedure_params_from_command();
+      }
 #endif
       size_t len = append_h4_command_complete((uint8_t *)g_vpr_transport->vprData + offset,
                                               NRF54L15_VPR_TRANSPORT_MAX_VPR_DATA - offset,
-                                              opcode, 0U);
+                                              opcode, status);
       if (len == 0U) {
         return false;
       }
@@ -1118,25 +1198,36 @@ static bool publish_builtin_response_for_opcode(uint16_t opcode) {
       break;
     }
     case BLE_CS_HCI_OP_PROCEDURE_ENABLE: {
+      uint8_t status = 0U;
+      uint8_t enable = 0U;
 #if VPR_CS_DEDICATED_IMAGE
+      status = validate_procedure_enable_command();
       if (g_host_transport->hostLen >= 8U) {
         g_cs_config_id = g_host_transport->hostData[6];
-        if (g_host_transport->hostData[7] != 0U) {
+        enable = g_host_transport->hostData[7];
+        g_cs_procedure_enabled = enable != 0U ? 1U : 0U;
+        if (status == 0U && enable != 0U) {
           g_cs_procedure_counter =
               (uint16_t)(g_cs_procedure_counter + 1U);
           if (g_cs_procedure_counter == 0U) {
             g_cs_procedure_counter = 1U;
           }
         }
+        if (enable == 0U) {
+          g_pending_cs_result_stage = 0U;
+        }
       }
 #endif
       size_t len = append_h4_command_status((uint8_t *)g_vpr_transport->vprData + offset,
                                             NRF54L15_VPR_TRANSPORT_MAX_VPR_DATA - offset,
-                                            opcode, 0U);
+                                            opcode, status);
       if (len == 0U) {
         return false;
       }
       offset += len;
+      if (status != 0U) {
+        break;
+      }
       len = build_procedure_enable_complete_payload(payload, sizeof(payload), conn_handle);
       if (len == 0U) {
         return false;
@@ -1148,7 +1239,9 @@ static bool publish_builtin_response_for_opcode(uint16_t opcode) {
         return false;
       }
       offset += len;
-      g_pending_cs_result_stage = 1U;
+      if (enable != 0U) {
+        g_pending_cs_result_stage = 1U;
+      }
       break;
     }
 #if !VPR_CS_DEDICATED_IMAGE
