@@ -2243,6 +2243,17 @@ void printHciVprTransportDemo() {
     hostConfig.session.workflow.createConfig.channelMap[channel >> 3U] |=
         static_cast<uint8_t>(1U << (channel & 0x07U));
   }
+  hostConfig.session.workflow.createConfig.minMainModeSteps = 4U;
+  hostConfig.session.workflow.createConfig.maxMainModeSteps = 6U;
+  hostConfig.session.workflow.createConfig.mainModeRepetition = 2U;
+  hostConfig.session.workflow.createConfig.channelMapRepetition = 2U;
+  hostConfig.session.workflow.defaultSettings.maxTxPowerDbm = -9;
+  hostConfig.session.workflow.procedureParameters.maxProcedureLen = 17U;
+  hostConfig.session.workflow.procedureParameters.minProcedureInterval = 111U;
+  hostConfig.session.workflow.procedureParameters.maxProcedureInterval = 222U;
+  hostConfig.session.workflow.procedureParameters.maxProcedureCount = 5U;
+  hostConfig.session.workflow.procedureParameters.toneAntennaConfigSelection = 3U;
+  hostConfig.session.workflow.procedureParameters.txPowerDelta = -4;
 
   bool ok = true;
 
@@ -2392,8 +2403,20 @@ void printHciVprTransportDemo() {
     }
     Serial.print(demoChannels[i]);
   }
+  Serial.print(F(" cfg_steps="));
+  Serial.print(vprHost.workflowState().configComplete.minMainModeSteps);
+  Serial.print('-');
+  Serial.print(vprHost.workflowState().configComplete.maxMainModeSteps);
+  Serial.print(F(" cfg_rep="));
+  Serial.print(vprHost.workflowState().configComplete.mainModeRepetition);
   Serial.print(F(" proc="));
   Serial.print(vprHost.sessionState().completedProcedureCounter);
+  Serial.print(F(" proc_cnt="));
+  Serial.print(vprHost.workflowState().procedureEnableComplete.procedureCount);
+  Serial.print(F(" proc_len="));
+  Serial.print(vprHost.workflowState().procedureEnableComplete.maxProcedureLen);
+  Serial.print(F(" tone_sel="));
+  Serial.print(vprHost.workflowState().procedureEnableComplete.toneAntennaConfigSelection);
   Serial.print(F(" dist_m="));
   if (vprHost.estimateValid()) {
     Serial.println(vprHost.sessionState().estimate.distanceMeters, 4);

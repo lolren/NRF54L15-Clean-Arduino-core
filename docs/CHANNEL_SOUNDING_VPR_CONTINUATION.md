@@ -148,6 +148,11 @@ That proves:
     active CS `configId`
   - `Procedure Enable(enable=1)` advances a real procedure counter inside the
     dedicated image
+  - `Config Complete` now reflects the active `Create Config` state instead of
+    only the old fixed placeholder values
+  - `Procedure Enable Complete` now reflects command-owned procedure state from
+    `Set Procedure Parameters`, including procedure length/count and tone
+    antenna selection
   - both the local and peer CS result headers now reflect that state
   - CPUAPP no longer fabricates peer result packets for the dedicated-image path
 
@@ -175,6 +180,7 @@ route the following controller packets into the peer reassembler.
 The current validated live proof is:
 
 - `hcivprtransportdemo ok=1 pumped=11 wrote=6/88 read=282/0 phase=ready ... ctrl_evt=11 peer_trig=0 peer_mark=1 peer_evt=2 cfg_ch=2,14,26,38 proc=1 dist_m=0.7499`
+- `hcivprtransportdemo ok=1 pumped=12 wrote=6/88 read=282/0 phase=ready ... ctrl_evt=11 peer_trig=0 peer_mark=1 peer_evt=2 cfg_ch=2,14,26,38 cfg_steps=4-6 cfg_rep=2 proc=1 proc_cnt=5 proc_len=17 tone_sel=3 dist_m=0.7499`
 
 The same size budget applies to CS demo configuration. A dedicated vendor opcode
 for demo-channel configuration was tested and worked functionally, but it pushed

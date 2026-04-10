@@ -181,8 +181,11 @@ Still incomplete:
   controller-standard RTT step decode and RTT distance estimation from HCI CS
   subevent results, and a working VPR-backed controller transport path with a
   dedicated CS VPR image and built-in demo responder for the supported opcode
-  set; it still does not have a real production BLE controller runtime, so
-  this is not yet a full controller-backed Bluetooth CS implementation
+  set; the dedicated CS image now also reflects real command-owned `Create
+  Config` and `Set Procedure Parameters` state in its completion packets
+  instead of only fixed demo placeholders; it still does not have a real
+  production BLE controller runtime, so this is not yet a full
+  controller-backed Bluetooth CS implementation
 - broader phone/runtime coverage is still worth adding over time
 
 ## nRF52840 Sketch Compatibility

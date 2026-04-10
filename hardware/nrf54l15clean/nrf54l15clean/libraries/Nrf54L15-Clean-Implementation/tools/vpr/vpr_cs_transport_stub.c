@@ -108,6 +108,32 @@ static uint8_t g_pending_cs_result_stage = 0U;
 static uint8_t g_cs_config_id = 1U;
 static uint16_t g_cs_procedure_counter = 0U;
 static uint32_t g_cs_demo_channels_packed = 0x241A0E02U;
+static uint8_t g_cs_main_mode_type = BLE_CS_MAIN_MODE2;
+static uint8_t g_cs_sub_mode_type = 0xFFU;
+static uint8_t g_cs_min_main_mode_steps = 3U;
+static uint8_t g_cs_max_main_mode_steps = 5U;
+static uint8_t g_cs_main_mode_repetition = 1U;
+static uint8_t g_cs_mode0_steps = 1U;
+static uint8_t g_cs_role = 0U;
+static uint8_t g_cs_rtt_type = 1U;
+static uint8_t g_cs_cs_sync_phy = 2U;
+static uint8_t g_cs_channel_map[10] = {0xFFU, 0xFFU, 0xFFU, 0xFFU, 0x1FU,
+                                       0x00U, 0x00U, 0x00U, 0x00U, 0x00U};
+static uint8_t g_cs_channel_map_repetition = 1U;
+static uint8_t g_cs_channel_selection_type = 1U;
+static uint8_t g_cs_ch3c_shape = 1U;
+static uint8_t g_cs_ch3c_jump = 3U;
+static uint8_t g_cs_enhancements1 = 0x01U;
+static int8_t g_cs_max_tx_power_dbm = -8;
+static uint16_t g_cs_max_procedure_len = 12U;
+static uint16_t g_cs_min_procedure_interval = 200U;
+static uint16_t g_cs_max_procedure_interval = 300U;
+static uint16_t g_cs_max_procedure_count = 8U;
+static uint32_t g_cs_min_subevent_len = 0x000456UL;
+static uint32_t g_cs_max_subevent_len = 0x000678UL;
+static uint8_t g_cs_tone_antenna_config_selection = 2U;
+static uint8_t g_cs_phy = 2U;
+static int8_t g_cs_tx_power_delta = -6;
 #endif
 #if !VPR_CS_DEDICATED_IMAGE
 static uint32_t g_pending_hibernate = 0U;
@@ -239,6 +265,13 @@ static void write_le16(uint8_t *dst, uint16_t value) {
   dst[1] = (uint8_t)((value >> 8U) & 0xFFU);
 }
 
+static uint16_t read_le16(const volatile uint8_t *src) {
+  if (src == NULL) {
+    return 0U;
+  }
+  return (uint16_t)src[0] | ((uint16_t)src[1] << 8U);
+}
+
 static void write_le24(uint8_t *dst, uint32_t value) {
   if (dst == NULL) {
     return;
@@ -246,6 +279,13 @@ static void write_le24(uint8_t *dst, uint32_t value) {
   dst[0] = (uint8_t)(value & 0xFFU);
   dst[1] = (uint8_t)((value >> 8U) & 0xFFU);
   dst[2] = (uint8_t)((value >> 16U) & 0xFFU);
+}
+
+static uint32_t read_le24(const volatile uint8_t *src) {
+  if (src == NULL) {
+    return 0U;
+  }
+  return (uint32_t)src[0] | ((uint32_t)src[1] << 8U) | ((uint32_t)src[2] << 16U);
 }
 
 static void write_le32(uint8_t *dst, uint32_t value) {
@@ -416,6 +456,52 @@ static void update_demo_channels_from_create_config(void) {
   }
   g_cs_demo_channels_packed = packed;
 }
+
+static void update_defaults_from_set_default_settings(void) {
+  if (g_host_transport->hostLen < 9U || g_host_transport->hostData[0] != 0x01U) {
+    return;
+  }
+  g_cs_max_tx_power_dbm = (int8_t)g_host_transport->hostData[8];
+}
+
+static void update_create_config_from_command(void) {
+  if (g_host_transport->hostLen < 32U || g_host_transport->hostData[0] != 0x01U) {
+    return;
+  }
+  g_cs_config_id = g_host_transport->hostData[6];
+  g_cs_main_mode_type = g_host_transport->hostData[8];
+  g_cs_sub_mode_type = g_host_transport->hostData[9];
+  g_cs_min_main_mode_steps = g_host_transport->hostData[10];
+  g_cs_max_main_mode_steps = g_host_transport->hostData[11];
+  g_cs_main_mode_repetition = g_host_transport->hostData[12];
+  g_cs_mode0_steps = g_host_transport->hostData[13];
+  g_cs_role = g_host_transport->hostData[14];
+  g_cs_rtt_type = g_host_transport->hostData[15];
+  g_cs_cs_sync_phy = g_host_transport->hostData[16];
+  bytes_copy(g_cs_channel_map, (const void *)&g_host_transport->hostData[17], sizeof(g_cs_channel_map));
+  g_cs_channel_map_repetition = g_host_transport->hostData[27];
+  g_cs_channel_selection_type = g_host_transport->hostData[28];
+  g_cs_ch3c_shape = g_host_transport->hostData[29];
+  g_cs_ch3c_jump = g_host_transport->hostData[30];
+  g_cs_enhancements1 = g_host_transport->hostData[31];
+  update_demo_channels_from_create_config();
+}
+
+static void update_procedure_params_from_command(void) {
+  if (g_host_transport->hostLen < 27U || g_host_transport->hostData[0] != 0x01U) {
+    return;
+  }
+  g_cs_config_id = g_host_transport->hostData[6];
+  g_cs_max_procedure_len = read_le16(&g_host_transport->hostData[7]);
+  g_cs_min_procedure_interval = read_le16(&g_host_transport->hostData[9]);
+  g_cs_max_procedure_interval = read_le16(&g_host_transport->hostData[11]);
+  g_cs_max_procedure_count = read_le16(&g_host_transport->hostData[13]);
+  g_cs_min_subevent_len = read_le24(&g_host_transport->hostData[15]);
+  g_cs_max_subevent_len = read_le24(&g_host_transport->hostData[18]);
+  g_cs_tone_antenna_config_selection = g_host_transport->hostData[21];
+  g_cs_phy = g_host_transport->hostData[22];
+  g_cs_tx_power_delta = (int8_t)g_host_transport->hostData[23];
+}
 #endif
 
 static size_t build_remote_caps_payload(uint8_t *payload, size_t max_len, uint16_t conn_handle) {
@@ -462,8 +548,8 @@ static size_t build_security_complete_payload(uint8_t *payload, size_t max_len,
 
 static size_t build_config_complete_payload(uint8_t *payload, size_t max_len,
                                             uint16_t conn_handle) {
-  static const uint8_t channel_map[10] = {0xFFU, 0xFFU, 0xFFU, 0xFFU, 0x1FU,
-                                          0x00U, 0x00U, 0x00U, 0x00U, 0x00U};
+  static const uint8_t k_default_channel_map[10] = {0xFFU, 0xFFU, 0xFFU, 0xFFU, 0x1FU,
+                                                    0x00U, 0x00U, 0x00U, 0x00U, 0x00U};
   if (payload == NULL || max_len < 33U) {
     return 0U;
   }
@@ -472,10 +558,23 @@ static size_t build_config_complete_payload(uint8_t *payload, size_t max_len,
   write_le16(&payload[1], conn_handle);
 #if VPR_CS_DEDICATED_IMAGE
   payload[3] = g_cs_config_id;
+  payload[5] = g_cs_main_mode_type;
+  payload[6] = g_cs_sub_mode_type;
+  payload[7] = g_cs_min_main_mode_steps;
+  payload[8] = g_cs_max_main_mode_steps;
+  payload[9] = g_cs_main_mode_repetition;
+  payload[10] = g_cs_mode0_steps;
+  payload[11] = g_cs_role;
+  payload[12] = g_cs_rtt_type;
+  payload[13] = g_cs_cs_sync_phy;
+  bytes_copy(&payload[14], g_cs_channel_map, sizeof(g_cs_channel_map));
+  payload[24] = g_cs_channel_map_repetition;
+  payload[25] = g_cs_channel_selection_type;
+  payload[26] = g_cs_ch3c_shape;
+  payload[27] = g_cs_ch3c_jump;
+  payload[28] = g_cs_enhancements1;
 #else
   payload[3] = 1U;
-#endif
-  payload[4] = 1U;
   payload[5] = BLE_CS_MAIN_MODE2;
   payload[6] = 0xFFU;
   payload[7] = 3U;
@@ -485,12 +584,14 @@ static size_t build_config_complete_payload(uint8_t *payload, size_t max_len,
   payload[11] = 0U;
   payload[12] = 1U;
   payload[13] = 2U;
-  bytes_copy(&payload[14], channel_map, sizeof(channel_map));
+  bytes_copy(&payload[14], k_default_channel_map, sizeof(k_default_channel_map));
   payload[24] = 1U;
   payload[25] = 1U;
   payload[26] = 1U;
   payload[27] = 3U;
   payload[28] = 0x01U;
+#endif
+  payload[4] = 1U;
   payload[29] = 10U;
   payload[30] = 20U;
   payload[31] = 30U;
@@ -508,10 +609,17 @@ static size_t build_procedure_enable_complete_payload(uint8_t *payload, size_t m
   write_le16(&payload[1], conn_handle);
 #if VPR_CS_DEDICATED_IMAGE
   payload[3] = g_cs_config_id;
+  payload[5] = g_cs_tone_antenna_config_selection;
+  payload[6] = (uint8_t)g_cs_tx_power_delta;
+  write_le24(&payload[7], g_cs_min_subevent_len);
+  payload[10] = 4U;
+  write_le16(&payload[11], g_cs_min_procedure_interval);
+  write_le16(&payload[13], g_cs_max_procedure_interval);
+  write_le16(&payload[15], g_cs_max_procedure_interval);
+  write_le16(&payload[17], g_cs_max_procedure_count);
+  write_le16(&payload[19], g_cs_max_procedure_len);
 #else
   payload[3] = 1U;
-#endif
-  payload[4] = 1U;
   payload[5] = 2U;
   payload[6] = (uint8_t)(int8_t)-12;
   write_le24(&payload[7], 0x000456UL);
@@ -521,6 +629,8 @@ static size_t build_procedure_enable_complete_payload(uint8_t *payload, size_t m
   write_le16(&payload[15], 300U);
   write_le16(&payload[17], 8U);
   write_le16(&payload[19], 12U);
+#endif
+  payload[4] = 1U;
   return 21U;
 }
 
@@ -937,6 +1047,9 @@ static bool publish_builtin_response_for_opcode(uint16_t opcode) {
       break;
     }
     case BLE_CS_HCI_OP_SET_DEFAULT_SETTINGS: {
+#if VPR_CS_DEDICATED_IMAGE
+      update_defaults_from_set_default_settings();
+#endif
       size_t len = append_h4_command_complete((uint8_t *)g_vpr_transport->vprData + offset,
                                               NRF54L15_VPR_TRANSPORT_MAX_VPR_DATA - offset,
                                               opcode, 0U);
@@ -948,10 +1061,7 @@ static bool publish_builtin_response_for_opcode(uint16_t opcode) {
     }
     case BLE_CS_HCI_OP_CREATE_CONFIG: {
 #if VPR_CS_DEDICATED_IMAGE
-      if (g_host_transport->hostLen >= 7U) {
-        g_cs_config_id = g_host_transport->hostData[6];
-      }
-      update_demo_channels_from_create_config();
+      update_create_config_from_command();
 #endif
       size_t len = append_h4_command_status((uint8_t *)g_vpr_transport->vprData + offset,
                                             NRF54L15_VPR_TRANSPORT_MAX_VPR_DATA - offset,
@@ -996,9 +1106,7 @@ static bool publish_builtin_response_for_opcode(uint16_t opcode) {
     }
     case BLE_CS_HCI_OP_SET_PROCEDURE_PARAMETERS: {
 #if VPR_CS_DEDICATED_IMAGE
-      if (g_host_transport->hostLen >= 7U) {
-        g_cs_config_id = g_host_transport->hostData[6];
-      }
+      update_procedure_params_from_command();
 #endif
       size_t len = append_h4_command_complete((uint8_t *)g_vpr_transport->vprData + offset,
                                               NRF54L15_VPR_TRANSPORT_MAX_VPR_DATA - offset,
