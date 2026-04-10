@@ -8,6 +8,9 @@ constexpr uint32_t kDefaultPeriodTicks = 100000U;
 constexpr uint32_t kDefaultStep = 3U;
 constexpr uint32_t kDefaultEmitEveryCount = 9U;
 constexpr uint32_t kEventTimeoutMs = 2000U;
+constexpr uint32_t kQueueProbeEmitEveryCount = 3U;
+constexpr uint32_t kQueueProbeSleepMs = 5000U;
+constexpr size_t kQueueProbeDrainCount = 3U;
 
 VprSharedTransportStream g_vpr;
 VprControllerServiceHost g_service(&g_vpr);
@@ -15,9 +18,12 @@ VprControllerServiceCapabilities g_caps{};
 VprTickerState g_state{};
 VprTickerEvent g_event0{};
 VprTickerEvent g_event1{};
+VprTickerEvent g_queueEvents[kQueueProbeDrainCount]{};
 uint32_t g_appliedEmitEveryCount = 0U;
 uint32_t g_dropCount = 0U;
+uint32_t g_hostDropCount = 0U;
 bool g_lastProbeOk = false;
+bool g_lastQueueProbeOk = false;
 
 bool ensureService(bool rebootService) {
   if (rebootService && !g_service.bootDefaultService(true)) {
@@ -34,6 +40,8 @@ bool runProbe(bool rebootService) {
   memset(&g_event1, 0, sizeof(g_event1));
   g_appliedEmitEveryCount = 0U;
   g_dropCount = 0U;
+  g_hostDropCount = 0U;
+  memset(g_queueEvents, 0, sizeof(g_queueEvents));
 
   if (!ensureService(rebootService)) {
     return false;
@@ -51,14 +59,50 @@ bool runProbe(bool rebootService) {
     return false;
   }
 
+  g_hostDropCount = g_service.pendingTickerEventDropCount();
   g_lastProbeOk = (g_caps.opMask & VprControllerServiceHost::kOpTickerEventConfigure) != 0U &&
                   g_appliedEmitEveryCount == kDefaultEmitEveryCount &&
                   g_event0.step == kDefaultStep &&
                   g_event1.step == kDefaultStep &&
+                  g_event1.sequence > g_event0.sequence &&
                   g_event1.count > g_event0.count &&
                   g_state.enabled &&
-                  g_state.count >= g_event1.count;
+                  g_state.count >= g_event1.count &&
+                  g_hostDropCount == 0U;
   return g_lastProbeOk;
+}
+
+bool runQueueProbe() {
+  memset(g_queueEvents, 0, sizeof(g_queueEvents));
+  g_lastQueueProbeOk = false;
+  g_hostDropCount = 0U;
+  if (!ensureService(true)) {
+    return false;
+  }
+  if (!g_service.configureTicker(true, kDefaultPeriodTicks, kDefaultStep, &g_state)) {
+    return false;
+  }
+  if (!g_service.configureTickerEvents(true, kQueueProbeEmitEveryCount, &g_appliedEmitEveryCount,
+                                       &g_dropCount)) {
+    return false;
+  }
+
+  delay(kQueueProbeSleepMs);
+  for (size_t i = 0; i < kQueueProbeDrainCount; ++i) {
+    if (!g_service.waitTickerEvent(&g_queueEvents[i], kEventTimeoutMs)) {
+      return false;
+    }
+  }
+  (void)g_service.readTickerState(&g_state);
+
+  g_hostDropCount = g_service.pendingTickerEventDropCount();
+  g_lastQueueProbeOk = g_appliedEmitEveryCount == kQueueProbeEmitEveryCount && g_hostDropCount == 0U;
+  for (size_t i = 1; i < kQueueProbeDrainCount; ++i) {
+    g_lastQueueProbeOk = g_lastQueueProbeOk && g_queueEvents[i].sequence > g_queueEvents[i - 1].sequence &&
+                         g_queueEvents[i].count > g_queueEvents[i - 1].count;
+  }
+  g_lastQueueProbeOk = g_lastQueueProbeOk && g_queueEvents[0].count != 0U;
+  return g_lastQueueProbeOk;
 }
 
 void stopTickerEvents() {
@@ -87,16 +131,24 @@ void printStatus() {
   Serial.print(g_appliedEmitEveryCount);
   Serial.print(" drop_count=");
   Serial.print(g_dropCount);
+  Serial.print(" host_drop=");
+  Serial.print(g_hostDropCount);
   Serial.print(" ev0=");
   Serial.print(g_event0.count);
   Serial.print("@");
   Serial.print(g_event0.heartbeat);
+  Serial.print("#");
+  Serial.print(g_event0.sequence);
   Serial.print(" ev1=");
   Serial.print(g_event1.count);
   Serial.print("@");
   Serial.print(g_event1.heartbeat);
+  Serial.print("#");
+  Serial.print(g_event1.sequence);
   Serial.print(" live_count=");
-  Serial.println(g_state.count);
+  Serial.print(g_state.count);
+  Serial.print(" queue_ok=");
+  Serial.println(g_lastQueueProbeOk ? 1 : 0);
 }
 
 void printNextEvent() {
@@ -112,11 +164,29 @@ void printNextEvent() {
   Serial.print(" step=");
   Serial.print(event.step);
   Serial.print(" heartbeat=");
-  Serial.println(event.heartbeat);
+  Serial.print(event.heartbeat);
+  Serial.print(" seq=");
+  Serial.println(event.sequence);
+}
+
+void printQueueProbe() {
+  Serial.print("queue_probe=");
+  Serial.println(runQueueProbe() ? 1 : 0);
+  for (size_t i = 0; i < kQueueProbeDrainCount; ++i) {
+    Serial.print("queue_ev");
+    Serial.print(i);
+    Serial.print("=");
+    Serial.print(g_queueEvents[i].count);
+    Serial.print("@");
+    Serial.print(g_queueEvents[i].heartbeat);
+    Serial.print("#");
+    Serial.println(g_queueEvents[i].sequence);
+  }
+  printStatus();
 }
 
 void printHelp() {
-  Serial.println("Commands: r rerun async event probe, e wait next event, x stop ticker/events, s status");
+  Serial.println("Commands: r rerun async event probe, q run queued burst probe, e wait next event, x stop ticker/events, s status");
 }
 
 }  // namespace
@@ -150,6 +220,9 @@ void loop() {
       break;
     case 'e':
       printNextEvent();
+      break;
+    case 'q':
+      printQueueProbe();
       break;
     case 'x':
       stopTickerEvents();

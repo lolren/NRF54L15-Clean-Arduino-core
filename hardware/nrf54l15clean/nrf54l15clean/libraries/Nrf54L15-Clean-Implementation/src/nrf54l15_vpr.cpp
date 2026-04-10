@@ -1009,10 +1009,20 @@ size_t VprSharedTransportStream::writeInternal(const uint8_t* buffer,
 }
 
 VprControllerServiceHost::VprControllerServiceHost(VprSharedTransportStream* transport)
-    : transport_(transport), pendingTickerEventValid_(false), pendingTickerEvent_{} {}
+    : transport_(transport),
+      pendingTickerEvents_{},
+      pendingTickerEventHead_(0U),
+      pendingTickerEventTail_(0U),
+      pendingTickerEventCount_(0U),
+      pendingTickerEventDropped_(0U) {}
 
 void VprControllerServiceHost::attach(VprSharedTransportStream* transport) {
   transport_ = transport;
+  memset(pendingTickerEvents_, 0, sizeof(pendingTickerEvents_));
+  pendingTickerEventHead_ = 0U;
+  pendingTickerEventTail_ = 0U;
+  pendingTickerEventCount_ = 0U;
+  pendingTickerEventDropped_ = 0U;
 }
 
 bool VprControllerServiceHost::attached() const { return transport_ != nullptr; }
@@ -1021,6 +1031,11 @@ bool VprControllerServiceHost::bootDefaultService(bool rebootTransport) {
   if (!attached()) {
     return false;
   }
+  memset(pendingTickerEvents_, 0, sizeof(pendingTickerEvents_));
+  pendingTickerEventHead_ = 0U;
+  pendingTickerEventTail_ = 0U;
+  pendingTickerEventCount_ = 0U;
+  pendingTickerEventDropped_ = 0U;
   if (rebootTransport) {
     transport_->stop();
     delay(10);
@@ -1032,10 +1047,20 @@ bool VprControllerServiceHost::bootDefaultService(bool rebootTransport) {
 }
 
 bool VprControllerServiceHost::restartLoadedService(bool clearScripts) {
+  memset(pendingTickerEvents_, 0, sizeof(pendingTickerEvents_));
+  pendingTickerEventHead_ = 0U;
+  pendingTickerEventTail_ = 0U;
+  pendingTickerEventCount_ = 0U;
+  pendingTickerEventDropped_ = 0U;
   return attached() && transport_->restartLoadedFirmware(clearScripts);
 }
 
 bool VprControllerServiceHost::restartAfterHibernateReset(uint32_t spinLimit) {
+  memset(pendingTickerEvents_, 0, sizeof(pendingTickerEvents_));
+  pendingTickerEventHead_ = 0U;
+  pendingTickerEventTail_ = 0U;
+  pendingTickerEventCount_ = 0U;
+  pendingTickerEventDropped_ = 0U;
   return attached() && transport_->restartAfterHibernateReset(spinLimit);
 }
 
@@ -1141,6 +1166,17 @@ bool VprControllerServiceHost::parseVendorEvent(const uint8_t* packet,
   return true;
 }
 
+bool VprControllerServiceHost::pushPendingTickerEvent(const VprTickerEvent& event) {
+  if (pendingTickerEventCount_ >= kPendingTickerEventQueueDepth) {
+    pendingTickerEventDropped_ += 1U;
+    return false;
+  }
+  pendingTickerEvents_[pendingTickerEventTail_] = event;
+  pendingTickerEventTail_ = (pendingTickerEventTail_ + 1U) % kPendingTickerEventQueueDepth;
+  pendingTickerEventCount_ += 1U;
+  return true;
+}
+
 bool VprControllerServiceHost::stashAsyncEvent(const uint8_t* packet, size_t packetLen) {
   const uint8_t* payload = nullptr;
   size_t payloadLen = 0U;
@@ -1148,21 +1184,24 @@ bool VprControllerServiceHost::stashAsyncEvent(const uint8_t* packet, size_t pac
       payloadLen < 13U) {
     return false;
   }
-  pendingTickerEvent_.flags = payload[0];
-  pendingTickerEvent_.count = readLe32(&payload[1]);
-  pendingTickerEvent_.step = readLe32(&payload[5]);
-  pendingTickerEvent_.heartbeat = readLe32(&payload[9]);
-  pendingTickerEventValid_ = true;
-  return true;
+  VprTickerEvent event{};
+  event.flags = payload[0];
+  event.count = readLe32(&payload[1]);
+  event.step = readLe32(&payload[5]);
+  event.heartbeat = readLe32(&payload[9]);
+  event.sequence = (payloadLen >= 17U) ? readLe32(&payload[13]) : 0U;
+  return pushPendingTickerEvent(event);
 }
 
 bool VprControllerServiceHost::popPendingTickerEvent(VprTickerEvent* event) {
-  if (event == nullptr || !pendingTickerEventValid_) {
+  if (event == nullptr || pendingTickerEventCount_ == 0U) {
     return false;
   }
-  *event = pendingTickerEvent_;
-  pendingTickerEventValid_ = false;
-  memset(&pendingTickerEvent_, 0, sizeof(pendingTickerEvent_));
+  *event = pendingTickerEvents_[pendingTickerEventHead_];
+  memset(&pendingTickerEvents_[pendingTickerEventHead_], 0,
+         sizeof(pendingTickerEvents_[pendingTickerEventHead_]));
+  pendingTickerEventHead_ = (pendingTickerEventHead_ + 1U) % kPendingTickerEventQueueDepth;
+  pendingTickerEventCount_ -= 1U;
   return true;
 }
 
@@ -1511,6 +1550,10 @@ bool VprControllerServiceHost::waitTickerEvent(VprTickerEvent* event, uint32_t t
     }
   }
   return false;
+}
+
+uint32_t VprControllerServiceHost::pendingTickerEventDropCount() const {
+  return pendingTickerEventDropped_;
 }
 
 bool VprControllerServiceHost::enterHibernate() {

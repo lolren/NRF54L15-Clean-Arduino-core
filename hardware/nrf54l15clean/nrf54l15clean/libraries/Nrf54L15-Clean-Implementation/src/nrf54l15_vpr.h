@@ -177,10 +177,12 @@ struct VprTickerEvent {
   uint32_t count;
   uint32_t step;
   uint32_t heartbeat;
+  uint32_t sequence;
 };
 
 class VprControllerServiceHost {
  public:
+  static constexpr size_t kPendingTickerEventQueueDepth = 8U;
   static constexpr uint8_t kTransportFlagRestoredFromHibernate = 0x80U;
   static constexpr uint16_t kVendorPingOpcode = 0xFCF0U;
   static constexpr uint16_t kVendorInfoOpcode = 0xFCF1U;
@@ -248,6 +250,7 @@ class VprControllerServiceHost {
                              uint32_t* appliedEmitEveryCount = nullptr,
                              uint32_t* droppedEvents = nullptr);
   bool waitTickerEvent(VprTickerEvent* event, uint32_t timeoutMs = 5000UL);
+  uint32_t pendingTickerEventDropCount() const;
   bool enterHibernate();
   bool probe(uint32_t cookie,
              VprControllerServiceInfo* info = nullptr,
@@ -269,13 +272,17 @@ class VprControllerServiceHost {
                                uint8_t expectedSubevent,
                                const uint8_t** payload,
                                size_t* payloadLen);
+  bool pushPendingTickerEvent(const VprTickerEvent& event);
   bool stashAsyncEvent(const uint8_t* packet, size_t packetLen);
   bool popPendingTickerEvent(VprTickerEvent* event);
   static uint32_t readLe32(const uint8_t* data);
 
   VprSharedTransportStream* transport_;
-  bool pendingTickerEventValid_;
-  VprTickerEvent pendingTickerEvent_;
+  VprTickerEvent pendingTickerEvents_[kPendingTickerEventQueueDepth];
+  size_t pendingTickerEventHead_;
+  size_t pendingTickerEventTail_;
+  size_t pendingTickerEventCount_;
+  uint32_t pendingTickerEventDropped_;
 };
 
 }  // namespace xiao_nrf54l15

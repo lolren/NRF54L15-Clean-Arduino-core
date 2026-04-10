@@ -34,7 +34,7 @@
 #define VPR_HCI_OP_VENDOR_TICKER_EVENT_CONFIGURE 0xFCF9U
 
 #define VPR_VENDOR_SERVICE_VERSION_MAJOR 1U
-#define VPR_VENDOR_SERVICE_VERSION_MINOR 5U
+#define VPR_VENDOR_SERVICE_VERSION_MINOR 6U
 #define VPR_VENDOR_OP_PING (1UL << 0U)
 #define VPR_VENDOR_OP_INFO (1UL << 1U)
 #define VPR_VENDOR_OP_FNV1A32 (1UL << 2U)
@@ -47,6 +47,7 @@
 #define VPR_VENDOR_OP_TICKER_EVENT_CONFIGURE (1UL << 9U)
 #define VPR_VENDOR_TRANSPORT_FLAG_RESTORED_FROM_HIBERNATE 0x80U
 #define VPR_VENDOR_EVENT_TICKER 0xA0U
+#define VPR_TICKER_EVENT_QUEUE_DEPTH 8U
 
 #define BLE_CS_HCI_EVT_READ_REMOTE_SUPPORTED_CAPS_COMPLETE_V2 0x38U
 #define BLE_CS_HCI_EVT_SECURITY_ENABLE_COMPLETE 0x2EU
@@ -68,6 +69,14 @@ static volatile Nrf54l15VprTransportHostShared* const g_host_transport =
 static volatile Nrf54l15VprTransportVprShared* const g_vpr_transport =
     (volatile Nrf54l15VprTransportVprShared*)(uintptr_t)NRF54L15_VPR_TRANSPORT_VPR_BASE;
 
+typedef struct {
+  uint32_t count;
+  uint32_t step;
+  uint32_t heartbeat;
+  uint32_t sequence;
+  uint8_t flags;
+} vpr_ticker_event_entry_t;
+
 static uint32_t g_ticker_enabled = 0U;
 static uint32_t g_ticker_period_ticks = 0U;
 static uint32_t g_ticker_step = 1U;
@@ -76,8 +85,12 @@ static uint32_t g_ticker_count = 0U;
 static uint32_t g_ticker_event_enabled = 0U;
 static uint32_t g_ticker_event_emit_every = 0U;
 static uint32_t g_ticker_event_last_emitted_count = 0U;
-static uint32_t g_ticker_event_pending_count = 0U;
+static uint32_t g_ticker_event_sequence = 0U;
 static uint32_t g_ticker_event_drop_count = 0U;
+static vpr_ticker_event_entry_t g_ticker_event_queue[VPR_TICKER_EVENT_QUEUE_DEPTH];
+static uint32_t g_ticker_event_queue_head = 0U;
+static uint32_t g_ticker_event_queue_tail = 0U;
+static uint32_t g_ticker_event_queue_count = 0U;
 static uint32_t g_pending_hibernate = 0U;
 static uint32_t g_restored_from_hibernate = 0U;
 
@@ -119,6 +132,31 @@ static void bytes_copy(void *dst, const void *src, size_t len) {
   for (size_t i = 0U; i < len; ++i) {
     out[i] = in[i];
   }
+}
+
+static void clear_ticker_event_queue(void) {
+  bytes_zero(g_ticker_event_queue, sizeof(g_ticker_event_queue));
+  g_ticker_event_queue_head = 0U;
+  g_ticker_event_queue_tail = 0U;
+  g_ticker_event_queue_count = 0U;
+}
+
+static bool enqueue_ticker_event(uint32_t count, uint32_t step, uint32_t heartbeat) {
+  if (g_ticker_event_queue_count >= VPR_TICKER_EVENT_QUEUE_DEPTH) {
+    g_ticker_event_drop_count = g_ticker_event_drop_count + 1U;
+    return false;
+  }
+  vpr_ticker_event_entry_t *entry = &g_ticker_event_queue[g_ticker_event_queue_tail];
+  entry->flags = 0U;
+  entry->count = count;
+  entry->step = step;
+  entry->heartbeat = heartbeat;
+  g_ticker_event_sequence = g_ticker_event_sequence + 1U;
+  entry->sequence = g_ticker_event_sequence;
+  g_ticker_event_queue_tail = (g_ticker_event_queue_tail + 1U) % VPR_TICKER_EVENT_QUEUE_DEPTH;
+  g_ticker_event_queue_count = g_ticker_event_queue_count + 1U;
+  g_ticker_event_last_emitted_count = count;
+  return true;
 }
 
 static void zero_vpr_data(void) {
@@ -642,7 +680,8 @@ static size_t build_vendor_ticker_event_configure_complete_payload(uint8_t *payl
       g_ticker_event_enabled = 0U;
     }
     g_ticker_event_last_emitted_count = g_ticker_count;
-    g_ticker_event_pending_count = 0U;
+    g_ticker_event_sequence = 0U;
+    clear_ticker_event_queue();
     g_ticker_event_drop_count = 0U;
   }
   payload[0] = 0U;
@@ -654,15 +693,16 @@ static size_t build_vendor_ticker_event_configure_complete_payload(uint8_t *payl
 }
 
 static size_t build_vendor_ticker_event_payload(uint8_t *payload, size_t max_len,
-                                                uint32_t event_count) {
-  if (payload == NULL || max_len < 13U) {
+                                                const vpr_ticker_event_entry_t *event) {
+  if (payload == NULL || event == NULL || max_len < 17U) {
     return 0U;
   }
-  payload[0] = 0U;
-  write_le32(&payload[1], event_count);
-  write_le32(&payload[5], g_ticker_step);
-  write_le32(&payload[9], g_vpr_transport->heartbeat);
-  return 13U;
+  payload[0] = event->flags;
+  write_le32(&payload[1], event->count);
+  write_le32(&payload[5], event->step);
+  write_le32(&payload[9], event->heartbeat);
+  write_le32(&payload[13], event->sequence);
+  return 17U;
 }
 
 static size_t build_vendor_enter_hibernate_complete_payload(uint8_t *payload, size_t max_len) {
@@ -1002,15 +1042,16 @@ static void publish_response_for_opcode(uint16_t opcode) {
 }
 
 static bool publish_pending_ticker_event(void) {
-  uint8_t payload[16];
+  uint8_t payload[20];
   size_t len = 0U;
-  if (g_ticker_event_pending_count == 0U ||
+  if (g_ticker_event_queue_count == 0U ||
       (g_vpr_transport->vprFlags & NRF54L15_VPR_TRANSPORT_FLAG_PENDING) != 0U ||
       host_request_pending()) {
     return false;
   }
+  const vpr_ticker_event_entry_t *event = &g_ticker_event_queue[g_ticker_event_queue_head];
   zero_vpr_data();
-  len = build_vendor_ticker_event_payload(payload, sizeof(payload), g_ticker_event_pending_count);
+  len = build_vendor_ticker_event_payload(payload, sizeof(payload), event);
   if (len == 0U) {
     return false;
   }
@@ -1023,8 +1064,10 @@ static bool publish_pending_ticker_event(void) {
   g_vpr_transport->vprLen = (uint32_t)len;
   g_vpr_transport->vprSeq = g_vpr_transport->vprSeq + 1U;
   g_vpr_transport->vprFlags = NRF54L15_VPR_TRANSPORT_FLAG_PENDING;
-  g_ticker_event_last_emitted_count = g_ticker_event_pending_count;
-  g_ticker_event_pending_count = 0U;
+  bytes_zero(&g_ticker_event_queue[g_ticker_event_queue_head],
+             sizeof(g_ticker_event_queue[g_ticker_event_queue_head]));
+  g_ticker_event_queue_head = (g_ticker_event_queue_head + 1U) % VPR_TICKER_EVENT_QUEUE_DEPTH;
+  g_ticker_event_queue_count = g_ticker_event_queue_count - 1U;
   return true;
 }
 
@@ -1080,7 +1123,8 @@ __attribute__((noreturn)) void vpr_main(void) {
     g_ticker_event_enabled = 0U;
     g_ticker_event_emit_every = 0U;
     g_ticker_event_last_emitted_count = 0U;
-    g_ticker_event_pending_count = 0U;
+    g_ticker_event_sequence = 0U;
+    clear_ticker_event_queue();
     g_ticker_event_drop_count = 0U;
   }
   g_pending_hibernate = 0U;
@@ -1095,10 +1139,7 @@ __attribute__((noreturn)) void vpr_main(void) {
         g_ticker_count = g_ticker_count + g_ticker_step;
         if (g_ticker_event_enabled != 0U && g_ticker_event_emit_every != 0U &&
             g_ticker_count >= (g_ticker_event_last_emitted_count + g_ticker_event_emit_every)) {
-          if (g_ticker_event_pending_count != 0U) {
-            g_ticker_event_drop_count = g_ticker_event_drop_count + 1U;
-          }
-          g_ticker_event_pending_count = g_ticker_count;
+          (void)enqueue_ticker_event(g_ticker_count, g_ticker_step, g_vpr_transport->heartbeat);
         }
       }
     }
