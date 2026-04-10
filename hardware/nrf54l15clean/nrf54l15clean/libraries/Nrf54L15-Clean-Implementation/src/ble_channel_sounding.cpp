@@ -3060,6 +3060,70 @@ size_t BleCsControllerStreamHost::clampPollBytes(size_t value) {
   return (value > 1024U) ? 1024U : value;
 }
 
+void BleCsControllerVprHost::fillDemoConfig(BleCsControllerVprHostConfig* outConfig) {
+  if (outConfig == nullptr) {
+    return;
+  }
+
+  *outConfig = BleCsControllerVprHostConfig{};
+  outConfig->maxCommandsPerPump = 1U;
+  outConfig->maxControllerBytesPerPoll = 128U;
+  outConfig->maxPeerBytesPerPoll = 128U;
+
+  outConfig->builtInPeerDemo.enabled = true;
+  outConfig->builtInPeerDemo.distanceMeters = 0.75f;
+  outConfig->builtInPeerDemo.amplitude = 1024.0f;
+  outConfig->builtInPeerDemo.channels[0] = 0U;
+  outConfig->builtInPeerDemo.channels[1] = 12U;
+  outConfig->builtInPeerDemo.channels[2] = 24U;
+  outConfig->builtInPeerDemo.channels[3] = 36U;
+  outConfig->builtInPeerDemo.channelCount = 4U;
+
+  outConfig->session.localRoleIsInitiator = true;
+  outConfig->session.workflow.applyDefaultSettings = true;
+  outConfig->session.workflow.requireSecurityEnable = true;
+  outConfig->session.workflow.defaultSettings.enableInitiatorRole = true;
+  outConfig->session.workflow.defaultSettings.enableReflectorRole = true;
+  outConfig->session.workflow.defaultSettings.csSyncAntennaSelection = 0xFEU;
+  outConfig->session.workflow.defaultSettings.maxTxPowerDbm = -8;
+
+  outConfig->session.workflow.createConfig.configId = 1U;
+  outConfig->session.workflow.createConfig.createContext = 1U;
+  outConfig->session.workflow.createConfig.mainModeType = kBleCsMainMode2;
+  outConfig->session.workflow.createConfig.subModeType = 0xFFU;
+  outConfig->session.workflow.createConfig.minMainModeSteps = 3U;
+  outConfig->session.workflow.createConfig.maxMainModeSteps = 5U;
+  outConfig->session.workflow.createConfig.mainModeRepetition = 1U;
+  outConfig->session.workflow.createConfig.mode0Steps = 1U;
+  outConfig->session.workflow.createConfig.role = 0U;
+  outConfig->session.workflow.createConfig.rttType = 1U;
+  outConfig->session.workflow.createConfig.csSyncPhy = 2U;
+  BleChannelSoundingRadio::fillValidChannelMap(
+      outConfig->session.workflow.createConfig.channelMap);
+  outConfig->session.workflow.createConfig.channelMapRepetition = 1U;
+  outConfig->session.workflow.createConfig.channelSelectionType = 1U;
+  outConfig->session.workflow.createConfig.ch3cShape = 1U;
+  outConfig->session.workflow.createConfig.ch3cJump = 3U;
+  outConfig->session.workflow.createConfig.csEnhancements1 = 0x01U;
+
+  outConfig->session.workflow.procedureParameters.configId = 1U;
+  outConfig->session.workflow.procedureParameters.maxProcedureLen = 12U;
+  outConfig->session.workflow.procedureParameters.minProcedureInterval = 200U;
+  outConfig->session.workflow.procedureParameters.maxProcedureInterval = 300U;
+  outConfig->session.workflow.procedureParameters.maxProcedureCount = 8U;
+  outConfig->session.workflow.procedureParameters.minSubeventLen = 0x000456UL;
+  outConfig->session.workflow.procedureParameters.maxSubeventLen = 0x000678UL;
+  outConfig->session.workflow.procedureParameters.toneAntennaConfigSelection = 2U;
+  outConfig->session.workflow.procedureParameters.phy = 2U;
+  outConfig->session.workflow.procedureParameters.txPowerDelta = -6;
+  outConfig->session.workflow.procedureParameters.preferredPeerAntenna = 0xFFU;
+  outConfig->session.workflow.procedureParameters.snrControlInitiator = 0U;
+  outConfig->session.workflow.procedureParameters.snrControlReflector = 0U;
+
+  outConfig->session.workflow.procedureEnable.configId = 1U;
+  outConfig->session.workflow.procedureEnable.enable = 1U;
+}
+
 BleCsControllerVprHost::BleCsControllerVprHost()
     : config_{}, vprState_{}, transport_{}, host_{}, builtInPeerResultsInjected_{false}, connHandle_{0U} {}
 

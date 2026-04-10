@@ -2236,58 +2236,13 @@ void printHciVprTransportDemo() {
   Serial.println(F("hcivprtransportdemo stage=begin"));
   Serial.flush();
   BleCsControllerVprHostConfig hostConfig{};
-  hostConfig.maxCommandsPerPump = 1U;
-  hostConfig.maxControllerBytesPerPoll = 128U;
-  hostConfig.maxPeerBytesPerPoll = 128U;
+  BleCsControllerVprHost::fillDemoConfig(&hostConfig);
   hostConfig.builtInPeerDemo.enabled = true;
   hostConfig.builtInPeerDemo.distanceMeters = kDemoDistanceMeters;
   hostConfig.builtInPeerDemo.amplitude = kDemoAmplitude;
   hostConfig.builtInPeerDemo.channelCount =
       static_cast<uint8_t>(kDemoChannelCount);
   memcpy(hostConfig.builtInPeerDemo.channels, demoChannels, kDemoChannelCount);
-  hostConfig.session.localRoleIsInitiator = true;
-  hostConfig.session.workflow.applyDefaultSettings = true;
-  hostConfig.session.workflow.requireSecurityEnable = true;
-  hostConfig.session.workflow.defaultSettings.enableInitiatorRole = true;
-  hostConfig.session.workflow.defaultSettings.enableReflectorRole = true;
-  hostConfig.session.workflow.defaultSettings.csSyncAntennaSelection = 0xFEU;
-  hostConfig.session.workflow.defaultSettings.maxTxPowerDbm = -8;
-
-  hostConfig.session.workflow.createConfig.configId = 1U;
-  hostConfig.session.workflow.createConfig.createContext = 1U;
-  hostConfig.session.workflow.createConfig.mainModeType = kBleCsMainMode2;
-  hostConfig.session.workflow.createConfig.subModeType = 0xFFU;
-  hostConfig.session.workflow.createConfig.minMainModeSteps = 3U;
-  hostConfig.session.workflow.createConfig.maxMainModeSteps = 5U;
-  hostConfig.session.workflow.createConfig.mainModeRepetition = 1U;
-  hostConfig.session.workflow.createConfig.mode0Steps = 1U;
-  hostConfig.session.workflow.createConfig.role = 0U;
-  hostConfig.session.workflow.createConfig.rttType = 1U;
-  hostConfig.session.workflow.createConfig.csSyncPhy = 2U;
-  BleChannelSoundingRadio::fillValidChannelMap(
-      hostConfig.session.workflow.createConfig.channelMap);
-  hostConfig.session.workflow.createConfig.channelMapRepetition = 1U;
-  hostConfig.session.workflow.createConfig.channelSelectionType = 1U;
-  hostConfig.session.workflow.createConfig.ch3cShape = 1U;
-  hostConfig.session.workflow.createConfig.ch3cJump = 3U;
-  hostConfig.session.workflow.createConfig.csEnhancements1 = 0x01U;
-
-  hostConfig.session.workflow.procedureParameters.configId = 1U;
-  hostConfig.session.workflow.procedureParameters.maxProcedureLen = 12U;
-  hostConfig.session.workflow.procedureParameters.minProcedureInterval = 200U;
-  hostConfig.session.workflow.procedureParameters.maxProcedureInterval = 300U;
-  hostConfig.session.workflow.procedureParameters.maxProcedureCount = 8U;
-  hostConfig.session.workflow.procedureParameters.minSubeventLen = 0x000456UL;
-  hostConfig.session.workflow.procedureParameters.maxSubeventLen = 0x000678UL;
-  hostConfig.session.workflow.procedureParameters.toneAntennaConfigSelection = 2U;
-  hostConfig.session.workflow.procedureParameters.phy = 2U;
-  hostConfig.session.workflow.procedureParameters.txPowerDelta = -6;
-  hostConfig.session.workflow.procedureParameters.preferredPeerAntenna = 0xFFU;
-  hostConfig.session.workflow.procedureParameters.snrControlInitiator = 0U;
-  hostConfig.session.workflow.procedureParameters.snrControlReflector = 0U;
-
-  hostConfig.session.workflow.procedureEnable.configId = 1U;
-  hostConfig.session.workflow.procedureEnable.enable = 1U;
 
   bool ok = true;
 

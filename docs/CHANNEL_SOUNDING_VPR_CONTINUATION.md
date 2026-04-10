@@ -109,6 +109,11 @@ That proves:
 - the workflow reached `ready`
 - the supported opcode set was answered correctly by the VPR stub fallback
 - subevent data flowed back far enough to produce an estimate
+- the synthetic peer-result path no longer needs sketch-local packet building
+  for the VPR demo
+- the reusable `BleCsControllerVprHost` now owns both:
+  - built-in demo peer-result injection
+  - a `fillDemoConfig(...)` helper for the default controller workflow setup
 
 ## Built-In VPR Stub Behavior
 

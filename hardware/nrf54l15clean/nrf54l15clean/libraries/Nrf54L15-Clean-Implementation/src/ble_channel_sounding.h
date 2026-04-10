@@ -904,6 +904,7 @@ struct BleCsControllerVprHostState {
 class BleCsControllerVprHost {
  public:
   BleCsControllerVprHost();
+  static void fillDemoConfig(BleCsControllerVprHostConfig* outConfig);
 
   void reset();
   bool resetTransport(bool clearScripts = true);
