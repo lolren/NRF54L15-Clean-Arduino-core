@@ -490,6 +490,9 @@ What works today:
   set, including command-driven config/procedure metadata and dedicated-image
   publication of both local and peer result packets, with CPUAPP only routing
   peer packets after a small VPR source-marker event
+- dedicated-image multi-procedure sequencing driven from
+  `Set Procedure Parameters.maxProcedureCount`, not only a single built-in
+  procedure per enable
 
 Use these library examples together:
 
@@ -506,6 +509,8 @@ What has been added beyond the original phase demo:
   with the generic VPR service image budget
 - dedicated-image demo channel ownership driven from the real `Create Config`
   channel map instead of only a side mailbox
+- a live `hcivprmultidemo` proof path showing the dedicated CS image can walk
+  multiple procedure counters on VPR without sketch-side packet synthesis
 - live repo examples that exercise the VPR-backed CS bring-up path on two
   boards
 

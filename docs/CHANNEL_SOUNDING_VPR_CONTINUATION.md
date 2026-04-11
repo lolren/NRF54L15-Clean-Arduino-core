@@ -153,6 +153,12 @@ That proves:
   - `Procedure Enable Complete` now reflects command-owned procedure state from
     `Set Procedure Parameters`, including procedure length/count and tone
     antenna selection
+  - the dedicated image now owns more of the procedure sequencing itself
+    instead of stopping after the first built-in procedure
+    - `Set Procedure Parameters.maxProcedureCount` now drives repeated built-in
+      procedure publication on the VPR side
+    - the initiator `hcivprmultidemo` proof now reaches
+      `proc=3 transitions=3 peer_mark=3 peer_evt=6` on the two-board setup
   - the dedicated image now rejects at least one real bad workflow edge instead
     of blindly succeeding for every CS command
     - `Set Procedure Parameters` before `Security Enable` now returns `0x0C`
@@ -197,6 +203,7 @@ The current validated live proof is:
 - `hcivprtransportdemo ok=1 pumped=11 wrote=6/88 read=282/0 phase=ready ... ctrl_evt=11 peer_trig=0 peer_mark=1 peer_evt=2 cfg_ch=2,14,26,38 proc=1 dist_m=0.7499`
 - `hcivprtransportdemo ok=1 pumped=12 wrote=6/88 read=282/0 phase=ready ... ctrl_evt=11 peer_trig=0 peer_mark=1 peer_evt=2 cfg_ch=2,14,26,38 cfg_steps=4-6 cfg_rep=2 proc=1 proc_cnt=5 proc_len=17 tone_sel=3 dist_m=0.7499`
 - `hcivprstatedemo ok=1 bad_create=0x12 bad_setproc=0xC bad_range=0x12 remove=0x0 post_remove=0xC phase=ready proc=1 proc_cnt=0 cfg=1 dist_m=0.7508`
+- `hcivprmultidemo ok=1 pumped=12 polled=4 proc=3 transitions=3 target=3 ctrl_evt=13 peer_mark=3 peer_evt=6 phase=ready dist_m=0.7499`
 
 The same size budget applies to CS demo configuration. A dedicated vendor opcode
 for demo-channel configuration was tested and worked functionally, but it pushed
@@ -298,8 +305,10 @@ When resuming this work:
 2. Rebuild the initiator example.
 3. Flash initiator and reflector.
 4. Run `hcivprtransportdemo`.
-5. Confirm the built-in responder path still reaches `phase=ready`.
-6. Only then start changing transport or controller behavior.
+5. Run `hcivprmultidemo`.
+6. Confirm the built-in responder path still reaches `phase=ready` and the
+   multi-procedure demo advances the procedure counter more than once.
+7. Only then start changing transport or controller behavior.
 
 ## Notes
 

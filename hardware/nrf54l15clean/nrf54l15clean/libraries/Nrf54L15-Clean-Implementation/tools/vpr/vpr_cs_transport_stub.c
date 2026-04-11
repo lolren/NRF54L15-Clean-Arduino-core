@@ -106,39 +106,109 @@ static uint32_t g_ticker_event_queue_count = 0U;
 #endif
 static uint8_t g_pending_cs_result_stage = 0U;
 #if VPR_CS_DEDICATED_IMAGE
-static uint8_t g_cs_config_id = 1U;
-static uint16_t g_cs_procedure_counter = 0U;
-static uint32_t g_cs_demo_channels_packed = 0x241A0E02U;
-static uint8_t g_cs_main_mode_type = BLE_CS_MAIN_MODE2;
-static uint8_t g_cs_sub_mode_type = 0xFFU;
-static uint8_t g_cs_min_main_mode_steps = 3U;
-static uint8_t g_cs_max_main_mode_steps = 5U;
-static uint8_t g_cs_main_mode_repetition = 1U;
-static uint8_t g_cs_mode0_steps = 1U;
-static uint8_t g_cs_role = 0U;
-static uint8_t g_cs_rtt_type = 1U;
-static uint8_t g_cs_cs_sync_phy = 2U;
-static uint8_t g_cs_channel_map[10] = {0xFFU, 0xFFU, 0xFFU, 0xFFU, 0x1FU,
-                                       0x00U, 0x00U, 0x00U, 0x00U, 0x00U};
-static uint8_t g_cs_channel_map_repetition = 1U;
-static uint8_t g_cs_channel_selection_type = 1U;
-static uint8_t g_cs_ch3c_shape = 1U;
-static uint8_t g_cs_ch3c_jump = 3U;
-static uint8_t g_cs_enhancements1 = 0x01U;
-static int8_t g_cs_max_tx_power_dbm = -8;
-static uint16_t g_cs_max_procedure_len = 12U;
-static uint16_t g_cs_min_procedure_interval = 200U;
-static uint16_t g_cs_max_procedure_interval = 300U;
-static uint16_t g_cs_max_procedure_count = 8U;
-static uint32_t g_cs_min_subevent_len = 0x000456UL;
-static uint32_t g_cs_max_subevent_len = 0x000678UL;
-static uint8_t g_cs_tone_antenna_config_selection = 2U;
-static uint8_t g_cs_phy = 2U;
-static int8_t g_cs_tx_power_delta = -6;
-static uint8_t g_cs_config_created = 0U;
-static uint8_t g_cs_security_enabled = 0U;
-static uint8_t g_cs_procedure_params_applied = 0U;
-static uint8_t g_cs_procedure_enabled = 0U;
+typedef struct __attribute__((packed)) {
+  uint8_t configId;
+  uint16_t procedureCounter;
+  uint32_t demoChannelsPacked;
+  uint8_t mainModeType;
+  uint8_t subModeType;
+  uint8_t minMainModeSteps;
+  uint8_t maxMainModeSteps;
+  uint8_t mainModeRepetition;
+  uint8_t mode0Steps;
+  uint8_t role;
+  uint8_t rttType;
+  uint8_t csSyncPhy;
+  uint8_t channelMap[10];
+  uint8_t channelMapRepetition;
+  uint8_t channelSelectionType;
+  uint8_t ch3cShape;
+  uint8_t ch3cJump;
+  uint8_t enhancements1;
+  int8_t maxTxPowerDbm;
+  uint16_t maxProcedureLen;
+  uint16_t minProcedureInterval;
+  uint16_t maxProcedureInterval;
+  uint16_t maxProcedureCount;
+  uint32_t minSubeventLen;
+  uint32_t maxSubeventLen;
+  uint8_t toneAntennaConfigSelection;
+  uint8_t phy;
+  int8_t txPowerDelta;
+  uint8_t configCreated;
+  uint8_t securityEnabled;
+  uint8_t procedureParamsApplied;
+  uint8_t procedureEnabled;
+} vpr_cs_dedicated_state_t;
+
+static vpr_cs_dedicated_state_t g_cs_state = {
+    .configId = 1U,
+    .procedureCounter = 0U,
+    .demoChannelsPacked = 0x241A0E02U,
+    .mainModeType = BLE_CS_MAIN_MODE2,
+    .subModeType = 0xFFU,
+    .minMainModeSteps = 3U,
+    .maxMainModeSteps = 5U,
+    .mainModeRepetition = 1U,
+    .mode0Steps = 1U,
+    .role = 0U,
+    .rttType = 1U,
+    .csSyncPhy = 2U,
+    .channelMap = {0xFFU, 0xFFU, 0xFFU, 0xFFU, 0x1FU,
+                   0x00U, 0x00U, 0x00U, 0x00U, 0x00U},
+    .channelMapRepetition = 1U,
+    .channelSelectionType = 1U,
+    .ch3cShape = 1U,
+    .ch3cJump = 3U,
+    .enhancements1 = 0x01U,
+    .maxTxPowerDbm = -8,
+    .maxProcedureLen = 12U,
+    .minProcedureInterval = 200U,
+    .maxProcedureInterval = 300U,
+    .maxProcedureCount = 8U,
+    .minSubeventLen = 0x000456UL,
+    .maxSubeventLen = 0x000678UL,
+    .toneAntennaConfigSelection = 2U,
+    .phy = 2U,
+    .txPowerDelta = -6,
+    .configCreated = 0U,
+    .securityEnabled = 0U,
+    .procedureParamsApplied = 0U,
+    .procedureEnabled = 0U,
+};
+
+#define g_cs_config_id g_cs_state.configId
+#define g_cs_procedure_counter g_cs_state.procedureCounter
+#define g_cs_demo_channels_packed g_cs_state.demoChannelsPacked
+#define g_cs_main_mode_type g_cs_state.mainModeType
+#define g_cs_sub_mode_type g_cs_state.subModeType
+#define g_cs_min_main_mode_steps g_cs_state.minMainModeSteps
+#define g_cs_max_main_mode_steps g_cs_state.maxMainModeSteps
+#define g_cs_main_mode_repetition g_cs_state.mainModeRepetition
+#define g_cs_mode0_steps g_cs_state.mode0Steps
+#define g_cs_role g_cs_state.role
+#define g_cs_rtt_type g_cs_state.rttType
+#define g_cs_cs_sync_phy g_cs_state.csSyncPhy
+#define g_cs_channel_map g_cs_state.channelMap
+#define g_cs_channel_map_repetition g_cs_state.channelMapRepetition
+#define g_cs_channel_selection_type g_cs_state.channelSelectionType
+#define g_cs_ch3c_shape g_cs_state.ch3cShape
+#define g_cs_ch3c_jump g_cs_state.ch3cJump
+#define g_cs_enhancements1 g_cs_state.enhancements1
+#define g_cs_max_tx_power_dbm g_cs_state.maxTxPowerDbm
+#define g_cs_max_procedure_len g_cs_state.maxProcedureLen
+#define g_cs_min_procedure_interval g_cs_state.minProcedureInterval
+#define g_cs_max_procedure_interval g_cs_state.maxProcedureInterval
+#define g_cs_max_procedure_count g_cs_state.maxProcedureCount
+#define g_cs_min_subevent_len g_cs_state.minSubeventLen
+#define g_cs_max_subevent_len g_cs_state.maxSubeventLen
+#define g_cs_tone_antenna_config_selection g_cs_state.toneAntennaConfigSelection
+#define g_cs_phy g_cs_state.phy
+#define g_cs_tx_power_delta g_cs_state.txPowerDelta
+#define g_cs_config_created g_cs_state.configCreated
+#define g_cs_security_enabled g_cs_state.securityEnabled
+#define g_cs_procedure_params_applied g_cs_state.procedureParamsApplied
+#define g_cs_procedure_enabled g_cs_state.procedureEnabled
 #endif
 #if !VPR_CS_DEDICATED_IMAGE
 static uint32_t g_pending_hibernate = 0U;
@@ -1301,16 +1371,13 @@ static bool publish_builtin_response_for_opcode(uint16_t opcode) {
       if (g_host_transport->hostLen >= 8U) {
         g_cs_config_id = g_host_transport->hostData[6];
         enable = g_host_transport->hostData[7];
-        g_cs_procedure_enabled = enable != 0U ? 1U : 0U;
-        if (status == 0U && enable != 0U) {
-          g_cs_procedure_counter =
-              (uint16_t)(g_cs_procedure_counter + 1U);
-          if (g_cs_procedure_counter == 0U) {
-            g_cs_procedure_counter = 1U;
-          }
-        }
         if (enable == 0U) {
+          g_cs_procedure_enabled = 0U;
           g_pending_cs_result_stage = 0U;
+        } else if (status == 0U) {
+          g_cs_procedure_enabled = 1U;
+          g_cs_procedure_counter = 1U;
+          g_pending_cs_result_stage = 1U;
         }
       }
 #endif
@@ -1583,8 +1650,18 @@ static bool publish_pending_cs_result_packet(void) {
   g_vpr_transport->vprSeq = g_vpr_transport->vprSeq + 1U;
   g_vpr_transport->vprFlags = NRF54L15_VPR_TRANSPORT_FLAG_PENDING;
 #if VPR_CS_DEDICATED_IMAGE
-  g_pending_cs_result_stage =
-      (g_pending_cs_result_stage < 5U) ? (uint8_t)(g_pending_cs_result_stage + 1U) : 0U;
+  if (g_pending_cs_result_stage < 5U) {
+    g_pending_cs_result_stage = (uint8_t)(g_pending_cs_result_stage + 1U);
+  } else if (g_cs_procedure_enabled != 0U &&
+             g_cs_procedure_counter < g_cs_max_procedure_count) {
+    g_cs_procedure_counter = (uint16_t)(g_cs_procedure_counter + 1U);
+    if (g_cs_procedure_counter == 0U) {
+      g_cs_procedure_counter = 1U;
+    }
+    g_pending_cs_result_stage = 1U;
+  } else {
+    g_pending_cs_result_stage = 0U;
+  }
 #else
   g_pending_cs_result_stage =
       (g_pending_cs_result_stage < 3U) ? (uint8_t)(g_pending_cs_result_stage + 1U) : 0U;
