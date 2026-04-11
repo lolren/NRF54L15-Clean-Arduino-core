@@ -10,7 +10,27 @@ if ! command -v python3 >/dev/null 2>&1; then
   exit 1
 fi
 
-python3 -m pip install --user --upgrade pip -r "${SCRIPT_DIR}/../requirements-pyocd.txt"
+PY_TAG="$(python3 - <<'PY'
+import sys
+print(f"cp{sys.version_info.major}{sys.version_info.minor}")
+PY
+)"
+WHEELHOUSE_DIR="${SCRIPT_DIR}/../wheelhouse/${PY_TAG}"
+INSTALL_ARGS=(--user --upgrade)
+
+if [[ -d "${WHEELHOUSE_DIR}" ]]; then
+  echo "Using bundled offline wheelhouse: ${WHEELHOUSE_DIR}"
+  INSTALL_ARGS+=(--no-index --find-links "${WHEELHOUSE_DIR}")
+fi
+
+if ! python3 -m pip install "${INSTALL_ARGS[@]}" -r "${SCRIPT_DIR}/../requirements-pyocd.txt"; then
+  if [[ -d "${WHEELHOUSE_DIR}" ]]; then
+    echo "Bundled wheelhouse install failed; retrying with online indexes..."
+    python3 -m pip install --user --upgrade -r "${SCRIPT_DIR}/../requirements-pyocd.txt"
+  else
+    exit 1
+  fi
+fi
 
 if [[ "${1:-}" == "--udev" ]]; then
   if command -v sudo >/dev/null 2>&1; then

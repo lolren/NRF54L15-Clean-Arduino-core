@@ -70,6 +70,17 @@ def bundled_pyocd_command(host_tools_path: Path | None) -> list[str] | None:
     return None
 
 
+def bundled_wheelhouse_path(host_tools_path: Path | None) -> Path | None:
+    if host_tools_path is None:
+        return None
+    wheelhouse_root = host_tools_path / "wheelhouse"
+    if not wheelhouse_root.is_dir():
+        return None
+    version_tag = f"cp{sys.version_info.major}{sys.version_info.minor}"
+    candidate = wheelhouse_root / version_tag
+    return candidate if candidate.is_dir() else None
+
+
 def detect_pyocd_command(host_tools_path: Path | None = None) -> list[str] | None:
     pyocd_exe = shutil.which("pyocd")
     if pyocd_exe:
@@ -113,6 +124,7 @@ def install_pyocd(host_tools_path: Path | None = None) -> bool:
         runtime_dir = host_tools_path / "runtime"
         venv_dir = runtime_dir / "pyocd-venv"
         requirements = host_tools_path / "requirements-pyocd.txt"
+        wheelhouse = bundled_wheelhouse_path(host_tools_path)
         runtime_dir.mkdir(parents=True, exist_ok=True)
 
         if not venv_dir.exists():
@@ -136,6 +148,9 @@ def install_pyocd(host_tools_path: Path | None = None) -> bool:
             "--upgrade",
             "--disable-pip-version-check",
         ]
+        if wheelhouse is not None:
+            print(f"Using bundled offline wheelhouse: {wheelhouse}")
+            install_cmd.extend(["--no-index", "--find-links", str(wheelhouse)])
         if requirements.is_file():
             install_cmd.extend(["-r", str(requirements)])
         else:
@@ -143,6 +158,22 @@ def install_pyocd(host_tools_path: Path | None = None) -> bool:
 
         install = run(install_cmd)
         print_result(install)
+        if install.returncode != 0 and wheelhouse is not None:
+            print("Bundled wheelhouse install failed; retrying with online indexes...")
+            online_cmd = [
+                str(pip),
+                "-m",
+                "pip",
+                "install",
+                "--upgrade",
+                "--disable-pip-version-check",
+            ]
+            if requirements.is_file():
+                online_cmd.extend(["-r", str(requirements)])
+            else:
+                online_cmd.append("pyocd")
+            install = run(online_cmd)
+            print_result(install)
         return install.returncode == 0
 
 

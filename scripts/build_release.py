@@ -6,13 +6,17 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import shutil
+import subprocess
+import sys
 import tarfile
+import tempfile
 import zipfile
 from pathlib import Path
 
 
 HOST_TOOL_NAME = "nrf54l15hosttools"
-HOST_TOOL_VERSION = "1.0.0"
+HOST_TOOL_VERSION = "1.1.0"
 HOST_TOOL_HOSTS = (
     ("x86_64-pc-linux-gnu", ".tar.bz2"),
     ("aarch64-linux-gnu", ".tar.bz2"),
@@ -20,6 +24,15 @@ HOST_TOOL_HOSTS = (
     ("x86_64-apple-darwin", ".tar.bz2"),
     ("arm64-apple-darwin", ".tar.bz2"),
 )
+HOST_TOOL_WHEELHOUSE_PYTHON_VERSIONS = ("310", "311", "312")
+HOST_TOOL_WHEELHOUSE_PLATFORMS = {
+    "x86_64-pc-linux-gnu": "manylinux2014_x86_64",
+    "aarch64-linux-gnu": "manylinux2014_aarch64",
+    "i686-mingw32": "win_amd64",
+    "x86_64-apple-darwin": "macosx_10_12_x86_64",
+    "arm64-apple-darwin": "macosx_11_0_arm64",
+}
+HOST_TOOL_REQUIREMENTS_FILE = "requirements-pyocd.txt"
 
 
 def sha256_file(path: Path) -> str:
@@ -252,6 +265,21 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--existing-index", default=None, type=Path)
     parser.add_argument("--archive-index", default=None, type=Path)
     parser.add_argument("--stable-keep", default=12, type=int)
+    parser.add_argument(
+        "--host-tool-hosts",
+        default="",
+        help="Comma-separated subset of host tool targets to build (default: all)",
+    )
+    parser.add_argument(
+        "--host-tool-python-versions",
+        default=",".join(HOST_TOOL_WHEELHOUSE_PYTHON_VERSIONS),
+        help="Comma-separated CPython minor versions to bundle, for example 310,311,312",
+    )
+    parser.add_argument(
+        "--skip-host-wheelhouse",
+        action="store_true",
+        help="Skip downloading offline pyOCD wheelhouses into host-tools archives",
+    )
     return parser.parse_args()
 
 
@@ -275,6 +303,92 @@ def read_platform_version(platform_dir: Path) -> str:
             if value:
                 return value
     raise SystemExit(f"version=... not found in {platform_txt}")
+
+
+def parse_csv_list(value: str) -> list[str]:
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def stage_host_tool_wheelhouse(
+    stage_dir: Path,
+    host: str,
+    python_versions: list[str],
+) -> dict:
+    requirements = stage_dir / HOST_TOOL_REQUIREMENTS_FILE
+    if not requirements.is_file():
+        raise SystemExit(f"Host-tools requirements not found: {requirements}")
+
+    platform_tag = HOST_TOOL_WHEELHOUSE_PLATFORMS.get(host)
+    if not platform_tag:
+        raise SystemExit(f"Unsupported host tool target: {host}")
+
+    wheelhouse_root = stage_dir / "wheelhouse"
+    wheelhouse_root.mkdir(parents=True, exist_ok=True)
+    manifest = {
+        "host": host,
+        "platform": platform_tag,
+        "requirements": HOST_TOOL_REQUIREMENTS_FILE,
+        "python_versions": [],
+        "skipped_python_versions": [],
+    }
+
+    for python_version in python_versions:
+        wheel_dir = wheelhouse_root / f"cp{python_version}"
+        wheel_dir.mkdir(parents=True, exist_ok=True)
+        cmd = [
+            sys.executable,
+            "-m",
+            "pip",
+            "download",
+            "--dest",
+            str(wheel_dir),
+            "--only-binary=:all:",
+            "--platform",
+            platform_tag,
+            "--implementation",
+            "cp",
+            "--python-version",
+            python_version,
+            "-r",
+            str(requirements),
+        ]
+        result = subprocess.run(cmd, check=False, text=True, capture_output=True)
+        if result.returncode == 0:
+            manifest["python_versions"].append(f"cp{python_version}")
+            continue
+        shutil.rmtree(wheel_dir, ignore_errors=True)
+        manifest["skipped_python_versions"].append(
+            {
+                "python": f"cp{python_version}",
+                "reason": "pip download failed",
+                "stderr_tail": (result.stdout + "\n" + result.stderr).splitlines()[-20:],
+            }
+        )
+
+    (wheelhouse_root / "manifest.json").write_text(
+        json.dumps(manifest, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    return manifest
+
+
+def build_host_tool_archive(
+    source_dir: Path,
+    archive_path: Path,
+    archive_root: str,
+    host: str,
+    python_versions: list[str],
+    *,
+    skip_wheelhouse: bool,
+) -> dict:
+    with tempfile.TemporaryDirectory() as td:
+        stage_dir = Path(td) / archive_root
+        shutil.copytree(source_dir, stage_dir)
+        manifest = {"host": host, "python_versions": [], "skipped_python_versions": []}
+        if not skip_wheelhouse:
+            manifest = stage_host_tool_wheelhouse(stage_dir, host=host, python_versions=python_versions)
+        build_archive(stage_dir, archive_path, archive_root)
+        return manifest
 
 
 def main() -> int:
@@ -303,11 +417,28 @@ def main() -> int:
     if not host_tools_src.is_dir():
         raise SystemExit(f"Host-tools source directory not found: {host_tools_src}")
 
+    selected_hosts = parse_csv_list(args.host_tool_hosts)
+    host_targets = [entry for entry in HOST_TOOL_HOSTS if not selected_hosts or entry[0] in selected_hosts]
+    if not host_targets:
+        raise SystemExit("No host tool targets selected")
+
+    host_tool_python_versions = parse_csv_list(args.host_tool_python_versions)
+    if not host_tool_python_versions:
+        raise SystemExit("At least one host-tool Python version is required")
+
     tool_systems = []
-    for host, ext in HOST_TOOL_HOSTS:
+    host_manifests = {}
+    for host, ext in host_targets:
         tool_archive_name = f"{HOST_TOOL_NAME}-{HOST_TOOL_VERSION}-{host}{ext}"
         tool_archive_path = dist_dir / tool_archive_name
-        build_archive(host_tools_src, tool_archive_path, f"{HOST_TOOL_NAME}-{HOST_TOOL_VERSION}")
+        host_manifests[host] = build_host_tool_archive(
+            host_tools_src,
+            tool_archive_path,
+            f"{HOST_TOOL_NAME}-{HOST_TOOL_VERSION}",
+            host=host,
+            python_versions=host_tool_python_versions,
+            skip_wheelhouse=args.skip_host_wheelhouse,
+        )
         tool_systems.append(
             make_tool_system_entry(
                 host=host,
@@ -350,6 +481,12 @@ def main() -> int:
     print(f"platform size:    {archive_size}")
     for system in tool_systems:
         print(f"tool archive:     {dist_dir / system['archiveFileName']}")
+        manifest = host_manifests.get(system["host"], {})
+        if manifest.get("python_versions"):
+            print(f"tool wheelhouse:  {system['host']} -> {', '.join(manifest['python_versions'])}")
+        if manifest.get("skipped_python_versions"):
+            skipped = ", ".join(item["python"] for item in manifest["skipped_python_versions"])
+            print(f"tool skipped:     {system['host']} -> {skipped}")
     print(f"stable index:     {dist_dir / f'package_{args.packager}_index.json'}")
     print(f"archive index:    {dist_dir / f'package_{args.packager}_archive_index.json'}")
     return 0

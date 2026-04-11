@@ -53,12 +53,17 @@ What is automatic now:
 
 - Boards Manager installs the compiler, OpenOCD, and the small `nrf54l15hosttools` helper package
 - normal compile no longer needs a build-time Python hook
+- the bundled host-tools package now carries offline `pyOCD` wheelhouses for
+  common host Python versions, so the recovery uploader no longer has to hit
+  the network on the normal `3.10` / `3.11` / `3.12` path
 
 What is still host-specific:
 
 - Linux `udev` access for the CMSIS-DAP probe
 - the recovery-capable default upload path still uses the Python helper so it can handle protected-target and unlock cases reliably
 - direct OpenOCD upload is exposed as an explicit experimental option, not the default, because the shipped OpenOCD target config still is not strong enough to replace the helper path completely
+- if the local Python is outside the bundled wheelhouse set, the helper falls
+  back to the normal online `pip` install path instead of failing outright
 
 Fresh-machine recovery/setup helpers:
 
