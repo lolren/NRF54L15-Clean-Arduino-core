@@ -1,4 +1,4 @@
-# nRF54L15 Clean Arduino Core
+# nRF54 Arduino Core
 
 Open-source Arduino board package for **nRF54L15 boards** with a secure
 single-image, register-level implementation.
@@ -38,13 +38,13 @@ Current scope:
 Boards Manager URL for current releases:
 
 ```text
-https://raw.githubusercontent.com/lolren/NRF54L15-Clean-Arduino-core/main/package_nrf54l15clean_index.json
+https://raw.githubusercontent.com/lolren/nrf54-arduino-core/main/package_nrf54l15clean_index.json
 ```
 
 Archive URL for older releases:
 
 ```text
-https://raw.githubusercontent.com/lolren/NRF54L15-Clean-Arduino-core/main/package_nrf54l15clean_archive_index.json
+https://raw.githubusercontent.com/lolren/nrf54-arduino-core/main/package_nrf54l15clean_archive_index.json
 ```
 
 Install `nRF54L15 Boards`, then select one of:
@@ -88,10 +88,10 @@ CLI:
 
 ```bash
 arduino-cli core update-index \
-  --additional-urls https://raw.githubusercontent.com/lolren/NRF54L15-Clean-Arduino-core/main/package_nrf54l15clean_index.json
+  --additional-urls https://raw.githubusercontent.com/lolren/nrf54-arduino-core/main/package_nrf54l15clean_index.json
 
 arduino-cli core install nrf54l15clean:nrf54l15clean \
-  --additional-urls https://raw.githubusercontent.com/lolren/NRF54L15-Clean-Arduino-core/main/package_nrf54l15clean_index.json
+  --additional-urls https://raw.githubusercontent.com/lolren/nrf54-arduino-core/main/package_nrf54l15clean_index.json
 ```
 
 ## Supported Boards
@@ -705,4 +705,4 @@ sudo udevadm trigger --attr-match=idVendor=2886 --attr-match=idProduct=0066
 - [Development Notes](docs/development.md)
 - [Post-0.5.0 Implementation Plan](docs/POST_0_5_0_IMPLEMENTATION_PLAN.md)
 - [Bundled HAL / BLE library README](hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/README.md)
-- [Releases](https://github.com/lolren/NRF54L15-Clean-Arduino-core/releases)
+- [Releases](https://github.com/lolren/nrf54-arduino-core/releases)

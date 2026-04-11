@@ -3,10 +3,10 @@
     {
       "name": "nrf54l15clean",
       "maintainer": "nRF54L15 Clean Arduino",
-      "websiteURL": "https://github.com/lolren/NRF54L15-Clean-Arduino-core",
+      "websiteURL": "https://github.com/lolren/nrf54-arduino-core",
       "email": "",
       "help": {
-        "online": "https://github.com/lolren/NRF54L15-Clean-Arduino-core"
+        "online": "https://github.com/lolren/nrf54-arduino-core"
       },
       "platforms": [
         {
@@ -14,7 +14,7 @@
           "architecture": "nrf54l15clean",
           "version": "0.6.3",
           "category": "Arduino",
-          "url": "https://github.com/lolren/NRF54L15-Clean-Arduino-core/releases/download/v0.6.3/nrf54l15clean-0.6.3.tar.bz2",
+          "url": "https://github.com/lolren/nrf54-arduino-core/releases/download/v0.6.3/nrf54l15clean-0.6.3.tar.bz2",
           "archiveFileName": "nrf54l15clean-0.6.3.tar.bz2",
           "checksum": "SHA-256:5f2547493835c0c63f397001d0f5701687dac75055ad1355f3b2e3d9a3337275",
           "size": "856666",
@@ -30,7 +30,7 @@
             }
           ],
           "help": {
-            "online": "https://github.com/lolren/NRF54L15-Clean-Arduino-core"
+            "online": "https://github.com/lolren/nrf54-arduino-core"
           },
           "toolsDependencies": [
             {
@@ -57,7 +57,7 @@
           "architecture": "nrf54l15clean",
           "version": "0.6.2",
           "category": "Arduino",
-          "url": "https://github.com/lolren/NRF54L15-Clean-Arduino-core/releases/download/v0.6.2/nrf54l15clean-0.6.2.tar.bz2",
+          "url": "https://github.com/lolren/nrf54-arduino-core/releases/download/v0.6.2/nrf54l15clean-0.6.2.tar.bz2",
           "archiveFileName": "nrf54l15clean-0.6.2.tar.bz2",
           "checksum": "SHA-256:af4cfdb62e989b4d0464f9482deac869cdeab1d0ec5d9ef867a4454d530890f6",
           "size": "856745",
@@ -73,7 +73,7 @@
             }
           ],
           "help": {
-            "online": "https://github.com/lolren/NRF54L15-Clean-Arduino-core"
+            "online": "https://github.com/lolren/nrf54-arduino-core"
           },
           "toolsDependencies": [
             {
@@ -100,7 +100,7 @@
           "architecture": "nrf54l15clean",
           "version": "0.6.1",
           "category": "Arduino",
-          "url": "https://github.com/lolren/NRF54L15-Clean-Arduino-core/releases/download/v0.6.1/nrf54l15clean-0.6.1.tar.bz2?cache=20260411c",
+          "url": "https://github.com/lolren/nrf54-arduino-core/releases/download/v0.6.1/nrf54l15clean-0.6.1.tar.bz2?cache=20260411c",
           "archiveFileName": "nrf54l15clean-0.6.1.tar.bz2",
           "checksum": "SHA-256:200f3a76c75fcec06e68e84187fd049598ecc87b1ed7d3c4e5c0c8f0f17282dd",
           "size": "853621",
@@ -110,7 +110,7 @@
             }
           ],
           "help": {
-            "online": "https://github.com/lolren/NRF54L15-Clean-Arduino-core"
+            "online": "https://github.com/lolren/nrf54-arduino-core"
           },
           "toolsDependencies": [
             {
@@ -137,7 +137,7 @@
           "architecture": "nrf54l15clean",
           "version": "0.6.0",
           "category": "Arduino",
-          "url": "https://github.com/lolren/NRF54L15-Clean-Arduino-core/releases/download/v0.6.0/nrf54l15clean-0.6.0.tar.bz2?cache=20260411b",
+          "url": "https://github.com/lolren/nrf54-arduino-core/releases/download/v0.6.0/nrf54l15clean-0.6.0.tar.bz2?cache=20260411b",
           "archiveFileName": "nrf54l15clean-0.6.0.tar.bz2",
           "checksum": "SHA-256:406a5d5236de05c402a6ccd6686a427a9ce6e674a2101da3547d2801914acec0",
           "size": "851209",
@@ -147,7 +147,7 @@
             }
           ],
           "help": {
-            "online": "https://github.com/lolren/NRF54L15-Clean-Arduino-core"
+            "online": "https://github.com/lolren/nrf54-arduino-core"
           },
           "toolsDependencies": [
             {
@@ -174,7 +174,7 @@
           "architecture": "nrf54l15clean",
           "version": "0.5.1",
           "category": "Arduino",
-          "url": "https://github.com/lolren/NRF54L15-Clean-Arduino-core/releases/download/v0.5.1/nrf54l15clean-0.5.1.tar.bz2?cache=20260411a",
+          "url": "https://github.com/lolren/nrf54-arduino-core/releases/download/v0.5.1/nrf54l15clean-0.5.1.tar.bz2?cache=20260411a",
           "archiveFileName": "nrf54l15clean-0.5.1.tar.bz2",
           "checksum": "SHA-256:dfcadd55f26334999a750eb2f41fe7bf7948b48b1af7b2f764e796bbb2a7c644",
           "size": "849709",
@@ -184,7 +184,7 @@
             }
           ],
           "help": {
-            "online": "https://github.com/lolren/NRF54L15-Clean-Arduino-core"
+            "online": "https://github.com/lolren/nrf54-arduino-core"
           },
           "toolsDependencies": [
             {
@@ -206,7 +206,7 @@
           "architecture": "nrf54l15clean",
           "version": "0.5.0",
           "category": "Arduino",
-          "url": "https://github.com/lolren/NRF54L15-Clean-Arduino-core/releases/download/v0.5.0/nrf54l15clean-0.5.0.tar.bz2?cache=20260410a",
+          "url": "https://github.com/lolren/nrf54-arduino-core/releases/download/v0.5.0/nrf54l15clean-0.5.0.tar.bz2?cache=20260410a",
           "archiveFileName": "nrf54l15clean-0.5.0.tar.bz2",
           "checksum": "SHA-256:06429ee72f8265bdf0f3d61aff70aa6e0114f134ac0b5fcce79bdfd42cb4944f",
           "size": "825009",
@@ -216,7 +216,7 @@
             }
           ],
           "help": {
-            "online": "https://github.com/lolren/NRF54L15-Clean-Arduino-core"
+            "online": "https://github.com/lolren/nrf54-arduino-core"
           },
           "toolsDependencies": [
             {
@@ -238,7 +238,7 @@
           "architecture": "nrf54l15clean",
           "version": "0.4.1",
           "category": "Arduino",
-          "url": "https://github.com/lolren/NRF54L15-Clean-Arduino-core/releases/download/v0.4.1/nrf54l15clean-0.4.1.tar.bz2",
+          "url": "https://github.com/lolren/nrf54-arduino-core/releases/download/v0.4.1/nrf54l15clean-0.4.1.tar.bz2",
           "archiveFileName": "nrf54l15clean-0.4.1.tar.bz2",
           "checksum": "SHA-256:6e3dfbda11284cd0004059c1188dca50a973634c1d80493beccf2945a67e8907",
           "size": "783377",
@@ -248,7 +248,7 @@
             }
           ],
           "help": {
-            "online": "https://github.com/lolren/NRF54L15-Clean-Arduino-core"
+            "online": "https://github.com/lolren/nrf54-arduino-core"
           },
           "toolsDependencies": [
             {
@@ -270,7 +270,7 @@
           "architecture": "nrf54l15clean",
           "version": "0.4.0",
           "category": "Arduino",
-          "url": "https://github.com/lolren/NRF54L15-Clean-Arduino-core/releases/download/v0.4.0/nrf54l15clean-0.4.0.tar.bz2",
+          "url": "https://github.com/lolren/nrf54-arduino-core/releases/download/v0.4.0/nrf54l15clean-0.4.0.tar.bz2",
           "archiveFileName": "nrf54l15clean-0.4.0.tar.bz2",
           "checksum": "SHA-256:cf68fd96f07a397d3041a43682c5353a2e3d0935d1d8ef95caa592fb7418287a",
           "size": "750461",
@@ -280,7 +280,7 @@
             }
           ],
           "help": {
-            "online": "https://github.com/lolren/NRF54L15-Clean-Arduino-core"
+            "online": "https://github.com/lolren/nrf54-arduino-core"
           },
           "toolsDependencies": [
             {
@@ -302,7 +302,7 @@
           "architecture": "nrf54l15clean",
           "version": "0.3.11",
           "category": "Arduino",
-          "url": "https://github.com/lolren/NRF54L15-Clean-Arduino-core/releases/download/v0.3.11/nrf54l15clean-0.3.11.tar.bz2?cb=1",
+          "url": "https://github.com/lolren/nrf54-arduino-core/releases/download/v0.3.11/nrf54l15clean-0.3.11.tar.bz2?cb=1",
           "archiveFileName": "nrf54l15clean-0.3.11.tar.bz2",
           "checksum": "SHA-256:073b9868d088a0705849710d1fb35d0866cee661b028eb6266cacd9d27fde2bb",
           "size": "748671",
@@ -312,7 +312,7 @@
             }
           ],
           "help": {
-            "online": "https://github.com/lolren/NRF54L15-Clean-Arduino-core"
+            "online": "https://github.com/lolren/nrf54-arduino-core"
           },
           "toolsDependencies": [
             {
@@ -334,7 +334,7 @@
           "architecture": "nrf54l15clean",
           "version": "0.3.10",
           "category": "Arduino",
-          "url": "https://github.com/lolren/NRF54L15-Clean-Arduino-core/releases/download/v0.3.10/nrf54l15clean-0.3.10.tar.bz2",
+          "url": "https://github.com/lolren/nrf54-arduino-core/releases/download/v0.3.10/nrf54l15clean-0.3.10.tar.bz2",
           "archiveFileName": "nrf54l15clean-0.3.10.tar.bz2",
           "checksum": "SHA-256:64b67e10ca588b42f16728db595d2f71701e6ddbb5fac631ca294ac0aa7ed266",
           "size": "748721",
@@ -344,7 +344,7 @@
             }
           ],
           "help": {
-            "online": "https://github.com/lolren/NRF54L15-Clean-Arduino-core"
+            "online": "https://github.com/lolren/nrf54-arduino-core"
           },
           "toolsDependencies": [
             {
@@ -366,7 +366,7 @@
           "architecture": "nrf54l15clean",
           "version": "0.3.9",
           "category": "Arduino",
-          "url": "https://github.com/lolren/NRF54L15-Clean-Arduino-core/releases/download/v0.3.9/nrf54l15clean-0.3.9.tar.bz2",
+          "url": "https://github.com/lolren/nrf54-arduino-core/releases/download/v0.3.9/nrf54l15clean-0.3.9.tar.bz2",
           "archiveFileName": "nrf54l15clean-0.3.9.tar.bz2",
           "checksum": "SHA-256:a87682a7677ee63302e1237b6a7c211f76f1cb20c9185c488415169eb915806c",
           "size": "749276",
@@ -376,7 +376,7 @@
             }
           ],
           "help": {
-            "online": "https://github.com/lolren/NRF54L15-Clean-Arduino-core"
+            "online": "https://github.com/lolren/nrf54-arduino-core"
           },
           "toolsDependencies": [
             {
@@ -398,7 +398,7 @@
           "architecture": "nrf54l15clean",
           "version": "0.3.8",
           "category": "Arduino",
-          "url": "https://github.com/lolren/NRF54L15-Clean-Arduino-core/releases/download/v0.3.8/nrf54l15clean-0.3.8.tar.bz2",
+          "url": "https://github.com/lolren/nrf54-arduino-core/releases/download/v0.3.8/nrf54l15clean-0.3.8.tar.bz2",
           "archiveFileName": "nrf54l15clean-0.3.8.tar.bz2",
           "checksum": "SHA-256:88dc386830709e646de9200dc3444f816c79d5de2cc3186eb4991ebf4250ca1a",
           "size": "730747",
@@ -408,7 +408,7 @@
             }
           ],
           "help": {
-            "online": "https://github.com/lolren/NRF54L15-Clean-Arduino-core"
+            "online": "https://github.com/lolren/nrf54-arduino-core"
           },
           "toolsDependencies": [
             {
@@ -433,35 +433,35 @@
           "systems": [
             {
               "host": "x86_64-pc-linux-gnu",
-              "url": "https://github.com/lolren/NRF54L15-Clean-Arduino-core/releases/download/v0.6.0/nrf54l15hosttools-1.0.0-x86_64-pc-linux-gnu.tar.bz2",
+              "url": "https://github.com/lolren/nrf54-arduino-core/releases/download/v0.6.0/nrf54l15hosttools-1.0.0-x86_64-pc-linux-gnu.tar.bz2",
               "archiveFileName": "nrf54l15hosttools-1.0.0-x86_64-pc-linux-gnu.tar.bz2",
               "checksum": "SHA-256:ff2c5b4ce33b6d30907e11fb3ffdb9288e11acd3c151e7412863ddc29b4a1318",
               "size": "1399"
             },
             {
               "host": "aarch64-linux-gnu",
-              "url": "https://github.com/lolren/NRF54L15-Clean-Arduino-core/releases/download/v0.6.0/nrf54l15hosttools-1.0.0-aarch64-linux-gnu.tar.bz2",
+              "url": "https://github.com/lolren/nrf54-arduino-core/releases/download/v0.6.0/nrf54l15hosttools-1.0.0-aarch64-linux-gnu.tar.bz2",
               "archiveFileName": "nrf54l15hosttools-1.0.0-aarch64-linux-gnu.tar.bz2",
               "checksum": "SHA-256:ff2c5b4ce33b6d30907e11fb3ffdb9288e11acd3c151e7412863ddc29b4a1318",
               "size": "1399"
             },
             {
               "host": "i686-mingw32",
-              "url": "https://github.com/lolren/NRF54L15-Clean-Arduino-core/releases/download/v0.6.0/nrf54l15hosttools-1.0.0-i686-mingw32.zip",
+              "url": "https://github.com/lolren/nrf54-arduino-core/releases/download/v0.6.0/nrf54l15hosttools-1.0.0-i686-mingw32.zip",
               "archiveFileName": "nrf54l15hosttools-1.0.0-i686-mingw32.zip",
               "checksum": "SHA-256:3e364edd38393e32fd7d14ccf1953be8de9ef757452d125681d2daaae2044d2f",
               "size": "3250"
             },
             {
               "host": "x86_64-apple-darwin",
-              "url": "https://github.com/lolren/NRF54L15-Clean-Arduino-core/releases/download/v0.6.0/nrf54l15hosttools-1.0.0-x86_64-apple-darwin.tar.bz2",
+              "url": "https://github.com/lolren/nrf54-arduino-core/releases/download/v0.6.0/nrf54l15hosttools-1.0.0-x86_64-apple-darwin.tar.bz2",
               "archiveFileName": "nrf54l15hosttools-1.0.0-x86_64-apple-darwin.tar.bz2",
               "checksum": "SHA-256:ff2c5b4ce33b6d30907e11fb3ffdb9288e11acd3c151e7412863ddc29b4a1318",
               "size": "1399"
             },
             {
               "host": "arm64-apple-darwin",
-              "url": "https://github.com/lolren/NRF54L15-Clean-Arduino-core/releases/download/v0.6.0/nrf54l15hosttools-1.0.0-arm64-apple-darwin.tar.bz2",
+              "url": "https://github.com/lolren/nrf54-arduino-core/releases/download/v0.6.0/nrf54l15hosttools-1.0.0-arm64-apple-darwin.tar.bz2",
               "archiveFileName": "nrf54l15hosttools-1.0.0-arm64-apple-darwin.tar.bz2",
               "checksum": "SHA-256:ff2c5b4ce33b6d30907e11fb3ffdb9288e11acd3c151e7412863ddc29b4a1318",
               "size": "1399"
@@ -474,35 +474,35 @@
           "systems": [
             {
               "host": "x86_64-pc-linux-gnu",
-              "url": "https://github.com/lolren/NRF54L15-Clean-Arduino-core/releases/download/v0.6.2/nrf54l15hosttools-1.1.0-x86_64-pc-linux-gnu.tar.bz2",
+              "url": "https://github.com/lolren/nrf54-arduino-core/releases/download/v0.6.2/nrf54l15hosttools-1.1.0-x86_64-pc-linux-gnu.tar.bz2",
               "archiveFileName": "nrf54l15hosttools-1.1.0-x86_64-pc-linux-gnu.tar.bz2",
               "checksum": "SHA-256:bfef7a07fd1dbb1e0c8b9f17bd20885809a6c8ecdab5e558b5d948bb033f3811",
               "size": "65360141"
             },
             {
               "host": "aarch64-linux-gnu",
-              "url": "https://github.com/lolren/NRF54L15-Clean-Arduino-core/releases/download/v0.6.2/nrf54l15hosttools-1.1.0-aarch64-linux-gnu.tar.bz2",
+              "url": "https://github.com/lolren/nrf54-arduino-core/releases/download/v0.6.2/nrf54l15hosttools-1.1.0-aarch64-linux-gnu.tar.bz2",
               "archiveFileName": "nrf54l15hosttools-1.1.0-aarch64-linux-gnu.tar.bz2",
               "checksum": "SHA-256:835d5f134a735b12b103165f06d72d285609362baf67e9c36fa5325487a6e5ea",
               "size": "64403746"
             },
             {
               "host": "i686-mingw32",
-              "url": "https://github.com/lolren/NRF54L15-Clean-Arduino-core/releases/download/v0.6.2/nrf54l15hosttools-1.1.0-i686-mingw32.zip",
+              "url": "https://github.com/lolren/nrf54-arduino-core/releases/download/v0.6.2/nrf54l15hosttools-1.1.0-i686-mingw32.zip",
               "archiveFileName": "nrf54l15hosttools-1.1.0-i686-mingw32.zip",
               "checksum": "SHA-256:dcbcf3d274be32a749484a8d1fb4ecf821eaf6a6c7682bf6b1dce73514384996",
               "size": "57411902"
             },
             {
               "host": "x86_64-apple-darwin",
-              "url": "https://github.com/lolren/NRF54L15-Clean-Arduino-core/releases/download/v0.6.2/nrf54l15hosttools-1.1.0-x86_64-apple-darwin.tar.bz2",
+              "url": "https://github.com/lolren/nrf54-arduino-core/releases/download/v0.6.2/nrf54l15hosttools-1.1.0-x86_64-apple-darwin.tar.bz2",
               "archiveFileName": "nrf54l15hosttools-1.1.0-x86_64-apple-darwin.tar.bz2",
               "checksum": "SHA-256:223e4b401c29ccdbd72835e1706a9f0ac188890a1549a079e6b06434253a2ef3",
               "size": "42707370"
             },
             {
               "host": "arm64-apple-darwin",
-              "url": "https://github.com/lolren/NRF54L15-Clean-Arduino-core/releases/download/v0.6.2/nrf54l15hosttools-1.1.0-arm64-apple-darwin.tar.bz2",
+              "url": "https://github.com/lolren/nrf54-arduino-core/releases/download/v0.6.2/nrf54l15hosttools-1.1.0-arm64-apple-darwin.tar.bz2",
               "archiveFileName": "nrf54l15hosttools-1.1.0-arm64-apple-darwin.tar.bz2",
               "checksum": "SHA-256:8f8690fe2649f8f9be84b338d6b095f0e925a87c2d3d9dd1a6721caea5808163",
               "size": "64051708"
