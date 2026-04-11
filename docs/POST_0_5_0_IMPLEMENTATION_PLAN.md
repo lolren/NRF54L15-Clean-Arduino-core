@@ -164,3 +164,23 @@ That order keeps the work aligned with the actual dependency chain:
 - BLE controller ownership next
 - controller-backed CS on top of that
 - Thread/Matter only after the lower wireless/runtime split is real
+
+## Immediate Saved TODO
+
+The next implementation slice after the current VPR/CS demo work is:
+
+1. first real connected BLE-controller ownership on VPR
+2. then controller-backed CS on top of that connected path
+
+More concretely, the next saved todo is to replace part of the current
+dedicated-image CS demo responder with a real connected BLE/VPR controller
+service slice:
+
+- VPR owns one real connection-scoped controller state machine
+- CPUAPP hosts the boundary and link bookkeeping only
+- CS procedure enable/disable and result staging are bound to that real link
+- existing demo commands remain as regressions until the connected path is
+  proven
+
+This is the shortest path that advances the repo from "working VPR-backed CS
+demo" to "real BLE controller work is starting to move off CPUAPP".

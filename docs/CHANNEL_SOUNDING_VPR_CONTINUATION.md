@@ -276,6 +276,33 @@ Still missing. There are 2 major VPR capability areas left:
    - reliable raw RADIO RTT AUXDATA decode on the non-controller path
    - broader validation across more boards and phone hosts
 
+## Immediate Next TODO
+
+The next concrete implementation target should be the first real connected
+BLE-controller slice on VPR, not more demo-only CS result shaping.
+
+That work should do these things in order:
+
+1. Move one real connected-state controller responsibility onto VPR.
+   - start with connection-owned CS procedure/session state rather than only
+     demo command handling
+2. Bind CS procedure enable/disable and result flow to real link state on the
+   host side.
+   - no new synthetic sketch-side assumptions
+   - no host-side fake peer packet construction for the new path
+3. Make the dedicated CS image own procedure lifetime, result staging, and
+   teardown for that one connected path.
+4. Keep the current demo responders as a fallback regression harness until the
+   real connected path is stable.
+5. Use the existing regressions after each step:
+   - `hcivprtransportdemo`
+   - `hcivprstatedemo`
+   - `hcivprmultidemo`
+
+The immediate non-goal is Matter or Thread work. The current dependency chain
+still runs through VPR ownership first, then BLE controller ownership, then
+controller-backed CS, then higher wireless stacks.
+
 ## Suggested Next Steps
 
 1. Keep the poll-based transport as the baseline.
