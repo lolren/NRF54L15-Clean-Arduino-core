@@ -269,6 +269,11 @@ class VprControllerServiceHost {
                                    uint16_t expectedOpcode,
                                    const uint8_t** payload,
                                    size_t* payloadLen);
+  static bool parseCommandStatus(const uint8_t* packet,
+                                 size_t packetLen,
+                                 uint16_t expectedOpcode,
+                                 const uint8_t** payload,
+                                 size_t* payloadLen);
   static bool parseVendorEvent(const uint8_t* packet,
                                size_t packetLen,
                                uint8_t expectedSubevent,

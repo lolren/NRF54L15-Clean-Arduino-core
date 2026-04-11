@@ -1157,6 +1157,30 @@ bool VprControllerServiceHost::parseCommandComplete(const uint8_t* packet,
   return true;
 }
 
+bool VprControllerServiceHost::parseCommandStatus(const uint8_t* packet,
+                                                  size_t packetLen,
+                                                  uint16_t expectedOpcode,
+                                                  const uint8_t** payload,
+                                                  size_t* payloadLen) {
+  if (packet == nullptr || payload == nullptr || payloadLen == nullptr ||
+      packetLen < 7U || packet[0] != 0x04U || packet[1] != 0x0FU) {
+    return false;
+  }
+  const size_t paramLen = packet[2];
+  if (packetLen != (3U + paramLen) || paramLen < 4U) {
+    return false;
+  }
+  const uint16_t opcode =
+      static_cast<uint16_t>(packet[5]) |
+      (static_cast<uint16_t>(packet[6]) << 8U);
+  if (opcode != expectedOpcode) {
+    return false;
+  }
+  *payload = &packet[3];
+  *payloadLen = paramLen;
+  return true;
+}
+
 bool VprControllerServiceHost::parseVendorEvent(const uint8_t* packet,
                                                 size_t packetLen,
                                                 uint8_t expectedSubevent,
@@ -1250,6 +1274,9 @@ bool VprControllerServiceHost::sendHciCommand(uint16_t opcode,
     const uint8_t* payload = nullptr;
     size_t payloadLen = 0U;
     if (parseCommandComplete(response, *responseLen, opcode, &payload, &payloadLen)) {
+      return true;
+    }
+    if (parseCommandStatus(response, *responseLen, opcode, &payload, &payloadLen)) {
       return true;
     }
 

@@ -224,9 +224,11 @@ Still incomplete:
   instead of only fixed demo placeholders, and it now rejects at least one
   real bad sequence (`Set Procedure Parameters` before `Security Enable`)
   instead of blindly succeeding for every CS opcode; it also now handles
-  `Remove Config` and resets the active CS state on the VPR side; it still does
-  not have a real production BLE controller runtime, so this is not yet a full
-  controller-backed Bluetooth CS implementation
+  `Remove Config`, validates invalid `Create Config` / invalid procedure-parameter
+  payloads with real `0x12` errors on the VPR side, and resets the active CS
+  state on the VPR side; it still does not have a real production BLE
+  controller runtime, so this is not yet a full controller-backed Bluetooth CS
+  implementation
 - broader phone/runtime coverage is still worth adding over time
 
 ## nRF52840 Sketch Compatibility

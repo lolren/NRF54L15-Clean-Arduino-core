@@ -2436,12 +2436,40 @@ void printHciVprStateDemo() {
   ok = ok && vprHost.loadDefaultTransportImage();
   ok = ok && vprHost.bootTransport();
 
+  uint8_t badCreateStatus = 0xFFU;
+  bool badCreateRejected = false;
   uint8_t badStatus = 0xFFU;
   bool badRejected = false;
+  uint8_t badRangeStatus = 0xFFU;
+  bool badRangeRejected = false;
   uint8_t removeStatus = 0xFFU;
   bool removed = false;
   uint8_t postRemoveStatus = 0xFFU;
   bool postRemoveRejected = false;
+
+  if (ok) {
+    VprControllerServiceHost directHost(&vprHost.transport());
+    BleCsControllerCreateConfig badCreateConfig = hostConfig.session.workflow.createConfig;
+    memset(badCreateConfig.channelMap, 0, sizeof(badCreateConfig.channelMap));
+    BleCsHciCommand badCreateCommand{};
+    ok = BleChannelSoundingRadio::buildHciCreateConfigCommand(
+        kDemoConnHandle, badCreateConfig, &badCreateCommand);
+    if (ok) {
+      uint8_t response[64];
+      size_t responseLen = 0U;
+      BleCsHciCommandStatusEvent statusEvent{};
+      badCreateRejected =
+          directHost.sendHciCommand(badCreateCommand.opcode, badCreateCommand.payload,
+                                    badCreateCommand.payloadLen, response,
+                                    sizeof(response), &responseLen) &&
+          BleChannelSoundingRadio::parseHciCommandStatusEvent(
+              response, responseLen, &statusEvent) &&
+          statusEvent.opcode == badCreateCommand.opcode && statusEvent.status != 0U;
+      if (badCreateRejected) {
+        badCreateStatus = statusEvent.status;
+      }
+    }
+  }
 
   if (ok) {
     VprControllerServiceHost directHost(&vprHost.transport());
@@ -2464,7 +2492,7 @@ void printHciVprStateDemo() {
     }
   }
 
-  ok = ok && badRejected;
+  ok = ok && badCreateRejected && badRejected;
   ok = ok && vprHost.resetTransport(true);
   ok = ok && vprHost.loadDefaultTransportImage();
   ok = ok && vprHost.bootTransport();
@@ -2484,6 +2512,27 @@ void printHciVprStateDemo() {
 
   if (ok && vprHost.ready()) {
     VprControllerServiceHost directHost(&vprHost.transport());
+    BleCsProcedureParameters badRangeParams = hostConfig.session.workflow.procedureParameters;
+    badRangeParams.maxProcedureCount = 0U;
+    BleCsHciCommand badRangeCommand{};
+    ok = BleChannelSoundingRadio::buildHciSetProcedureParametersCommand(
+        kDemoConnHandle, badRangeParams, &badRangeCommand);
+    if (ok) {
+      uint8_t response[64];
+      size_t responseLen = 0U;
+      BleCsHciCommandCompleteEvent complete{};
+      badRangeRejected =
+          directHost.sendHciCommand(badRangeCommand.opcode, badRangeCommand.payload,
+                                    badRangeCommand.payloadLen, response,
+                                    sizeof(response), &responseLen) &&
+          BleChannelSoundingRadio::parseHciCommandCompleteEvent(
+              response, responseLen, &complete) &&
+          complete.opcode == badRangeCommand.opcode && complete.status != 0U;
+      if (badRangeRejected) {
+        badRangeStatus = complete.status;
+      }
+    }
+
     BleCsHciCommand removeCommand{};
     ok = BleChannelSoundingRadio::buildHciRemoveConfigCommand(
         kDemoConnHandle, vprHost.workflowState().configComplete.configId, &removeCommand);
@@ -2524,15 +2573,20 @@ void printHciVprStateDemo() {
     }
   }
 
-  ok = ok && removed && postRemoveRejected;
+  ok = ok && badRangeRejected && removed && postRemoveRejected;
 
   Serial.print(F("hcivprstatedemo ok="));
-  Serial.print((ok && badRejected && removed && postRemoveRejected && vprHost.ready() &&
+  Serial.print((ok && badCreateRejected && badRejected && badRangeRejected && removed &&
+                postRemoveRejected && vprHost.ready() &&
                 vprHost.estimateValid())
                    ? 1
                    : 0);
+  Serial.print(F(" bad_create=0x"));
+  Serial.print(badCreateStatus, HEX);
   Serial.print(F(" bad_setproc=0x"));
   Serial.print(badStatus, HEX);
+  Serial.print(F(" bad_range=0x"));
+  Serial.print(badRangeStatus, HEX);
   Serial.print(F(" remove=0x"));
   Serial.print(removeStatus, HEX);
   Serial.print(F(" post_remove=0x"));

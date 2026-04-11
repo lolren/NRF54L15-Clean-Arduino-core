@@ -438,6 +438,18 @@ static bool channel_map_bit_enabled(const uint8_t *channel_map, uint8_t bit) {
   return (channel_map[bit >> 3U] & (uint8_t)(1U << (bit & 0x07U))) != 0U;
 }
 
+static bool channel_map_has_enabled_channels(const uint8_t *channel_map) {
+  if (channel_map == NULL) {
+    return false;
+  }
+  for (uint8_t i = 0U; i < 10U; ++i) {
+    if (channel_map[i] != 0U) {
+      return true;
+    }
+  }
+  return false;
+}
+
 static uint32_t current_demo_channels_packed(void) {
   return (g_cs_demo_channels_packed != 0U) ? g_cs_demo_channels_packed : g_host_transport->reserved;
 }
@@ -506,6 +518,28 @@ static void update_create_config_from_command(void) {
   update_demo_channels_from_create_config();
 }
 
+static uint8_t validate_create_config_command(void) {
+  if (g_host_transport->hostLen < 32U || g_host_transport->hostData[0] != 0x01U) {
+    return BLE_CS_HCI_STATUS_INVALID_PARAMS;
+  }
+
+  const uint8_t config_id = g_host_transport->hostData[6];
+  const uint8_t min_steps = g_host_transport->hostData[10];
+  const uint8_t max_steps = g_host_transport->hostData[11];
+  const uint8_t repetition = g_host_transport->hostData[12];
+  const uint8_t mode0_steps = g_host_transport->hostData[13];
+  const uint8_t cs_sync_phy = g_host_transport->hostData[16];
+
+  if (config_id == 0U || min_steps == 0U || max_steps < min_steps ||
+      repetition == 0U || mode0_steps == 0U || cs_sync_phy == 0U) {
+    return BLE_CS_HCI_STATUS_INVALID_PARAMS;
+  }
+  if (!channel_map_has_enabled_channels((const uint8_t *)&g_host_transport->hostData[17])) {
+    return BLE_CS_HCI_STATUS_INVALID_PARAMS;
+  }
+  return BLE_CS_HCI_STATUS_SUCCESS;
+}
+
 static void update_procedure_params_from_command(void) {
   if (g_host_transport->hostLen < 27U || g_host_transport->hostData[0] != 0x01U) {
     return;
@@ -564,6 +598,19 @@ static uint8_t validate_set_procedure_params_command(void) {
   if (g_host_transport->hostData[6] != g_cs_config_id) {
     return BLE_CS_HCI_STATUS_INVALID_PARAMS;
   }
+  {
+    const uint16_t max_procedure_len = read_le16(&g_host_transport->hostData[7]);
+    const uint16_t min_interval = read_le16(&g_host_transport->hostData[9]);
+    const uint16_t max_interval = read_le16(&g_host_transport->hostData[11]);
+    const uint16_t max_count = read_le16(&g_host_transport->hostData[13]);
+    const uint32_t min_subevent_len = read_le24(&g_host_transport->hostData[15]);
+    const uint32_t max_subevent_len = read_le24(&g_host_transport->hostData[18]);
+    if (max_procedure_len == 0U || min_interval == 0U || max_interval < min_interval ||
+        max_count == 0U || min_subevent_len == 0U ||
+        max_subevent_len < min_subevent_len) {
+      return BLE_CS_HCI_STATUS_INVALID_PARAMS;
+    }
+  }
   return BLE_CS_HCI_STATUS_SUCCESS;
 }
 
@@ -575,6 +622,9 @@ static uint8_t validate_procedure_enable_command(void) {
     return BLE_CS_HCI_STATUS_COMMAND_DISALLOWED;
   }
   if (g_host_transport->hostData[6] != g_cs_config_id) {
+    return BLE_CS_HCI_STATUS_INVALID_PARAMS;
+  }
+  if (g_host_transport->hostData[7] > 1U) {
     return BLE_CS_HCI_STATUS_INVALID_PARAMS;
   }
   if (g_host_transport->hostData[7] == 0U) {
@@ -1148,16 +1198,23 @@ static bool publish_builtin_response_for_opcode(uint16_t opcode) {
       break;
     }
     case BLE_CS_HCI_OP_CREATE_CONFIG: {
+      uint8_t status = 0U;
 #if VPR_CS_DEDICATED_IMAGE
-      update_create_config_from_command();
+      status = validate_create_config_command();
+      if (status == 0U) {
+        update_create_config_from_command();
+      }
 #endif
       size_t len = append_h4_command_status((uint8_t *)g_vpr_transport->vprData + offset,
                                             NRF54L15_VPR_TRANSPORT_MAX_VPR_DATA - offset,
-                                            opcode, 0U);
+                                            opcode, status);
       if (len == 0U) {
         return false;
       }
       offset += len;
+      if (status != 0U) {
+        break;
+      }
       len = build_config_complete_payload(payload, sizeof(payload), conn_handle);
       if (len == 0U) {
         return false;
