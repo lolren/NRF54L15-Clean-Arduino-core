@@ -2,8 +2,8 @@
 
 Open-source Arduino board package for **Seeed XIAO nRF54L15** with a secure single-image, register-level implementation.
 
-- Board package: `Nrf54L15-Clean-Implementation`
-- Board: `XIAO nRF54L15 (Nrf54L15-Clean-Implementation)`
+- Board package: `XIAO nRF54L15 Boards`
+- Board: `XIAO nRF54L15 / Sense`
 - FQBN: `nrf54l15clean:nrf54l15clean:xiao_nrf54l15`
 - Runtime model: no Zephyr runtime, no nRF Connect SDK runtime
 - Default build mode: secure single image
@@ -32,25 +32,42 @@ Current scope:
 
 ## Install
 
-Boards Manager URL:
+Boards Manager URL for current releases:
 
 ```text
 https://raw.githubusercontent.com/lolren/NRF54L15-Clean-Arduino-core/main/package_nrf54l15clean_index.json
 ```
 
-Install `Nrf54L15-Clean-Implementation`, then select:
+Archive URL for older releases:
 
-- board: `XIAO nRF54L15 (Nrf54L15-Clean-Implementation)`
-- upload method: `Auto`
+```text
+https://raw.githubusercontent.com/lolren/NRF54L15-Clean-Arduino-core/main/package_nrf54l15clean_archive_index.json
+```
 
-Fresh-machine host setup for upload reliability:
+Install `XIAO nRF54L15 Boards`, then select:
 
-- Linux: run `hardware/nrf54l15clean/nrf54l15clean/tools/setup/install_linux_host_deps.sh --udev`
-- Windows: run `hardware\\nrf54l15clean\\nrf54l15clean\\tools\\setup\\install_windows_host_deps.ps1`
+- board: `XIAO nRF54L15 / Sense`
+- upload method: `Auto Recover (Default)`
 
-Boards Manager already provides the toolchain and OpenOCD. The extra host pain
-on clean machines is usually the Python/`pyocd` upload path and Linux `udev`
-permissions, which these helper scripts now cover.
+What is automatic now:
+
+- Boards Manager installs the compiler, OpenOCD, and the small `nrf54l15hosttools` helper package
+- normal compile no longer needs a build-time Python hook
+
+What is still host-specific:
+
+- Linux `udev` access for the CMSIS-DAP probe
+- the recovery-capable default upload path still uses the Python helper so it can handle protected-target and unlock cases reliably
+- direct OpenOCD upload is exposed as an explicit experimental option, not the default, because the shipped OpenOCD target config still is not strong enough to replace the helper path completely
+
+Fresh-machine recovery/setup helpers:
+
+- Linux: run `tools/setup/install_linux_host_deps.sh --udev` from the installed `nrf54l15hosttools` package, or the matching script in the repo
+- Windows: run `tools\\setup\\install_windows_host_deps.ps1` from the installed `nrf54l15hosttools` package, or the matching script in the repo
+
+The main package index now stays intentionally lean and only keeps recent
+releases. Full version history stays in the archive index instead of bloating
+the default install path.
 
 CLI:
 
@@ -313,7 +330,7 @@ Most peripheral, BLE, and Zigbee demos now live under the library example menu i
 
 In Arduino IDE they should appear under:
 
-- `File -> Examples -> Examples for XIAO nRF54L15 (Nrf54L15-Clean-Implementation) -> Basics`
+- `File -> Examples -> Examples for XIAO nRF54L15 / Sense -> Basics`
 - `... -> Peripherals`
 - `... -> Power`
 
@@ -566,12 +583,12 @@ arduino-cli core update-index
 
 Check:
 
-- the selected board is `XIAO nRF54L15 (Nrf54L15-Clean-Implementation)`
+- the selected board is `XIAO nRF54L15 / Sense`
 - there is no stale `~/Arduino/hardware/nrf54l15clean` override
   A symlink there can make Arduino IDE show a different package/example tree than the installed release.
 - restart Arduino IDE after reinstall so the example tree is rebuilt
 - the VPR probes now live in both places:
-  `Examples for XIAO nRF54L15 -> Peripherals` and
+  `Examples for XIAO nRF54L15 / Sense -> Peripherals` and
   `Nrf54L15-Clean-Implementation -> VPR`
 
 CLI sanity check:

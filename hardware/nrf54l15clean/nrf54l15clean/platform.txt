@@ -1,5 +1,5 @@
-name=Nrf54L15-Clean-Implementation
-version=0.5.1
+name=XIAO nRF54L15 Boards
+version=0.6.0
 category=Arduino
 
 # Python launcher for upload helper.
@@ -34,14 +34,12 @@ compiler.c.elf.flags=-Wl,--gc-sections -Wl,-Map,{build.path}/{build.project_name
 compiler.ar.flags=rcs
 compiler.ldflags=-T{runtime.platform.path}/cores/nrf54l15/nrf54l15_linker_script.ld --specs=nano.specs --specs=nosys.specs
 
-compiler.c.extra_flags=-include "{build.path}/generated/CoreVersionGenerated.h"
-compiler.cpp.extra_flags=-include "{build.path}/generated/CoreVersionGenerated.h"
-compiler.S.extra_flags=-include "{build.path}/generated/CoreVersionGenerated.h"
+compiler.c.extra_flags=-include "{runtime.platform.path}/cores/nrf54l15/CoreVersionGenerated.h"
+compiler.cpp.extra_flags=-include "{runtime.platform.path}/cores/nrf54l15/CoreVersionGenerated.h"
+compiler.S.extra_flags=-include "{runtime.platform.path}/cores/nrf54l15/CoreVersionGenerated.h"
 compiler.ar.extra_flags=
 compiler.c.elf.extra_flags=
 compiler.libraries.ldflags=
-
-recipe.hooks.prebuild.1.pattern="{tools.python3.cmd}" {tools.python3.args} "{runtime.platform.path}/tools/generate_core_version_header.py" --version "{version}" --out "{build.path}/generated/CoreVersionGenerated.h"
 
 recipe.c.o.pattern="{compiler.path}{compiler.c.cmd}" {compiler.c.flags} -DF_CPU={build.f_cpu} -DARDUINO={runtime.ide.version} -DARDUINO_{build.board} -DARDUINO_ARCH_NRF54L15CLEAN {compiler.c.extra_flags} {build.extra_flags} {includes} "{source_file}" -o "{object_file}"
 recipe.cpp.o.pattern="{compiler.path}{compiler.cpp.cmd}" {compiler.cpp.flags} -DF_CPU={build.f_cpu} -DARDUINO={runtime.ide.version} -DARDUINO_{build.board} -DARDUINO_ARCH_NRF54L15CLEAN {compiler.cpp.extra_flags} {build.extra_flags} {includes} "{source_file}" -o "{object_file}"
@@ -61,4 +59,9 @@ recipe.output.save_file={build.project_name}.{build.board}.hex
 # Upload helper.
 tools.nrf54upload.path={runtime.platform.path}/tools
 tools.nrf54upload.cmd.path={tools.nrf54upload.path}/upload.py
-tools.nrf54upload.upload.pattern="{tools.python3.cmd}" {tools.python3.args} "{tools.nrf54upload.cmd.path}" --hex "{build.path}/{build.project_name}.hex" --port "{serial.port}" --runner "{upload.runner}" --target "{upload.target}" --uid "{upload.uid}" --openocd-script "{upload.openocd_script}" --openocd-speed "{upload.openocd_speed}" --openocd-bin "{upload.openocd_bin}"
+tools.nrf54upload.upload.pattern="{tools.python3.cmd}" {tools.python3.args} "{tools.nrf54upload.cmd.path}" --hex "{build.path}/{build.project_name}.hex" --port "{serial.port}" --runner "{upload.runner}" --target "{upload.target}" --uid "{upload.uid}" --openocd-script "{upload.openocd_script}" --openocd-speed "{upload.openocd_speed}" --openocd-bin "{upload.openocd_bin}" --host-tools-path "{runtime.tools.nrf54l15hosttools.path}"
+
+tools.nrf54openocd.path={runtime.tools.openocd-0.11.0-arduino2.path}
+tools.nrf54openocd.cmd.path={runtime.platform.path}/tools/openocd_upload.sh
+tools.nrf54openocd.cmd.path.windows={runtime.platform.path}/tools/openocd_upload.bat
+tools.nrf54openocd.upload.pattern="{tools.nrf54openocd.cmd.path}" "{upload.openocd_bin}" "{upload.openocd_script}" "{upload.openocd_speed}" "{build.path}/{build.project_name}.hex"

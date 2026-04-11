@@ -2,6 +2,11 @@
 
 Clean, register-level Arduino implementation for the Seeed XIAO nRF54L15.
 
+Arduino IDE board package surface:
+
+- package: `XIAO nRF54L15 Boards`
+- board: `XIAO nRF54L15 / Sense`
+
 This package uses direct peripheral register access from the nRF54L15 datasheet and XIAO schematic pin mapping. It does not use Zephyr APIs or nRF Connect SDK APIs.
 
 ## Implemented HAL blocks

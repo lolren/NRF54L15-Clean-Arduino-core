@@ -32,10 +32,52 @@ def tool_available(name: str) -> bool:
     return shutil.which(name) is not None
 
 
-def detect_pyocd_command() -> list[str] | None:
+def normalize_tools_path(path: str | None) -> Path | None:
+    if not path:
+        return None
+    if "{" in path and "}" in path:
+        return None
+    candidate = Path(path)
+    return candidate if candidate.exists() else None
+
+
+def bundled_pyocd_command(host_tools_path: Path | None) -> list[str] | None:
+    if host_tools_path is None:
+        return None
+
+    candidates = []
+    if sys.platform.startswith("win"):
+        candidates.extend(
+            [
+                host_tools_path / "runtime" / "pyocd-venv" / "Scripts" / "pyocd.exe",
+                host_tools_path / "runtime" / "pyocd-venv" / "Scripts" / "python.exe",
+            ]
+        )
+    else:
+        candidates.extend(
+            [
+                host_tools_path / "runtime" / "pyocd-venv" / "bin" / "pyocd",
+                host_tools_path / "runtime" / "pyocd-venv" / "bin" / "python",
+            ]
+        )
+
+    for candidate in candidates:
+        if not candidate.is_file():
+            continue
+        if candidate.name.startswith("pyocd"):
+            return [str(candidate)]
+        return [str(candidate), "-m", "pyocd"]
+    return None
+
+
+def detect_pyocd_command(host_tools_path: Path | None = None) -> list[str] | None:
     pyocd_exe = shutil.which("pyocd")
     if pyocd_exe:
         return [pyocd_exe]
+
+    bundled = bundled_pyocd_command(host_tools_path)
+    if bundled is not None:
+        return bundled
 
     module_probe = run([sys.executable, "-m", "pyocd", "--version"])
     if module_probe.returncode == 0:
@@ -44,8 +86,12 @@ def detect_pyocd_command() -> list[str] | None:
     return None
 
 
-def host_setup_hint() -> str:
-    tools_dir = Path(__file__).resolve().parent / "setup"
+def host_setup_hint(host_tools_path: Path | None = None) -> str:
+    tools_dir = None
+    if host_tools_path is not None and (host_tools_path / "setup").is_dir():
+        tools_dir = host_tools_path / "setup"
+    else:
+        tools_dir = Path(__file__).resolve().parent / "setup"
     if sys.platform.startswith("linux"):
         return (
             "Run "
@@ -58,6 +104,46 @@ def host_setup_hint() -> str:
             + str(tools_dir / "install_windows_host_deps.ps1")
         )
     return "Install Python 3 and pyocd, then retry"
+
+
+def install_pyocd(host_tools_path: Path | None = None) -> bool:
+    print("Attempting to install pyocd for automatic target recovery...")
+
+    if host_tools_path is not None:
+        runtime_dir = host_tools_path / "runtime"
+        venv_dir = runtime_dir / "pyocd-venv"
+        requirements = host_tools_path / "requirements-pyocd.txt"
+        runtime_dir.mkdir(parents=True, exist_ok=True)
+
+        if not venv_dir.exists():
+            create = run([sys.executable, "-m", "venv", str(venv_dir)])
+            print_result(create)
+            if create.returncode != 0:
+                return False
+
+        if sys.platform.startswith("win"):
+            pip = venv_dir / "Scripts" / "python.exe"
+        else:
+            pip = venv_dir / "bin" / "python"
+        if not pip.is_file():
+            return False
+
+        install_cmd = [
+            str(pip),
+            "-m",
+            "pip",
+            "install",
+            "--upgrade",
+            "--disable-pip-version-check",
+        ]
+        if requirements.is_file():
+            install_cmd.extend(["-r", str(requirements)])
+        else:
+            install_cmd.append("pyocd")
+
+        install = run(install_cmd)
+        print_result(install)
+        return install.returncode == 0
 
 
 def resolve_tool(path_or_name: str) -> str | None:
@@ -276,9 +362,7 @@ def recover_target(
     return result
 
 
-def install_pyocd() -> bool:
-    print("Attempting to install pyocd for automatic target recovery...")
-
+def install_host_pyocd_fallback() -> bool:
     pip_check = run([sys.executable, "-m", "pip", "--version"])
     if pip_check.returncode != 0:
         ensurepip = run([sys.executable, "-m", "ensurepip", "--upgrade"])
@@ -288,38 +372,11 @@ def install_pyocd() -> bool:
 
     in_virtualenv = getattr(sys, "base_prefix", sys.prefix) != sys.prefix
     if in_virtualenv:
-        install_cmds = [
-            [
-                sys.executable,
-                "-m",
-                "pip",
-                "install",
-                "--upgrade",
-                "--disable-pip-version-check",
-                "pyocd",
-            ]
-        ]
+        install_cmds = [[sys.executable, "-m", "pip", "install", "--upgrade", "--disable-pip-version-check", "pyocd"]]
     else:
         install_cmds = [
-            [
-                sys.executable,
-                "-m",
-                "pip",
-                "install",
-                "--user",
-                "--upgrade",
-                "--disable-pip-version-check",
-                "pyocd",
-            ],
-            [
-                sys.executable,
-                "-m",
-                "pip",
-                "install",
-                "--upgrade",
-                "--disable-pip-version-check",
-                "pyocd",
-            ],
+            [sys.executable, "-m", "pip", "install", "--user", "--upgrade", "--disable-pip-version-check", "pyocd"],
+            [sys.executable, "-m", "pip", "install", "--upgrade", "--disable-pip-version-check", "pyocd"],
         ]
 
     for cmd in install_cmds:
@@ -327,16 +384,15 @@ def install_pyocd() -> bool:
         print_result(install)
         if install.returncode == 0:
             return True
-
     return False
 
 
-def choose_runner(requested: str, openocd_bin: str) -> str:
+def choose_runner(requested: str, openocd_bin: str, host_tools_path: Path | None) -> str:
     normalized = requested.strip().lower()
     if normalized != "auto":
         return normalized
 
-    if detect_pyocd_command() is not None:
+    if detect_pyocd_command(host_tools_path) is not None or host_tools_path is not None:
         return "pyocd"
     if resolve_tool(openocd_bin):
         return "openocd"
@@ -351,11 +407,12 @@ def upload_pyocd(
     retries: int,
     retry_delay: float,
     pyocd_cmd: list[str] | None = None,
+    host_tools_path: Path | None = None,
 ) -> int:
-    pyocd_cmd = pyocd_cmd if pyocd_cmd is not None else detect_pyocd_command()
+    pyocd_cmd = pyocd_cmd if pyocd_cmd is not None else detect_pyocd_command(host_tools_path)
     if pyocd_cmd is None:
         print("ERROR: pyocd is not installed or not available in PATH", file=sys.stderr)
-        print(f"HINT: {host_setup_hint()}", file=sys.stderr)
+        print(f"HINT: {host_setup_hint(host_tools_path)}", file=sys.stderr)
         return 3
 
     uid = normalize_uid(requested_uid)
@@ -511,6 +568,11 @@ def main() -> int:
         help="OpenOCD executable path or command name",
     )
     parser.add_argument(
+        "--host-tools-path",
+        default="",
+        help="Optional bundled host-tools package path",
+    )
+    parser.add_argument(
         "--retries",
         type=int,
         default=4,
@@ -524,6 +586,7 @@ def main() -> int:
     )
     args = parser.parse_args()
     requested_runner = args.runner.strip().lower()
+    host_tools_path = normalize_tools_path(args.host_tools_path)
     inferred_uid = infer_uid_from_port(args.port)
     if normalize_uid(args.uid) is None and inferred_uid is not None:
         args.uid = inferred_uid
@@ -532,27 +595,26 @@ def main() -> int:
         print(f"ERROR: HEX file not found: {args.hex}", file=sys.stderr)
         return 2
 
-    if requested_runner == "auto" and detect_pyocd_command() is None:
-        print("pyocd not found; attempting one-time installation for reliable flashing...")
-        if install_pyocd():
-            print("pyocd installation succeeded.")
-        else:
-            print("pyocd installation failed; falling back to OpenOCD.", file=sys.stderr)
-            print(f"HINT: {host_setup_hint()}", file=sys.stderr)
-
     try:
-        runner = choose_runner(requested_runner, args.openocd_bin)
+        runner = choose_runner(requested_runner, args.openocd_bin, host_tools_path)
     except Exception as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 4
 
     if runner == "pyocd":
+        if detect_pyocd_command(host_tools_path) is None:
+            if install_pyocd(host_tools_path):
+                print("pyocd installation succeeded.")
+            elif not install_host_pyocd_fallback():
+                print("pyocd installation failed.", file=sys.stderr)
+                print(f"HINT: {host_setup_hint(host_tools_path)}", file=sys.stderr)
         rc = upload_pyocd(
             args.hex,
             args.target,
             args.uid,
             retries=args.retries,
             retry_delay=args.retry_delay,
+            host_tools_path=host_tools_path,
         )
         if rc != 0 and requested_runner == "auto":
             print("pyocd upload failed in auto mode; trying openocd...")
@@ -576,10 +638,10 @@ def main() -> int:
         rc = openocd_result.returncode
 
         if rc != 0 and looks_like_locked_target(openocd_result):
-            pyocd_cmd = detect_pyocd_command()
+            pyocd_cmd = detect_pyocd_command(host_tools_path)
             if pyocd_cmd is None and requested_runner == "auto":
-                if install_pyocd():
-                    pyocd_cmd = detect_pyocd_command()
+                if install_pyocd(host_tools_path) or (host_tools_path is None and install_host_pyocd_fallback()):
+                    pyocd_cmd = detect_pyocd_command(host_tools_path)
 
             if pyocd_cmd is not None:
                 print("OpenOCD indicates protected target; attempting pyocd recover/flash...")
@@ -590,6 +652,7 @@ def main() -> int:
                     retries=args.retries,
                     retry_delay=args.retry_delay,
                     pyocd_cmd=pyocd_cmd,
+                    host_tools_path=host_tools_path,
                 )
             elif requested_runner == "auto":
                 print(
@@ -597,8 +660,8 @@ def main() -> int:
                     "Install pyocd and retry (or select pyOCD upload method).",
                     file=sys.stderr,
                 )
-                print(f"HINT: {host_setup_hint()}", file=sys.stderr)
-        elif rc != 0 and detect_pyocd_command() is not None:
+                print(f"HINT: {host_setup_hint(host_tools_path)}", file=sys.stderr)
+        elif rc != 0 and detect_pyocd_command(host_tools_path) is not None:
             print("OpenOCD upload failed; falling back to pyocd...")
             rc = upload_pyocd(
                 args.hex,
@@ -606,6 +669,7 @@ def main() -> int:
                 args.uid,
                 retries=args.retries,
                 retry_delay=args.retry_delay,
+                host_tools_path=host_tools_path,
             )
     else:
         print(f"ERROR: Unsupported runner: {runner}", file=sys.stderr)
