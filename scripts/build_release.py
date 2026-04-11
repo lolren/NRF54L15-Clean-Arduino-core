@@ -164,6 +164,7 @@ def make_platform_entry(
         "size": str(archive_size),
         "boards": [
             {"name": "XIAO nRF54L15 / Sense"},
+            {"name": "HOLYIOT-25008 nRF54L15 Module"},
             {"name": "HOLYIOT-25007 nRF54L15 Module"},
             {"name": "Generic nRF54L15 Module (36-pad)"},
         ],

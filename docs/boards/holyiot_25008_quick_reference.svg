@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="620" viewBox="0 0 980 620">
+  <style>
+    .title { font: 700 26px sans-serif; fill: #0f172a; }
+    .body { font: 16px sans-serif; fill: #1f2937; }
+    .small { font: 14px sans-serif; fill: #475569; }
+    .label { font: 700 15px sans-serif; fill: #0f172a; }
+    .pad { fill: #f59e0b; }
+    .line { stroke: #2563eb; stroke-width: 3; fill: none; }
+  </style>
+
+  <rect width="980" height="620" fill="#f8fafc"/>
+  <text x="40" y="48" class="title">HOLYIOT-25008 Quick Reference</text>
+  <text x="40" y="76" class="body">Dedicated board target in the core. XIAO-style D numbering is kept where pins overlap.</text>
+
+  <circle cx="260" cy="320" r="170" fill="#1d4ed8" stroke="#0f172a" stroke-width="4"/>
+  <rect x="200" y="250" width="110" height="95" rx="8" fill="#0f172a" stroke="#ef4444" stroke-width="4"/>
+  <text x="214" y="300" class="body" fill="#f8fafc">nRF54L15</text>
+  <rect x="340" y="280" width="32" height="32" rx="4" fill="#94a3b8" stroke="#8b5cf6" stroke-width="4"/>
+  <circle cx="420" cy="220" r="14" fill="#ffffff" stroke="#7c2d12" stroke-width="4"/>
+  <rect x="120" y="195" width="28" height="28" fill="#0f172a" stroke="#16a34a" stroke-width="4"/>
+
+  <circle class="pad" cx="88" cy="250" r="9"/>
+  <circle class="pad" cx="88" cy="285" r="9"/>
+  <circle class="pad" cx="88" cy="320" r="9"/>
+  <circle class="pad" cx="88" cy="355" r="9"/>
+  <circle class="pad" cx="235" cy="150" r="9"/>
+  <circle class="pad" cx="270" cy="150" r="9"/>
+
+  <path class="line" d="M96 250 H20"/>
+  <path class="line" d="M96 285 H20"/>
+  <path class="line" d="M96 320 H20"/>
+  <path class="line" d="M96 355 H20"/>
+  <path class="line" d="M235 141 V105 H440"/>
+  <path class="line" d="M270 141 V80 H440"/>
+
+  <text x="18" y="246" class="label">VDD</text>
+  <text x="18" y="281" class="label">GND</text>
+  <text x="18" y="316" class="label">SWDIO</text>
+  <text x="18" y="351" class="label">SWDCLK</text>
+  <text x="450" y="88" class="label">P1.05 = D1 = Serial RX pad</text>
+  <text x="450" y="113" class="small">Use Tools &gt; Serial Routing &gt; GPIO on D0/D1 to reclaim it as GPIO.</text>
+  <text x="450" y="136" class="label">P1.04 = D0 = Serial TX pad</text>
+
+  <text x="520" y="215" class="label">Onboard parts</text>
+  <text x="520" y="248" class="body">Button: P1.13 = A6 = PIN_BUTTON</text>
+  <text x="520" y="276" class="body">RGB red: P2.09 = D14 = LED_RED</text>
+  <text x="520" y="304" class="body">RGB green: P1.10 = D4 = LED_GREEN / LED_BUILTIN</text>
+  <text x="520" y="332" class="body">RGB blue: P2.07 = D7 = LED_BLUE</text>
+  <text x="520" y="372" class="body">LIS2DH12 SCK: P2.01 = D8</text>
+  <text x="520" y="400" class="body">LIS2DH12 MISO: P2.04 = D9</text>
+  <text x="520" y="428" class="body">LIS2DH12 MOSI: P2.02 = D10</text>
+  <text x="520" y="456" class="body">LIS2DH12 CS: P2.05 = PIN_LIS2DH12_CS</text>
+  <text x="520" y="484" class="body">LIS2DH12 INT1: P2.00 = PIN_LIS2DH12_INT1</text>
+  <text x="520" y="512" class="body">LIS2DH12 INT2: P2.03 = PIN_LIS2DH12_INT2</text>
+  <text x="520" y="554" class="small">Validated external programmer path: Raspberry Pi Debugprobe on Pico via pyOCD / CMSIS-DAP.</text>
+</svg>

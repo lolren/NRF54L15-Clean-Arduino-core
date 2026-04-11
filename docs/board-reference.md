@@ -4,6 +4,7 @@ This page is the board reference for `XIAO nRF54L15 / Sense`.
 
 For the module boards, use:
 
+- [HOLYIOT-25008 Module Reference](holyiot-25008-module-reference.md)
 - [HOLYIOT-25007 Module Reference](holyiot-25007-module-reference.md)
 
 ## Default Peripheral Routes

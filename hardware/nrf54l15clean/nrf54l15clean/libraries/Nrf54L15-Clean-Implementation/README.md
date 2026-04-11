@@ -7,6 +7,7 @@ Arduino IDE board package surface:
 - package: `nRF54L15 Boards`
 - boards:
   - `XIAO nRF54L15 / Sense`
+  - `HOLYIOT-25008 nRF54L15 Module`
   - `HOLYIOT-25007 nRF54L15 Module`
   - `Generic nRF54L15 Module (36-pad)`
 
@@ -150,6 +151,9 @@ Default Arduino peripheral pin routes:
 
 Module-board note:
 
+- the package now also ships a dedicated `HOLYIOT-25008 nRF54L15 Module`
+  variant with onboard RGB LED, button, LIS2DH12 aliases, and a
+  `Serial Routing` tools menu that can free `D0/D1` as GPIO
 - the package now also ships a shared 36-pad module variant used by
   `HOLYIOT-25007 nRF54L15 Module` and
   `Generic nRF54L15 Module (36-pad)`
@@ -157,6 +161,7 @@ Module-board note:
   Arduino aliases like `D21` and `D1`
 - module defaults are documented in the root docs at
   `docs/holyiot-25007-module-reference.md`
+  and `docs/holyiot-25008-module-reference.md`
 
 Compatibility note:
 

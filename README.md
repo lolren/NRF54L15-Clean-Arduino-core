@@ -6,6 +6,7 @@ single-image, register-level implementation.
 - Board package: `nRF54L15 Boards`
 - Supported boards:
   - `XIAO nRF54L15 / Sense`
+  - `HOLYIOT-25008 nRF54L15 Module`
   - `HOLYIOT-25007 nRF54L15 Module`
   - `Generic nRF54L15 Module (36-pad)`
 - Runtime model: no Zephyr runtime, no nRF Connect SDK runtime
@@ -50,12 +51,14 @@ https://raw.githubusercontent.com/lolren/nrf54-arduino-core/main/package_nrf54l1
 Install `nRF54L15 Boards`, then select one of:
 
 - `XIAO nRF54L15 / Sense`
+- `HOLYIOT-25008 nRF54L15 Module`
 - `HOLYIOT-25007 nRF54L15 Module`
 - `Generic nRF54L15 Module (36-pad)`
 
 Default upload methods:
 
 - `XIAO nRF54L15 / Sense`: `Auto Recover (Default)`
+- `HOLYIOT-25008 nRF54L15 Module`: `pyOCD (CMSIS-DAP, Default)`
 - `HOLYIOT-25007 nRF54L15 Module`: `pyOCD (CMSIS-DAP, Default)`
 - `Generic nRF54L15 Module (36-pad)`: `pyOCD (CMSIS-DAP, Default)`
 
@@ -99,6 +102,7 @@ arduino-cli core install nrf54l15clean:nrf54l15clean \
 | Board | FQBN | Default upload | Notes |
 |---|---|---|---|
 | `XIAO nRF54L15 / Sense` | `nrf54l15clean:nrf54l15clean:xiao_nrf54l15` | `Auto Recover` | Full onboard rail and antenna helpers. |
+| `HOLYIOT-25008 nRF54L15 Module` | `nrf54l15clean:nrf54l15clean:holyiot_25008_nrf54l15` | `pyOCD (CMSIS-DAP)` | Dedicated board target with onboard RGB LED, button, LIS2DH12, and `D0/D1` serial-pad GPIO menu. |
 | `HOLYIOT-25007 nRF54L15 Module` | `nrf54l15clean:nrf54l15clean:holyiot_25007_nrf54l15` | `pyOCD (CMSIS-DAP)` | Named module target with documented 36-pad pinout. |
 | `Generic nRF54L15 Module (36-pad)` | `nrf54l15clean:nrf54l15clean:generic_nrf54l15_module_36pin` | `pyOCD (CMSIS-DAP)` | Same 36-pad variant without vendor branding. |
 
@@ -110,6 +114,45 @@ This is still the most fully integrated board target in the repo.
 - antenna-path helpers are real on this board
 - low-power examples and board-policy behavior are primarily validated here
 - default upload path stays `Auto Recover`
+
+### HOLYIOT-25008
+
+The `HOLYIOT-25008 nRF54L15 Module` now has its own dedicated board target
+instead of living behind the generic module variant.
+
+<p>
+  <img src="docs/boards/holyiot_25008_product.jpg" alt="HOLYIOT-25008 product photo" width="220" />
+</p>
+
+![HOLYIOT-25008 quick reference](docs/boards/holyiot_25008_quick_reference.svg)
+
+Board-specific aliases:
+
+- `LED_BUILTIN` / `LED_GREEN` -> onboard green LED on `P1.10/D4`
+- `LED_RED` -> onboard red LED on `P2.09/D14`
+- `LED_BLUE` -> onboard blue LED on `P2.07/D7`
+- `PIN_BUTTON` -> onboard button on `P1.13/A6`
+- `PIN_LIS2DH12_*` -> onboard accelerometer SPI/INT pins
+
+Board-specific tools menu behavior:
+
+- `Serial Routing -> Header UART on D0/D1 (Default)`
+- `Serial Routing -> GPIO on D0/D1 (Serial disabled)`
+
+External programmer note:
+
+- validated with Raspberry Pi Debugprobe on Pico through `pyOCD / CMSIS-DAP`
+- upstream project: <https://github.com/raspberrypi/debugprobe>
+
+Built-in board examples:
+
+- `Boards -> Holyiot25008RgbButton`
+- `Boards -> Holyiot25008Lis2dh12Spi`
+- `Boards -> Holyiot25008UartPadsAsGpio`
+
+Full board reference:
+
+- [HOLYIOT-25008 Module Reference](docs/holyiot-25008-module-reference.md)
 
 ### HOLYIOT-25007 / Generic 36-pad Module
 
@@ -143,7 +186,7 @@ Default module routes:
 Important module note:
 
 - `LED_BUILTIN` is a default Blink/demo pad on the bare module variants, not a guaranteed onboard LED
-- Pico Debugprobe is now validated on the module boards with `pyOCD`
+- Raspberry Pi Debugprobe on Pico is validated on the module boards with `pyOCD`
 - XIAO board-control helpers still compile on the module variants; unsupported RF
   antenna helpers are harmless no-ops and the Arduino status wrapper reports
   them as unsupported instead of pretending the RF switch exists

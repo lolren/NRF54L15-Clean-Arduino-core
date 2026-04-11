@@ -6,7 +6,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 SKETCH_DIR="${SCRIPT_DIR}/Holyiot25008Probe"
 BUILD_DIR="${SCRIPT_DIR}/build"
 LOG_DIR="${SCRIPT_DIR}/logs"
-FQBN="${FQBN:-nrf54l15clean:nrf54l15clean:generic_nrf54l15_module_36pin}"
+FQBN="${FQBN:-nrf54l15clean:nrf54l15clean:holyiot_25008_nrf54l15}"
 PORT="${PICO_PORT:-/dev/ttyACM0}"
 PYOCD_UID="${PICO_UID:-}"
 

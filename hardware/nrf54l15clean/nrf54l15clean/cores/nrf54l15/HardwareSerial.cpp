@@ -787,7 +787,12 @@ extern "C" uint8_t nrf54l15_constlat_users_active(void) {
     return (g_ownedConstlatUsers != 0U) ? 1U : 0U;
 }
 
-#if defined(NRF54L15_CLEAN_SERIAL_ROUTE_HEADER)
+static constexpr uint8_t kSerialPinDisconnected = 0xFFU;
+
+#if defined(NRF54L15_CLEAN_SERIAL_DISABLED)
+HardwareSerial Serial(NRF_UARTE21, kSerialPinDisconnected, kSerialPinDisconnected);
+HardwareSerial Serial1(NRF_UARTE20, kSerialPinDisconnected, kSerialPinDisconnected);
+#elif defined(NRF54L15_CLEAN_SERIAL_ROUTE_HEADER)
 HardwareSerial Serial(NRF_UARTE21, PIN_SERIAL_TX, PIN_SERIAL_RX);
 HardwareSerial Serial1(NRF_UARTE20, PIN_SAMD11_RX, PIN_SAMD11_TX);
 #else

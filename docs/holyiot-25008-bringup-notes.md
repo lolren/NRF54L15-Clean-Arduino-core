@@ -1,7 +1,7 @@
 # HOLYIOT-25008 Bring-Up Notes
 
-This note captures the currently available `HOLYIOT-25008` pin information from
-the upstream Zephyr board support, so board bring-up does not depend on guesswork.
+This note captures the upstream Zephyr pin information that was used to bring
+the dedicated `HOLYIOT-25008 nRF54L15 Module` board target into the core.
 
 Primary source:
 
@@ -32,8 +32,9 @@ What this likely means on the physical module:
 - the currently published upstream board support describes an `RGB` LED, not an
   `RGBW` LED
 
-Practical next step:
+Current status:
 
-- use the probe sketch under [tools/holyiot_25008_probe](/home/lolren/Desktop/Nrf54L15/NRF54L15-Clean-Arduino-core/tools/holyiot_25008_probe)
-  to confirm the LED and button pins on real hardware before adding a dedicated
-  board definition to the core.
+- the board now has a dedicated core target:
+  [HOLYIOT-25008 Module Reference](holyiot-25008-module-reference.md)
+- the original raw probe is still useful for board-level sanity checks:
+  [tools/holyiot_25008_probe](/home/lolren/Desktop/Nrf54L15/NRF54L15-Clean-Arduino-core/tools/holyiot_25008_probe)
