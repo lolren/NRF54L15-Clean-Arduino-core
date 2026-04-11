@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build Arduino Board Manager release artifacts for XIAO nRF54L15 boards."""
+"""Build Arduino Board Manager release artifacts for nRF54L15 boards."""
 
 from __future__ import annotations
 
@@ -162,7 +162,11 @@ def make_platform_entry(
         "archiveFileName": archive_name,
         "checksum": f"SHA-256:{archive_sha256}",
         "size": str(archive_size),
-        "boards": [{"name": "XIAO nRF54L15 / Sense"}],
+        "boards": [
+            {"name": "XIAO nRF54L15 / Sense"},
+            {"name": "HOLYIOT-25007 nRF54L15 Module"},
+            {"name": "Generic nRF54L15 Module (36-pad)"},
+        ],
         "help": {"online": repo_url},
         "toolsDependencies": [
             {"packager": "arduino", "name": "arm-none-eabi-gcc", "version": "7-2017q4"},
@@ -189,7 +193,7 @@ def make_index(packager: str, repo_url: str) -> dict:
         "packages": [
             {
                 "name": packager,
-                "maintainer": "XIAO nRF54L15",
+                "maintainer": "nRF54L15 Clean Arduino",
                 "websiteURL": repo_url,
                 "email": "",
                 "help": {"online": repo_url},
@@ -214,7 +218,7 @@ def load_existing_index(index_path: Path, packager: str, repo_url: str) -> dict:
 
     package = packages[0]
     package["name"] = packager
-    package["maintainer"] = "XIAO nRF54L15"
+    package["maintainer"] = "nRF54L15 Clean Arduino"
     package["websiteURL"] = repo_url
     package["email"] = ""
     package["help"] = {"online": repo_url}
@@ -258,7 +262,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--version", default=None)
     parser.add_argument("--source-version", default=None)
     parser.add_argument("--packager", default="nrf54l15clean")
-    parser.add_argument("--platform-name", default="XIAO nRF54L15 Boards")
+    parser.add_argument("--platform-name", default="nRF54L15 Boards")
     parser.add_argument("--release-base-url", default="https://github.com/REPLACE_ME/REPLACE_ME/releases/download/v{version}")
     parser.add_argument("--repo-url", default="https://github.com/REPLACE_ME/REPLACE_ME")
     parser.add_argument("--dist-dir", default=None, type=Path)

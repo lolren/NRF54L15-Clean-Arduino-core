@@ -1,5 +1,5 @@
-name=XIAO nRF54L15 Boards
-version=0.6.1
+name=nRF54L15 Boards
+version=0.6.2
 category=Arduino
 
 # Python launcher for upload helper.

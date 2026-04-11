@@ -51,37 +51,12 @@ static uint8_t g_irq_state_initialized = 0U;
 
 static pin_desc_t resolve_pin(uint8_t pin)
 {
-    switch (pin) {
-        case PIN_D0:  return (pin_desc_t){1U, 4U, 1U};
-        case PIN_D1:  return (pin_desc_t){1U, 5U, 1U};
-        case PIN_D2:  return (pin_desc_t){1U, 6U, 1U};
-        case PIN_D3:  return (pin_desc_t){1U, 7U, 1U};
-        case PIN_D4:  return (pin_desc_t){1U, 10U, 1U};
-        case PIN_D5:  return (pin_desc_t){1U, 11U, 1U};
-        case PIN_D6:  return (pin_desc_t){2U, 8U, 1U};
-        case PIN_D7:  return (pin_desc_t){2U, 7U, 1U};
-        case PIN_D8:  return (pin_desc_t){2U, 1U, 1U};
-        case PIN_D9:  return (pin_desc_t){2U, 4U, 1U};
-        case PIN_D10: return (pin_desc_t){2U, 2U, 1U};
-        case PIN_D11: return (pin_desc_t){0U, 3U, 1U};
-        case PIN_D12: return (pin_desc_t){0U, 4U, 1U};
-        case PIN_D13: return (pin_desc_t){2U, 10U, 1U};
-        case PIN_D14: return (pin_desc_t){2U, 9U, 1U};
-        case PIN_D15: return (pin_desc_t){2U, 6U, 1U};
-        case PIN_LED_BUILTIN: return (pin_desc_t){2U, 0U, 1U};
-        case PIN_BUTTON: return (pin_desc_t){0U, 0U, 1U};
-        case PIN_SAMD11_TX: return (pin_desc_t){1U, 8U, 1U};
-        case PIN_SAMD11_RX: return (pin_desc_t){1U, 9U, 1U};
-        case PIN_IMU_MIC_PWR: return (pin_desc_t){0U, 1U, 1U};
-        case PIN_IMU_INT: return (pin_desc_t){0U, 2U, 1U};
-        case PIN_PDM_CLK: return (pin_desc_t){1U, 12U, 1U};
-        case PIN_A6: return (pin_desc_t){1U, 13U, 1U};
-        case PIN_A7: return (pin_desc_t){1U, 14U, 1U};
-        case PIN_RF_SW: return (pin_desc_t){2U, 3U, 1U};
-        case PIN_RF_SW_CTL: return (pin_desc_t){2U, 5U, 1U};
-        case PIN_VBAT_EN: return (pin_desc_t){1U, 15U, 1U};
-        default: return (pin_desc_t){0U, 0U, 0U};
+    uint8_t port = 0U;
+    uint8_t pinInPort = 0U;
+    if (pinToPortPin(pin, &port, &pinInPort)) {
+        return (pin_desc_t){port, pinInPort, 1U};
     }
+    return (pin_desc_t){0U, 0U, 0U};
 }
 
 static NRF_GPIO_Type* gpio_for_port(uint8_t port)

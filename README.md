@@ -1,10 +1,13 @@
-# XIAO nRF54L15 Clean Arduino Core
+# nRF54L15 Clean Arduino Core
 
-Open-source Arduino board package for **Seeed XIAO nRF54L15** with a secure single-image, register-level implementation.
+Open-source Arduino board package for **nRF54L15 boards** with a secure
+single-image, register-level implementation.
 
-- Board package: `XIAO nRF54L15 Boards`
-- Board: `XIAO nRF54L15 / Sense`
-- FQBN: `nrf54l15clean:nrf54l15clean:xiao_nrf54l15`
+- Board package: `nRF54L15 Boards`
+- Supported boards:
+  - `XIAO nRF54L15 / Sense`
+  - `HOLYIOT-25007 nRF54L15 Module`
+  - `Generic nRF54L15 Module (36-pad)`
 - Runtime model: no Zephyr runtime, no nRF Connect SDK runtime
 - Default build mode: secure single image
 
@@ -12,7 +15,7 @@ Open-source Arduino board package for **Seeed XIAO nRF54L15** with a secure sing
 
 This repo ships two things:
 
-1. A normal Arduino Boards Manager package for XIAO nRF54L15.
+1. A normal Arduino Boards Manager package for the supported `nRF54L15` boards.
 2. A bundled register-level HAL/BLE library used by the board core and exposed to sketches.
 
 Current scope:
@@ -44,10 +47,17 @@ Archive URL for older releases:
 https://raw.githubusercontent.com/lolren/NRF54L15-Clean-Arduino-core/main/package_nrf54l15clean_archive_index.json
 ```
 
-Install `XIAO nRF54L15 Boards`, then select:
+Install `nRF54L15 Boards`, then select one of:
 
-- board: `XIAO nRF54L15 / Sense`
-- upload method: `Auto Recover (Default)`
+- `XIAO nRF54L15 / Sense`
+- `HOLYIOT-25007 nRF54L15 Module`
+- `Generic nRF54L15 Module (36-pad)`
+
+Default upload methods:
+
+- `XIAO nRF54L15 / Sense`: `Auto Recover (Default)`
+- `HOLYIOT-25007 nRF54L15 Module`: `pyOCD (CMSIS-DAP, Default)`
+- `Generic nRF54L15 Module (36-pad)`: `pyOCD (CMSIS-DAP, Default)`
 
 What is automatic now:
 
@@ -83,6 +93,52 @@ arduino-cli core update-index \
 arduino-cli core install nrf54l15clean:nrf54l15clean \
   --additional-urls https://raw.githubusercontent.com/lolren/NRF54L15-Clean-Arduino-core/main/package_nrf54l15clean_index.json
 ```
+
+## Supported Boards
+
+| Board | FQBN | Default upload | Notes |
+|---|---|---|---|
+| `XIAO nRF54L15 / Sense` | `nrf54l15clean:nrf54l15clean:xiao_nrf54l15` | `Auto Recover` | Full onboard rail and antenna helpers. |
+| `HOLYIOT-25007 nRF54L15 Module` | `nrf54l15clean:nrf54l15clean:holyiot_25007_nrf54l15` | `pyOCD (CMSIS-DAP)` | Named module target with documented 36-pad pinout. |
+| `Generic nRF54L15 Module (36-pad)` | `nrf54l15clean:nrf54l15clean:generic_nrf54l15_module_36pin` | `pyOCD (CMSIS-DAP)` | Same 36-pad variant without vendor branding. |
+
+## HOLYIOT-25007 / Generic 36-pad Module
+
+The `HOLYIOT-25007 nRF54L15 Module` and `Generic nRF54L15 Module (36-pad)`
+boards share the same pad map and default peripheral routes.
+
+<p>
+  <img src="docs/boards/holyiot_25007_product.png" alt="HOLYIOT-25007 product photo" width="180" />
+</p>
+
+![HOLYIOT-25007 bottom pin map](docs/boards/holyiot_25007_bottom.png)
+
+![HOLYIOT-25007 quick reference](docs/boards/holyiot_25007_peripheral_pinout.png)
+
+Pin naming rule for the module boards:
+
+- use `P2_08` / `P1_10` when you want the real MCU GPIO names in code or hardware notes
+- use `D21` / `D1` when you want Arduino aliases
+- use physical pad numbers like `25` only for soldering and rework
+
+Default module routes:
+
+- `Serial`: `TX=D21/P2.08/pad 25`, `RX=D20/P2.07/pad 24`
+- `Serial1`: `TX=D23/P2.10/pad 27`, `RX=D22/P2.09/pad 26`
+- `Wire`: `SDA=D27/P0.03/pad 33`, `SCL=D28/P0.04/pad 34`
+- `Wire1`: `SDA=D1/P1.10/pad 3`, `SCL=D2/P1.11/pad 5`
+- `SPI`: `SS=D15/P2.02/pad 19`, `SCK=D16/P2.03/pad 20`,
+  `MISO=D17/P2.04/pad 21`, `MOSI=D18/P2.05/pad 22`
+- `LED_BUILTIN`: `D13/P2.00/pad 17`
+
+Important module note:
+
+- `LED_BUILTIN` is a default Blink/demo pad on the bare module variants, not a guaranteed onboard LED
+- Pico Debugprobe is now validated on the module boards with `pyOCD`
+
+Full module reference:
+
+- [HOLYIOT-25007 Module Reference](docs/holyiot-25007-module-reference.md)
 
 ## Board Peripheral Status
 

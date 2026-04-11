@@ -153,6 +153,21 @@ static inline bool pinToPortPin(uint8_t pin, uint8_t* port, uint8_t* pinInPort)
     }
 }
 
+static inline int8_t pinToSaadcChannel(uint8_t pin)
+{
+    switch (pin) {
+        case PIN_A0: return 0;
+        case PIN_A1: return 1;
+        case PIN_A2: return 2;
+        case PIN_A3: return 3;
+        case PIN_A5: return 4;
+        case PIN_PDM_CLK: return 5;
+        case PIN_A6: return 6;
+        case PIN_A7: return 7;
+        default: return -1;
+    }
+}
+
 static inline uint8_t digitalPinToPort(uint8_t pin)
 {
     uint8_t port = 0;

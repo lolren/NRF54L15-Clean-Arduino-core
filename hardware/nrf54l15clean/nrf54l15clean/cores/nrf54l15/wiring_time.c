@@ -6,6 +6,12 @@
 #include "nrf54l15.h"
 #include "variant.h"
 
+#if !defined(ARDUINO_XIAO_NRF54L15)
+typedef struct {
+    uint8_t unused;
+} xiao_nrf54l15_board_state_t;
+#endif
+
 extern uint32_t SystemCoreClock;
 extern void SystemCoreClockUpdate(void);
 extern void nrf54l15_clean_idle_service(void);
@@ -761,7 +767,9 @@ void nrf54l15_core_prepare_system_off(void)
 #endif
 
     clearSystemOffVprRetention();
+#if defined(ARDUINO_XIAO_NRF54L15)
     xiaoNrf54l15EnterLowestPowerBoardState();
+#endif
     SysTick->CTRL = 0U;
 }
 

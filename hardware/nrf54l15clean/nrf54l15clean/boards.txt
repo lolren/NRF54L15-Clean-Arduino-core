@@ -19,6 +19,7 @@ xiao_nrf54l15.upload_port.0.vid=0x2886
 xiao_nrf54l15.upload_port.0.pid=0x0066
 
 xiao_nrf54l15.upload.tool=nrf54upload
+xiao_nrf54l15.upload.tool.serial=nrf54upload
 xiao_nrf54l15.upload.protocol=cmsis-dap
 xiao_nrf54l15.upload.maximum_size=1556480
 xiao_nrf54l15.upload.maximum_data_size=253440
@@ -141,12 +142,259 @@ xiao_nrf54l15.menu.clean_serial.header.build.serial_flags=-DNRF54L15_CLEAN_SERIA
 
 xiao_nrf54l15.menu.clean_upload.auto=Auto Recover (Default)
 xiao_nrf54l15.menu.clean_upload.auto.upload.tool=nrf54upload
+xiao_nrf54l15.menu.clean_upload.auto.upload.tool.serial=nrf54upload
 xiao_nrf54l15.menu.clean_upload.auto.upload.runner=auto
 
 xiao_nrf54l15.menu.clean_upload.pyocd=pyOCD Recovery (CMSIS-DAP)
 xiao_nrf54l15.menu.clean_upload.pyocd.upload.tool=nrf54upload
+xiao_nrf54l15.menu.clean_upload.pyocd.upload.tool.serial=nrf54upload
 xiao_nrf54l15.menu.clean_upload.pyocd.upload.runner=pyocd
 
 xiao_nrf54l15.menu.clean_upload.openocd_legacy=OpenOCD Direct (Experimental)
 xiao_nrf54l15.menu.clean_upload.openocd_legacy.upload.tool=nrf54openocd
+xiao_nrf54l15.menu.clean_upload.openocd_legacy.upload.tool.serial=nrf54openocd
 xiao_nrf54l15.menu.clean_upload.openocd_legacy.upload.runner=openocd
+
+holyiot_25007_nrf54l15.name=HOLYIOT-25007 nRF54L15 Module
+
+holyiot_25007_nrf54l15.upload.tool=nrf54upload
+holyiot_25007_nrf54l15.upload.tool.serial=nrf54upload
+holyiot_25007_nrf54l15.upload.protocol=cmsis-dap
+holyiot_25007_nrf54l15.upload.maximum_size=1556480
+holyiot_25007_nrf54l15.upload.maximum_data_size=253440
+holyiot_25007_nrf54l15.upload.wait_for_upload_port=false
+holyiot_25007_nrf54l15.upload.use_1200bps_touch=false
+holyiot_25007_nrf54l15.upload.disable_flushing=true
+holyiot_25007_nrf54l15.upload.runner=pyocd
+holyiot_25007_nrf54l15.upload.target=nrf54l
+holyiot_25007_nrf54l15.upload.uid=
+holyiot_25007_nrf54l15.upload.openocd_script={runtime.platform.path}/tools/openocd/nrf54l15.cfg
+holyiot_25007_nrf54l15.upload.openocd_speed=4000
+holyiot_25007_nrf54l15.upload.openocd_bin={runtime.tools.openocd-0.11.0-arduino2.path}/bin/openocd
+
+holyiot_25007_nrf54l15.serial.disableDTR=false
+holyiot_25007_nrf54l15.serial.disableRTS=false
+
+holyiot_25007_nrf54l15.build.mcu=cortex-m33
+holyiot_25007_nrf54l15.build.f_cpu=64000000L
+holyiot_25007_nrf54l15.build.board=HOLYIOT_25007_NRF54L15
+holyiot_25007_nrf54l15.build.core=nrf54l15
+holyiot_25007_nrf54l15.build.variant=nrf54l15_module_36pin
+holyiot_25007_nrf54l15.build.cpu_flags=-DARDUINO_NRF54_CPU_64M
+holyiot_25007_nrf54l15.build.power_flags=
+holyiot_25007_nrf54l15.build.boot_flags=
+holyiot_25007_nrf54l15.build.auto_gate_flags=
+holyiot_25007_nrf54l15.build.security_flags=-DNRF_APPLICATION
+holyiot_25007_nrf54l15.build.ble_flags=-DNRF54L15_CLEAN_BLE_ENABLED=1
+holyiot_25007_nrf54l15.build.ble_tx_flags=
+holyiot_25007_nrf54l15.build.ble_timing_flags=
+holyiot_25007_nrf54l15.build.ble_trace_flags=
+holyiot_25007_nrf54l15.build.zigbee_flags=-DNRF54L15_CLEAN_ZIGBEE_ENABLED=1
+holyiot_25007_nrf54l15.build.zigbee_channel_flags=-DNRF54L15_CLEAN_ZIGBEE_CHANNEL=15
+holyiot_25007_nrf54l15.build.zigbee_pan_flags=-DNRF54L15_CLEAN_ZIGBEE_PAN_ID=0x1234
+holyiot_25007_nrf54l15.build.antenna_flags=
+holyiot_25007_nrf54l15.build.serial_flags=-DNRF54L15_CLEAN_SERIAL_ROUTE_HEADER
+holyiot_25007_nrf54l15.build.extra_flags=-DARDUINO_NRF54L15 -DNRF54L15_XXAA -DARDUINO_HOLYIOT_25007_NRF54L15 {build.cpu_flags} {build.power_flags} {build.boot_flags} {build.auto_gate_flags} {build.security_flags} {build.ble_flags} {build.ble_tx_flags} {build.ble_timing_flags} {build.ble_trace_flags} {build.zigbee_flags} {build.zigbee_channel_flags} {build.zigbee_pan_flags} {build.antenna_flags} {build.serial_flags}
+
+holyiot_25007_nrf54l15.menu.clean_cpu.cpu64=64 MHz (Default)
+holyiot_25007_nrf54l15.menu.clean_cpu.cpu64.build.f_cpu=64000000L
+holyiot_25007_nrf54l15.menu.clean_cpu.cpu64.build.cpu_flags=-DARDUINO_NRF54_CPU_64M
+
+holyiot_25007_nrf54l15.menu.clean_cpu.cpu128=128 MHz (Turbo)
+holyiot_25007_nrf54l15.menu.clean_cpu.cpu128.build.f_cpu=128000000L
+holyiot_25007_nrf54l15.menu.clean_cpu.cpu128.build.cpu_flags=-DARDUINO_NRF54_CPU_128M
+
+holyiot_25007_nrf54l15.menu.clean_power.balanced=Balanced (Default)
+holyiot_25007_nrf54l15.menu.clean_power.balanced.build.power_flags=
+
+holyiot_25007_nrf54l15.menu.clean_power.low=Low Power (WFI Idle)
+holyiot_25007_nrf54l15.menu.clean_power.low.build.power_flags=-DNRF54L15_CLEAN_POWER_LOW
+
+holyiot_25007_nrf54l15.menu.clean_autogate.off=Disabled (Default)
+holyiot_25007_nrf54l15.menu.clean_autogate.off.build.auto_gate_flags=
+
+holyiot_25007_nrf54l15.menu.clean_autogate.balanced=Balanced (2 ms idle)
+holyiot_25007_nrf54l15.menu.clean_autogate.balanced.build.auto_gate_flags=-DNRF54L15_CLEAN_AUTO_GATE=1 -DNRF54L15_CLEAN_AUTO_GATE_IDLE_US=2000
+
+holyiot_25007_nrf54l15.menu.clean_autogate.aggressive=Aggressive (200 us idle)
+holyiot_25007_nrf54l15.menu.clean_autogate.aggressive.build.auto_gate_flags=-DNRF54L15_CLEAN_AUTO_GATE=1 -DNRF54L15_CLEAN_AUTO_GATE_IDLE_US=200
+
+holyiot_25007_nrf54l15.menu.clean_ble.on=Enabled (Default)
+holyiot_25007_nrf54l15.menu.clean_ble.on.build.ble_flags=-DNRF54L15_CLEAN_BLE_ENABLED=1
+
+holyiot_25007_nrf54l15.menu.clean_ble.off=Disabled
+holyiot_25007_nrf54l15.menu.clean_ble.off.build.ble_flags=-DNRF54L15_CLEAN_BLE_ENABLED=0 -DNRF54L15_CLEAN_BLE_DISABLED
+
+holyiot_25007_nrf54l15.menu.clean_ble_timing.interop=Interoperability (Default)
+holyiot_25007_nrf54l15.menu.clean_ble_timing.interop.build.ble_timing_flags=
+
+holyiot_25007_nrf54l15.menu.clean_ble_timing.balanced=Balanced Low-Power
+holyiot_25007_nrf54l15.menu.clean_ble_timing.balanced.build.ble_timing_flags=-DNRF54L15_CLEAN_BLE_TIMING_BALANCED=1
+
+holyiot_25007_nrf54l15.menu.clean_ble_timing.aggressive=Aggressive Low-Power
+holyiot_25007_nrf54l15.menu.clean_ble_timing.aggressive.build.ble_timing_flags=-DNRF54L15_CLEAN_BLE_TIMING_AGGRESSIVE=1
+
+holyiot_25007_nrf54l15.menu.clean_ble_trace.off=Disabled (Default)
+holyiot_25007_nrf54l15.menu.clean_ble_trace.off.build.ble_trace_flags=
+
+holyiot_25007_nrf54l15.menu.clean_ble_trace.on=Enabled
+holyiot_25007_nrf54l15.menu.clean_ble_trace.on.build.ble_trace_flags=-DNRF54L15_CLEAN_BLE_TRACE=1
+
+holyiot_25007_nrf54l15.menu.clean_zigbee.on=Enabled (Default)
+holyiot_25007_nrf54l15.menu.clean_zigbee.on.build.zigbee_flags=-DNRF54L15_CLEAN_ZIGBEE_ENABLED=1
+
+holyiot_25007_nrf54l15.menu.clean_zigbee.off=Disabled
+holyiot_25007_nrf54l15.menu.clean_zigbee.off.build.zigbee_flags=-DNRF54L15_CLEAN_ZIGBEE_ENABLED=0 -DNRF54L15_CLEAN_ZIGBEE_DISABLED
+
+holyiot_25007_nrf54l15.menu.clean_zigbee_channel.ch15=15 (Default)
+holyiot_25007_nrf54l15.menu.clean_zigbee_channel.ch15.build.zigbee_channel_flags=-DNRF54L15_CLEAN_ZIGBEE_CHANNEL=15
+
+holyiot_25007_nrf54l15.menu.clean_zigbee_channel.ch11=11
+holyiot_25007_nrf54l15.menu.clean_zigbee_channel.ch11.build.zigbee_channel_flags=-DNRF54L15_CLEAN_ZIGBEE_CHANNEL=11
+
+holyiot_25007_nrf54l15.menu.clean_zigbee_channel.ch20=20
+holyiot_25007_nrf54l15.menu.clean_zigbee_channel.ch20.build.zigbee_channel_flags=-DNRF54L15_CLEAN_ZIGBEE_CHANNEL=20
+
+holyiot_25007_nrf54l15.menu.clean_zigbee_channel.ch25=25
+holyiot_25007_nrf54l15.menu.clean_zigbee_channel.ch25.build.zigbee_channel_flags=-DNRF54L15_CLEAN_ZIGBEE_CHANNEL=25
+
+holyiot_25007_nrf54l15.menu.clean_zigbee_pan.pan1234=0x1234 (Default)
+holyiot_25007_nrf54l15.menu.clean_zigbee_pan.pan1234.build.zigbee_pan_flags=-DNRF54L15_CLEAN_ZIGBEE_PAN_ID=0x1234
+
+holyiot_25007_nrf54l15.menu.clean_zigbee_pan.pan1a2b=0x1A2B
+holyiot_25007_nrf54l15.menu.clean_zigbee_pan.pan1a2b.build.zigbee_pan_flags=-DNRF54L15_CLEAN_ZIGBEE_PAN_ID=0x1A2B
+
+holyiot_25007_nrf54l15.menu.clean_zigbee_pan.panbeef=0xBEEF
+holyiot_25007_nrf54l15.menu.clean_zigbee_pan.panbeef.build.zigbee_pan_flags=-DNRF54L15_CLEAN_ZIGBEE_PAN_ID=0xBEEF
+
+holyiot_25007_nrf54l15.menu.clean_upload.pyocd=pyOCD (CMSIS-DAP, Default)
+holyiot_25007_nrf54l15.menu.clean_upload.pyocd.upload.tool=nrf54upload
+holyiot_25007_nrf54l15.menu.clean_upload.pyocd.upload.tool.serial=nrf54upload
+holyiot_25007_nrf54l15.menu.clean_upload.pyocd.upload.runner=pyocd
+
+holyiot_25007_nrf54l15.menu.clean_upload.openocd_legacy=OpenOCD Direct (Experimental)
+holyiot_25007_nrf54l15.menu.clean_upload.openocd_legacy.upload.tool=nrf54openocd
+holyiot_25007_nrf54l15.menu.clean_upload.openocd_legacy.upload.tool.serial=nrf54openocd
+holyiot_25007_nrf54l15.menu.clean_upload.openocd_legacy.upload.runner=openocd
+
+generic_nrf54l15_module_36pin.name=Generic nRF54L15 Module (36-pad)
+
+generic_nrf54l15_module_36pin.upload.tool=nrf54upload
+generic_nrf54l15_module_36pin.upload.tool.serial=nrf54upload
+generic_nrf54l15_module_36pin.upload.protocol=cmsis-dap
+generic_nrf54l15_module_36pin.upload.maximum_size=1556480
+generic_nrf54l15_module_36pin.upload.maximum_data_size=253440
+generic_nrf54l15_module_36pin.upload.wait_for_upload_port=false
+generic_nrf54l15_module_36pin.upload.use_1200bps_touch=false
+generic_nrf54l15_module_36pin.upload.disable_flushing=true
+generic_nrf54l15_module_36pin.upload.runner=pyocd
+generic_nrf54l15_module_36pin.upload.target=nrf54l
+generic_nrf54l15_module_36pin.upload.uid=
+generic_nrf54l15_module_36pin.upload.openocd_script={runtime.platform.path}/tools/openocd/nrf54l15.cfg
+generic_nrf54l15_module_36pin.upload.openocd_speed=4000
+generic_nrf54l15_module_36pin.upload.openocd_bin={runtime.tools.openocd-0.11.0-arduino2.path}/bin/openocd
+
+generic_nrf54l15_module_36pin.serial.disableDTR=false
+generic_nrf54l15_module_36pin.serial.disableRTS=false
+
+generic_nrf54l15_module_36pin.build.mcu=cortex-m33
+generic_nrf54l15_module_36pin.build.f_cpu=64000000L
+generic_nrf54l15_module_36pin.build.board=GENERIC_NRF54L15_MODULE_36PIN
+generic_nrf54l15_module_36pin.build.core=nrf54l15
+generic_nrf54l15_module_36pin.build.variant=nrf54l15_module_36pin
+generic_nrf54l15_module_36pin.build.cpu_flags=-DARDUINO_NRF54_CPU_64M
+generic_nrf54l15_module_36pin.build.power_flags=
+generic_nrf54l15_module_36pin.build.boot_flags=
+generic_nrf54l15_module_36pin.build.auto_gate_flags=
+generic_nrf54l15_module_36pin.build.security_flags=-DNRF_APPLICATION
+generic_nrf54l15_module_36pin.build.ble_flags=-DNRF54L15_CLEAN_BLE_ENABLED=1
+generic_nrf54l15_module_36pin.build.ble_tx_flags=
+generic_nrf54l15_module_36pin.build.ble_timing_flags=
+generic_nrf54l15_module_36pin.build.ble_trace_flags=
+generic_nrf54l15_module_36pin.build.zigbee_flags=-DNRF54L15_CLEAN_ZIGBEE_ENABLED=1
+generic_nrf54l15_module_36pin.build.zigbee_channel_flags=-DNRF54L15_CLEAN_ZIGBEE_CHANNEL=15
+generic_nrf54l15_module_36pin.build.zigbee_pan_flags=-DNRF54L15_CLEAN_ZIGBEE_PAN_ID=0x1234
+generic_nrf54l15_module_36pin.build.antenna_flags=
+generic_nrf54l15_module_36pin.build.serial_flags=-DNRF54L15_CLEAN_SERIAL_ROUTE_HEADER
+generic_nrf54l15_module_36pin.build.extra_flags=-DARDUINO_NRF54L15 -DNRF54L15_XXAA -DARDUINO_GENERIC_NRF54L15_MODULE_36PIN {build.cpu_flags} {build.power_flags} {build.boot_flags} {build.auto_gate_flags} {build.security_flags} {build.ble_flags} {build.ble_tx_flags} {build.ble_timing_flags} {build.ble_trace_flags} {build.zigbee_flags} {build.zigbee_channel_flags} {build.zigbee_pan_flags} {build.antenna_flags} {build.serial_flags}
+
+generic_nrf54l15_module_36pin.menu.clean_cpu.cpu64=64 MHz (Default)
+generic_nrf54l15_module_36pin.menu.clean_cpu.cpu64.build.f_cpu=64000000L
+generic_nrf54l15_module_36pin.menu.clean_cpu.cpu64.build.cpu_flags=-DARDUINO_NRF54_CPU_64M
+
+generic_nrf54l15_module_36pin.menu.clean_cpu.cpu128=128 MHz (Turbo)
+generic_nrf54l15_module_36pin.menu.clean_cpu.cpu128.build.f_cpu=128000000L
+generic_nrf54l15_module_36pin.menu.clean_cpu.cpu128.build.cpu_flags=-DARDUINO_NRF54_CPU_128M
+
+generic_nrf54l15_module_36pin.menu.clean_power.balanced=Balanced (Default)
+generic_nrf54l15_module_36pin.menu.clean_power.balanced.build.power_flags=
+
+generic_nrf54l15_module_36pin.menu.clean_power.low=Low Power (WFI Idle)
+generic_nrf54l15_module_36pin.menu.clean_power.low.build.power_flags=-DNRF54L15_CLEAN_POWER_LOW
+
+generic_nrf54l15_module_36pin.menu.clean_autogate.off=Disabled (Default)
+generic_nrf54l15_module_36pin.menu.clean_autogate.off.build.auto_gate_flags=
+
+generic_nrf54l15_module_36pin.menu.clean_autogate.balanced=Balanced (2 ms idle)
+generic_nrf54l15_module_36pin.menu.clean_autogate.balanced.build.auto_gate_flags=-DNRF54L15_CLEAN_AUTO_GATE=1 -DNRF54L15_CLEAN_AUTO_GATE_IDLE_US=2000
+
+generic_nrf54l15_module_36pin.menu.clean_autogate.aggressive=Aggressive (200 us idle)
+generic_nrf54l15_module_36pin.menu.clean_autogate.aggressive.build.auto_gate_flags=-DNRF54L15_CLEAN_AUTO_GATE=1 -DNRF54L15_CLEAN_AUTO_GATE_IDLE_US=200
+
+generic_nrf54l15_module_36pin.menu.clean_ble.on=Enabled (Default)
+generic_nrf54l15_module_36pin.menu.clean_ble.on.build.ble_flags=-DNRF54L15_CLEAN_BLE_ENABLED=1
+
+generic_nrf54l15_module_36pin.menu.clean_ble.off=Disabled
+generic_nrf54l15_module_36pin.menu.clean_ble.off.build.ble_flags=-DNRF54L15_CLEAN_BLE_ENABLED=0 -DNRF54L15_CLEAN_BLE_DISABLED
+
+generic_nrf54l15_module_36pin.menu.clean_ble_timing.interop=Interoperability (Default)
+generic_nrf54l15_module_36pin.menu.clean_ble_timing.interop.build.ble_timing_flags=
+
+generic_nrf54l15_module_36pin.menu.clean_ble_timing.balanced=Balanced Low-Power
+generic_nrf54l15_module_36pin.menu.clean_ble_timing.balanced.build.ble_timing_flags=-DNRF54L15_CLEAN_BLE_TIMING_BALANCED=1
+
+generic_nrf54l15_module_36pin.menu.clean_ble_timing.aggressive=Aggressive Low-Power
+generic_nrf54l15_module_36pin.menu.clean_ble_timing.aggressive.build.ble_timing_flags=-DNRF54L15_CLEAN_BLE_TIMING_AGGRESSIVE=1
+
+generic_nrf54l15_module_36pin.menu.clean_ble_trace.off=Disabled (Default)
+generic_nrf54l15_module_36pin.menu.clean_ble_trace.off.build.ble_trace_flags=
+
+generic_nrf54l15_module_36pin.menu.clean_ble_trace.on=Enabled
+generic_nrf54l15_module_36pin.menu.clean_ble_trace.on.build.ble_trace_flags=-DNRF54L15_CLEAN_BLE_TRACE=1
+
+generic_nrf54l15_module_36pin.menu.clean_zigbee.on=Enabled (Default)
+generic_nrf54l15_module_36pin.menu.clean_zigbee.on.build.zigbee_flags=-DNRF54L15_CLEAN_ZIGBEE_ENABLED=1
+
+generic_nrf54l15_module_36pin.menu.clean_zigbee.off=Disabled
+generic_nrf54l15_module_36pin.menu.clean_zigbee.off.build.zigbee_flags=-DNRF54L15_CLEAN_ZIGBEE_ENABLED=0 -DNRF54L15_CLEAN_ZIGBEE_DISABLED
+
+generic_nrf54l15_module_36pin.menu.clean_zigbee_channel.ch15=15 (Default)
+generic_nrf54l15_module_36pin.menu.clean_zigbee_channel.ch15.build.zigbee_channel_flags=-DNRF54L15_CLEAN_ZIGBEE_CHANNEL=15
+
+generic_nrf54l15_module_36pin.menu.clean_zigbee_channel.ch11=11
+generic_nrf54l15_module_36pin.menu.clean_zigbee_channel.ch11.build.zigbee_channel_flags=-DNRF54L15_CLEAN_ZIGBEE_CHANNEL=11
+
+generic_nrf54l15_module_36pin.menu.clean_zigbee_channel.ch20=20
+generic_nrf54l15_module_36pin.menu.clean_zigbee_channel.ch20.build.zigbee_channel_flags=-DNRF54L15_CLEAN_ZIGBEE_CHANNEL=20
+
+generic_nrf54l15_module_36pin.menu.clean_zigbee_channel.ch25=25
+generic_nrf54l15_module_36pin.menu.clean_zigbee_channel.ch25.build.zigbee_channel_flags=-DNRF54L15_CLEAN_ZIGBEE_CHANNEL=25
+
+generic_nrf54l15_module_36pin.menu.clean_zigbee_pan.pan1234=0x1234 (Default)
+generic_nrf54l15_module_36pin.menu.clean_zigbee_pan.pan1234.build.zigbee_pan_flags=-DNRF54L15_CLEAN_ZIGBEE_PAN_ID=0x1234
+
+generic_nrf54l15_module_36pin.menu.clean_zigbee_pan.pan1a2b=0x1A2B
+generic_nrf54l15_module_36pin.menu.clean_zigbee_pan.pan1a2b.build.zigbee_pan_flags=-DNRF54L15_CLEAN_ZIGBEE_PAN_ID=0x1A2B
+
+generic_nrf54l15_module_36pin.menu.clean_zigbee_pan.panbeef=0xBEEF
+generic_nrf54l15_module_36pin.menu.clean_zigbee_pan.panbeef.build.zigbee_pan_flags=-DNRF54L15_CLEAN_ZIGBEE_PAN_ID=0xBEEF
+
+generic_nrf54l15_module_36pin.menu.clean_upload.pyocd=pyOCD (CMSIS-DAP, Default)
+generic_nrf54l15_module_36pin.menu.clean_upload.pyocd.upload.tool=nrf54upload
+generic_nrf54l15_module_36pin.menu.clean_upload.pyocd.upload.tool.serial=nrf54upload
+generic_nrf54l15_module_36pin.menu.clean_upload.pyocd.upload.runner=pyocd
+
+generic_nrf54l15_module_36pin.menu.clean_upload.openocd_legacy=OpenOCD Direct (Experimental)
+generic_nrf54l15_module_36pin.menu.clean_upload.openocd_legacy.upload.tool=nrf54openocd
+generic_nrf54l15_module_36pin.menu.clean_upload.openocd_legacy.upload.tool.serial=nrf54openocd
+generic_nrf54l15_module_36pin.menu.clean_upload.openocd_legacy.upload.runner=openocd

@@ -155,25 +155,18 @@ typedef struct {
 
 typedef struct {
     uint8_t arduino_pin;
-    uint8_t port;
-    uint8_t pin;
     uint8_t pwm_instance;
     uint8_t pwm_channel;
 } pwm_pin_desc_t;
 
 static adc_pin_desc_t resolve_analog(uint8_t apin)
 {
-    switch (apin) {
-        case PIN_A0: return (adc_pin_desc_t){1U, 4U, 0};
-        case PIN_A1: return (adc_pin_desc_t){1U, 5U, 1};
-        case PIN_A2: return (adc_pin_desc_t){1U, 6U, 2};
-        case PIN_A3: return (adc_pin_desc_t){1U, 7U, 3};
-        case PIN_A4: return (adc_pin_desc_t){1U, 10U, -1};
-        case PIN_A5: return (adc_pin_desc_t){1U, 11U, 4};
-        case PIN_A6: return (adc_pin_desc_t){1U, 13U, 6};
-        case PIN_A7: return (adc_pin_desc_t){1U, 14U, 7};
-        default: return (adc_pin_desc_t){0U, 0U, -1};
+    uint8_t port = 0U;
+    uint8_t pin = 0U;
+    if (!pinToPortPin(apin, &port, &pin)) {
+        return (adc_pin_desc_t){0U, 0U, -1};
     }
+    return (adc_pin_desc_t){port, pin, pinToSaadcChannel(apin)};
 }
 
 // Keep Arduino compatibility default (0..1023) unless sketch overrides.
@@ -278,23 +271,31 @@ static const uintptr_t k_timer_pwm_gpiote_base = 0x500DA000UL;
 static const uintptr_t k_timer_pwm_dppic_base = 0x500C2000UL;
 #endif
 static const pwm_pin_desc_t k_pwm_pin_desc[ANALOG_PWM_PIN_COUNT] = {
-    {PIN_D0, 1U, 4U, 0U, ANALOG_PWM_NO_CHANNEL},
-    {PIN_D1, 1U, 5U, 0U, ANALOG_PWM_NO_CHANNEL},
-    {PIN_D2, 1U, 6U, 0U, ANALOG_PWM_NO_CHANNEL},
-    {PIN_D3, 1U, 7U, 0U, ANALOG_PWM_NO_CHANNEL},
-    {PIN_D4, 1U, 10U, 0U, ANALOG_PWM_NO_CHANNEL},
-    {PIN_D5, 1U, 11U, 0U, ANALOG_PWM_NO_CHANNEL},
-    {PIN_D6, 2U, 8U, ANALOG_PWM_INSTANCE_NONE, ANALOG_PWM_NO_CHANNEL},
-    {PIN_D7, 2U, 7U, ANALOG_PWM_INSTANCE_NONE, ANALOG_PWM_NO_CHANNEL},
-    {PIN_D8, 2U, 1U, ANALOG_PWM_INSTANCE_NONE, ANALOG_PWM_NO_CHANNEL},
-    {PIN_D9, 2U, 4U, ANALOG_PWM_INSTANCE_NONE, ANALOG_PWM_NO_CHANNEL},
-    {PIN_D10, 2U, 2U, ANALOG_PWM_INSTANCE_NONE, ANALOG_PWM_NO_CHANNEL},
-    {PIN_D11, 0U, 3U, ANALOG_PWM_INSTANCE_NONE, ANALOG_PWM_NO_CHANNEL},
-    {PIN_D12, 0U, 4U, ANALOG_PWM_INSTANCE_NONE, ANALOG_PWM_NO_CHANNEL},
-    {PIN_D13, 2U, 10U, ANALOG_PWM_INSTANCE_NONE, ANALOG_PWM_NO_CHANNEL},
-    {PIN_D14, 2U, 9U, ANALOG_PWM_INSTANCE_NONE, ANALOG_PWM_NO_CHANNEL},
-    {PIN_D15, 2U, 6U, ANALOG_PWM_INSTANCE_NONE, ANALOG_PWM_NO_CHANNEL}
+    {PIN_D0, 0U, ANALOG_PWM_NO_CHANNEL},
+    {PIN_D1, 0U, ANALOG_PWM_NO_CHANNEL},
+    {PIN_D2, 0U, ANALOG_PWM_NO_CHANNEL},
+    {PIN_D3, 0U, ANALOG_PWM_NO_CHANNEL},
+    {PIN_D4, 0U, ANALOG_PWM_NO_CHANNEL},
+    {PIN_D5, 0U, ANALOG_PWM_NO_CHANNEL},
+    {PIN_D6, ANALOG_PWM_INSTANCE_NONE, ANALOG_PWM_NO_CHANNEL},
+    {PIN_D7, ANALOG_PWM_INSTANCE_NONE, ANALOG_PWM_NO_CHANNEL},
+    {PIN_D8, ANALOG_PWM_INSTANCE_NONE, ANALOG_PWM_NO_CHANNEL},
+    {PIN_D9, ANALOG_PWM_INSTANCE_NONE, ANALOG_PWM_NO_CHANNEL},
+    {PIN_D10, ANALOG_PWM_INSTANCE_NONE, ANALOG_PWM_NO_CHANNEL},
+    {PIN_D11, ANALOG_PWM_INSTANCE_NONE, ANALOG_PWM_NO_CHANNEL},
+    {PIN_D12, ANALOG_PWM_INSTANCE_NONE, ANALOG_PWM_NO_CHANNEL},
+    {PIN_D13, ANALOG_PWM_INSTANCE_NONE, ANALOG_PWM_NO_CHANNEL},
+    {PIN_D14, ANALOG_PWM_INSTANCE_NONE, ANALOG_PWM_NO_CHANNEL},
+    {PIN_D15, ANALOG_PWM_INSTANCE_NONE, ANALOG_PWM_NO_CHANNEL}
 };
+
+static uint8_t resolve_pwm_gpio(uint8_t index, uint8_t* port, uint8_t* pin)
+{
+    if (index >= ANALOG_PWM_PIN_COUNT || port == 0 || pin == 0) {
+        return 0U;
+    }
+    return pinToPortPin(k_pwm_pin_desc[index].arduino_pin, port, pin) ? 1U : 0U;
+}
 
 static NRF_GPIO_Type* gpio_for_port(uint8_t port)
 {
@@ -576,6 +577,8 @@ static void timer_pwm_stop_slot(uint8_t slot)
 
 static uint8_t timer_pwm_hold_pin_static(uint8_t index, uint8_t high)
 {
+    uint8_t port = 0U;
+    uint8_t pin = 0U;
     if (index >= ANALOG_PWM_PIN_COUNT) {
         return 0U;
     }
@@ -584,9 +587,12 @@ static uint8_t timer_pwm_hold_pin_static(uint8_t index, uint8_t high)
     if (slot == ANALOG_PWM_NO_SLOT || slot >= ANALOG_TIMER_PWM_SLOT_COUNT) {
         return 0U;
     }
+    if (resolve_pwm_gpio(index, &port, &pin) == 0U) {
+        return 0U;
+    }
 
     timer_pwm_stop_slot(slot);
-    gpio_write_raw(k_pwm_pin_desc[index].port, k_pwm_pin_desc[index].pin, high);
+    gpio_write_raw(port, pin, high);
     g_pwm_pin_software[index] = 0U;
     g_soft_pwm_on_time_us[index] = 0UL;
     g_soft_pwm_output_high[index] = high;
@@ -683,6 +689,8 @@ static void timer_pwm_release_pin(uint8_t index)
 
 static uint8_t timer_pwm_apply_pin(uint8_t index)
 {
+    uint8_t port = 0U;
+    uint8_t pin = 0U;
     if (index >= ANALOG_PWM_PIN_COUNT ||
         pwm_pin_supports_timer_output(index) == 0U ||
         pwm_pin_requests_custom_frequency(index) == 0U) {
@@ -701,6 +709,10 @@ static uint8_t timer_pwm_apply_pin(uint8_t index)
 
     const uint8_t gpiote_channel = g_timer_pwm_slot_gpiote_channel[slot];
     if (gpiote_channel == ANALOG_PWM_NO_CHANNEL) {
+        timer_pwm_release_pin(index);
+        return 0U;
+    }
+    if (resolve_pwm_gpio(index, &port, &pin) == 0U) {
         timer_pwm_release_pin(index);
         return 0U;
     }
@@ -746,8 +758,8 @@ static uint8_t timer_pwm_apply_pin(uint8_t index)
 
     uint32_t gpiote_config = 0U;
     gpiote_config |= (GPIOTE_CONFIG_MODE_TASK << GPIOTE_CONFIG_MODE_Pos);
-    gpiote_config |= ((uint32_t)(k_pwm_pin_desc[index].pin & 0x1FU) << GPIOTE_CONFIG_PSEL_Pos);
-    gpiote_config |= ((uint32_t)(k_pwm_pin_desc[index].port & 0x7U) << GPIOTE_CONFIG_PORT_Pos);
+    gpiote_config |= ((uint32_t)(pin & 0x1FU) << GPIOTE_CONFIG_PSEL_Pos);
+    gpiote_config |= ((uint32_t)(port & 0x7U) << GPIOTE_CONFIG_PORT_Pos);
     gpiote_config |= (GPIOTE_CONFIG_POLARITY_TOGGLE << GPIOTE_CONFIG_POLARITY_Pos);
     gpiote_config |= (1UL << GPIOTE_CONFIG_OUTINIT_Pos);
     *regptr(k_timer_pwm_gpiote_base, gpiote_cfg) = gpiote_config;
@@ -895,14 +907,19 @@ static void pwm_release_shared_output(uint8_t index)
 
 static void soft_pwm_drive_channel(uint8_t index, uint8_t high)
 {
+    uint8_t port = 0U;
+    uint8_t pin = 0U;
     if (index >= ANALOG_PWM_PIN_COUNT) {
         return;
     }
     if (g_soft_pwm_output_high[index] == high) {
         return;
     }
+    if (resolve_pwm_gpio(index, &port, &pin) == 0U) {
+        return;
+    }
     g_soft_pwm_output_high[index] = high;
-    gpio_write_raw(k_pwm_pin_desc[index].port, k_pwm_pin_desc[index].pin, high);
+    gpio_write_raw(port, pin, high);
 }
 
 void nrf54l15_analog_write_idle_service(void)
@@ -1039,11 +1056,16 @@ static void pwm_apply_outputs(uint8_t instance)
 
     for (uint8_t ch = 0U; ch < ANALOG_PWM_CHANNELS_PER_INSTANCE; ++ch) {
         const uint8_t owner = g_pwm_channel_owner[ch];
+        uint8_t port = 0U;
+        uint8_t pin = 0U;
         if (owner == ANALOG_PWM_NO_PIN || owner >= ANALOG_PWM_PIN_COUNT) {
             continue;
         }
+        if (resolve_pwm_gpio(owner, &port, &pin) == 0U) {
+            continue;
+        }
         *regptr(base, PWM_PSEL_OUT0 + ((uintptr_t)ch * PWM_PSEL_OUT_STRIDE)) =
-            make_gpio_psel(k_pwm_pin_desc[owner].port, k_pwm_pin_desc[owner].pin);
+            make_gpio_psel(port, pin);
     }
 }
 
@@ -1210,7 +1232,13 @@ void analogWriteDisable(uint8_t pin)
         pwm_release_shared_output(pwm_pin);
     }
 
-    gpio_write_raw(k_pwm_pin_desc[pwm_pin].port, k_pwm_pin_desc[pwm_pin].pin, 0U);
+    {
+        uint8_t port = 0U;
+        uint8_t pin = 0U;
+        if (resolve_pwm_gpio(pwm_pin, &port, &pin) != 0U) {
+            gpio_write_raw(port, pin, 0U);
+        }
+    }
 }
 
 static uint8_t select_saadc_resolution_bits(uint8_t requested_bits)
@@ -1448,7 +1476,13 @@ static void analog_write_apply_pwm_pin(uint8_t pwm_pin)
             pwm_release_shared_output(pwm_pin);
         }
         g_soft_pwm_on_time_us[pwm_pin] = 0UL;
-        gpio_write_raw(k_pwm_pin_desc[pwm_pin].port, k_pwm_pin_desc[pwm_pin].pin, 0U);
+        {
+            uint8_t port = 0U;
+            uint8_t pin = 0U;
+            if (resolve_pwm_gpio(pwm_pin, &port, &pin) != 0U) {
+                gpio_write_raw(port, pin, 0U);
+            }
+        }
         return;
     }
 
@@ -1465,7 +1499,13 @@ static void analog_write_apply_pwm_pin(uint8_t pwm_pin)
             pwm_release_shared_output(pwm_pin);
         }
         g_soft_pwm_on_time_us[pwm_pin] = 0UL;
-        gpio_write_raw(k_pwm_pin_desc[pwm_pin].port, k_pwm_pin_desc[pwm_pin].pin, 1U);
+        {
+            uint8_t port = 0U;
+            uint8_t pin = 0U;
+            if (resolve_pwm_gpio(pwm_pin, &port, &pin) != 0U) {
+                gpio_write_raw(port, pin, 1U);
+            }
+        }
         return;
     }
 

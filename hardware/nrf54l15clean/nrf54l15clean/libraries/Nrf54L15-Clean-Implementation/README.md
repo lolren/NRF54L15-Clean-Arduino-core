@@ -1,13 +1,18 @@
 # Nrf54L15-Clean-Implementation
 
-Clean, register-level Arduino implementation for the Seeed XIAO nRF54L15.
+Clean, register-level Arduino implementation for `nRF54L15` boards.
 
 Arduino IDE board package surface:
 
-- package: `XIAO nRF54L15 Boards`
-- board: `XIAO nRF54L15 / Sense`
+- package: `nRF54L15 Boards`
+- boards:
+  - `XIAO nRF54L15 / Sense`
+  - `HOLYIOT-25007 nRF54L15 Module`
+  - `Generic nRF54L15 Module (36-pad)`
 
-This package uses direct peripheral register access from the nRF54L15 datasheet and XIAO schematic pin mapping. It does not use Zephyr APIs or nRF Connect SDK APIs.
+This package uses direct peripheral register access from the `nRF54L15`
+datasheet and board-variant pin mapping. It does not use Zephyr APIs or nRF
+Connect SDK APIs.
 
 ## Implemented HAL blocks
 
@@ -142,6 +147,16 @@ Default Arduino peripheral pin routes:
 - `SPI`  : `MOSI=D10`, `MISO=D9`, `SCK=D8`, `SS=D2`
 - `Serial1`/`Serial2` (compat alias): `TX=D6`, `RX=D7`
 - Core `Wire`, `SPI`, and `Serial` now support runtime `setPins(...)` remapping.
+
+Module-board note:
+
+- the package now also ships a shared 36-pad module variant used by
+  `HOLYIOT-25007 nRF54L15 Module` and
+  `Generic nRF54L15 Module (36-pad)`
+- that variant keeps real GPIO aliases like `P2_08` and `P1_10` alongside
+  Arduino aliases like `D21` and `D1`
+- module defaults are documented in the root docs at
+  `docs/holyiot-25007-module-reference.md`
 
 Compatibility note:
 

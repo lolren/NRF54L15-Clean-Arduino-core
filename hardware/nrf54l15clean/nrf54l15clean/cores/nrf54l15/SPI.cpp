@@ -60,28 +60,7 @@ static inline uint32_t make_psel(uint8_t port, uint8_t pin) {
 }
 
 static bool decode_pin(uint8_t pin, uint8_t* port, uint8_t* p) {
-    if (port == nullptr || p == nullptr) {
-        return false;
-    }
-    switch (pin) {
-        case PIN_D0: *port = 1; *p = 4; return true;
-        case PIN_D1: *port = 1; *p = 5; return true;
-        case PIN_D2: *port = 1; *p = 6; return true;
-        case PIN_D3: *port = 1; *p = 7; return true;
-        case PIN_D4: *port = 1; *p = 10; return true;
-        case PIN_D5: *port = 1; *p = 11; return true;
-        case PIN_D6: *port = 2; *p = 8; return true;
-        case PIN_D7: *port = 2; *p = 7; return true;
-        case PIN_D8: *port = 2; *p = 1; return true;
-        case PIN_D9: *port = 2; *p = 4; return true;
-        case PIN_D10: *port = 2; *p = 2; return true;
-        case PIN_D11: *port = 0; *p = 3; return true;
-        case PIN_D12: *port = 0; *p = 4; return true;
-        case PIN_D13: *port = 2; *p = 10; return true;
-        case PIN_D14: *port = 2; *p = 9; return true;
-        case PIN_D15: *port = 2; *p = 6; return true;
-        default: return false;
-    }
+    return pinToPortPin(pin, port, p);
 }
 
 static uint32_t compute_prescaler(uint32_t target_hz) {
