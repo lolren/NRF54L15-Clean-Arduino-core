@@ -17676,7 +17676,7 @@ bool BleRadio::scanExtendedOnce(BleAdvertisingChannel channel,
       }
 
       BleExtendedHeaderView view{};
-      const uint8_t payloadLen = static_cast<uint8_t>(payloadLenRaw & 0x3FU);
+      const uint8_t payloadLen = payloadLenRaw;
       if (!parseBleExtendedHeader(payload, payloadLen, &view) || !view.valid) {
         return false;
       }
@@ -17709,7 +17709,7 @@ bool BleRadio::scanExtendedOnce(BleAdvertisingChannel channel,
     return finish(false);
   }
 
-  const uint8_t primaryPayloadLen = static_cast<uint8_t>(primaryPayloadLenRaw & 0x3FU);
+  const uint8_t primaryPayloadLen = primaryPayloadLenRaw;
   if ((primaryHeader & 0x0FU) != kBlePduAdvExtInd) {
     return finish(false);
   }
@@ -17843,7 +17843,7 @@ bool BleRadio::scanExtendedActiveOnce(BleAdvertisingChannel channel,
       }
 
       BleExtendedHeaderView view{};
-      const uint8_t payloadLen = static_cast<uint8_t>(payloadLenRaw & 0x3FU);
+      const uint8_t payloadLen = payloadLenRaw;
       if (!parseBleExtendedHeader(payload, payloadLen, &view) || !view.valid) {
         return false;
       }
@@ -17876,7 +17876,7 @@ bool BleRadio::scanExtendedActiveOnce(BleAdvertisingChannel channel,
     return finish(false);
   }
 
-  const uint8_t primaryPayloadLen = static_cast<uint8_t>(primaryPayloadLenRaw & 0x3FU);
+  const uint8_t primaryPayloadLen = primaryPayloadLenRaw;
   if ((primaryHeader & 0x0FU) != kBlePduAdvExtInd) {
     return finish(false);
   }
@@ -17924,8 +17924,7 @@ bool BleRadio::scanExtendedActiveOnce(BleAdvertisingChannel channel,
     return finish(false);
   }
 
-  const uint8_t secondaryPayloadLen =
-      static_cast<uint8_t>(secondaryPayloadLenRaw & 0x3FU);
+  const uint8_t secondaryPayloadLen = secondaryPayloadLenRaw;
   if ((secondaryHeader & 0x0FU) != kBlePduAdvExtInd) {
     return finish(false);
   }
@@ -18026,7 +18025,7 @@ bool BleRadio::scanExtendedActiveOnce(BleAdvertisingChannel channel,
 
   const int8_t scanRspRssi = radioRssiDbm(radio_);
   const uint8_t scanRspHeader = rxPacket_[0];
-  const uint8_t scanRspPayloadLenRaw = static_cast<uint8_t>(rxPacket_[1] & 0x3FU);
+  const uint8_t scanRspPayloadLenRaw = rxPacket_[1];
   const uint8_t* scanRspPayload = &rxPacket_[2];
   const uint32_t rspCrcStatus =
       (radio_->CRCSTATUS & RADIO_CRCSTATUS_CRCSTATUS_Msk) >>

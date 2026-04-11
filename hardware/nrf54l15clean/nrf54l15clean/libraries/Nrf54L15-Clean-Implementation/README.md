@@ -197,7 +197,12 @@ Arduino IDE organization:
 - `File -> Examples -> Nrf54L15-Clean-Implementation -> Diagnostics`
 - `File -> Examples -> Nrf54L15-Clean-Implementation -> Board`
 - `File -> Examples -> Nrf54L15-Clean-Implementation -> Peripherals`
+- `File -> Examples -> Nrf54L15-Clean-Implementation -> VPR`
 - `File -> Examples -> Nrf54L15-Clean-Implementation -> Zigbee`
+
+The VPR probes are now surfaced directly under the library example menu as
+well as the board-package `Peripherals` menu, so they are easier to find in
+Arduino IDE.
 
 Zigbee example organization:
 

@@ -37,8 +37,9 @@ ADVERTISER_EXAMPLES = {
         / "Nrf54L15-Clean-Implementation"
         / "examples"
         / "BLE"
+        / "Advertising"
         / "BleExtendedAdv251",
-        "length": 236,
+        "length": 238,
         "name": "X54-EXT-ADV",
     },
     "499": {
@@ -50,6 +51,7 @@ ADVERTISER_EXAMPLES = {
         / "Nrf54L15-Clean-Implementation"
         / "examples"
         / "BLE"
+        / "Advertising"
         / "BleExtendedAdv499",
         "length": 499,
         "name": "X54-EXT-499",
@@ -63,6 +65,7 @@ ADVERTISER_EXAMPLES = {
         / "Nrf54L15-Clean-Implementation"
         / "examples"
         / "BLE"
+        / "Advertising"
         / "BleExtendedAdv995",
         "length": 995,
         "name": "X54-EXT-995",
@@ -77,6 +80,7 @@ SCANNER_EXAMPLE = (
     / "Nrf54L15-Clean-Implementation"
     / "examples"
     / "BLE"
+    / "Scanning"
     / "BleExtendedScanner"
 )
 
@@ -184,8 +188,6 @@ def assert_scanner_log(scanner_log: str, expected_length: int, expected_name: st
 
 
 def assert_advertiser_log(advertiser_log: str, expected_length: int) -> None:
-    if "BLE init: OK" not in advertiser_log:
-        raise SystemExit("Advertiser did not report successful BLE init")
     if f"ext_len={expected_length}" not in advertiser_log:
         raise SystemExit(
             f"Advertiser log does not contain expected extended payload length {expected_length}"

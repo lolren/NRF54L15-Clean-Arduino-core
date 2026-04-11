@@ -44,6 +44,22 @@ def detect_pyocd_command() -> list[str] | None:
     return None
 
 
+def host_setup_hint() -> str:
+    tools_dir = Path(__file__).resolve().parent / "setup"
+    if sys.platform.startswith("linux"):
+        return (
+            "Run "
+            + str(tools_dir / "install_linux_host_deps.sh")
+            + " --udev"
+        )
+    if sys.platform.startswith("win"):
+        return (
+            "Run PowerShell -ExecutionPolicy Bypass -File "
+            + str(tools_dir / "install_windows_host_deps.ps1")
+        )
+    return "Install Python 3 and pyocd, then retry"
+
+
 def resolve_tool(path_or_name: str) -> str | None:
     if not path_or_name:
         return None
@@ -339,6 +355,7 @@ def upload_pyocd(
     pyocd_cmd = pyocd_cmd if pyocd_cmd is not None else detect_pyocd_command()
     if pyocd_cmd is None:
         print("ERROR: pyocd is not installed or not available in PATH", file=sys.stderr)
+        print(f"HINT: {host_setup_hint()}", file=sys.stderr)
         return 3
 
     uid = normalize_uid(requested_uid)
@@ -521,6 +538,7 @@ def main() -> int:
             print("pyocd installation succeeded.")
         else:
             print("pyocd installation failed; falling back to OpenOCD.", file=sys.stderr)
+            print(f"HINT: {host_setup_hint()}", file=sys.stderr)
 
     try:
         runner = choose_runner(requested_runner, args.openocd_bin)
@@ -579,6 +597,7 @@ def main() -> int:
                     "Install pyocd and retry (or select pyOCD upload method).",
                     file=sys.stderr,
                 )
+                print(f"HINT: {host_setup_hint()}", file=sys.stderr)
         elif rc != 0 and detect_pyocd_command() is not None:
             print("OpenOCD upload failed; falling back to pyocd...")
             rc = upload_pyocd(

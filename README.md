@@ -43,6 +43,15 @@ Install `Nrf54L15-Clean-Implementation`, then select:
 - board: `XIAO nRF54L15 (Nrf54L15-Clean-Implementation)`
 - upload method: `Auto`
 
+Fresh-machine host setup for upload reliability:
+
+- Linux: run `hardware/nrf54l15clean/nrf54l15clean/tools/setup/install_linux_host_deps.sh --udev`
+- Windows: run `hardware\\nrf54l15clean\\nrf54l15clean\\tools\\setup\\install_windows_host_deps.ps1`
+
+Boards Manager already provides the toolchain and OpenOCD. The extra host pain
+on clean machines is usually the Python/`pyocd` upload path and Linux `udev`
+permissions, which these helper scripts now cover.
+
 CLI:
 
 ```bash
@@ -111,6 +120,9 @@ Working and validated:
   `VprTickerOffloadProbe`, `VprTickerAsyncEventProbe`,
   `VprHibernateContextProbe`, `VprHibernateWakeProbe`,
   `VprHibernateResumeProbe`, and `VprRestartLifecycleProbe`
+- the VPR probe family now also appears directly in the normal
+  `File -> Examples -> Nrf54L15-Clean-Implementation -> VPR` library menu
+  instead of only in the board-package `Peripherals` examples
 - queued unsolicited VPR ticker/vendor events on the host side instead of the
   old effectively single-depth handling
 - repeated loaded-image restart validated on both attached boards through
@@ -142,6 +154,10 @@ Tested and working on real hardware:
 
 - legacy advertising, connectable/scannable advertising, and the validated
   extended advertising/scanning examples
+- the extended scanner regression from `0.2.0+` is fixed again, so
+  `BleExtendedScanner` now reassembles the full `BleExtendedAdv251`,
+  `BleExtendedAdv499`, and `BleExtendedAdv995` payload lengths instead of
+  truncating them on the scanner side
 - active and passive scanning
 - Bluefruit active scanning now surfaces separate real `SCAN_RSP` reports in
   the scan callback path, including the correct `report->type.scan_response`
@@ -328,6 +344,7 @@ In Arduino IDE they now appear under:
 - `File -> Examples -> Nrf54L15-Clean-Implementation -> Diagnostics`
 - `File -> Examples -> Nrf54L15-Clean-Implementation -> Board`
 - `File -> Examples -> Nrf54L15-Clean-Implementation -> Peripherals`
+- `File -> Examples -> Nrf54L15-Clean-Implementation -> VPR`
 - `File -> Examples -> Nrf54L15-Clean-Implementation -> Zigbee`
 - `File -> Examples -> Bluefruit52Lib -> Advertising`
 - `File -> Examples -> Bluefruit52Lib -> Central`
@@ -553,6 +570,9 @@ Check:
 - there is no stale `~/Arduino/hardware/nrf54l15clean` override
   A symlink there can make Arduino IDE show a different package/example tree than the installed release.
 - restart Arduino IDE after reinstall so the example tree is rebuilt
+- the VPR probes now live in both places:
+  `Examples for XIAO nRF54L15 -> Peripherals` and
+  `Nrf54L15-Clean-Implementation -> VPR`
 
 CLI sanity check:
 
@@ -563,6 +583,18 @@ find ~/.arduino15/packages/nrf54l15clean/hardware -path '*/examples/*/*.ino' -pr
 ### Upload Fails
 
 Use `Upload Method = Auto` unless you have a reason to force a runner.
+
+On a clean machine, run the host setup helper first:
+
+```bash
+hardware/nrf54l15clean/nrf54l15clean/tools/setup/install_linux_host_deps.sh --udev
+```
+
+Windows PowerShell:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File hardware\nrf54l15clean\nrf54l15clean\tools\setup\install_windows_host_deps.ps1
+```
 
 If Linux sees the CMSIS-DAP probe in `lsusb` but Arduino says there is no probe, add a udev rule:
 
