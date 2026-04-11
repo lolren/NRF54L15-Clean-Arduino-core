@@ -12,6 +12,43 @@
         {
           "name": "XIAO nRF54L15 Boards",
           "architecture": "nrf54l15clean",
+          "version": "0.6.1",
+          "category": "Arduino",
+          "url": "https://github.com/lolren/NRF54L15-Clean-Arduino-core/releases/download/v0.6.1/nrf54l15clean-0.6.1.tar.bz2",
+          "archiveFileName": "nrf54l15clean-0.6.1.tar.bz2",
+          "checksum": "SHA-256:200f3a76c75fcec06e68e84187fd049598ecc87b1ed7d3c4e5c0c8f0f17282dd",
+          "size": "853621",
+          "boards": [
+            {
+              "name": "XIAO nRF54L15 / Sense"
+            }
+          ],
+          "help": {
+            "online": "https://github.com/lolren/NRF54L15-Clean-Arduino-core"
+          },
+          "toolsDependencies": [
+            {
+              "packager": "arduino",
+              "name": "arm-none-eabi-gcc",
+              "version": "7-2017q4"
+            },
+            {
+              "packager": "arduino",
+              "name": "openocd",
+              "version": "0.11.0-arduino2"
+            },
+            {
+              "packager": "nrf54l15clean",
+              "name": "nrf54l15hosttools",
+              "version": "1.1.0"
+            }
+          ],
+          "discoveryDependencies": [],
+          "monitorDependencies": []
+        },
+        {
+          "name": "XIAO nRF54L15 Boards",
+          "architecture": "nrf54l15clean",
           "version": "0.6.0",
           "category": "Arduino",
           "url": "https://github.com/lolren/NRF54L15-Clean-Arduino-core/releases/download/v0.6.0/nrf54l15clean-0.6.0.tar.bz2?cache=20260411b",
@@ -5046,6 +5083,47 @@
               "archiveFileName": "nrf54l15hosttools-1.0.0-arm64-apple-darwin.tar.bz2",
               "checksum": "SHA-256:ff2c5b4ce33b6d30907e11fb3ffdb9288e11acd3c151e7412863ddc29b4a1318",
               "size": "1399"
+            }
+          ]
+        },
+        {
+          "name": "nrf54l15hosttools",
+          "version": "1.1.0",
+          "systems": [
+            {
+              "host": "x86_64-pc-linux-gnu",
+              "url": "https://github.com/lolren/NRF54L15-Clean-Arduino-core/releases/download/v0.6.1/nrf54l15hosttools-1.1.0-x86_64-pc-linux-gnu.tar.bz2",
+              "archiveFileName": "nrf54l15hosttools-1.1.0-x86_64-pc-linux-gnu.tar.bz2",
+              "checksum": "SHA-256:bfef7a07fd1dbb1e0c8b9f17bd20885809a6c8ecdab5e558b5d948bb033f3811",
+              "size": "65360141"
+            },
+            {
+              "host": "aarch64-linux-gnu",
+              "url": "https://github.com/lolren/NRF54L15-Clean-Arduino-core/releases/download/v0.6.1/nrf54l15hosttools-1.1.0-aarch64-linux-gnu.tar.bz2",
+              "archiveFileName": "nrf54l15hosttools-1.1.0-aarch64-linux-gnu.tar.bz2",
+              "checksum": "SHA-256:835d5f134a735b12b103165f06d72d285609362baf67e9c36fa5325487a6e5ea",
+              "size": "64403746"
+            },
+            {
+              "host": "i686-mingw32",
+              "url": "https://github.com/lolren/NRF54L15-Clean-Arduino-core/releases/download/v0.6.1/nrf54l15hosttools-1.1.0-i686-mingw32.zip",
+              "archiveFileName": "nrf54l15hosttools-1.1.0-i686-mingw32.zip",
+              "checksum": "SHA-256:dcbcf3d274be32a749484a8d1fb4ecf821eaf6a6c7682bf6b1dce73514384996",
+              "size": "57411902"
+            },
+            {
+              "host": "x86_64-apple-darwin",
+              "url": "https://github.com/lolren/NRF54L15-Clean-Arduino-core/releases/download/v0.6.1/nrf54l15hosttools-1.1.0-x86_64-apple-darwin.tar.bz2",
+              "archiveFileName": "nrf54l15hosttools-1.1.0-x86_64-apple-darwin.tar.bz2",
+              "checksum": "SHA-256:73726b44715d7b05b6d8f01ef6f221f1a1be33127c9125478cf15d85082c0765",
+              "size": "42707327"
+            },
+            {
+              "host": "arm64-apple-darwin",
+              "url": "https://github.com/lolren/NRF54L15-Clean-Arduino-core/releases/download/v0.6.1/nrf54l15hosttools-1.1.0-arm64-apple-darwin.tar.bz2",
+              "archiveFileName": "nrf54l15hosttools-1.1.0-arm64-apple-darwin.tar.bz2",
+              "checksum": "SHA-256:8f8690fe2649f8f9be84b338d6b095f0e925a87c2d3d9dd1a6721caea5808163",
+              "size": "64051708"
             }
           ]
         }

@@ -310,8 +310,8 @@ Release planning should follow implementation shape, not marketing pressure.
 
 - `0.5.x` is the right place to ship the current reusable VPR/controller-service
   checkpoint plus the CS/VPR bring-up work
-- `0.6.0` would make sense once the repo has a richer reusable VPR runtime or a
-  first real BLE-controller-offload milestone on top of it
+- `0.6.x` is the right place to harden the current reusable VPR runtime, host-tools
+  packaging, and first BLE-controller-offload milestones on top of it
 - `1.0` still depends more on overall BLE/Zigbee/platform maturity than on any single missing hardware block
 
 ## Practical Note
