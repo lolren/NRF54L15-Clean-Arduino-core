@@ -204,6 +204,8 @@ Immediate next follow-up from this checkpoint:
 - the host/session diagnostics now hold a stable completed local/peer pair
   instead of exposing whichever in-flight procedure most recently updated the
   reassemblers
+- the dedicated image now also rotates its four-channel demo window per
+  procedure from the configured channel map instead of replaying one static set
 
 This is the shortest path that advances the repo from "working VPR-backed CS
 demo" to "real BLE controller work is starting to move off CPUAPP".

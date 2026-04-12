@@ -148,7 +148,7 @@ The key proof lines from the current built-in responder path are:
 - `hcivprtracedemo ok=1 remote=0x0 create=0x0 security=0x0 setproc=0x0 procen=0x0 states=0x10/11/13/17/1F errs=0x0/0/0/0/0 ...`
 - `hcivprtransportdemo ok=1 pumped=12 wrote=6/88 read=347/0 phase=ready ... ctrl_evt=11 peer_mark=1 peer_evt=2 cfg_ch=2,14,26,38 proc=1 dist_m=0.7499`
 - `hcivprstatedemo ok=1 bad_create=0xC bad_setproc=0xC bad_range=0x12 remove=0x0 post_remove=0xC ...`
-- `hcivprmultidemo ok=1 pumped=12 polled=4 proc=3 transitions=3 target=3 ctrl_evt=13 peer_mark=3 peer_evt=6 ... dist_m=0.7499`
+- `hcivprmultidemo ok=1 pumped=12 polled=4 proc=3 transitions=3 target=3 ctrl_evt=13 peer_mark=3 peer_evt=6 ... ch=26,38,2,14 dist_m=0.7499`
 - `hcivprlinkdemo ok=1 wrong_status=0x12 wrong_reject=1 removed=1 closed=1 reopened=1 refresh=1 link_conn=0x41 flags=CSP- ...`
 
 That proves:
@@ -190,6 +190,11 @@ That proves:
       procedure publication on the VPR side
     - the initiator `hcivprmultidemo` proof now reaches
       `proc=3 transitions=3 peer_mark=3 peer_evt=6` on the two-board setup
+    - the active four-channel window is now selected per procedure from the
+      configured channel map instead of replaying one static packed set
+      - the current multi-procedure proof ends on `ch=26,38,2,14`
+      - that rotation comes from the VPR-owned procedure counter and current
+        channel-selection state, not from sketch-side packet shaping
   - the dedicated image now rejects at least one real bad workflow edge instead
     of blindly succeeding for every CS command
     - `Set Procedure Parameters` before `Security Enable` now returns `0x0C`
@@ -245,33 +250,30 @@ The current validated live proof is:
 - `hcivprtransportdemo ok=1 pumped=11 wrote=6/88 read=282/0 phase=ready ... ctrl_evt=11 peer_trig=0 peer_mark=1 peer_evt=2 cfg_ch=2,14,26,38 proc=1 dist_m=0.7499`
 - `hcivprtransportdemo ok=1 pumped=12 wrote=6/88 read=282/0 phase=ready ... ctrl_evt=11 peer_trig=0 peer_mark=1 peer_evt=2 cfg_ch=2,14,26,38 cfg_steps=4-6 cfg_rep=2 proc=1 proc_cnt=5 proc_len=17 tone_sel=3 dist_m=0.7499`
 - `hcivprstatedemo ok=1 bad_create=0x12 bad_setproc=0xC bad_range=0x12 remove=0x0 post_remove=0xC phase=ready proc=1 proc_cnt=0 cfg=1 dist_m=0.7508`
-- `hcivprmultidemo ok=1 pumped=12 polled=4 proc=3 transitions=3 target=3 ctrl_evt=13 peer_mark=3 peer_evt=6 phase=ready dist_m=0.7499`
+- `hcivprmultidemo ok=1 pumped=12 polled=4 proc=3 transitions=3 target=3 ctrl_evt=13 peer_mark=3 peer_evt=6 phase=ready ch=26,38,2,14 dist_m=0.7499`
 
 Those older `0.7499 m` demo-distance lines are now superseded by the current
 connection-scoped run logs above.
 
-## Current Remaining Quirk
-
-The controller/state slice is now in better shape than the synthetic demo
-ranging slice.
+## Current Remaining Gap
 
 Current honest status:
 
 - command/state ownership on VPR is working for one real link session
 - the transport, state, multi-procedure, and link-handle demos are green
-- the built-in synthetic ranging path is no longer returning the old nominal
-  `~0.75 m` estimate on the current dedicated-image path
-  - the current isolated proof logs show `dist_m=1.5099`
-  - that is a synthetic-demo calibration/result-shaping issue, not a fresh
-    session-state failure
+- the synthetic built-in ranging path is back at the intended nominal
+  `~0.75 m` estimate
+- the last completed matched local/peer pair is now held in stable host-side
+  storage for diagnostics and future API use
 
 So the next follow-up on the CS side is:
 
 - keep the current connection-scoped VPR session model
-- investigate why the synthetic local/peer result pair now lands at
-  `~1.51 m` instead of the older `~0.75 m`
-- do not confuse that with the control-plane/link-state work, which is now
-  behaving correctly
+- keep moving result ownership away from fixed synthetic publication and toward
+  more controller-owned behavior on VPR
+- extend the current per-procedure channel-window logic into broader
+  controller-owned scheduling instead of replaying only one four-step synthetic
+  shape per procedure
 
 The same size budget applies to CS demo configuration. A dedicated vendor opcode
 for demo-channel configuration was tested and worked functionally, but it pushed

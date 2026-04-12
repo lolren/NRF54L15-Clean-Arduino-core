@@ -462,6 +462,11 @@ struct StepDumpContext {
   uint8_t printed = 0U;
 };
 
+struct StepChannelCollectContext {
+  uint8_t channels[4] = {0U, 0U, 0U, 0U};
+  uint8_t count = 0U;
+};
+
 bool printStepDumpCallback(const BleCsSubeventStep* step, void* userData) {
   StepDumpContext* ctx = static_cast<StepDumpContext*>(userData);
   if (step == nullptr || ctx == nullptr || ctx->printed >= 4U) {
@@ -491,6 +496,24 @@ bool printStepDumpCallback(const BleCsSubeventStep* step, void* userData) {
 
   ++ctx->printed;
   return true;
+}
+
+bool collectStepChannelCallback(const BleCsSubeventStep* step, void* userData) {
+  StepChannelCollectContext* ctx = static_cast<StepChannelCollectContext*>(userData);
+  if (step == nullptr || ctx == nullptr) {
+    return false;
+  }
+  if (ctx->count < 4U) {
+    ctx->channels[ctx->count++] = step->channel;
+  }
+  return true;
+}
+
+StepChannelCollectContext collectStepChannels(const BleCsSubeventResult& result) {
+  StepChannelCollectContext ctx{};
+  BleChannelSoundingRadio::parseSubeventStepData(result.stepData, result.stepDataLen,
+                                                 collectStepChannelCallback, &ctx);
+  return ctx;
 }
 
 void printSubeventResultDump(const __FlashStringHelper* label,
@@ -2790,6 +2813,8 @@ void printHciVprMultiDemo() {
       vprHost.hostState().peerResultPackets >= (kTargetProcedureCount * 2U);
   ok = ok && vprHost.ready() && countersReached && markersReached &&
        peerPacketsReached && vprHost.estimateValid();
+  const StepChannelCollectContext finalChannels =
+      collectStepChannels(vprHost.completedLocalResult());
 
   Serial.print(F("hcivprmultidemo ok="));
   Serial.print(ok ? 1 : 0);
@@ -2826,6 +2851,13 @@ void printHciVprMultiDemo() {
   Serial.print(vprHost.vprState().linkProcedureEnabled ? 'E' : '-');
   Serial.print(F(" vpr_cfg="));
   Serial.print(vprHost.vprState().linkConfigId);
+  Serial.print(F(" ch="));
+  for (uint8_t i = 0U; i < finalChannels.count; ++i) {
+    if (i != 0U) {
+      Serial.print(',');
+    }
+    Serial.print(finalChannels.channels[i]);
+  }
   Serial.print(F(" dist_m="));
   if (vprHost.estimateValid()) {
     Serial.println(vprHost.sessionState().estimate.distanceMeters, 4);

@@ -601,8 +601,53 @@ static bool channel_map_has_enabled_channels(const uint8_t *channel_map) {
   return false;
 }
 
+static uint32_t pack_demo_channels(const uint8_t channels[4]) {
+  uint32_t packed = 0U;
+  if (channels == NULL) {
+    return 0U;
+  }
+  for (uint8_t i = 0U; i < 4U; ++i) {
+    packed |= ((uint32_t)channels[i] << (8U * i));
+  }
+  return packed;
+}
+
 static uint32_t current_demo_channels_packed(void) {
-  return (g_cs_demo_channels_packed != 0U) ? g_cs_demo_channels_packed : g_host_transport->reserved;
+  const uint32_t fallback_packed =
+      (g_cs_demo_channels_packed != 0U) ? g_cs_demo_channels_packed : g_host_transport->reserved;
+  uint8_t enabled[40];
+  uint8_t selected[4];
+  uint8_t count = 0U;
+  uint8_t jump = 1U;
+  uint16_t procedure_index = 0U;
+  uint16_t procedure_group = 0U;
+  uint8_t start = 0U;
+
+  for (uint8_t bit = 0U; bit < 40U; ++bit) {
+    if (channel_map_bit_enabled(g_cs_channel_map, bit)) {
+      enabled[count++] = bit;
+    }
+  }
+
+  if (count == 0U) {
+    return fallback_packed;
+  }
+
+  procedure_index = (g_cs_procedure_counter > 0U) ? (uint16_t)(g_cs_procedure_counter - 1U) : 0U;
+  procedure_group = procedure_index;
+  if (g_cs_channel_map_repetition > 1U) {
+    procedure_group = (uint16_t)(procedure_index / g_cs_channel_map_repetition);
+  }
+
+  if (g_cs_channel_selection_type == 1U && g_cs_ch3c_jump > 0U) {
+    jump = g_cs_ch3c_jump;
+  }
+  start = (uint8_t)((procedure_group * jump) % count);
+
+  for (uint8_t i = 0U; i < 4U; ++i) {
+    selected[i] = enabled[(uint8_t)((start + i) % count)];
+  }
+  return pack_demo_channels(selected);
 }
 
 static void update_demo_channels_from_create_config(void) {
