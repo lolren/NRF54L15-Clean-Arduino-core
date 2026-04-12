@@ -227,6 +227,9 @@ Immediate next follow-up from this checkpoint:
   per procedure/step while keeping the nominal phase-slope distance stable
 - the dedicated image now varies synthetic local/peer mode-2 PCT phase
   orientation per step while keeping the nominal phase-slope distance stable
+- the dedicated image now decides CS result continuation chunking from actual
+  packet budget instead of hard-coding one half-and-half split for every
+  procedure
 
 This is the shortest path that advances the repo from "working VPR-backed CS
 demo" to "real BLE controller work is starting to move off CPUAPP".

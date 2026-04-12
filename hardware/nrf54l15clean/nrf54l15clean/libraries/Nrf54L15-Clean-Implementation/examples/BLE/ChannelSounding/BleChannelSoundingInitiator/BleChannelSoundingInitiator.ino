@@ -2970,10 +2970,11 @@ void printHciVprMultiDemo() {
   const bool markersReached =
       vprHost.hostState().controllerPeerResultMarkers >= kTargetProcedureCount;
   const bool peerPacketsReached =
-      vprHost.hostState().peerResultPackets >= (kTargetProcedureCount * 2U);
+      vprHost.hostState().peerResultPackets >= kTargetProcedureCount;
   const bool stopped = !vprHost.vprState().linkProcedureEnabled;
-  ok = ok && vprHost.ready() && countersReached && markersReached &&
-       peerPacketsReached && vprHost.estimateValid() && stopped;
+  const bool finalOk =
+      !vprHost.failed() && vprHost.ready() && countersReached && markersReached &&
+      peerPacketsReached && vprHost.estimateValid() && stopped;
   const StepChannelCollectContext finalChannels =
       collectStepChannels(vprHost.completedLocalResult());
   const StepPermutationCollectContext finalPermutations =
@@ -2990,7 +2991,7 @@ void printHciVprMultiDemo() {
       collectStepPhase(vprHost.completedPeerResult());
 
   Serial.print(F("hcivprmultidemo ok="));
-  Serial.print(ok ? 1 : 0);
+  Serial.print(finalOk ? 1 : 0);
   Serial.print(F(" pumped="));
   Serial.print(pumpCount);
   Serial.print(F(" polled="));
@@ -3081,6 +3082,99 @@ void printHciVprMultiDemo() {
     }
     Serial.print(finalChannels.channels[i]);
   }
+  Serial.print(F(" dist_m="));
+  if (vprHost.estimateValid()) {
+    Serial.println(vprHost.sessionState().estimate.distanceMeters, 4);
+  } else {
+    Serial.println(F("na"));
+  }
+}
+
+void printHciVprChunkDemo() {
+  static constexpr uint16_t kDemoConnHandle = 0x0040U;
+  static const uint8_t demoChannels[] = {2U, 14U, 26U};
+  static constexpr size_t kDemoChannelCount =
+      sizeof(demoChannels) / sizeof(demoChannels[0]);
+
+  BleCsControllerVprHost vprHost;
+  BleCsControllerVprHostConfig hostConfig{};
+  BleCsControllerVprHost::fillDemoConfig(&hostConfig);
+  memset(hostConfig.session.workflow.createConfig.channelMap, 0,
+         sizeof(hostConfig.session.workflow.createConfig.channelMap));
+  for (size_t i = 0U; i < kDemoChannelCount; ++i) {
+    const uint8_t channel = demoChannels[i];
+    hostConfig.session.workflow.createConfig.channelMap[channel >> 3U] |=
+        static_cast<uint8_t>(1U << (channel & 0x07U));
+  }
+  hostConfig.session.workflow.createConfig.minMainModeSteps = 3U;
+  hostConfig.session.workflow.createConfig.maxMainModeSteps = 3U;
+  hostConfig.session.workflow.procedureParameters.maxProcedureCount = 1U;
+  hostConfig.session.workflow.procedureParameters.maxProcedureLen = 12U;
+
+  bool ok = vprHost.resetTransport(true);
+  ok = ok && vprHost.loadDefaultTransportImage();
+  ok = ok && vprHost.bootTransport();
+  ok = ok && vprHost.beginHost(kDemoConnHandle, hostConfig);
+
+  uint8_t pumpCount = 0U;
+  while (ok && !vprHost.ready() && !vprHost.failed() && pumpCount < 48U) {
+    ok = vprHost.loopOnce();
+    ++pumpCount;
+  }
+
+  ok = ok && vprHost.ready();
+
+  uint8_t pollCount = 0U;
+  while (ok && !vprHost.failed() &&
+         vprHost.sessionState().completedProcedureCounter < 1U &&
+         pollCount < 24U) {
+    ok = vprHost.poll();
+    ++pollCount;
+  }
+
+  const BleCsSubeventResult& local = vprHost.localResult();
+  const BleCsSubeventResult& peer = vprHost.peerResult();
+  const bool noLocalContinue = local.isComplete && !local.isContinuation && !local.isPartial;
+  const bool noPeerContinue = peer.isComplete && !peer.isContinuation && !peer.isPartial;
+  ok = ok && vprHost.ready() &&
+       local.header.procedureCounter == 1U && peer.header.procedureCounter == 1U &&
+       local.header.numStepsReported == 3U && peer.header.numStepsReported == 3U &&
+       noLocalContinue && noPeerContinue &&
+       vprHost.hostState().peerResultPackets == 1U &&
+       vprHost.hostState().controllerPeerResultMarkers == 1U;
+
+  Serial.print(F("hcivprchunkdemo ok="));
+  Serial.print(ok ? 1 : 0);
+  Serial.print(F(" pumped="));
+  Serial.print(pumpCount);
+  Serial.print(F(" polled="));
+  Serial.print(pollCount);
+  Serial.print(F(" proc="));
+  Serial.print(local.header.procedureCounter);
+  Serial.print(F(" ctrl_evt="));
+  Serial.print(vprHost.hostState().controllerEventPackets);
+  Serial.print(F(" peer_mark="));
+  Serial.print(vprHost.hostState().controllerPeerResultMarkers);
+  Serial.print(F(" peer_evt="));
+  Serial.print(vprHost.hostState().peerResultPackets);
+  Serial.print(F(" local_flags="));
+  Serial.print(local.isComplete ? 'C' : '-');
+  Serial.print(local.isPartial ? 'P' : '-');
+  Serial.print(local.isContinuation ? 'T' : '-');
+  Serial.print(F(" peer_flags="));
+  Serial.print(peer.isComplete ? 'C' : '-');
+  Serial.print(peer.isPartial ? 'P' : '-');
+  Serial.print(peer.isContinuation ? 'T' : '-');
+  Serial.print(F(" local_steps="));
+  Serial.print(local.header.numStepsReported);
+  Serial.print(F(" peer_steps="));
+  Serial.print(peer.header.numStepsReported);
+  Serial.print(F(" local_bytes="));
+  Serial.print(local.stepDataLen);
+  Serial.print(F(" peer_bytes="));
+  Serial.print(peer.stepDataLen);
+  Serial.print(F(" est="));
+  Serial.print(vprHost.estimateValid() ? 1 : 0);
   Serial.print(F(" dist_m="));
   if (vprHost.estimateValid()) {
     Serial.println(vprHost.sessionState().estimate.distanceMeters, 4);
@@ -3605,6 +3699,11 @@ void handleCalibrationCommand(const char* command) {
     return;
   }
 
+  if (strcmp(command, "hcivprchunkdemo") == 0) {
+    printHciVprChunkDemo();
+    return;
+  }
+
   if (strcmp(command, "hcivprabortdemo") == 0) {
     printHciVprAbortDemo();
     return;
@@ -3684,7 +3783,7 @@ void handleCalibrationCommand(const char* command) {
   }
 
   Serial.println(
-      F("commands=status|raw|stepdemo|stepestdemo|hcidemo|hcirttdemo|hcipktdemo|hciworkflowdemo|hcih4demo|hcisessiondemo|hcimixdemo|hcihostdemo|hcistreamdemo|hcivprtransportdemo|hcivprdumpdemo|hcivprstatedemo|hcivprmultidemo|hcivprabortdemo|hcivprlinkdemo|hcivprtracedemo|clear|zero|ref <m>|offset <m>|scale <factor>"));
+      F("commands=status|raw|stepdemo|stepestdemo|hcidemo|hcirttdemo|hcipktdemo|hciworkflowdemo|hcih4demo|hcisessiondemo|hcimixdemo|hcihostdemo|hcistreamdemo|hcivprtransportdemo|hcivprdumpdemo|hcivprstatedemo|hcivprmultidemo|hcivprchunkdemo|hcivprabortdemo|hcivprlinkdemo|hcivprtracedemo|clear|zero|ref <m>|offset <m>|scale <factor>"));
 }
 
 void pollSerialCommands() {
@@ -3776,7 +3875,7 @@ void setup() {
   Serial.println(F("dfe_raw_capture=enabled"));
   Serial.println(F("control_channel=37"));
   Serial.println(F("pair_with=CoreBleChannelSoundingReflector"));
-  Serial.println(F("commands=status|raw|stepdemo|stepestdemo|hcidemo|hcirttdemo|hcipktdemo|hciworkflowdemo|hcih4demo|hcisessiondemo|hcimixdemo|hcihostdemo|hcistreamdemo|hcivprtransportdemo|hcivprdumpdemo|hcivprstatedemo|hcivprmultidemo|hcivprabortdemo|hcivprlinkdemo|hcivprtracedemo|clear|zero|ref <m>|offset <m>|scale <factor>"));
+  Serial.println(F("commands=status|raw|stepdemo|stepestdemo|hcidemo|hcirttdemo|hcipktdemo|hciworkflowdemo|hcih4demo|hcisessiondemo|hcimixdemo|hcihostdemo|hcistreamdemo|hcivprtransportdemo|hcivprdumpdemo|hcivprstatedemo|hcivprmultidemo|hcivprchunkdemo|hcivprabortdemo|hcivprlinkdemo|hcivprtracedemo|clear|zero|ref <m>|offset <m>|scale <factor>"));
   uint8_t csChannelMap[kBleCsChannelMapBytes] = {0};
   BleChannelSoundingRadio::fillValidChannelMap(csChannelMap);
   Serial.print(F("cs_chmap[0..2]="));

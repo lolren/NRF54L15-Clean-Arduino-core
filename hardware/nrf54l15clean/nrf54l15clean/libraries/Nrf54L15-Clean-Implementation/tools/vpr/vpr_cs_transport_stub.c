@@ -801,6 +801,10 @@ static uint8_t current_demo_step_count(void) {
   return count;
 }
 
+static bool current_demo_result_has_continue(void) {
+  return current_demo_step_count() > 3U;
+}
+
 static uint8_t fill_demo_channels_for_procedure(uint8_t *out_channels, uint8_t channel_count) {
   const uint32_t fallback_packed =
       (g_cs_demo_channels_packed != 0U) ? g_cs_demo_channels_packed : g_host_transport->reserved;
@@ -1230,18 +1234,26 @@ static size_t build_procedure_enable_complete_payload(uint8_t *payload, size_t m
 
 static size_t build_subevent_initial_payload(uint8_t *payload, size_t max_len,
                                              uint16_t conn_handle) {
-  if (payload == NULL || max_len < 39U) {
+  if (payload == NULL || max_len < 23U) {
     return 0U;
   }
   uint8_t channels[6];
   uint8_t step_count = 4U;
-  uint8_t initial_steps = 2U;
+  uint8_t initial_steps = 1U;
+  uint8_t has_continue = 1U;
 #if VPR_CS_DEDICATED_IMAGE
   step_count = current_demo_step_count();
   if (step_count == 0U) {
     step_count = 1U;
   }
-  initial_steps = (uint8_t)((step_count + 1U) / 2U);
+  initial_steps = (uint8_t)((max_len > 15U) ? ((max_len - 15U) / 8U) : 0U);
+  if (initial_steps == 0U) {
+    return 0U;
+  }
+  if (initial_steps > step_count) {
+    initial_steps = step_count;
+  }
+  has_continue = (initial_steps < step_count) ? 1U : 0U;
   fill_demo_channels_for_procedure(channels, step_count);
 #else
   const uint32_t packed_channels = g_host_transport->reserved;
@@ -1265,8 +1277,8 @@ static size_t build_subevent_initial_payload(uint8_t *payload, size_t max_len,
 #endif
   write_le16(&payload[7], 0U);
   payload[9] = 0U;
-  payload[10] = 0x01U;
-  payload[11] = 0x01U;
+  payload[10] = has_continue ? 0x01U : 0x00U;
+  payload[11] = has_continue ? 0x01U : 0x00U;
   payload[12] = 0U;
   payload[13] = 2U;
   payload[14] = initial_steps;
@@ -1280,20 +1292,32 @@ static size_t build_subevent_initial_payload(uint8_t *payload, size_t max_len,
 
 static size_t build_subevent_continue_payload(uint8_t *payload, size_t max_len,
                                               uint16_t conn_handle) {
-  if (payload == NULL || max_len < 32U) {
+  if (payload == NULL || max_len < 16U) {
     return 0U;
   }
   uint8_t channels[6];
   uint8_t step_count = 4U;
-  uint8_t initial_steps = 2U;
-  uint8_t continue_steps = 2U;
+  uint8_t initial_steps = 1U;
+  uint8_t continue_steps = 0U;
 #if VPR_CS_DEDICATED_IMAGE
   step_count = current_demo_step_count();
   if (step_count == 0U) {
     step_count = 1U;
   }
-  initial_steps = (uint8_t)((step_count + 1U) / 2U);
+  initial_steps = (uint8_t)((40U > 15U) ? ((40U - 15U) / 8U) : 0U);
+  if (initial_steps > step_count) {
+    initial_steps = step_count;
+  }
   continue_steps = (uint8_t)(step_count - initial_steps);
+  if (continue_steps == 0U) {
+    return 0U;
+  }
+  if (continue_steps > (uint8_t)((max_len - 8U) / 8U)) {
+    continue_steps = (uint8_t)((max_len - 8U) / 8U);
+  }
+  if (continue_steps == 0U) {
+    return 0U;
+  }
   fill_demo_channels_for_procedure(channels, step_count);
 #else
   const uint32_t packed_channels = g_host_transport->reserved;
@@ -1326,16 +1350,24 @@ static size_t build_subevent_continue_payload(uint8_t *payload, size_t max_len,
 #if VPR_CS_DEDICATED_IMAGE
 static size_t build_peer_subevent_initial_payload(uint8_t *payload, size_t max_len,
                                                   uint16_t conn_handle) {
-  if (payload == NULL || max_len < 39U) {
+  if (payload == NULL || max_len < 23U) {
     return 0U;
   }
   uint8_t channels[6];
   uint8_t step_count = current_demo_step_count();
-  uint8_t initial_steps = 2U;
+  uint8_t initial_steps = 1U;
+  uint8_t has_continue = 1U;
   if (step_count == 0U) {
     step_count = 1U;
   }
-  initial_steps = (uint8_t)((step_count + 1U) / 2U);
+  initial_steps = (uint8_t)((max_len > 15U) ? ((max_len - 15U) / 8U) : 0U);
+  if (initial_steps == 0U) {
+    return 0U;
+  }
+  if (initial_steps > step_count) {
+    initial_steps = step_count;
+  }
+  has_continue = (initial_steps < step_count) ? 1U : 0U;
   fill_demo_channels_for_procedure(channels, step_count);
   bytes_zero(payload, max_len);
   write_le16(&payload[0], conn_handle);
@@ -1344,8 +1376,8 @@ static size_t build_peer_subevent_initial_payload(uint8_t *payload, size_t max_l
   write_le16(&payload[5], g_cs_procedure_counter);
   write_le16(&payload[7], 0U);
   payload[9] = 0U;
-  payload[10] = 0x01U;
-  payload[11] = 0x01U;
+  payload[10] = has_continue ? 0x01U : 0x00U;
+  payload[11] = has_continue ? 0x01U : 0x00U;
   payload[12] = 0U;
   payload[13] = 2U;
   payload[14] = initial_steps;
@@ -1359,18 +1391,30 @@ static size_t build_peer_subevent_initial_payload(uint8_t *payload, size_t max_l
 
 static size_t build_peer_subevent_continue_payload(uint8_t *payload, size_t max_len,
                                                    uint16_t conn_handle) {
-  if (payload == NULL || max_len < 32U) {
+  if (payload == NULL || max_len < 16U) {
     return 0U;
   }
   uint8_t channels[6];
   uint8_t step_count = current_demo_step_count();
-  uint8_t initial_steps = 2U;
-  uint8_t continue_steps = 2U;
+  uint8_t initial_steps = 1U;
+  uint8_t continue_steps = 0U;
   if (step_count == 0U) {
     step_count = 1U;
   }
-  initial_steps = (uint8_t)((step_count + 1U) / 2U);
+  initial_steps = (uint8_t)((40U > 15U) ? ((40U - 15U) / 8U) : 0U);
+  if (initial_steps > step_count) {
+    initial_steps = step_count;
+  }
   continue_steps = (uint8_t)(step_count - initial_steps);
+  if (continue_steps == 0U) {
+    return 0U;
+  }
+  if (continue_steps > (uint8_t)((max_len - 8U) / 8U)) {
+    continue_steps = (uint8_t)((max_len - 8U) / 8U);
+  }
+  if (continue_steps == 0U) {
+    return 0U;
+  }
   fill_demo_channels_for_procedure(channels, step_count);
   bytes_zero(payload, max_len);
   write_le16(&payload[0], conn_handle);
@@ -2106,16 +2150,35 @@ static bool publish_pending_cs_result_packet(void) {
   g_vpr_transport->vprSeq = g_vpr_transport->vprSeq + 1U;
   g_vpr_transport->vprFlags = NRF54L15_VPR_TRANSPORT_FLAG_PENDING;
 #if VPR_CS_DEDICATED_IMAGE
-  if (g_pending_cs_result_stage < 5U) {
-    g_pending_cs_result_stage = (uint8_t)(g_pending_cs_result_stage + 1U);
-  } else if (g_cs_procedure_enabled != 0U &&
+  if (g_pending_cs_result_stage == 1U) {
+    g_pending_cs_result_stage = current_demo_result_has_continue() ? 2U : 3U;
+  } else if (g_pending_cs_result_stage == 2U) {
+    g_pending_cs_result_stage = 3U;
+  } else if (g_pending_cs_result_stage == 3U) {
+    g_pending_cs_result_stage = 4U;
+  } else if (g_pending_cs_result_stage == 4U) {
+    g_pending_cs_result_stage = current_demo_result_has_continue() ? 5U : 0U;
+    if (g_pending_cs_result_stage == 0U) {
+      if (g_cs_procedure_enabled != 0U &&
+          g_cs_procedure_counter < g_cs_max_procedure_count) {
+        g_cs_next_procedure_heartbeat =
+            g_vpr_transport->heartbeat + current_procedure_interval_ticks();
+      } else {
+        g_cs_procedure_enabled = 0U;
+        g_cs_next_procedure_heartbeat = 0U;
+      }
+    }
+  } else if (g_pending_cs_result_stage == 5U &&
+             g_cs_procedure_enabled != 0U &&
              g_cs_procedure_counter < g_cs_max_procedure_count) {
     g_cs_next_procedure_heartbeat =
         g_vpr_transport->heartbeat + current_procedure_interval_ticks();
     g_pending_cs_result_stage = 0U;
-  } else {
+  } else if (g_pending_cs_result_stage == 5U) {
     g_cs_procedure_enabled = 0U;
     g_cs_next_procedure_heartbeat = 0U;
+    g_pending_cs_result_stage = 0U;
+  } else {
     g_pending_cs_result_stage = 0U;
   }
 #else

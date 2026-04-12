@@ -149,6 +149,8 @@ Validated logs:
 - `/home/lolren/Desktop/Nrf54L15/.build/cs_vpr_phase_runtime/hcivprtransportdemo.log`
 - `/home/lolren/Desktop/Nrf54L15/.build/cs_vpr_phase_runtime/hcivprdumpdemo.log`
 - `/home/lolren/Desktop/Nrf54L15/.build/cs_vpr_phase_runtime/hcivprmultidemo.log`
+- `/home/lolren/Desktop/Nrf54L15/.build/cs_vpr_chunk_runtime5/hcivprchunkdemo.log`
+- `/home/lolren/Desktop/Nrf54L15/.build/cs_vpr_chunk_runtime5/hcivprmultidemo.log`
 
 The key proof lines from the current built-in responder path are:
 
@@ -165,6 +167,8 @@ The key proof lines from the current built-in responder path are:
   - `local ... ph=0/90/180/-90 ... amp=896/736/...`
   - `peer ... ph=-17/-154/73/-61 ... amp=872/711/...`
 - `hcivprmultidemo ok=1 pumped=12 polled=8 proc=3 transitions=3 target=3 ctrl_evt=13 peer_mark=3 peer_evt=6 stopped=1 hb_gap=1249/1686 ... ql=0,1,0,1,0 la=960,800,960,800,960 pa=887,727,887,726,887 lph=0,90,180,-90,0 pph=-107,119,163,26,-107 ch=26,38,2,14,26 dist_m=0.7501`
+- `hcivprchunkdemo ok=1 pumped=12 polled=2 proc=1 ctrl_evt=11 peer_mark=1 peer_evt=1 local_flags=C-- peer_flags=C-- local_steps=3 peer_steps=3 local_bytes=24 peer_bytes=24 est=1 dist_m=0.7502`
+- `hcivprmultidemo ok=1 pumped=12 polled=6 proc=3 transitions=3 target=3 ctrl_evt=13 peer_mark=3 peer_evt=5 stopped=1 hb_gap=1246/1478 ... ql=0,1,0,1,0 la=960,800,960,800,960 pa=887,727,887,726,887 lph=0,90,180,-90,0 pph=-107,119,163,26,-107 ch=26,38,2,14,26 dist_m=0.7501`
 - `hcivprabortdemo ok=1 pumped=12 pre_polls=1 post_polls=1 settle=0 built=1 wrote=1 pre_proc=1 stop_proc=1 final_proc=1 pre_mark=1 stop_mark=1 final_mark=1 flags=CSP- phase=ready ... dist_m=0.7491`
 - `hcivprlinkdemo ok=1 wrong_status=0x12 wrong_reject=1 removed=1 closed=1 reopened=1 refresh=1 link_conn=0x41 flags=CSP- ...`
 
@@ -254,6 +258,16 @@ That proves:
         dump follows the compensating rotated phases
       - the current multi-procedure proof ends on
         `lph=0,90,180,-90,0 pph=-107,119,163,26,-107`
+    - result packet chunking is no longer hard-coded to a half-and-half split
+      - the dedicated image now decides whether a continuation is needed from
+        the actual packet budget
+      - a 3-step procedure now completes in one local packet and one peer
+        packet with no continuation at all
+      - the focused chunk proof ends on
+        `peer_evt=1 local_flags=C-- peer_flags=C-- local_steps=3 peer_steps=3`
+      - the normal multi-procedure proof now ends on `peer_evt=5` instead of
+        the older fixed `6`, because the publication shape is no longer a
+        forced two-packet peer path for every procedure
     - the dedicated image now has a validated mid-run disable path
       - the host can issue a raw `Procedure Enable(enable=0)` after procedure 1
       - the current abort proof ends on `pre_proc=1 final_proc=1` with
@@ -347,6 +361,8 @@ Current honest status:
   at one local/peer magnitude for every staged tone
 - the synthetic mode-2 PCT phase is now controller-owned too, not fixed to one
   local/peer orientation pattern across every staged tone
+- result packet chunking is now controller-owned too, not fixed to a constant
+  halfway split and continuation count for every procedure
 - a direct host-issued `Procedure Enable(enable=0)` now stops the dedicated
   image cleanly mid-run instead of forcing the demo to run to the configured
   procedure count every time
