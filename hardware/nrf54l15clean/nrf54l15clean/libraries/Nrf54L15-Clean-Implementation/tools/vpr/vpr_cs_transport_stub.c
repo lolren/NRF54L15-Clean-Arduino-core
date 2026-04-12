@@ -18,6 +18,7 @@
 #define VPRCSR_NORDIC_VPRNORDICSLEEPCTRL_SLEEPSTATE_HIBERNATE 0xFU
 #define VPRCSR_NORDIC_VPRNORDICSLEEPCTRL_STACKONSLEEP_Msk (1UL << 17U)
 
+#define BLE_CS_MAIN_MODE1 0x01U
 #define BLE_CS_MAIN_MODE2 0x02U
 
 #define BLE_CS_HCI_OP_READ_REMOTE_SUPPORTED_CAPABILITIES 0x208AU
@@ -716,6 +717,22 @@ static void append_mode2_sample_step(uint8_t *dst, uint8_t channel, uint8_t perm
   dst[7] = (uint8_t)(quality & 0x0FU);
 }
 
+static size_t append_mode1_unavailable_step(uint8_t *dst, uint8_t channel,
+                                            uint8_t packet_antenna) {
+  if (dst == NULL) {
+    return 0U;
+  }
+  dst[0] = BLE_CS_MAIN_MODE1;
+  dst[1] = channel;
+  dst[2] = 6U;
+  dst[3] = 0xF2U;
+  dst[4] = 0xFFU;
+  dst[5] = 0x7FU;
+  write_le16(&dst[6], 0x8000U);
+  dst[8] = packet_antenna;
+  return 9U;
+}
+
 static void append_mode2_demo_step(uint8_t *dst, uint8_t channel, uint8_t step_index) {
 #if VPR_CS_DEDICATED_IMAGE
   uint8_t scaled_pct[3];
@@ -789,6 +806,8 @@ static uint16_t current_step_count_group(void) {
   return procedure_index;
 }
 
+static uint8_t current_demo_num_antenna_paths(void);
+
 static uint8_t current_demo_step_count(void) {
   uint8_t min_steps = (g_cs_min_main_mode_steps != 0U) ? g_cs_min_main_mode_steps : 1U;
   uint8_t max_steps = (g_cs_max_main_mode_steps >= min_steps) ? g_cs_max_main_mode_steps
@@ -804,8 +823,64 @@ static uint8_t current_demo_step_count(void) {
   return count;
 }
 
-static bool current_demo_result_has_continue(void) {
+static bool current_demo_has_mode1_timing_step(void) {
   return current_demo_step_count() > 3U;
+}
+
+static uint8_t current_demo_total_step_count(void) {
+  return (uint8_t)(current_demo_step_count() + (current_demo_has_mode1_timing_step() ? 1U : 0U));
+}
+
+static size_t current_demo_encoded_step_len(uint8_t step_index) {
+  return (current_demo_has_mode1_timing_step() && step_index == 0U) ? 9U : 8U;
+}
+
+static uint8_t current_demo_phase_step_index(uint8_t step_index) {
+  return (uint8_t)(step_index - (current_demo_has_mode1_timing_step() ? 1U : 0U));
+}
+
+static size_t append_local_demo_step(uint8_t *dst, const uint8_t *channels, uint8_t step_index) {
+  if (dst == NULL || channels == NULL) {
+    return 0U;
+  }
+  if (current_demo_has_mode1_timing_step() && step_index == 0U) {
+    return append_mode1_unavailable_step(dst, channels[0], current_demo_num_antenna_paths());
+  }
+  const uint8_t phase_step_index = current_demo_phase_step_index(step_index);
+  append_mode2_demo_step(dst, channels[phase_step_index], phase_step_index);
+  return 8U;
+}
+
+static size_t append_peer_demo_step(uint8_t *dst, const uint8_t *channels, uint8_t step_index) {
+  if (dst == NULL || channels == NULL) {
+    return 0U;
+  }
+  if (current_demo_has_mode1_timing_step() && step_index == 0U) {
+    return append_mode1_unavailable_step(dst, channels[0], current_demo_num_antenna_paths());
+  }
+  const uint8_t phase_step_index = current_demo_phase_step_index(step_index);
+  append_mode2_peer_demo_step(dst, channels[phase_step_index], phase_step_index);
+  return 8U;
+}
+
+static uint8_t count_demo_steps_for_budget(size_t budget, uint8_t start_step_index) {
+  const uint8_t total_steps = current_demo_total_step_count();
+  size_t used = 0U;
+  uint8_t count = 0U;
+  for (uint8_t step_index = start_step_index; step_index < total_steps; ++step_index) {
+    const size_t step_len = current_demo_encoded_step_len(step_index);
+    if (used + step_len > budget) {
+      break;
+    }
+    used += step_len;
+    ++count;
+  }
+  return count;
+}
+
+static bool current_demo_result_has_continue(void) {
+  const size_t initial_budget = (40U > 15U) ? (40U - 15U) : 0U;
+  return current_demo_total_step_count() > count_demo_steps_for_budget(initial_budget, 0U);
 }
 
 static uint16_t current_demo_acl_event_counter(void) {
@@ -1291,6 +1366,7 @@ static size_t build_subevent_initial_payload(uint8_t *payload, size_t max_len,
   }
   uint8_t channels[6];
   uint8_t step_count = 4U;
+  uint8_t total_steps = 4U;
   uint8_t initial_steps = 1U;
   uint8_t has_continue = 1U;
 #if VPR_CS_DEDICATED_IMAGE
@@ -1298,14 +1374,15 @@ static size_t build_subevent_initial_payload(uint8_t *payload, size_t max_len,
   if (step_count == 0U) {
     step_count = 1U;
   }
-  initial_steps = (uint8_t)((max_len > 15U) ? ((max_len - 15U) / 8U) : 0U);
+  total_steps = current_demo_total_step_count();
+  initial_steps = count_demo_steps_for_budget((max_len > 15U) ? (max_len - 15U) : 0U, 0U);
   if (initial_steps == 0U) {
     return 0U;
   }
-  if (initial_steps > step_count) {
-    initial_steps = step_count;
+  if (initial_steps > total_steps) {
+    initial_steps = total_steps;
   }
-  has_continue = (initial_steps < step_count) ? 1U : 0U;
+  has_continue = (initial_steps < total_steps) ? 1U : 0U;
   fill_demo_channels_for_procedure(channels, step_count);
 #else
   const uint32_t packed_channels = g_host_transport->reserved;
@@ -1340,8 +1417,7 @@ static size_t build_subevent_initial_payload(uint8_t *payload, size_t max_len,
   payload[14] = initial_steps;
   size_t offset = 15U;
   for (uint8_t i = 0U; i < initial_steps; ++i) {
-    append_mode2_demo_step(&payload[offset], channels[i], i);
-    offset += 8U;
+    offset += append_local_demo_step(&payload[offset], channels, i);
   }
   return offset;
 }
@@ -1360,17 +1436,9 @@ static size_t build_subevent_continue_payload(uint8_t *payload, size_t max_len,
   if (step_count == 0U) {
     step_count = 1U;
   }
-  initial_steps = (uint8_t)((40U > 15U) ? ((40U - 15U) / 8U) : 0U);
-  if (initial_steps > step_count) {
-    initial_steps = step_count;
-  }
-  continue_steps = (uint8_t)(step_count - initial_steps);
-  if (continue_steps == 0U) {
-    return 0U;
-  }
-  if (continue_steps > (uint8_t)((max_len - 8U) / 8U)) {
-    continue_steps = (uint8_t)((max_len - 8U) / 8U);
-  }
+  initial_steps = count_demo_steps_for_budget((40U > 15U) ? (40U - 15U) : 0U, 0U);
+  continue_steps =
+      count_demo_steps_for_budget((max_len > 8U) ? (max_len - 8U) : 0U, initial_steps);
   if (continue_steps == 0U) {
     return 0U;
   }
@@ -1397,9 +1465,7 @@ static size_t build_subevent_continue_payload(uint8_t *payload, size_t max_len,
   payload[7] = continue_steps;
   size_t offset = 8U;
   for (uint8_t i = 0U; i < continue_steps; ++i) {
-    append_mode2_demo_step(&payload[offset], channels[initial_steps + i],
-                           (uint8_t)(initial_steps + i));
-    offset += 8U;
+    offset += append_local_demo_step(&payload[offset], channels, (uint8_t)(initial_steps + i));
   }
   return offset;
 }
@@ -1412,19 +1478,20 @@ static size_t build_peer_subevent_initial_payload(uint8_t *payload, size_t max_l
   }
   uint8_t channels[6];
   uint8_t step_count = current_demo_step_count();
+  uint8_t total_steps = current_demo_total_step_count();
   uint8_t initial_steps = 1U;
   uint8_t has_continue = 1U;
   if (step_count == 0U) {
     step_count = 1U;
   }
-  initial_steps = (uint8_t)((max_len > 15U) ? ((max_len - 15U) / 8U) : 0U);
+  initial_steps = count_demo_steps_for_budget((max_len > 15U) ? (max_len - 15U) : 0U, 0U);
   if (initial_steps == 0U) {
     return 0U;
   }
-  if (initial_steps > step_count) {
-    initial_steps = step_count;
+  if (initial_steps > total_steps) {
+    initial_steps = total_steps;
   }
-  has_continue = (initial_steps < step_count) ? 1U : 0U;
+  has_continue = (initial_steps < total_steps) ? 1U : 0U;
   fill_demo_channels_for_procedure(channels, step_count);
   bytes_zero(payload, max_len);
   write_le16(&payload[0], conn_handle);
@@ -1440,8 +1507,7 @@ static size_t build_peer_subevent_initial_payload(uint8_t *payload, size_t max_l
   payload[14] = initial_steps;
   size_t offset = 15U;
   for (uint8_t i = 0U; i < initial_steps; ++i) {
-    append_mode2_peer_demo_step(&payload[offset], channels[i], i);
-    offset += 8U;
+    offset += append_peer_demo_step(&payload[offset], channels, i);
   }
   return offset;
 }
@@ -1458,17 +1524,9 @@ static size_t build_peer_subevent_continue_payload(uint8_t *payload, size_t max_
   if (step_count == 0U) {
     step_count = 1U;
   }
-  initial_steps = (uint8_t)((40U > 15U) ? ((40U - 15U) / 8U) : 0U);
-  if (initial_steps > step_count) {
-    initial_steps = step_count;
-  }
-  continue_steps = (uint8_t)(step_count - initial_steps);
-  if (continue_steps == 0U) {
-    return 0U;
-  }
-  if (continue_steps > (uint8_t)((max_len - 8U) / 8U)) {
-    continue_steps = (uint8_t)((max_len - 8U) / 8U);
-  }
+  initial_steps = count_demo_steps_for_budget((40U > 15U) ? (40U - 15U) : 0U, 0U);
+  continue_steps =
+      count_demo_steps_for_budget((max_len > 8U) ? (max_len - 8U) : 0U, initial_steps);
   if (continue_steps == 0U) {
     return 0U;
   }
@@ -1483,9 +1541,7 @@ static size_t build_peer_subevent_continue_payload(uint8_t *payload, size_t max_
   payload[7] = continue_steps;
   size_t offset = 8U;
   for (uint8_t i = 0U; i < continue_steps; ++i) {
-    append_mode2_peer_demo_step(&payload[offset], channels[initial_steps + i],
-                                (uint8_t)(initial_steps + i));
-    offset += 8U;
+    offset += append_peer_demo_step(&payload[offset], channels, (uint8_t)(initial_steps + i));
   }
   return offset;
 }

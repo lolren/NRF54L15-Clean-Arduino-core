@@ -467,6 +467,12 @@ struct StepChannelCollectContext {
   uint8_t count = 0U;
 };
 
+struct StepModeCollectContext {
+  uint8_t mode1Count = 0U;
+  uint8_t mode2Count = 0U;
+  uint8_t mode3Count = 0U;
+};
+
 struct StepPermutationCollectContext {
   uint8_t permutations[8] = {0U, 0U, 0U, 0U, 0U, 0U, 0U, 0U};
   uint8_t count = 0U;
@@ -551,6 +557,19 @@ bool printStepDumpCallback(const BleCsSubeventStep* step, void* userData) {
       Serial.print(tone.qualityIndicator);
     }
   }
+  if (step->mode == kBleCsMainMode1 || step->mode == kBleCsMainMode3) {
+    BleCsStepMode1Data mode1{};
+    if (BleChannelSoundingRadio::parseMode1StepData(step, &mode1)) {
+      Serial.print(F(" aa="));
+      Serial.print(mode1.aaCheckQuality);
+      Serial.print(F(" rssi="));
+      Serial.print(mode1.packetRssiDbm);
+      Serial.print(F(" tdiff="));
+      Serial.print(mode1.timeDifferenceHalfNs);
+      Serial.print(F(" pant="));
+      Serial.print(mode1.packetAntenna);
+    }
+  }
 
   ++ctx->printed;
   return true;
@@ -563,6 +582,21 @@ bool collectStepChannelCallback(const BleCsSubeventStep* step, void* userData) {
   }
   if (ctx->count < 8U) {
     ctx->channels[ctx->count++] = step->channel;
+  }
+  return true;
+}
+
+bool collectStepModeCallback(const BleCsSubeventStep* step, void* userData) {
+  StepModeCollectContext* ctx = static_cast<StepModeCollectContext*>(userData);
+  if (step == nullptr || ctx == nullptr) {
+    return false;
+  }
+  if (step->mode == kBleCsMainMode1) {
+    ++ctx->mode1Count;
+  } else if (step->mode == kBleCsMainMode2) {
+    ++ctx->mode2Count;
+  } else if (step->mode == kBleCsMainMode3) {
+    ++ctx->mode3Count;
   }
   return true;
 }
@@ -631,6 +665,13 @@ StepChannelCollectContext collectStepChannels(const BleCsSubeventResult& result)
   StepChannelCollectContext ctx{};
   BleChannelSoundingRadio::parseSubeventStepData(result.stepData, result.stepDataLen,
                                                  collectStepChannelCallback, &ctx);
+  return ctx;
+}
+
+StepModeCollectContext collectStepModes(const BleCsSubeventResult& result) {
+  StepModeCollectContext ctx{};
+  BleChannelSoundingRadio::parseSubeventStepData(result.stepData, result.stepDataLen,
+                                                 collectStepModeCallback, &ctx);
   return ctx;
 }
 
@@ -3005,11 +3046,10 @@ void printHciVprMultiDemo() {
   const bool stopped = !vprHost.vprState().linkProcedureEnabled;
   const uint8_t vprPeerGapTicks =
       static_cast<uint8_t>((sharedVpr->reserved >> 29U) & 0x07U);
-  const bool finalOk =
-      !vprHost.failed() && vprHost.ready() && countersReached && markersReached &&
-      peerPacketsReached && vprHost.estimateValid() && stopped;
   const StepChannelCollectContext finalChannels =
       collectStepChannels(vprHost.completedLocalResult());
+  const StepModeCollectContext finalModes =
+      collectStepModes(vprHost.completedLocalResult());
   const StepPermutationCollectContext finalPermutations =
       collectStepPermutations(vprHost.completedLocalResult());
   const StepQualityCollectContext finalQuality =
@@ -3022,6 +3062,10 @@ void printHciVprMultiDemo() {
       collectStepPhase(vprHost.completedLocalResult());
   const StepPhaseCollectContext peerPhase =
       collectStepPhase(vprHost.completedPeerResult());
+  const bool finalOk =
+      !vprHost.failed() && vprHost.ready() && countersReached && markersReached &&
+      peerPacketsReached && vprHost.estimateValid() && stopped &&
+      finalModes.mode1Count == 1U && finalModes.mode2Count >= 4U;
 
   Serial.print(F("hcivprmultidemo ok="));
   Serial.print(finalOk ? 1 : 0);
@@ -3072,6 +3116,10 @@ void printHciVprMultiDemo() {
   Serial.print(vprHost.vprState().linkConfigId);
   Serial.print(F(" steps="));
   Serial.print(vprHost.completedLocalResult().header.numStepsReported);
+  Serial.print(F(" m1="));
+  Serial.print(finalModes.mode1Count);
+  Serial.print(F(" m2="));
+  Serial.print(finalModes.mode2Count);
   Serial.print(F(" perm="));
   for (uint8_t i = 0U; i < finalPermutations.count; ++i) {
     if (i != 0U) {

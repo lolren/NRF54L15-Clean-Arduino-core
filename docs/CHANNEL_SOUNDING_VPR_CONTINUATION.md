@@ -509,6 +509,8 @@ controller-backed CS, then higher wireless stacks.
    fallback responses.
 9. Only revisit CSR event signaling after the controller service is stable on
    shared-memory polling.
+10. Keep shifting the dedicated CS image upward from byte-shaping toward real
+    per-procedure layout ownership on VPR.
 
 ## Resume Checklist
 
@@ -523,12 +525,20 @@ When resuming this work:
 6. Confirm the built-in responder path still reaches `phase=ready` and the
    multi-procedure demo advances the procedure counter more than once.
 7. Only then start changing transport or controller behavior.
+8. Re-run `hcivprdumpdemo` after any dedicated-image layout change and confirm
+   the local/peer result dump still parses cleanly.
 
 ## Notes
 
 - The generated firmware header path bug was already fixed in the generator.
 - The initiator sketch still contains some now-unused demo helper code from the earlier script-driven phase. That is cleanup work, not a functional blocker.
 - The current repo docs already describe the feature as partial. Keep that wording until a real controller/runtime exists.
+- The dedicated CS image now publishes a mixed synthetic layout too:
+  - one invalid/unavailable mode-1 timing step at the start of procedures with
+    more than three phase steps
+  - followed by the existing mode-2 phase-tone steps
+  - continuation chunking is now based on actual encoded step sizes, not an
+    old fixed `8 bytes per step` assumption
 - The two attached boards were restored to `VprSharedTransportProbe` after the
   resume/restart experiments and both were left healthy on the known-good
   `svc=1.7` / `opmask=0x3FF` path.

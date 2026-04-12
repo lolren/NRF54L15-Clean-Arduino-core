@@ -236,6 +236,15 @@ Immediate next follow-up from this checkpoint:
 - the dedicated image now inserts a small VPR-owned delay between the last
   local result packet and the peer-result side of the same procedure instead
   of publishing both sides back-to-back in one fixed drain pattern
+- the dedicated image now owns part of the within-procedure layout too:
+  - procedures with more than three phase steps start with one invalid mode-1
+    timing step before the mode-2 tone steps
+  - this changes the result layout without perturbing the current `~0.75 m`
+    phase-distance regression because the synthetic RTT step is explicitly
+    unavailable
+  - continuation splitting is now derived from actual encoded step sizes, so
+    the mixed mode-1/mode-2 layout still chunks correctly on the dedicated
+    image
 
 This is the shortest path that advances the repo from "working VPR-backed CS
 demo" to "real BLE controller work is starting to move off CPUAPP".
