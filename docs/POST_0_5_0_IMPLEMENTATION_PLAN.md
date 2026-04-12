@@ -218,6 +218,9 @@ Immediate next follow-up from this checkpoint:
 - the dedicated image now varies its reported mode-2 antenna permutation index
   from `toneAntennaConfigSelection` instead of hard-coding one permutation for
   every staged tone
+- the dedicated image now has a validated mid-run disable path, so a raw
+  `Procedure Enable(enable=0)` can halt a configured run after the first
+  completed procedure instead of always letting the demo run to exhaustion
 
 This is the shortest path that advances the repo from "working VPR-backed CS
 demo" to "real BLE controller work is starting to move off CPUAPP".

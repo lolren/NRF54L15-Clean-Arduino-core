@@ -150,6 +150,7 @@ The key proof lines from the current built-in responder path are:
 - `hcivprtransportdemo ok=1 pumped=12 wrote=6/88 read=347/0 phase=ready ... ctrl_evt=11 peer_mark=1 peer_evt=2 cfg_ch=2,14,26,38 proc=1 dist_m=0.7499`
 - `hcivprstatedemo ok=1 bad_create=0xC bad_setproc=0xC bad_range=0x12 remove=0x0 post_remove=0xC ...`
 - `hcivprmultidemo ok=1 pumped=12 polled=5 proc=3 transitions=3 target=3 ctrl_evt=13 peer_mark=3 peer_evt=6 stopped=1 hb_gap=1297/1518 ... steps=5 perm=0,1,0,1,0 ch=26,38,2,14,26 dist_m=0.7499`
+- `hcivprabortdemo ok=1 pumped=12 pre_polls=1 post_polls=1 settle=0 built=1 wrote=1 pre_proc=1 stop_proc=1 final_proc=1 pre_mark=1 stop_mark=1 final_mark=1 flags=CSP- phase=ready ... dist_m=0.7491`
 - `hcivprlinkdemo ok=1 wrong_status=0x12 wrong_reject=1 removed=1 closed=1 reopened=1 refresh=1 link_conn=0x41 flags=CSP- ...`
 
 That proves:
@@ -218,6 +219,11 @@ That proves:
         indices from `toneAntennaConfigSelection` instead of hard-coding one
         permutation for every staged tone
       - the current multi-procedure proof ends on `perm=0,1,0,1,0`
+    - the dedicated image now has a validated mid-run disable path
+      - the host can issue a raw `Procedure Enable(enable=0)` after procedure 1
+      - the current abort proof ends on `pre_proc=1 final_proc=1` with
+        `flags=CSP-`, so VPR stops the run cleanly instead of scheduling
+        procedure 2
   - the dedicated image now rejects at least one real bad workflow edge instead
     of blindly succeeding for every CS command
     - `Set Procedure Parameters` before `Security Enable` now returns `0x0C`
@@ -274,6 +280,7 @@ The current validated live proof is:
 - `hcivprtransportdemo ok=1 pumped=12 wrote=6/88 read=282/0 phase=ready ... ctrl_evt=11 peer_trig=0 peer_mark=1 peer_evt=2 cfg_ch=2,14,26,38 cfg_steps=4-6 cfg_rep=2 proc=1 proc_cnt=5 proc_len=17 tone_sel=3 dist_m=0.7499`
 - `hcivprstatedemo ok=1 bad_create=0x12 bad_setproc=0xC bad_range=0x12 remove=0x0 post_remove=0xC phase=ready proc=1 proc_cnt=0 cfg=1 dist_m=0.7508`
 - `hcivprmultidemo ok=1 pumped=12 polled=5 proc=3 transitions=3 target=3 ctrl_evt=13 peer_mark=3 peer_evt=6 stopped=1 hb_gap=1297/1518 phase=ready steps=5 perm=0,1,0,1,0 ch=26,38,2,14,26 dist_m=0.7499`
+- `hcivprabortdemo ok=1 pumped=12 pre_polls=1 post_polls=1 settle=0 built=1 wrote=1 pre_proc=1 stop_proc=1 final_proc=1 pre_mark=1 stop_mark=1 final_mark=1 flags=CSP- phase=ready dist_m=0.7491`
 
 Those older `0.7499 m` demo-distance lines are now superseded by the current
 connection-scoped run logs above.
@@ -298,6 +305,9 @@ Current honest status:
   regardless of the configured create-config range
 - the synthetic mode-2 permutation metadata is now controller-owned too, not
   hard-coded to one permutation across the whole run
+- a direct host-issued `Procedure Enable(enable=0)` now stops the dedicated
+  image cleanly mid-run instead of forcing the demo to run to the configured
+  procedure count every time
 
 So the next follow-up on the CS side is:
 

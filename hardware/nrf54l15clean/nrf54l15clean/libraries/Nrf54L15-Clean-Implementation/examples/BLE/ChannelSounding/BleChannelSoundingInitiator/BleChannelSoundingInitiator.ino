@@ -2932,6 +2932,140 @@ void printHciVprMultiDemo() {
   }
 }
 
+void printHciVprAbortDemo() {
+  static constexpr uint16_t kDemoConnHandle = 0x0040U;
+  static constexpr uint16_t kTargetProcedureCount = 5U;
+
+  BleCsControllerVprHost vprHost;
+  BleCsControllerVprHostConfig hostConfig{};
+  BleCsControllerVprHost::fillDemoConfig(&hostConfig);
+  hostConfig.session.workflow.procedureParameters.maxProcedureCount =
+      kTargetProcedureCount;
+  hostConfig.session.workflow.procedureParameters.maxProcedureLen = 19U;
+  hostConfig.session.workflow.procedureParameters.minProcedureInterval = 220U;
+  hostConfig.session.workflow.procedureParameters.maxProcedureInterval = 320U;
+
+  bool ok = vprHost.resetTransport(true);
+  ok = ok && vprHost.loadDefaultTransportImage();
+  ok = ok && vprHost.bootTransport();
+  ok = ok && vprHost.beginHost(kDemoConnHandle, hostConfig);
+
+  uint8_t pumpCount = 0U;
+  while (ok && !vprHost.ready() && !vprHost.failed() && pumpCount < 48U) {
+    ok = vprHost.loopOnce();
+    ++pumpCount;
+  }
+
+  ok = ok && vprHost.ready();
+
+  uint8_t preDisablePolls = 0U;
+  while (ok && !vprHost.failed() &&
+         vprHost.sessionState().completedProcedureCounter < 1U &&
+         preDisablePolls < 32U) {
+    ok = vprHost.poll();
+    ++preDisablePolls;
+  }
+
+  const uint16_t preDisableProcedure =
+      vprHost.sessionState().completedProcedureCounter;
+  const uint8_t preDisablePeerMarkers =
+      vprHost.hostState().controllerPeerResultMarkers;
+
+  auto drainTransport = [&]() {
+    while (vprHost.transport().available() > 0) {
+      (void)vprHost.transport().read();
+    }
+  };
+
+  BleCsProcedureEnable disableParams{};
+  disableParams.configId = vprHost.workflowState().configComplete.configId;
+  disableParams.enable = 0U;
+  BleCsHciCommand disableCommand{};
+  const bool disableBuilt =
+      BleChannelSoundingRadio::buildHciProcedureEnableCommand(
+          kDemoConnHandle, disableParams, &disableCommand);
+  uint8_t disableResponse[64] = {0};
+  size_t disableResponseLen = 0U;
+  drainTransport();
+  VprControllerServiceHost directHost(&vprHost.transport());
+  const bool disableWritten =
+      disableBuilt &&
+      directHost.sendHciCommand(disableCommand.opcode, disableCommand.payload,
+                                disableCommand.payloadLen, disableResponse,
+                                sizeof(disableResponse), &disableResponseLen);
+  ok = ok && disableWritten;
+
+  uint8_t postDisablePolls = 0U;
+  while (ok && !vprHost.failed() && vprHost.vprState().linkProcedureEnabled &&
+         postDisablePolls < 24U) {
+    ok = vprHost.poll();
+    ++postDisablePolls;
+  }
+
+  const uint16_t stoppedProcedure = vprHost.sessionState().completedProcedureCounter;
+  const uint8_t stoppedPeerMarkers =
+      vprHost.hostState().controllerPeerResultMarkers;
+
+  uint8_t settlePolls = 0U;
+  while (ok && !vprHost.failed() && settlePolls < 24U) {
+    ok = vprHost.poll();
+    ++settlePolls;
+  }
+
+  const uint16_t finalProcedure = vprHost.sessionState().completedProcedureCounter;
+  const uint8_t finalPeerMarkers =
+      vprHost.hostState().controllerPeerResultMarkers;
+  const bool stopped = !vprHost.vprState().linkProcedureEnabled;
+  const bool haltedProcedures = finalProcedure == stoppedProcedure;
+  const bool haltedPeerMarkers = finalPeerMarkers == stoppedPeerMarkers;
+  const bool abortedEarly = finalProcedure < kTargetProcedureCount;
+  const bool passed = disableBuilt && disableWritten && stopped && abortedEarly &&
+                      haltedProcedures && haltedPeerMarkers &&
+                      preDisableProcedure >= 1U;
+
+  Serial.print(F("hcivprabortdemo ok="));
+  Serial.print(passed ? 1 : 0);
+  Serial.print(F(" pumped="));
+  Serial.print(pumpCount);
+  Serial.print(F(" pre_polls="));
+  Serial.print(preDisablePolls);
+  Serial.print(F(" post_polls="));
+  Serial.print(postDisablePolls);
+  Serial.print(F(" settle="));
+  Serial.print(settlePolls);
+  Serial.print(F(" built="));
+  Serial.print(disableBuilt ? 1 : 0);
+  Serial.print(F(" wrote="));
+  Serial.print(disableWritten ? 1 : 0);
+  Serial.print(F(" pre_proc="));
+  Serial.print(preDisableProcedure);
+  Serial.print(F(" stop_proc="));
+  Serial.print(stoppedProcedure);
+  Serial.print(F(" final_proc="));
+  Serial.print(finalProcedure);
+  Serial.print(F(" pre_mark="));
+  Serial.print(preDisablePeerMarkers);
+  Serial.print(F(" stop_mark="));
+  Serial.print(stoppedPeerMarkers);
+  Serial.print(F(" final_mark="));
+  Serial.print(finalPeerMarkers);
+  Serial.print(F(" flags="));
+  Serial.print(vprHost.vprState().linkConfigCreated ? 'C' : '-');
+  Serial.print(vprHost.vprState().linkSecurityEnabled ? 'S' : '-');
+  Serial.print(vprHost.vprState().linkProcedureParamsApplied ? 'P' : '-');
+  Serial.print(vprHost.vprState().linkProcedureEnabled ? 'E' : '-');
+  Serial.print(F(" phase="));
+  Serial.print(BleCsControllerWorkflow::phaseName(vprHost.workflowState().phase));
+  Serial.print(F(" last=0x"));
+  Serial.print(vprHost.workflowState().lastStatus, HEX);
+  Serial.print(F(" dist_m="));
+  if (vprHost.estimateValid()) {
+    Serial.println(vprHost.sessionState().estimate.distanceMeters, 4);
+  } else {
+    Serial.println(F("na"));
+  }
+}
+
 void printHciVprLinkDemo() {
   static constexpr uint16_t kDemoConnHandle = 0x0040U;
   static constexpr uint16_t kWrongConnHandle = 0x0041U;
@@ -3314,6 +3448,11 @@ void handleCalibrationCommand(const char* command) {
     return;
   }
 
+  if (strcmp(command, "hcivprabortdemo") == 0) {
+    printHciVprAbortDemo();
+    return;
+  }
+
   if (strcmp(command, "hcivprlinkdemo") == 0) {
     printHciVprLinkDemo();
     return;
@@ -3388,7 +3527,7 @@ void handleCalibrationCommand(const char* command) {
   }
 
   Serial.println(
-      F("commands=status|raw|stepdemo|stepestdemo|hcidemo|hcirttdemo|hcipktdemo|hciworkflowdemo|hcih4demo|hcisessiondemo|hcimixdemo|hcihostdemo|hcistreamdemo|hcivprtransportdemo|hcivprdumpdemo|hcivprstatedemo|hcivprmultidemo|hcivprlinkdemo|hcivprtracedemo|clear|zero|ref <m>|offset <m>|scale <factor>"));
+      F("commands=status|raw|stepdemo|stepestdemo|hcidemo|hcirttdemo|hcipktdemo|hciworkflowdemo|hcih4demo|hcisessiondemo|hcimixdemo|hcihostdemo|hcistreamdemo|hcivprtransportdemo|hcivprdumpdemo|hcivprstatedemo|hcivprmultidemo|hcivprabortdemo|hcivprlinkdemo|hcivprtracedemo|clear|zero|ref <m>|offset <m>|scale <factor>"));
 }
 
 void pollSerialCommands() {
@@ -3480,7 +3619,7 @@ void setup() {
   Serial.println(F("dfe_raw_capture=enabled"));
   Serial.println(F("control_channel=37"));
   Serial.println(F("pair_with=CoreBleChannelSoundingReflector"));
-  Serial.println(F("commands=status|raw|stepdemo|stepestdemo|hcidemo|hcirttdemo|hcipktdemo|hciworkflowdemo|hcih4demo|hcisessiondemo|hcimixdemo|hcihostdemo|hcistreamdemo|hcivprtransportdemo|hcivprdumpdemo|hcivprstatedemo|hcivprmultidemo|hcivprlinkdemo|hcivprtracedemo|clear|zero|ref <m>|offset <m>|scale <factor>"));
+  Serial.println(F("commands=status|raw|stepdemo|stepestdemo|hcidemo|hcirttdemo|hcipktdemo|hciworkflowdemo|hcih4demo|hcisessiondemo|hcimixdemo|hcihostdemo|hcistreamdemo|hcivprtransportdemo|hcivprdumpdemo|hcivprstatedemo|hcivprmultidemo|hcivprabortdemo|hcivprlinkdemo|hcivprtracedemo|clear|zero|ref <m>|offset <m>|scale <factor>"));
   uint8_t csChannelMap[kBleCsChannelMapBytes] = {0};
   BleChannelSoundingRadio::fillValidChannelMap(csChannelMap);
   Serial.print(F("cs_chmap[0..2]="));
