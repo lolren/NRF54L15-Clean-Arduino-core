@@ -543,6 +543,10 @@ static size_t append_h4_vendor_event(uint8_t *dst, size_t max_len, uint8_t subev
 static const uint8_t k_local_demo_pct_sample[3] = {0x00U, 0x04U, 0x00U};
 #if VPR_CS_DEDICATED_IMAGE
 static uint16_t current_step_count_group(void);
+enum {
+  VPR_CS_TONE_QUALITY_HIGH = 0x00U,
+  VPR_CS_TONE_QUALITY_MEDIUM = 0x01U,
+};
 static const uint8_t k_peer_demo_pct_samples[39][3] = {
     {0xF0U, 0xB3U, 0xF4U}, {0xE2U, 0xC3U, 0xF0U}, {0xD1U, 0xE3U, 0xECU},
     {0xBCU, 0x13U, 0xE9U}, {0xA3U, 0x63U, 0xE5U}, {0x86U, 0xC3U, 0xE1U},
@@ -572,7 +576,7 @@ static uint8_t current_demo_antenna_permutation(uint8_t step_index) {
 }
 
 static void append_mode2_sample_step(uint8_t *dst, uint8_t channel, uint8_t permutation_index,
-                                     const uint8_t pct[3]) {
+                                     uint8_t quality, const uint8_t pct[3]) {
   if (dst == NULL || pct == NULL) {
     return;
   }
@@ -583,11 +587,13 @@ static void append_mode2_sample_step(uint8_t *dst, uint8_t channel, uint8_t perm
   dst[4] = pct[0];
   dst[5] = pct[1];
   dst[6] = pct[2];
-  dst[7] = 0x00U;
+  dst[7] = (uint8_t)(quality & 0x0FU);
 }
 
 static void append_mode2_demo_step(uint8_t *dst, uint8_t channel, uint8_t step_index) {
   append_mode2_sample_step(dst, channel, current_demo_antenna_permutation(step_index),
+                           ((step_index & 0x01U) != 0U) ? VPR_CS_TONE_QUALITY_MEDIUM
+                                                        : VPR_CS_TONE_QUALITY_HIGH,
                            k_local_demo_pct_sample);
 }
 
@@ -595,7 +601,10 @@ static void append_mode2_demo_step(uint8_t *dst, uint8_t channel, uint8_t step_i
 static void append_mode2_peer_demo_step(uint8_t *dst, uint8_t channel, uint8_t step_index) {
   const uint8_t *pct =
       (channel < 39U) ? k_peer_demo_pct_samples[channel] : k_local_demo_pct_sample;
-  append_mode2_sample_step(dst, channel, current_demo_antenna_permutation(step_index), pct);
+  append_mode2_sample_step(dst, channel, current_demo_antenna_permutation(step_index),
+                           ((step_index & 0x01U) != 0U) ? VPR_CS_TONE_QUALITY_MEDIUM
+                                                        : VPR_CS_TONE_QUALITY_HIGH,
+                           pct);
 }
 
 static bool channel_map_bit_enabled(const uint8_t *channel_map, uint8_t bit) {

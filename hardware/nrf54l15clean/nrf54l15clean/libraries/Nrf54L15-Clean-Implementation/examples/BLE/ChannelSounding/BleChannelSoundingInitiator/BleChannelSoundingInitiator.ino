@@ -472,6 +472,11 @@ struct StepPermutationCollectContext {
   uint8_t count = 0U;
 };
 
+struct StepQualityCollectContext {
+  uint8_t quality[8] = {0U, 0U, 0U, 0U, 0U, 0U, 0U, 0U};
+  uint8_t count = 0U;
+};
+
 bool printStepDumpCallback(const BleCsSubeventStep* step, void* userData) {
   StepDumpContext* ctx = static_cast<StepDumpContext*>(userData);
   if (step == nullptr || ctx == nullptr || ctx->printed >= 4U) {
@@ -536,6 +541,21 @@ bool collectStepPermutationCallback(const BleCsSubeventStep* step, void* userDat
   return true;
 }
 
+bool collectStepQualityCallback(const BleCsSubeventStep* step, void* userData) {
+  StepQualityCollectContext* ctx = static_cast<StepQualityCollectContext*>(userData);
+  if (step == nullptr || ctx == nullptr || step->mode != kBleCsMainMode2) {
+    return true;
+  }
+  BleCsStepToneInfo tone{};
+  if (!BleChannelSoundingRadio::parseMode2ToneInfo(step, 0U, &tone)) {
+    return false;
+  }
+  if (ctx->count < 8U) {
+    ctx->quality[ctx->count++] = tone.qualityIndicator;
+  }
+  return true;
+}
+
 StepChannelCollectContext collectStepChannels(const BleCsSubeventResult& result) {
   StepChannelCollectContext ctx{};
   BleChannelSoundingRadio::parseSubeventStepData(result.stepData, result.stepDataLen,
@@ -547,6 +567,13 @@ StepPermutationCollectContext collectStepPermutations(const BleCsSubeventResult&
   StepPermutationCollectContext ctx{};
   BleChannelSoundingRadio::parseSubeventStepData(result.stepData, result.stepDataLen,
                                                  collectStepPermutationCallback, &ctx);
+  return ctx;
+}
+
+StepQualityCollectContext collectStepQuality(const BleCsSubeventResult& result) {
+  StepQualityCollectContext ctx{};
+  BleChannelSoundingRadio::parseSubeventStepData(result.stepData, result.stepDataLen,
+                                                 collectStepQualityCallback, &ctx);
   return ctx;
 }
 
@@ -2866,6 +2893,8 @@ void printHciVprMultiDemo() {
       collectStepChannels(vprHost.completedLocalResult());
   const StepPermutationCollectContext finalPermutations =
       collectStepPermutations(vprHost.completedLocalResult());
+  const StepQualityCollectContext finalQuality =
+      collectStepQuality(vprHost.completedLocalResult());
 
   Serial.print(F("hcivprmultidemo ok="));
   Serial.print(ok ? 1 : 0);
@@ -2916,6 +2945,13 @@ void printHciVprMultiDemo() {
       Serial.print(',');
     }
     Serial.print(finalPermutations.permutations[i]);
+  }
+  Serial.print(F(" ql="));
+  for (uint8_t i = 0U; i < finalQuality.count; ++i) {
+    if (i != 0U) {
+      Serial.print(',');
+    }
+    Serial.print(finalQuality.quality[i]);
   }
   Serial.print(F(" ch="));
   for (uint8_t i = 0U; i < finalChannels.count; ++i) {

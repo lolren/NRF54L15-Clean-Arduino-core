@@ -221,6 +221,8 @@ Immediate next follow-up from this checkpoint:
 - the dedicated image now has a validated mid-run disable path, so a raw
   `Procedure Enable(enable=0)` can halt a configured run after the first
   completed procedure instead of always letting the demo run to exhaustion
+- the dedicated image now varies its synthetic mode-2 quality nibble across
+  staged steps instead of reporting fixed `high` quality for every tone
 
 This is the shortest path that advances the repo from "working VPR-backed CS
 demo" to "real BLE controller work is starting to move off CPUAPP".
