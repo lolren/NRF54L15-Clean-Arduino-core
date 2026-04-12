@@ -14,8 +14,8 @@
           "architecture": "nrf54l15clean",
           "version": "0.6.7",
           "category": "Arduino",
-          "url": "https://github.com/lolren/nrf54-arduino-core/releases/download/v0.6.7/nrf54l15clean-0.6.7.tar.bz2",
-          "archiveFileName": "nrf54l15clean-0.6.7.tar.bz2",
+          "url": "https://github.com/lolren/nrf54-arduino-core/releases/download/v0.6.7/nrf54l15clean-0.6.7-r2.tar.bz2",
+          "archiveFileName": "nrf54l15clean-0.6.7-r2.tar.bz2",
           "checksum": "SHA-256:6a2565a380c838bec204b7ca01a4220d1e614adc4e5070ccde11dbd5254b3845",
           "size": "861345",
           "boards": [
