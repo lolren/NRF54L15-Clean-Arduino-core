@@ -603,27 +603,50 @@ static bool channel_map_has_enabled_channels(const uint8_t *channel_map) {
   return false;
 }
 
-static uint32_t pack_demo_channels(const uint8_t channels[4]) {
-  uint32_t packed = 0U;
-  if (channels == NULL) {
-    return 0U;
+static uint16_t current_channel_selection_group(void) {
+  uint16_t procedure_index = (g_cs_procedure_counter > 0U) ? (uint16_t)(g_cs_procedure_counter - 1U)
+                                                           : 0U;
+  if (g_cs_channel_map_repetition > 1U) {
+    procedure_index = (uint16_t)(procedure_index / g_cs_channel_map_repetition);
   }
-  for (uint8_t i = 0U; i < 4U; ++i) {
-    packed |= ((uint32_t)channels[i] << (8U * i));
-  }
-  return packed;
+  return procedure_index;
 }
 
-static uint32_t current_demo_channels_packed(void) {
+static uint16_t current_step_count_group(void) {
+  uint16_t procedure_index = (g_cs_procedure_counter > 0U) ? (uint16_t)(g_cs_procedure_counter - 1U)
+                                                           : 0U;
+  if (g_cs_main_mode_repetition > 1U) {
+    procedure_index = (uint16_t)(procedure_index / g_cs_main_mode_repetition);
+  }
+  return procedure_index;
+}
+
+static uint8_t current_demo_step_count(void) {
+  uint8_t min_steps = (g_cs_min_main_mode_steps != 0U) ? g_cs_min_main_mode_steps : 1U;
+  uint8_t max_steps = (g_cs_max_main_mode_steps >= min_steps) ? g_cs_max_main_mode_steps
+                                                              : min_steps;
+  uint8_t count = min_steps;
+  if (max_steps > min_steps) {
+    const uint8_t span = (uint8_t)(max_steps - min_steps + 1U);
+    count = (uint8_t)(min_steps + (current_step_count_group() % span));
+  }
+  if (count > 6U) {
+    count = 6U;
+  }
+  return count;
+}
+
+static uint8_t fill_demo_channels_for_procedure(uint8_t *out_channels, uint8_t channel_count) {
   const uint32_t fallback_packed =
       (g_cs_demo_channels_packed != 0U) ? g_cs_demo_channels_packed : g_host_transport->reserved;
   uint8_t enabled[40];
-  uint8_t selected[4];
   uint8_t count = 0U;
   uint8_t jump = 1U;
-  uint16_t procedure_index = 0U;
-  uint16_t procedure_group = 0U;
   uint8_t start = 0U;
+
+  if (out_channels == NULL || channel_count == 0U) {
+    return 0U;
+  }
 
   for (uint8_t bit = 0U; bit < 40U; ++bit) {
     if (channel_map_bit_enabled(g_cs_channel_map, bit)) {
@@ -632,24 +655,21 @@ static uint32_t current_demo_channels_packed(void) {
   }
 
   if (count == 0U) {
-    return fallback_packed;
-  }
-
-  procedure_index = (g_cs_procedure_counter > 0U) ? (uint16_t)(g_cs_procedure_counter - 1U) : 0U;
-  procedure_group = procedure_index;
-  if (g_cs_channel_map_repetition > 1U) {
-    procedure_group = (uint16_t)(procedure_index / g_cs_channel_map_repetition);
+    for (uint8_t i = 0U; i < channel_count; ++i) {
+      const uint8_t shift = (uint8_t)((i & 0x03U) * 8U);
+      out_channels[i] = (uint8_t)((fallback_packed >> shift) & 0xFFU);
+    }
+    return channel_count;
   }
 
   if (g_cs_channel_selection_type == 1U && g_cs_ch3c_jump > 0U) {
     jump = g_cs_ch3c_jump;
   }
-  start = (uint8_t)((procedure_group * jump) % count);
-
-  for (uint8_t i = 0U; i < 4U; ++i) {
-    selected[i] = enabled[(uint8_t)((start + i) % count)];
+  start = (uint8_t)((current_channel_selection_group() * jump) % count);
+  for (uint8_t i = 0U; i < channel_count; ++i) {
+    out_channels[i] = enabled[(uint8_t)((start + i) % count)];
   }
-  return pack_demo_channels(selected);
+  return channel_count;
 }
 
 static void update_demo_channels_from_create_config(void) {
@@ -1045,16 +1065,27 @@ static size_t build_procedure_enable_complete_payload(uint8_t *payload, size_t m
 
 static size_t build_subevent_initial_payload(uint8_t *payload, size_t max_len,
                                              uint16_t conn_handle) {
-  const uint32_t channels =
-#if VPR_CS_DEDICATED_IMAGE
-      current_demo_channels_packed();
-#else
-      g_host_transport->reserved;
-#endif
-  if (payload == NULL || max_len < 31U) {
+  if (payload == NULL || max_len < 39U) {
     return 0U;
   }
-  bytes_zero(payload, 31U);
+  uint8_t channels[6];
+  uint8_t step_count = 4U;
+  uint8_t initial_steps = 2U;
+#if VPR_CS_DEDICATED_IMAGE
+  step_count = current_demo_step_count();
+  if (step_count == 0U) {
+    step_count = 1U;
+  }
+  initial_steps = (uint8_t)((step_count + 1U) / 2U);
+  fill_demo_channels_for_procedure(channels, step_count);
+#else
+  const uint32_t packed_channels = g_host_transport->reserved;
+  channels[0] = (uint8_t)(packed_channels & 0xFFU);
+  channels[1] = (uint8_t)((packed_channels >> 8U) & 0xFFU);
+  channels[2] = (uint8_t)((packed_channels >> 16U) & 0xFFU);
+  channels[3] = (uint8_t)((packed_channels >> 24U) & 0xFFU);
+#endif
+  bytes_zero(payload, max_len);
   write_le16(&payload[0], conn_handle);
 #if VPR_CS_DEDICATED_IMAGE
   payload[2] = g_cs_config_id;
@@ -1073,24 +1104,40 @@ static size_t build_subevent_initial_payload(uint8_t *payload, size_t max_len,
   payload[11] = 0x01U;
   payload[12] = 0U;
   payload[13] = 2U;
-  payload[14] = 2U;
-  append_mode2_demo_step(&payload[15], (uint8_t)(channels & 0xFFU));
-  append_mode2_demo_step(&payload[23], (uint8_t)((channels >> 8U) & 0xFFU));
-  return 31U;
+  payload[14] = initial_steps;
+  size_t offset = 15U;
+  for (uint8_t i = 0U; i < initial_steps; ++i) {
+    append_mode2_demo_step(&payload[offset], channels[i]);
+    offset += 8U;
+  }
+  return offset;
 }
 
 static size_t build_subevent_continue_payload(uint8_t *payload, size_t max_len,
                                               uint16_t conn_handle) {
-  const uint32_t channels =
-#if VPR_CS_DEDICATED_IMAGE
-      current_demo_channels_packed();
-#else
-      g_host_transport->reserved;
-#endif
-  if (payload == NULL || max_len < 24U) {
+  if (payload == NULL || max_len < 32U) {
     return 0U;
   }
-  bytes_zero(payload, 24U);
+  uint8_t channels[6];
+  uint8_t step_count = 4U;
+  uint8_t initial_steps = 2U;
+  uint8_t continue_steps = 2U;
+#if VPR_CS_DEDICATED_IMAGE
+  step_count = current_demo_step_count();
+  if (step_count == 0U) {
+    step_count = 1U;
+  }
+  initial_steps = (uint8_t)((step_count + 1U) / 2U);
+  continue_steps = (uint8_t)(step_count - initial_steps);
+  fill_demo_channels_for_procedure(channels, step_count);
+#else
+  const uint32_t packed_channels = g_host_transport->reserved;
+  channels[0] = (uint8_t)(packed_channels & 0xFFU);
+  channels[1] = (uint8_t)((packed_channels >> 8U) & 0xFFU);
+  channels[2] = (uint8_t)((packed_channels >> 16U) & 0xFFU);
+  channels[3] = (uint8_t)((packed_channels >> 24U) & 0xFFU);
+#endif
+  bytes_zero(payload, max_len);
   write_le16(&payload[0], conn_handle);
 #if VPR_CS_DEDICATED_IMAGE
   payload[2] = g_cs_config_id;
@@ -1101,20 +1148,30 @@ static size_t build_subevent_continue_payload(uint8_t *payload, size_t max_len,
   payload[4] = 0U;
   payload[5] = 0U;
   payload[6] = 2U;
-  payload[7] = 2U;
-  append_mode2_demo_step(&payload[8], (uint8_t)((channels >> 16U) & 0xFFU));
-  append_mode2_demo_step(&payload[16], (uint8_t)((channels >> 24U) & 0xFFU));
-  return 24U;
+  payload[7] = continue_steps;
+  size_t offset = 8U;
+  for (uint8_t i = 0U; i < continue_steps; ++i) {
+    append_mode2_demo_step(&payload[offset], channels[initial_steps + i]);
+    offset += 8U;
+  }
+  return offset;
 }
 
 #if VPR_CS_DEDICATED_IMAGE
 static size_t build_peer_subevent_initial_payload(uint8_t *payload, size_t max_len,
                                                   uint16_t conn_handle) {
-  const uint32_t channels = current_demo_channels_packed();
-  if (payload == NULL || max_len < 31U) {
+  if (payload == NULL || max_len < 39U) {
     return 0U;
   }
-  bytes_zero(payload, 31U);
+  uint8_t channels[6];
+  uint8_t step_count = current_demo_step_count();
+  uint8_t initial_steps = 2U;
+  if (step_count == 0U) {
+    step_count = 1U;
+  }
+  initial_steps = (uint8_t)((step_count + 1U) / 2U);
+  fill_demo_channels_for_procedure(channels, step_count);
+  bytes_zero(payload, max_len);
   write_le16(&payload[0], conn_handle);
   payload[2] = g_cs_config_id;
   write_le16(&payload[3], 0x1234U);
@@ -1125,29 +1182,44 @@ static size_t build_peer_subevent_initial_payload(uint8_t *payload, size_t max_l
   payload[11] = 0x01U;
   payload[12] = 0U;
   payload[13] = 2U;
-  payload[14] = 2U;
-  append_mode2_peer_demo_step(&payload[15], (uint8_t)(channels & 0xFFU));
-  append_mode2_peer_demo_step(&payload[23], (uint8_t)((channels >> 8U) & 0xFFU));
-  return 31U;
+  payload[14] = initial_steps;
+  size_t offset = 15U;
+  for (uint8_t i = 0U; i < initial_steps; ++i) {
+    append_mode2_peer_demo_step(&payload[offset], channels[i]);
+    offset += 8U;
+  }
+  return offset;
 }
 
 static size_t build_peer_subevent_continue_payload(uint8_t *payload, size_t max_len,
                                                    uint16_t conn_handle) {
-  const uint32_t channels = current_demo_channels_packed();
-  if (payload == NULL || max_len < 24U) {
+  if (payload == NULL || max_len < 32U) {
     return 0U;
   }
-  bytes_zero(payload, 24U);
+  uint8_t channels[6];
+  uint8_t step_count = current_demo_step_count();
+  uint8_t initial_steps = 2U;
+  uint8_t continue_steps = 2U;
+  if (step_count == 0U) {
+    step_count = 1U;
+  }
+  initial_steps = (uint8_t)((step_count + 1U) / 2U);
+  continue_steps = (uint8_t)(step_count - initial_steps);
+  fill_demo_channels_for_procedure(channels, step_count);
+  bytes_zero(payload, max_len);
   write_le16(&payload[0], conn_handle);
   payload[2] = g_cs_config_id;
   payload[3] = 0U;
   payload[4] = 0U;
   payload[5] = 0U;
   payload[6] = 2U;
-  payload[7] = 2U;
-  append_mode2_peer_demo_step(&payload[8], (uint8_t)((channels >> 16U) & 0xFFU));
-  append_mode2_peer_demo_step(&payload[16], (uint8_t)((channels >> 24U) & 0xFFU));
-  return 24U;
+  payload[7] = continue_steps;
+  size_t offset = 8U;
+  for (uint8_t i = 0U; i < continue_steps; ++i) {
+    append_mode2_peer_demo_step(&payload[offset], channels[initial_steps + i]);
+    offset += 8U;
+  }
+  return offset;
 }
 #endif
 

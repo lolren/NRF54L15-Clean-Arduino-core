@@ -212,6 +212,9 @@ Immediate next follow-up from this checkpoint:
 - the dedicated image now also spaces later procedures with a VPR-owned
   heartbeat interval derived from the configured procedure interval instead of
   publishing the whole run back-to-back
+- the dedicated image now varies its staged mode-2 step count from the
+  configured `min/max main-mode steps` instead of always emitting a fixed
+  four-step synthetic payload
 
 This is the shortest path that advances the repo from "working VPR-backed CS
 demo" to "real BLE controller work is starting to move off CPUAPP".

@@ -36,7 +36,7 @@ SECTIONS
   .stack (NOLOAD) :
   {
     . = ALIGN(16);
-    . = . + 0x400;
+    . = . + 0x3C0;
     . = ALIGN(16);
   } > RAM
 

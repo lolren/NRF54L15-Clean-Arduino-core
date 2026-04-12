@@ -463,7 +463,7 @@ struct StepDumpContext {
 };
 
 struct StepChannelCollectContext {
-  uint8_t channels[4] = {0U, 0U, 0U, 0U};
+  uint8_t channels[8] = {0U, 0U, 0U, 0U, 0U, 0U, 0U, 0U};
   uint8_t count = 0U;
 };
 
@@ -503,7 +503,7 @@ bool collectStepChannelCallback(const BleCsSubeventStep* step, void* userData) {
   if (step == nullptr || ctx == nullptr) {
     return false;
   }
-  if (ctx->count < 4U) {
+  if (ctx->count < 8U) {
     ctx->channels[ctx->count++] = step->channel;
   }
   return true;
@@ -2872,6 +2872,8 @@ void printHciVprMultiDemo() {
   Serial.print(vprHost.vprState().linkProcedureEnabled ? 'E' : '-');
   Serial.print(F(" vpr_cfg="));
   Serial.print(vprHost.vprState().linkConfigId);
+  Serial.print(F(" steps="));
+  Serial.print(vprHost.completedLocalResult().header.numStepsReported);
   Serial.print(F(" ch="));
   for (uint8_t i = 0U; i < finalChannels.count; ++i) {
     if (i != 0U) {
