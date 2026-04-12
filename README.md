@@ -207,9 +207,10 @@ Important module note:
 
 - `LED_BUILTIN` is a default Blink/demo pad on the bare module variants, not a guaranteed onboard LED
 - Raspberry Pi Debugprobe on Pico is validated on the module boards with `pyOCD`
-- XIAO board-control helpers still compile on the module variants; unsupported RF
-  antenna helpers are harmless no-ops and the Arduino status wrapper reports
-  them as unsupported instead of pretending the RF switch exists
+- XIAO board-control helpers still compile on the module variants; antenna
+  selection helpers remain harmless no-ops, while RF-path power ownership is
+  emulated in software so BLE/Zigbee bring-up still works on the fixed module
+  antenna path
 
 Full module reference:
 

@@ -3,12 +3,26 @@
 
 #include <string.h>
 
+namespace {
+
+// Bare modules have a fixed RF path with no controllable switch. Keep a small
+// software-side ownership bit so BLE/Zigbee HAL code that expects RF-path
+// acquire/release semantics continues to work without gating the radio off.
+static uint8_t g_fixedRfPathEnabled = 1U;
+
+}  // namespace
+
 extern "C" uint8_t arduinoXiaoNrf54l15SetAntenna(uint8_t) { return 0U; }
 extern "C" uint8_t arduinoXiaoNrf54l15GetAntenna(void) {
     return static_cast<uint8_t>(XIAO_NRF54L15_ANTENNA_CERAMIC);
 }
-extern "C" uint8_t arduinoXiaoNrf54l15SetRfSwitchPower(uint8_t) { return 0U; }
-extern "C" uint8_t arduinoXiaoNrf54l15GetRfSwitchPower(void) { return 0U; }
+extern "C" uint8_t arduinoXiaoNrf54l15SetRfSwitchPower(uint8_t enabled) {
+    g_fixedRfPathEnabled = enabled ? 1U : 0U;
+    return 1U;
+}
+extern "C" uint8_t arduinoXiaoNrf54l15GetRfSwitchPower(void) {
+    return g_fixedRfPathEnabled;
+}
 extern "C" uint8_t arduinoXiaoNrf54l15SetBatteryEnable(uint8_t) { return 1U; }
 extern "C" uint8_t arduinoXiaoNrf54l15GetBatteryEnable(void) { return 0U; }
 extern "C" uint8_t arduinoXiaoNrf54l15SetImuMicEnable(uint8_t) { return 1U; }

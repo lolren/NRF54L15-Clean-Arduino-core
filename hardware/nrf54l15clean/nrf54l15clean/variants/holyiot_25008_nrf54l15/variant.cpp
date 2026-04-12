@@ -3,12 +3,26 @@
 
 #include <string.h>
 
+namespace {
+
+// HOLYIOT-25008 has a fixed RF path with no XIAO-style switch hardware. Track
+// the requested state in software so the BLE/Zigbee HAL can keep its
+// RF-path ownership model without treating the board as radio-disabled.
+static uint8_t g_fixedRfPathEnabled = 1U;
+
+}  // namespace
+
 extern "C" uint8_t arduinoXiaoNrf54l15SetAntenna(uint8_t) { return 0U; }
 extern "C" uint8_t arduinoXiaoNrf54l15GetAntenna(void) {
     return static_cast<uint8_t>(XIAO_NRF54L15_ANTENNA_CERAMIC);
 }
-extern "C" uint8_t arduinoXiaoNrf54l15SetRfSwitchPower(uint8_t) { return 0U; }
-extern "C" uint8_t arduinoXiaoNrf54l15GetRfSwitchPower(void) { return 0U; }
+extern "C" uint8_t arduinoXiaoNrf54l15SetRfSwitchPower(uint8_t enabled) {
+    g_fixedRfPathEnabled = enabled ? 1U : 0U;
+    return 1U;
+}
+extern "C" uint8_t arduinoXiaoNrf54l15GetRfSwitchPower(void) {
+    return g_fixedRfPathEnabled;
+}
 extern "C" uint8_t arduinoXiaoNrf54l15SetBatteryEnable(uint8_t) { return 1U; }
 extern "C" uint8_t arduinoXiaoNrf54l15GetBatteryEnable(void) { return 0U; }
 extern "C" uint8_t arduinoXiaoNrf54l15SetImuMicEnable(uint8_t) { return 1U; }

@@ -118,7 +118,10 @@ The module variants intentionally keep the XIAO Arduino numbering on the shared
 GPIO set so XIAO sketches can usually be rebuilt without source edits.
 
 Board-specific XIAO helper symbols are also kept available so sketches still
-compile, but unsupported RF antenna helpers do not drive any module pin:
+compile. On the module variants the antenna path is physically fixed, so:
 
-- `xiaoNrf54l15SetAntenna(...)` is a harmless no-op on the module variants
-- `arduinoXiaoNrf54l15SetAntenna(...)` returns `0` to report unsupported RF switch control
+- `xiaoNrf54l15SetAntenna(...)` is still a harmless no-op
+- BLE/Zigbee RF-path ownership is tracked in software so radio bring-up works
+  on the fixed module antenna path
+- raw Arduino antenna-status helpers should still be treated as informational,
+  not as proof that a real RF switch exists

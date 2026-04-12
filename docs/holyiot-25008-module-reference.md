@@ -99,7 +99,8 @@ closer to source-compatible:
 
 - `D0..D15` keep the shared numbering
 - XIAO helper symbols remain available so sketches still compile
-- unsupported XIAO RF helpers stay as harmless no-ops on this board
+- antenna-selection helpers stay as harmless no-ops, while BLE/Zigbee RF-path
+  ownership is emulated in software for the board's fixed antenna path
 
 That means:
 
