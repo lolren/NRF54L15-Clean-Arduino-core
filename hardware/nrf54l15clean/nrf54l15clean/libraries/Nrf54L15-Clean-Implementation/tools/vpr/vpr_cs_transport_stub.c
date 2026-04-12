@@ -805,6 +805,38 @@ static bool current_demo_result_has_continue(void) {
   return current_demo_step_count() > 3U;
 }
 
+static uint16_t current_demo_acl_event_counter(void) {
+  return (uint16_t)(0x1200U + (current_channel_selection_group() * 0x10U) +
+                    current_step_count_group());
+}
+
+static uint16_t current_demo_frequency_compensation(void) {
+  return (uint16_t)(0x0010U + ((current_channel_selection_group() & 0x0FU) << 2U) +
+                    (current_step_count_group() & 0x03U));
+}
+
+static int8_t current_demo_reference_power_dbm(void) {
+  int16_t dbm = (int16_t)g_cs_max_tx_power_dbm + (int16_t)g_cs_tx_power_delta;
+  if (dbm < -127) {
+    dbm = -127;
+  }
+  if (dbm > 20) {
+    dbm = 20;
+  }
+  return (int8_t)dbm;
+}
+
+static uint8_t current_demo_num_antenna_paths(void) {
+  uint8_t count = g_cs_tone_antenna_config_selection;
+  if (count == 0U) {
+    count = 1U;
+  }
+  if (count > 4U) {
+    count = 4U;
+  }
+  return count;
+}
+
 static uint8_t fill_demo_channels_for_procedure(uint8_t *out_channels, uint8_t channel_count) {
   const uint32_t fallback_packed =
       (g_cs_demo_channels_packed != 0U) ? g_cs_demo_channels_packed : g_host_transport->reserved;
@@ -1266,21 +1298,25 @@ static size_t build_subevent_initial_payload(uint8_t *payload, size_t max_len,
   write_le16(&payload[0], conn_handle);
 #if VPR_CS_DEDICATED_IMAGE
   payload[2] = g_cs_config_id;
+  write_le16(&payload[3], current_demo_acl_event_counter());
+  write_le16(&payload[7], current_demo_frequency_compensation());
+  payload[9] = (uint8_t)current_demo_reference_power_dbm();
+  payload[13] = current_demo_num_antenna_paths();
 #else
   payload[2] = 1U;
-#endif
   write_le16(&payload[3], 0x1234U);
+  write_le16(&payload[7], 0U);
+  payload[9] = 0U;
+  payload[13] = 2U;
+#endif
 #if VPR_CS_DEDICATED_IMAGE
   write_le16(&payload[5], g_cs_procedure_counter);
 #else
   write_le16(&payload[5], 7U);
 #endif
-  write_le16(&payload[7], 0U);
-  payload[9] = 0U;
   payload[10] = has_continue ? 0x01U : 0x00U;
   payload[11] = has_continue ? 0x01U : 0x00U;
   payload[12] = 0U;
-  payload[13] = 2U;
   payload[14] = initial_steps;
   size_t offset = 15U;
   for (uint8_t i = 0U; i < initial_steps; ++i) {
@@ -1330,13 +1366,14 @@ static size_t build_subevent_continue_payload(uint8_t *payload, size_t max_len,
   write_le16(&payload[0], conn_handle);
 #if VPR_CS_DEDICATED_IMAGE
   payload[2] = g_cs_config_id;
+  payload[6] = current_demo_num_antenna_paths();
 #else
   payload[2] = 1U;
+  payload[6] = 2U;
 #endif
   payload[3] = 0U;
   payload[4] = 0U;
   payload[5] = 0U;
-  payload[6] = 2U;
   payload[7] = continue_steps;
   size_t offset = 8U;
   for (uint8_t i = 0U; i < continue_steps; ++i) {
@@ -1372,14 +1409,14 @@ static size_t build_peer_subevent_initial_payload(uint8_t *payload, size_t max_l
   bytes_zero(payload, max_len);
   write_le16(&payload[0], conn_handle);
   payload[2] = g_cs_config_id;
-  write_le16(&payload[3], 0x1234U);
+  write_le16(&payload[3], current_demo_acl_event_counter());
   write_le16(&payload[5], g_cs_procedure_counter);
-  write_le16(&payload[7], 0U);
-  payload[9] = 0U;
+  write_le16(&payload[7], current_demo_frequency_compensation());
+  payload[9] = (uint8_t)current_demo_reference_power_dbm();
   payload[10] = has_continue ? 0x01U : 0x00U;
   payload[11] = has_continue ? 0x01U : 0x00U;
   payload[12] = 0U;
-  payload[13] = 2U;
+  payload[13] = current_demo_num_antenna_paths();
   payload[14] = initial_steps;
   size_t offset = 15U;
   for (uint8_t i = 0U; i < initial_steps; ++i) {
@@ -1422,7 +1459,7 @@ static size_t build_peer_subevent_continue_payload(uint8_t *payload, size_t max_
   payload[3] = 0U;
   payload[4] = 0U;
   payload[5] = 0U;
-  payload[6] = 2U;
+  payload[6] = current_demo_num_antenna_paths();
   payload[7] = continue_steps;
   size_t offset = 8U;
   for (uint8_t i = 0U; i < continue_steps; ++i) {

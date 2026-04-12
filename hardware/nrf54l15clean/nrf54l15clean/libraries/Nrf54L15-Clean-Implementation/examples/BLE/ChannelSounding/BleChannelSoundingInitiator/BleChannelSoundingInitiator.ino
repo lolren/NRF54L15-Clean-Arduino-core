@@ -677,6 +677,14 @@ void printSubeventResultDump(const __FlashStringHelper* label,
   Serial.print(result.header.configId);
   Serial.print(F(" proc="));
   Serial.print(result.header.procedureCounter);
+  Serial.print(F(" acl=0x"));
+  Serial.print(result.header.startAclConnEventCounter, HEX);
+  Serial.print(F(" fc=0x"));
+  Serial.print(result.header.frequencyCompensation, HEX);
+  Serial.print(F(" pwr="));
+  Serial.print(static_cast<int>(result.header.referencePowerLevelDbm));
+  Serial.print(F(" ant="));
+  Serial.print(static_cast<unsigned int>(result.header.numAntennaPaths));
   Serial.print(F(" steps="));
   Serial.print(result.header.numStepsReported);
   Serial.print(F(" bytes="));

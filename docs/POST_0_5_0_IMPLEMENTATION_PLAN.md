@@ -230,6 +230,9 @@ Immediate next follow-up from this checkpoint:
 - the dedicated image now decides CS result continuation chunking from actual
   packet budget instead of hard-coding one half-and-half split for every
   procedure
+- the dedicated image now drives synthetic CS result header fields from
+  controller-side state too, including ACL event counter, frequency
+  compensation, reference power, and reported antenna-path count
 
 This is the shortest path that advances the repo from "working VPR-backed CS
 demo" to "real BLE controller work is starting to move off CPUAPP".
