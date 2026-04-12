@@ -905,6 +905,14 @@ struct BleCsControllerVprHostState {
   uint32_t lastError = 0U;
   bool running = false;
   bool secureAccessEnabled = false;
+  bool linkSessionOpen = false;
+  uint16_t linkConnHandle = 0U;
+  uint8_t linkConfigId = 0U;
+  uint16_t linkProcedureCounter = 0U;
+  bool linkConfigCreated = false;
+  bool linkSecurityEnabled = false;
+  bool linkProcedureParamsApplied = false;
+  bool linkProcedureEnabled = false;
 };
 
 class BleCsControllerVprHost {
@@ -917,6 +925,7 @@ class BleCsControllerVprHost {
   bool addScriptResponse(uint16_t opcode, const uint8_t* response, size_t len);
   bool loadDefaultTransportImage();
   bool bootTransport(uint32_t readySpinLimit = 100000UL);
+  bool refreshLinkSession();
   bool beginHost(uint16_t connHandle, const BleCsControllerVprHostConfig& config);
   bool pumpCommands();
   bool poll();

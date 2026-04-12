@@ -3179,6 +3179,14 @@ void BleCsControllerVprHost::reset() {
 
 bool BleCsControllerVprHost::resetTransport(bool clearScripts) {
   const bool ok = transport_.resetSharedState(clearScripts);
+  vprState_.linkSessionOpen = false;
+  vprState_.linkConnHandle = 0U;
+  vprState_.linkConfigId = 0U;
+  vprState_.linkProcedureCounter = 0U;
+  vprState_.linkConfigCreated = false;
+  vprState_.linkSecurityEnabled = false;
+  vprState_.linkProcedureParamsApplied = false;
+  vprState_.linkProcedureEnabled = false;
   syncVprState();
   return ok;
 }
@@ -3205,6 +3213,11 @@ bool BleCsControllerVprHost::bootTransport(uint32_t readySpinLimit) {
   const bool ok = transport_.waitReady(readySpinLimit);
   syncVprState();
   return ok;
+}
+
+bool BleCsControllerVprHost::refreshLinkSession() {
+  syncVprState();
+  return vprState_.running && vprState_.transportStatus != 0U;
 }
 
 bool BleCsControllerVprHost::beginHost(uint16_t connHandle,
@@ -3297,6 +3310,15 @@ void BleCsControllerVprHost::syncVprState() {
   vprState_.lastError = transport_.lastError();
   vprState_.running = transport_.isRunning();
   vprState_.secureAccessEnabled = transport_.secureAccessEnabled();
+  const uint32_t packedLinkState = transport_.reservedState();
+  vprState_.linkConnHandle = static_cast<uint16_t>(packedLinkState & 0xFFFFU);
+  vprState_.linkSessionOpen = (packedLinkState & (1UL << 16U)) != 0U;
+  vprState_.linkConfigCreated = (packedLinkState & (1UL << 17U)) != 0U;
+  vprState_.linkSecurityEnabled = (packedLinkState & (1UL << 18U)) != 0U;
+  vprState_.linkProcedureParamsApplied = (packedLinkState & (1UL << 19U)) != 0U;
+  vprState_.linkProcedureEnabled = (packedLinkState & (1UL << 20U)) != 0U;
+  vprState_.linkConfigId = static_cast<uint8_t>((packedLinkState >> 21U) & 0xFFU);
+  vprState_.linkProcedureCounter = 0U;
 }
 
 BleCsDfeCaptureInfo BleChannelSoundingRadio::lastDfeCaptureInfo() const {

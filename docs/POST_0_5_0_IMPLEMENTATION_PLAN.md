@@ -182,5 +182,22 @@ service slice:
 - existing demo commands remain as regressions until the connected path is
   proven
 
+Current checkpoint on that todo:
+
+- one real handle-scoped CS session now exists on the dedicated VPR image
+- `Remove Config` closes that session again cleanly
+- the control-plane regressions are green:
+  - `hcivprtracedemo`
+  - `hcivprstatedemo`
+  - `hcivprmultidemo`
+  - `hcivprlinkdemo`
+
+Immediate next follow-up from this checkpoint:
+
+- investigate the synthetic built-in CS result pair, which now estimates
+  `~1.51 m` instead of the older `~0.75 m`
+- then keep replacing synthetic built-in result publication with more actual
+  controller-owned behavior on VPR
+
 This is the shortest path that advances the repo from "working VPR-backed CS
 demo" to "real BLE controller work is starting to move off CPUAPP".

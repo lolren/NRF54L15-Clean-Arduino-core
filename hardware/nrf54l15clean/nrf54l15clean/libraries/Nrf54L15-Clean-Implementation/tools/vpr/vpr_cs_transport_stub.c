@@ -109,6 +109,7 @@ static uint8_t g_pending_cs_result_stage = 0U;
 typedef struct __attribute__((packed)) {
   uint8_t configId;
   uint16_t procedureCounter;
+  uint16_t sessionConnHandle;
   uint32_t demoChannelsPacked;
   uint8_t mainModeType;
   uint8_t subModeType;
@@ -139,11 +140,13 @@ typedef struct __attribute__((packed)) {
   uint8_t securityEnabled;
   uint8_t procedureParamsApplied;
   uint8_t procedureEnabled;
+  uint8_t sessionOpen;
 } vpr_cs_dedicated_state_t;
 
 static vpr_cs_dedicated_state_t g_cs_state = {
     .configId = 1U,
     .procedureCounter = 0U,
+    .sessionConnHandle = 0U,
     .demoChannelsPacked = 0x241A0E02U,
     .mainModeType = BLE_CS_MAIN_MODE2,
     .subModeType = 0xFFU,
@@ -175,10 +178,12 @@ static vpr_cs_dedicated_state_t g_cs_state = {
     .securityEnabled = 0U,
     .procedureParamsApplied = 0U,
     .procedureEnabled = 0U,
+    .sessionOpen = 0U,
 };
 
 #define g_cs_config_id g_cs_state.configId
 #define g_cs_procedure_counter g_cs_state.procedureCounter
+#define g_cs_session_conn_handle g_cs_state.sessionConnHandle
 #define g_cs_demo_channels_packed g_cs_state.demoChannelsPacked
 #define g_cs_main_mode_type g_cs_state.mainModeType
 #define g_cs_sub_mode_type g_cs_state.subModeType
@@ -209,6 +214,7 @@ static vpr_cs_dedicated_state_t g_cs_state = {
 #define g_cs_security_enabled g_cs_state.securityEnabled
 #define g_cs_procedure_params_applied g_cs_state.procedureParamsApplied
 #define g_cs_procedure_enabled g_cs_state.procedureEnabled
+#define g_cs_session_open g_cs_state.sessionOpen
 #endif
 #if !VPR_CS_DEDICATED_IMAGE
 static uint32_t g_pending_hibernate = 0U;
@@ -223,6 +229,8 @@ enum {
   BLE_CS_HCI_STATUS_COMMAND_DISALLOWED = 0x0CU,
   BLE_CS_HCI_STATUS_INVALID_PARAMS = 0x12U,
 };
+
+static void clear_active_cs_state(void);
 #endif
 
 static inline void fence_rw(void) {
@@ -262,6 +270,54 @@ static void bytes_copy(void *dst, const void *src, size_t len) {
     out[i] = in[i];
   }
 }
+
+#if VPR_CS_DEDICATED_IMAGE
+static void reset_dedicated_cs_state(void) {
+  g_cs_config_id = 1U;
+  g_cs_procedure_counter = 0U;
+  g_cs_session_conn_handle = 0U;
+  g_cs_demo_channels_packed = 0x241A0E02U;
+  g_cs_main_mode_type = BLE_CS_MAIN_MODE2;
+  g_cs_sub_mode_type = 0xFFU;
+  g_cs_min_main_mode_steps = 3U;
+  g_cs_max_main_mode_steps = 5U;
+  g_cs_main_mode_repetition = 1U;
+  g_cs_mode0_steps = 1U;
+  g_cs_role = 0U;
+  g_cs_rtt_type = 1U;
+  g_cs_cs_sync_phy = 2U;
+  g_cs_channel_map[0] = 0xFFU;
+  g_cs_channel_map[1] = 0xFFU;
+  g_cs_channel_map[2] = 0xFFU;
+  g_cs_channel_map[3] = 0xFFU;
+  g_cs_channel_map[4] = 0x1FU;
+  g_cs_channel_map[5] = 0x00U;
+  g_cs_channel_map[6] = 0x00U;
+  g_cs_channel_map[7] = 0x00U;
+  g_cs_channel_map[8] = 0x00U;
+  g_cs_channel_map[9] = 0x00U;
+  g_cs_channel_map_repetition = 1U;
+  g_cs_channel_selection_type = 1U;
+  g_cs_ch3c_shape = 1U;
+  g_cs_ch3c_jump = 3U;
+  g_cs_enhancements1 = 0x01U;
+  g_cs_max_tx_power_dbm = -8;
+  g_cs_max_procedure_len = 12U;
+  g_cs_min_procedure_interval = 200U;
+  g_cs_max_procedure_interval = 300U;
+  g_cs_max_procedure_count = 8U;
+  g_cs_min_subevent_len = 0x000456UL;
+  g_cs_max_subevent_len = 0x000678UL;
+  g_cs_tone_antenna_config_selection = 2U;
+  g_cs_phy = 2U;
+  g_cs_tx_power_delta = -6;
+  g_cs_config_created = 0U;
+  g_cs_security_enabled = 0U;
+  g_cs_procedure_params_applied = 0U;
+  g_cs_procedure_enabled = 0U;
+  g_cs_session_open = 0U;
+}
+#endif
 
 static void zero_vpr_data(void) {
   for (uint32_t i = 0U; i < NRF54L15_VPR_TRANSPORT_MAX_VPR_DATA; ++i) {
@@ -388,6 +444,30 @@ static uint16_t read_conn_handle(void) {
   return (uint16_t)g_host_transport->hostData[4] |
          ((uint16_t)g_host_transport->hostData[5] << 8U);
 }
+
+static uint16_t current_conn_handle(void) {
+#if VPR_CS_DEDICATED_IMAGE
+  return (g_cs_session_open != 0U) ? g_cs_session_conn_handle : read_conn_handle();
+#else
+  return read_conn_handle();
+#endif
+}
+
+#if VPR_CS_DEDICATED_IMAGE
+static uint32_t current_link_state_packed(void) {
+  return ((uint32_t)g_cs_session_conn_handle) |
+         ((g_cs_session_open != 0U ? 1UL : 0UL) << 16U) |
+         ((g_cs_config_created != 0U ? 1UL : 0UL) << 17U) |
+         ((g_cs_security_enabled != 0U ? 1UL : 0UL) << 18U) |
+         ((g_cs_procedure_params_applied != 0U ? 1UL : 0UL) << 19U) |
+         ((g_cs_procedure_enabled != 0U ? 1UL : 0UL) << 20U) |
+         ((uint32_t)g_cs_config_id << 21U);
+}
+
+static bool command_conn_handle_matches_active_link(void) {
+  return (g_cs_session_open != 0U) && (read_conn_handle() == g_cs_session_conn_handle);
+}
+#endif
 
 static size_t append_h4_command_status(uint8_t *dst, size_t max_len, uint16_t opcode,
                                        uint8_t status) {
@@ -592,6 +672,10 @@ static uint8_t validate_create_config_command(void) {
   if (g_host_transport->hostLen < 32U || g_host_transport->hostData[0] != 0x01U) {
     return BLE_CS_HCI_STATUS_INVALID_PARAMS;
   }
+  if (!command_conn_handle_matches_active_link()) {
+    return (g_cs_session_open != 0U) ? BLE_CS_HCI_STATUS_INVALID_PARAMS
+                                     : BLE_CS_HCI_STATUS_COMMAND_DISALLOWED;
+  }
 
   const uint8_t config_id = g_host_transport->hostData[6];
   const uint8_t min_steps = g_host_transport->hostData[10];
@@ -633,11 +717,16 @@ static void clear_active_cs_state(void) {
   g_cs_procedure_params_applied = 0U;
   g_cs_procedure_enabled = 0U;
   g_pending_cs_result_stage = 0U;
+  g_cs_procedure_counter = 0U;
 }
 
 static uint8_t validate_remove_config_command(void) {
   if (g_host_transport->hostLen < 7U || g_host_transport->hostData[0] != 0x01U) {
     return BLE_CS_HCI_STATUS_INVALID_PARAMS;
+  }
+  if (!command_conn_handle_matches_active_link()) {
+    return (g_cs_session_open != 0U) ? BLE_CS_HCI_STATUS_INVALID_PARAMS
+                                     : BLE_CS_HCI_STATUS_COMMAND_DISALLOWED;
   }
   if (g_cs_config_created == 0U) {
     return BLE_CS_HCI_STATUS_COMMAND_DISALLOWED;
@@ -652,6 +741,10 @@ static uint8_t validate_security_enable_command(void) {
   if (g_host_transport->hostLen < 6U || g_host_transport->hostData[0] != 0x01U) {
     return BLE_CS_HCI_STATUS_INVALID_PARAMS;
   }
+  if (!command_conn_handle_matches_active_link()) {
+    return (g_cs_session_open != 0U) ? BLE_CS_HCI_STATUS_INVALID_PARAMS
+                                     : BLE_CS_HCI_STATUS_COMMAND_DISALLOWED;
+  }
   if (g_cs_config_created == 0U) {
     return BLE_CS_HCI_STATUS_COMMAND_DISALLOWED;
   }
@@ -660,12 +753,21 @@ static uint8_t validate_security_enable_command(void) {
 
 static uint8_t validate_set_procedure_params_command(void) {
   if (g_host_transport->hostLen < 27U || g_host_transport->hostData[0] != 0x01U) {
+    g_vpr_transport->lastError = 0xD1U;
     return BLE_CS_HCI_STATUS_INVALID_PARAMS;
   }
+  if (!command_conn_handle_matches_active_link()) {
+    g_vpr_transport->lastError = (g_cs_session_open != 0U) ? 0xD2U : 0xD3U;
+    return (g_cs_session_open != 0U) ? BLE_CS_HCI_STATUS_INVALID_PARAMS
+                                     : BLE_CS_HCI_STATUS_COMMAND_DISALLOWED;
+  }
   if (g_cs_config_created == 0U || g_cs_security_enabled == 0U) {
+    g_vpr_transport->lastError =
+        (g_cs_config_created == 0U) ? 0xD4U : 0xD5U;
     return BLE_CS_HCI_STATUS_COMMAND_DISALLOWED;
   }
   if (g_host_transport->hostData[6] != g_cs_config_id) {
+    g_vpr_transport->lastError = 0xD6U;
     return BLE_CS_HCI_STATUS_INVALID_PARAMS;
   }
   {
@@ -678,32 +780,58 @@ static uint8_t validate_set_procedure_params_command(void) {
     if (max_procedure_len == 0U || min_interval == 0U || max_interval < min_interval ||
         max_count == 0U || min_subevent_len == 0U ||
         max_subevent_len < min_subevent_len) {
+      g_vpr_transport->lastError = 0xD7U;
       return BLE_CS_HCI_STATUS_INVALID_PARAMS;
     }
   }
+  g_vpr_transport->lastError = 0U;
   return BLE_CS_HCI_STATUS_SUCCESS;
 }
 
 static uint8_t validate_procedure_enable_command(void) {
   if (g_host_transport->hostLen < 8U || g_host_transport->hostData[0] != 0x01U) {
+    g_vpr_transport->lastError = 0xE1U;
     return BLE_CS_HCI_STATUS_INVALID_PARAMS;
   }
+  if (!command_conn_handle_matches_active_link()) {
+    g_vpr_transport->lastError = (g_cs_session_open != 0U) ? 0xE2U : 0xE3U;
+    return (g_cs_session_open != 0U) ? BLE_CS_HCI_STATUS_INVALID_PARAMS
+                                     : BLE_CS_HCI_STATUS_COMMAND_DISALLOWED;
+  }
   if (g_cs_config_created == 0U) {
+    g_vpr_transport->lastError = 0xE4U;
     return BLE_CS_HCI_STATUS_COMMAND_DISALLOWED;
   }
   if (g_host_transport->hostData[6] != g_cs_config_id) {
+    g_vpr_transport->lastError = 0xE5U;
     return BLE_CS_HCI_STATUS_INVALID_PARAMS;
   }
   if (g_host_transport->hostData[7] > 1U) {
+    g_vpr_transport->lastError = 0xE6U;
     return BLE_CS_HCI_STATUS_INVALID_PARAMS;
   }
   if (g_host_transport->hostData[7] == 0U) {
+    g_vpr_transport->lastError = 0U;
     return BLE_CS_HCI_STATUS_SUCCESS;
   }
   if (g_cs_security_enabled == 0U || g_cs_procedure_params_applied == 0U) {
+    g_vpr_transport->lastError =
+        (g_cs_security_enabled == 0U) ? 0xE7U : 0xE8U;
     return BLE_CS_HCI_STATUS_COMMAND_DISALLOWED;
   }
+  g_vpr_transport->lastError = 0U;
   return BLE_CS_HCI_STATUS_SUCCESS;
+}
+
+static uint8_t validate_read_remote_caps_command(void) {
+  if (g_host_transport->hostLen < 6U || g_host_transport->hostData[0] != 0x01U) {
+    return BLE_CS_HCI_STATUS_INVALID_PARAMS;
+  }
+  if (g_cs_session_open == 0U) {
+    return BLE_CS_HCI_STATUS_SUCCESS;
+  }
+  return (read_conn_handle() == g_cs_session_conn_handle) ? BLE_CS_HCI_STATUS_SUCCESS
+                                                          : BLE_CS_HCI_STATUS_INVALID_PARAMS;
 }
 #endif
 
@@ -1228,19 +1356,31 @@ static void build_unknown_command_response(uint16_t opcode) {
 
 static bool publish_builtin_response_for_opcode(uint16_t opcode) {
   uint8_t payload[40];
-  uint16_t conn_handle = read_conn_handle();
+  uint16_t conn_handle = current_conn_handle();
   size_t offset = 0U;
   zero_vpr_data();
 
   switch (opcode) {
     case BLE_CS_HCI_OP_READ_REMOTE_SUPPORTED_CAPABILITIES: {
+      uint8_t status = 0U;
+#if VPR_CS_DEDICATED_IMAGE
+      status = validate_read_remote_caps_command();
+      if (status == BLE_CS_HCI_STATUS_SUCCESS && g_cs_session_open == 0U) {
+        clear_active_cs_state();
+        g_cs_session_conn_handle = conn_handle;
+        g_cs_session_open = 1U;
+      }
+#endif
       size_t len = append_h4_command_status((uint8_t *)g_vpr_transport->vprData + offset,
                                             NRF54L15_VPR_TRANSPORT_MAX_VPR_DATA - offset,
-                                            opcode, 0U);
+                                            opcode, status);
       if (len == 0U) {
         return false;
       }
       offset += len;
+      if (status != 0U) {
+        break;
+      }
       len = build_remote_caps_payload(payload, sizeof(payload), conn_handle);
       if (len == 0U) {
         return false;
@@ -1304,6 +1444,8 @@ static bool publish_builtin_response_for_opcode(uint16_t opcode) {
       status = validate_remove_config_command();
       if (status == 0U) {
         clear_active_cs_state();
+        g_cs_session_open = 0U;
+        g_cs_session_conn_handle = 0U;
       }
 #endif
       size_t len = append_h4_command_complete((uint8_t *)g_vpr_transport->vprData + offset,
@@ -1593,7 +1735,7 @@ static bool publish_pending_cs_result_packet(void) {
   uint8_t payload[40];
   uint8_t packet[96];
   size_t len = 0U;
-  uint16_t conn_handle = read_conn_handle();
+  uint16_t conn_handle = current_conn_handle();
   if (g_pending_cs_result_stage == 0U ||
       (g_vpr_transport->vprFlags & NRF54L15_VPR_TRANSPORT_FLAG_PENDING) != 0U ||
       host_request_pending()) {
@@ -1722,7 +1864,7 @@ static bool consume_host_request(uint32_t host_seq) {
   return true;
 }
 
-__attribute__((noreturn)) void vpr_main(void) {
+__attribute__((noreturn, used, externally_visible)) void vpr_main(void) {
   uint32_t last_seq = 0U;
 #if !VPR_CS_DEDICATED_IMAGE
   const bool restored_from_hibernate = restore_hibernate_state();
@@ -1763,10 +1905,9 @@ __attribute__((noreturn)) void vpr_main(void) {
   g_pending_cs_result_stage = 0U;
   g_pending_hibernate = 0U;
 #else
-  g_vpr_transport->reserved = 0U;
+  reset_dedicated_cs_state();
+  g_vpr_transport->reserved = current_link_state_packed();
   g_pending_cs_result_stage = 0U;
-  g_cs_config_id = 1U;
-  g_cs_procedure_counter = 0U;
 #endif
   fence_rw();
 
@@ -1789,10 +1930,15 @@ __attribute__((noreturn)) void vpr_main(void) {
 
     const uint32_t host_seq = g_host_transport->hostSeq;
     const uint32_t host_flags = g_host_transport->hostFlags;
+#if !VPR_CS_DEDICATED_IMAGE
     g_vpr_transport->reserved =
         ((host_seq & 0xFFFFU) << 16U) |
         ((host_flags & NRF54L15_VPR_TRANSPORT_FLAG_PENDING) != 0U ? 0x2U : 0U) |
         0x4U;
+#else
+    (void)host_flags;
+    g_vpr_transport->reserved = current_link_state_packed();
+#endif
     fence_rw();
 
     if ((host_seq != last_seq) && host_request_pending()) {

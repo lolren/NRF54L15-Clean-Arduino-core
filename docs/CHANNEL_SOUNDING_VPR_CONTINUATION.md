@@ -6,6 +6,19 @@ This note is the resume point for the current Channel Sounding and VPR transport
 
 The clean core now has a real VPR-backed transport path for controller-style Channel Sounding bring-up.
 
+The latest local slice moved the dedicated CS image past a stateless demo
+responder:
+
+- one real connection-scoped CS link session now lives on VPR
+- the session binds on the first successful
+  `Read Remote Supported Capabilities`
+- later CS commands must use the same connection handle
+- `Remove Config` now tears the active link session down fully
+- the dedicated image now explicitly reinitializes its CS state on boot instead
+  of relying on static-image data staying sane across reloads
+- the reserved VPR CS image window is now `0x1180` bytes at
+  `0x2003EC80 - 0x2003FE00`
+
 The same transport is also now proven beyond CS through the built-in generic
 controller-service path:
 
@@ -100,6 +113,8 @@ The important milestone already passed:
 - the VPR-backed host wrapper drives the CS workflow
 - the VPR stub has built-in fallback responders for the supported CS opcode set
 - the initiator no longer needs to preload script responses from the sketch for the working demo path
+- the dedicated CS image now owns one real handle-scoped controller session
+  instead of only a globally permissive demo state
 
 Working demo command on the initiator sketch:
 
@@ -119,16 +134,29 @@ Validated logs:
 - `/home/lolren/Desktop/Nrf54L15/.build/vpr_resume_autorun/board2_swd_fix8.log`
 - `/home/lolren/Desktop/Nrf54L15/.build/cs_dedicated_runtime/init.log`
 - `/home/lolren/Desktop/Nrf54L15/.build/cs_repo_final_runtime/init.log`
+- `/home/lolren/Desktop/Nrf54L15/.build/cs_vpr_connscoped_final/hcivprtracedemo.log`
+- `/home/lolren/Desktop/Nrf54L15/.build/cs_vpr_connscoped_final/hcivprtransportdemo.log`
+- `/home/lolren/Desktop/Nrf54L15/.build/cs_vpr_connscoped_final/hcivprstatedemo.log`
+- `/home/lolren/Desktop/Nrf54L15/.build/cs_vpr_connscoped_final/hcivprmultidemo.log`
+- `/home/lolren/Desktop/Nrf54L15/.build/cs_vpr_connscoped_final/hcivprlinkdemo.log`
 
 The key proof lines from the current built-in responder path are:
 
-- `hcivprtransportdemo ok=1 pumped=12 wrote=6/88 read=217/63 phase=ready ... ctrl_evt=11 peer_trig=1 peer_evt=2 cfg_ch=2,14,26,38 proc=1 dist_m=0.7499`
+- `hcivprtracedemo ok=1 remote=0x0 create=0x0 security=0x0 setproc=0x0 procen=0x0 states=0x10/11/13/17/1F errs=0x0/0/0/0/0 ...`
+- `hcivprtransportdemo ok=1 pumped=12 wrote=6/88 read=347/0 phase=ready ... ctrl_evt=11 peer_mark=1 peer_evt=2 cfg_ch=2,14,26,38 proc=1 dist_m=1.5099`
+- `hcivprstatedemo ok=1 bad_create=0xC bad_setproc=0xC bad_range=0x12 remove=0x0 post_remove=0xC ...`
+- `hcivprmultidemo ok=1 pumped=12 polled=4 proc=3 transitions=3 target=3 ctrl_evt=13 peer_mark=3 peer_evt=6 ... dist_m=1.5099`
+- `hcivprlinkdemo ok=1 wrong_status=0x12 wrong_reject=1 removed=1 closed=1 reopened=1 refresh=1 link_conn=0x41 flags=CSP- ...`
 
 That proves:
 
 - commands were sent through the VPR transport
 - the workflow reached `ready`
 - the supported opcode set was answered correctly by the VPR stub fallback
+- the dedicated image now enforces handle-scoped CS ownership instead of
+  accepting every command against a global demo slot
+- the active link state now survives normal command sequencing correctly but is
+  reset cleanly on boot and after `Remove Config`
 - subevent data flowed back far enough to produce an estimate
 - the synthetic peer-result path no longer needs sketch-local or CPUAPP library
   packet building for the VPR demo
@@ -204,6 +232,32 @@ The current validated live proof is:
 - `hcivprtransportdemo ok=1 pumped=12 wrote=6/88 read=282/0 phase=ready ... ctrl_evt=11 peer_trig=0 peer_mark=1 peer_evt=2 cfg_ch=2,14,26,38 cfg_steps=4-6 cfg_rep=2 proc=1 proc_cnt=5 proc_len=17 tone_sel=3 dist_m=0.7499`
 - `hcivprstatedemo ok=1 bad_create=0x12 bad_setproc=0xC bad_range=0x12 remove=0x0 post_remove=0xC phase=ready proc=1 proc_cnt=0 cfg=1 dist_m=0.7508`
 - `hcivprmultidemo ok=1 pumped=12 polled=4 proc=3 transitions=3 target=3 ctrl_evt=13 peer_mark=3 peer_evt=6 phase=ready dist_m=0.7499`
+
+Those older `0.7499 m` demo-distance lines are now superseded by the current
+connection-scoped run logs above.
+
+## Current Remaining Quirk
+
+The controller/state slice is now in better shape than the synthetic demo
+ranging slice.
+
+Current honest status:
+
+- command/state ownership on VPR is working for one real link session
+- the transport, state, multi-procedure, and link-handle demos are green
+- the built-in synthetic ranging path is no longer returning the old nominal
+  `~0.75 m` estimate on the current dedicated-image path
+  - the current isolated proof logs show `dist_m=1.5099`
+  - that is a synthetic-demo calibration/result-shaping issue, not a fresh
+    session-state failure
+
+So the next follow-up on the CS side is:
+
+- keep the current connection-scoped VPR session model
+- investigate why the synthetic local/peer result pair now lands at
+  `~1.51 m` instead of the older `~0.75 m`
+- do not confuse that with the control-plane/link-state work, which is now
+  behaving correctly
 
 The same size budget applies to CS demo configuration. A dedicated vendor opcode
 for demo-channel configuration was tested and worked functionally, but it pushed

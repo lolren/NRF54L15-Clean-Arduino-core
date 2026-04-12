@@ -899,15 +899,30 @@ bool VprSharedTransportStream::poll() {
   return pullResponse();
 }
 
-uint32_t VprSharedTransportStream::heartbeat() const { return vprShared()->heartbeat; }
+uint32_t VprSharedTransportStream::heartbeat() const {
+  invalidateCpuSystemCache();
+  return vprShared()->heartbeat;
+}
 
 uint16_t VprSharedTransportStream::lastOpcode() const {
+  invalidateCpuSystemCache();
   return static_cast<uint16_t>(vprShared()->lastOpcode & 0xFFFFU);
 }
 
-uint32_t VprSharedTransportStream::transportStatus() const { return vprShared()->status; }
+uint32_t VprSharedTransportStream::transportStatus() const {
+  invalidateCpuSystemCache();
+  return vprShared()->status;
+}
 
-uint32_t VprSharedTransportStream::lastError() const { return vprShared()->lastError; }
+uint32_t VprSharedTransportStream::lastError() const {
+  invalidateCpuSystemCache();
+  return vprShared()->lastError;
+}
+
+uint32_t VprSharedTransportStream::reservedState() const {
+  invalidateCpuSystemCache();
+  return vprShared()->reserved;
+}
 
 uint32_t VprSharedTransportStream::initPc() const { return VprControl::initPc(); }
 
