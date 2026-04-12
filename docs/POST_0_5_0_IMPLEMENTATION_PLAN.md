@@ -201,6 +201,9 @@ Immediate next follow-up from this checkpoint:
     stack reserve
   - the dedicated image now has a larger window and explicit stack headroom,
     and the demo estimate is back at `~0.75 m`
+- the host/session diagnostics now hold a stable completed local/peer pair
+  instead of exposing whichever in-flight procedure most recently updated the
+  reassemblers
 
 This is the shortest path that advances the repo from "working VPR-backed CS
 demo" to "real BLE controller work is starting to move off CPUAPP".

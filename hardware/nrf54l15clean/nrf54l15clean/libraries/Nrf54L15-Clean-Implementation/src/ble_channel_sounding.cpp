@@ -2593,7 +2593,11 @@ BleCsControllerSession::BleCsControllerSession()
       localReassembler_{},
       peerReassembler_{},
       localResult_{},
-      peerResult_{} {}
+      peerResult_{},
+      completedLocalResult_{},
+      completedPeerResult_{},
+      completedLocalStepData_{0},
+      completedPeerStepData_{0} {}
 
 void BleCsControllerSession::reset() {
   config_ = BleCsControllerSessionConfig{};
@@ -2609,6 +2613,8 @@ void BleCsControllerSession::reset() {
   peerReassembler_.reset();
   localResult_ = BleCsSubeventResult{};
   peerResult_ = BleCsSubeventResult{};
+  completedLocalResult_ = BleCsSubeventResult{};
+  completedPeerResult_ = BleCsSubeventResult{};
 }
 
 bool BleCsControllerSession::begin(uint16_t connHandle,
@@ -2690,6 +2696,14 @@ const BleCsSubeventResult& BleCsControllerSession::peerResult() const {
   return peerResult_;
 }
 
+const BleCsSubeventResult& BleCsControllerSession::completedLocalResult() const {
+  return completedLocalResult_;
+}
+
+const BleCsSubeventResult& BleCsControllerSession::completedPeerResult() const {
+  return completedPeerResult_;
+}
+
 bool BleCsControllerSession::onWorkflowPacket(const uint8_t* packet,
                                               size_t packetLen,
                                               void* userData) {
@@ -2747,6 +2761,28 @@ bool BleCsControllerSession::consumeResultPacket(BleCsControllerResultSource sou
   return true;
 }
 
+bool BleCsControllerSession::snapshotCompletedResultPair() {
+  if (localResult_.stepData == nullptr || peerResult_.stepData == nullptr ||
+      localResult_.stepDataLen > sizeof(completedLocalStepData_) ||
+      peerResult_.stepDataLen > sizeof(completedPeerStepData_)) {
+    return false;
+  }
+
+  completedLocalResult_ = localResult_;
+  completedPeerResult_ = peerResult_;
+  if (localResult_.stepDataLen > 0U) {
+    memcpy(completedLocalStepData_, localResult_.stepData, localResult_.stepDataLen);
+  }
+  if (peerResult_.stepDataLen > 0U) {
+    memcpy(completedPeerStepData_, peerResult_.stepData, peerResult_.stepDataLen);
+  }
+  completedLocalResult_.stepData =
+      (localResult_.stepDataLen > 0U) ? completedLocalStepData_ : nullptr;
+  completedPeerResult_.stepData =
+      (peerResult_.stepDataLen > 0U) ? completedPeerStepData_ : nullptr;
+  return true;
+}
+
 void BleCsControllerSession::updateEstimateIfComplete() {
   if (!localResult_.isComplete || !peerResult_.isComplete) {
     return;
@@ -2756,15 +2792,19 @@ void BleCsControllerSession::updateEstimateIfComplete() {
       localResult_.header.procedureCounter != peerResult_.header.procedureCounter) {
     return;
   }
+  if (!snapshotCompletedResultPair()) {
+    return;
+  }
   BleCsEstimate estimate{};
   if (!BleChannelSoundingRadio::estimateDistanceFromSubeventResults(
-          localResult_, peerResult_, config_.localRoleIsInitiator, &estimate)) {
+          completedLocalResult_, completedPeerResult_, config_.localRoleIsInitiator,
+          &estimate)) {
     return;
   }
   state_.estimate = estimate;
   state_.estimateValid = estimate.valid;
-  state_.completedProcedureCounter = localResult_.header.procedureCounter;
-  state_.completedConfigId = localResult_.header.configId;
+  state_.completedProcedureCounter = completedLocalResult_.header.procedureCounter;
+  state_.completedConfigId = completedLocalResult_.header.configId;
 }
 
 BleCsControllerHost::BleCsControllerHost()
@@ -2952,6 +2992,14 @@ const BleCsSubeventResult& BleCsControllerHost::peerResult() const {
   return session_.peerResult();
 }
 
+const BleCsSubeventResult& BleCsControllerHost::completedLocalResult() const {
+  return session_.completedLocalResult();
+}
+
+const BleCsSubeventResult& BleCsControllerHost::completedPeerResult() const {
+  return session_.completedPeerResult();
+}
+
 bool BleCsControllerHost::onControllerPacket(const uint8_t* packet,
                                              size_t packetLen,
                                              void* userData) {
@@ -3099,6 +3147,14 @@ const BleCsSubeventResult& BleCsControllerStreamHost::localResult() const {
 
 const BleCsSubeventResult& BleCsControllerStreamHost::peerResult() const {
   return host_.peerResult();
+}
+
+const BleCsSubeventResult& BleCsControllerStreamHost::completedLocalResult() const {
+  return host_.completedLocalResult();
+}
+
+const BleCsSubeventResult& BleCsControllerStreamHost::completedPeerResult() const {
+  return host_.completedPeerResult();
 }
 
 bool BleCsControllerStreamHost::onSendPacket(const uint8_t* packet,
@@ -3327,6 +3383,14 @@ const BleCsSubeventResult& BleCsControllerVprHost::localResult() const {
 
 const BleCsSubeventResult& BleCsControllerVprHost::peerResult() const {
   return host_.peerResult();
+}
+
+const BleCsSubeventResult& BleCsControllerVprHost::completedLocalResult() const {
+  return host_.completedLocalResult();
+}
+
+const BleCsSubeventResult& BleCsControllerVprHost::completedPeerResult() const {
+  return host_.completedPeerResult();
 }
 
 VprSharedTransportStream& BleCsControllerVprHost::transport() { return transport_; }

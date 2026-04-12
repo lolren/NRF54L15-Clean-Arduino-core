@@ -207,11 +207,17 @@ That proves:
       VPR side
   - both the local and peer CS result headers now reflect that state
   - CPUAPP no longer fabricates peer result packets for the dedicated-image path
-  - the synthetic built-in result pair is back at the intended nominal distance
-    after giving the dedicated image real stack headroom
-    - the earlier `~1.51 m` regression was not bad phase math
-    - it came from a near-full VPR image window with no explicit stack reserve,
-      which corrupted later peer step bytes at runtime
+- the synthetic built-in result pair is back at the intended nominal distance
+  after giving the dedicated image real stack headroom
+  - the earlier `~1.51 m` regression was not bad phase math
+  - it came from a near-full VPR image window with no explicit stack reserve,
+    which corrupted later peer step bytes at runtime
+- the controller session now snapshots the last completed matched local/peer
+  subevent-result pair into stable host-side storage
+  - the new `hcivprdumpdemo` dump path now reports that completed pair instead
+    of whichever in-flight procedure the reassemblers most recently touched
+  - this keeps the VPR diagnostics coherent even when the local side has
+    already advanced into the next procedure by the time the sketch prints
 
 ## Built-In VPR Stub Behavior
 

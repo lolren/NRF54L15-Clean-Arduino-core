@@ -2547,8 +2547,8 @@ void printHciVprDumpDemo() {
   } else {
     Serial.println(F("na"));
   }
-  printSubeventResultDump(F("local"), vprHost.localResult());
-  printSubeventResultDump(F("peer"), vprHost.peerResult());
+  printSubeventResultDump(F("local"), vprHost.completedLocalResult());
+  printSubeventResultDump(F("peer"), vprHost.completedPeerResult());
 }
 
 void printHciVprStateDemo() {

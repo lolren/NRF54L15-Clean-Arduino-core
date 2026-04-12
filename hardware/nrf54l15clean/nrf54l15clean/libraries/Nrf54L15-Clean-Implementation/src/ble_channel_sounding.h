@@ -57,6 +57,7 @@ constexpr uint8_t kBleHciEvtCommandComplete = 0x0EU;
 constexpr uint8_t kBleHciEvtCommandStatus = 0x0FU;
 constexpr uint8_t kBleHciEvtLeMeta = 0x3EU;
 constexpr uint8_t kBleHciEvtVendor = 0xFFU;
+constexpr size_t kBleCsMaxControllerStepDataBytes = 1024U;
 
 struct BleCsToneSample {
   bool valid = false;
@@ -630,7 +631,7 @@ class BleCsSubeventResultReassembler {
                                 BleCsSubeventResult* outResult);
 
  private:
-  static constexpr size_t kMaxStepDataBytes = 1024U;
+  static constexpr size_t kMaxStepDataBytes = kBleCsMaxControllerStepDataBytes;
 
   bool appendStepData(const uint8_t* data, size_t len);
   void fillOutput(bool complete,
@@ -753,6 +754,8 @@ class BleCsControllerSession {
   const BleCsControllerWorkflowState& workflowState() const;
   const BleCsSubeventResult& localResult() const;
   const BleCsSubeventResult& peerResult() const;
+  const BleCsSubeventResult& completedLocalResult() const;
+  const BleCsSubeventResult& completedPeerResult() const;
 
  private:
   static bool onWorkflowPacket(const uint8_t* packet, size_t packetLen, void* userData);
@@ -761,6 +764,7 @@ class BleCsControllerSession {
   bool consumeResultPacket(BleCsControllerResultSource source,
                            const uint8_t* packet,
                            size_t packetLen);
+  bool snapshotCompletedResultPair();
   void updateEstimateIfComplete();
 
   BleCsControllerSessionConfig config_;
@@ -773,6 +777,10 @@ class BleCsControllerSession {
   BleCsSubeventResultReassembler peerReassembler_;
   BleCsSubeventResult localResult_;
   BleCsSubeventResult peerResult_;
+  BleCsSubeventResult completedLocalResult_;
+  BleCsSubeventResult completedPeerResult_;
+  uint8_t completedLocalStepData_[kBleCsMaxControllerStepDataBytes];
+  uint8_t completedPeerStepData_[kBleCsMaxControllerStepDataBytes];
 };
 
 using BleCsControllerSendPacketCallback =
@@ -823,6 +831,8 @@ class BleCsControllerHost {
   const BleCsControllerWorkflowState& workflowState() const;
   const BleCsSubeventResult& localResult() const;
   const BleCsSubeventResult& peerResult() const;
+  const BleCsSubeventResult& completedLocalResult() const;
+  const BleCsSubeventResult& completedPeerResult() const;
 
  private:
   static bool onControllerPacket(const uint8_t* packet, size_t packetLen, void* userData);
@@ -877,6 +887,8 @@ class BleCsControllerStreamHost {
   const BleCsControllerWorkflowState& workflowState() const;
   const BleCsSubeventResult& localResult() const;
   const BleCsSubeventResult& peerResult() const;
+  const BleCsSubeventResult& completedLocalResult() const;
+  const BleCsSubeventResult& completedPeerResult() const;
 
  private:
   static bool onSendPacket(const uint8_t* packet, size_t packetLen, void* userData);
@@ -947,6 +959,8 @@ class BleCsControllerVprHost {
   const BleCsControllerWorkflowState& workflowState() const;
   const BleCsSubeventResult& localResult() const;
   const BleCsSubeventResult& peerResult() const;
+  const BleCsSubeventResult& completedLocalResult() const;
+  const BleCsSubeventResult& completedPeerResult() const;
 
   VprSharedTransportStream& transport();
   const VprSharedTransportStream& transport() const;
