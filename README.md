@@ -159,14 +159,17 @@ External programmer note:
 - validated with Raspberry Pi Debugprobe on Pico through `pyOCD / CMSIS-DAP`
 - upstream project: <https://github.com/raspberrypi/debugprobe>
 
-Built-in board examples:
+Dedicated onboard examples appear in:
+
+- `HOLYIOT-25008 Board Examples -> Holyiot25008RgbButton`
+- `HOLYIOT-25008 Board Examples -> Holyiot25008Lis2dh12Spi`
+- `HOLYIOT-25008 Board Examples -> Holyiot25008UartPadsAsGpio`
+
+Legacy copies also remain in:
 
 - `Boards -> Holyiot25008RgbButton`
 - `Boards -> Holyiot25008Lis2dh12Spi`
 - `Boards -> Holyiot25008UartPadsAsGpio`
-
-Library examples for the onboard hardware also appear in:
-
 - `Nrf54L15-Clean-Implementation -> Board -> Holyiot25008RgbButton`
 - `Nrf54L15-Clean-Implementation -> Board -> Holyiot25008Lis2dh12Spi`
 

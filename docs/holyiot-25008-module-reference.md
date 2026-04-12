@@ -110,7 +110,13 @@ That means:
 
 ## Built-in Examples
 
-Board-package examples added for this board:
+Dedicated examples for this board now appear in:
+
+- `File -> Examples -> HOLYIOT-25008 Board Examples -> Holyiot25008RgbButton`
+- `File -> Examples -> HOLYIOT-25008 Board Examples -> Holyiot25008Lis2dh12Spi`
+- `File -> Examples -> HOLYIOT-25008 Board Examples -> Holyiot25008UartPadsAsGpio`
+
+Legacy board-package copies also remain under:
 
 - `File -> Examples -> Boards -> Holyiot25008RgbButton`
 - `File -> Examples -> Boards -> Holyiot25008Lis2dh12Spi`
