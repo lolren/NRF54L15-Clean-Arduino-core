@@ -629,6 +629,7 @@ When resuming this work:
     - `hcivprcfgswapdemo`
     - `hcivprmulticfgdemo`
     - `hcivprrmstoredemo`
+    - `hcivprinventorydemo`
   - `hcivprmanualdemo` is now the focused regression for direct out-of-band
     `Procedure Enable(enable=1/0/1/0)` control on the VPR path
   - `hcivprreconfigdemo` now proves direct out-of-band
@@ -667,6 +668,13 @@ When resuming this work:
     - directly remove inactive `configId=2`
     - directly rerun stored base `configId=1`
     - direct `Procedure Enable(configId=2)` is then rejected with `0x12`
+  - `hcivprinventorydemo` now proves controller-owned config inventory reporting
+    from the VPR shared-state seam:
+    - base ready state reports `1` stored config
+    - direct create of alternate `configId=2` reports `2`
+    - direct inactive remove of `configId=2` reports `1`
+    - direct remove of the last active base config reports `0` and closes the
+      VPR CS link session
   - the host ready-phase workflow shadow no longer clears its live
     session/config/security state when `Config Complete(action=remove)` targets
     an inactive stored config
@@ -677,6 +685,11 @@ When resuming this work:
     direct response/drain succeeds instead of before it starts draining, which
     avoids poisoning live-session inactive remove with stale trailing result
     packets from the previous run
+  - the VPR shared-state seam now exposes controller-owned stored-config count
+    explicitly through the host wrapper instead of leaving the sketch to infer
+    inventory from a sequence of `Config Complete` events
+  - `hcivprmultidemo` now reads VPR-owned peer-gap ticks from decoded host state
+    rather than directly peeling raw bits out of shared transport memory
 - The two attached boards were restored to `VprSharedTransportProbe` after the
   resume/restart experiments and both were left healthy on the known-good
   `svc=1.7` / `opmask=0x3FF` path.

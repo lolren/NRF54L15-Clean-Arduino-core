@@ -118,6 +118,7 @@ class VprSharedTransportStream : public Stream {
   uint32_t transportStatus() const;
   uint32_t lastError() const;
   uint32_t reservedState() const;
+  uint32_t reservedAuxState() const;
   uint32_t initPc() const;
   bool isRunning() const;
   bool secureAccessEnabled() const;

@@ -924,6 +924,11 @@ uint32_t VprSharedTransportStream::reservedState() const {
   return vprShared()->reserved;
 }
 
+uint32_t VprSharedTransportStream::reservedAuxState() const {
+  invalidateCpuSystemCache();
+  return vprShared()->reservedAux;
+}
+
 uint32_t VprSharedTransportStream::initPc() const { return VprControl::initPc(); }
 
 bool VprSharedTransportStream::isRunning() const { return VprControl::isRunning(); }

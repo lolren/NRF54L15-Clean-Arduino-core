@@ -532,6 +532,45 @@ static uint32_t current_link_state_packed(void) {
          (((uint32_t)g_cs_last_peer_gap_ticks & 0x07U) << 29U);
 }
 
+static bool append_unique_config_id(uint8_t config_id, uint8_t *ids, uint8_t *count) {
+  if (ids == NULL || count == NULL || config_id == 0U) {
+    return false;
+  }
+  for (uint8_t i = 0U; i < *count; ++i) {
+    if (ids[i] == config_id) {
+      return false;
+    }
+  }
+  if (*count >= 4U) {
+    return false;
+  }
+  ids[*count] = config_id;
+  *count = (uint8_t)(*count + 1U);
+  return true;
+}
+
+static uint8_t current_unique_cs_config_count(void) {
+  uint8_t ids[4] = {0U, 0U, 0U, 0U};
+  uint8_t count = 0U;
+  if (g_cs_config_created != 0U && g_cs_config_id != 0U) {
+    (void)append_unique_config_id(g_cs_config_id, ids, &count);
+  }
+  for (uint8_t i = 0U; i < (uint8_t)(sizeof(g_cs_slots) / sizeof(g_cs_slots[0])); ++i) {
+    if (g_cs_slots[i].inUse != 0U) {
+      (void)append_unique_config_id(g_cs_slots[i].configId, ids, &count);
+    }
+  }
+  if (g_cs_previous_slot.inUse != 0U) {
+    (void)append_unique_config_id(g_cs_previous_slot.configId, ids, &count);
+  }
+  return count;
+}
+
+static uint32_t current_link_state_aux_packed(void) {
+  return ((uint32_t)(current_unique_cs_config_count() & 0x0FU)) |
+         (((uint32_t)g_cs_last_peer_gap_ticks & 0x0FU) << 8U);
+}
+
 static bool command_conn_handle_matches_active_link(void) {
   return (g_cs_session_open != 0U) && (read_conn_handle() == g_cs_session_conn_handle);
 }
@@ -3032,6 +3071,7 @@ __attribute__((noreturn, used, externally_visible)) void vpr_main(void) {
   g_vpr_transport->vprFlags = 0U;
   g_vpr_transport->vprLen = 0U;
   g_vpr_transport->lastError = 0U;
+  g_vpr_transport->reservedAux = 0U;
 #if !VPR_CS_DEDICATED_IMAGE
   g_vpr_transport->reserved = g_restored_from_hibernate;
   if (!restored_from_hibernate) {
@@ -3052,6 +3092,7 @@ __attribute__((noreturn, used, externally_visible)) void vpr_main(void) {
 #else
   reset_dedicated_cs_state();
   g_vpr_transport->reserved = current_link_state_packed();
+  g_vpr_transport->reservedAux = current_link_state_aux_packed();
   g_pending_cs_result_stage = 0U;
 #endif
   fence_rw();
@@ -3080,9 +3121,11 @@ __attribute__((noreturn, used, externally_visible)) void vpr_main(void) {
         ((host_seq & 0xFFFFU) << 16U) |
         ((host_flags & NRF54L15_VPR_TRANSPORT_FLAG_PENDING) != 0U ? 0x2U : 0U) |
         0x4U;
+    g_vpr_transport->reservedAux = 0U;
 #else
     (void)host_flags;
     g_vpr_transport->reserved = current_link_state_packed();
+    g_vpr_transport->reservedAux = current_link_state_aux_packed();
 #endif
     fence_rw();
 

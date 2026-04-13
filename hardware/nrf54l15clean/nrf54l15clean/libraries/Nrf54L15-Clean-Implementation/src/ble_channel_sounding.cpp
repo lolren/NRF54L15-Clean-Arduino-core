@@ -3599,6 +3599,8 @@ bool BleCsControllerVprHost::resetTransport(bool clearScripts) {
   vprState_.linkSessionOpen = false;
   vprState_.linkConnHandle = 0U;
   vprState_.linkProcedureIntervalSelector = 0U;
+  vprState_.linkStoredConfigCount = 0U;
+  vprState_.linkPeerGapTicks = 0U;
   vprState_.linkConfigId = 0U;
   vprState_.linkProcedureCounter = 0U;
   vprState_.linkConfigCreated = false;
@@ -3810,9 +3812,12 @@ void BleCsControllerVprHost::syncVprState() {
   nextState.running = transport_.isRunning();
   nextState.secureAccessEnabled = transport_.secureAccessEnabled();
   const uint32_t packedLinkState = transport_.reservedState();
+  const uint32_t packedAuxState = transport_.reservedAuxState();
   nextState.linkConnHandle = static_cast<uint16_t>(packedLinkState & 0x0FFFU);
   nextState.linkProcedureIntervalSelector =
       static_cast<uint8_t>((packedLinkState >> 12U) & 0x0FU);
+  nextState.linkStoredConfigCount = static_cast<uint8_t>(packedAuxState & 0x0FU);
+  nextState.linkPeerGapTicks = static_cast<uint8_t>((packedAuxState >> 8U) & 0x0FU);
   nextState.linkSessionOpen = (packedLinkState & (1UL << 16U)) != 0U;
   nextState.linkConfigCreated = (packedLinkState & (1UL << 17U)) != 0U;
   nextState.linkSecurityEnabled = (packedLinkState & (1UL << 18U)) != 0U;

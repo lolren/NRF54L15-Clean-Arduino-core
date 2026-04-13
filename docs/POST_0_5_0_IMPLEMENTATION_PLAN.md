@@ -337,6 +337,12 @@ Immediate next follow-up from this checkpoint:
   - remove inactive `configId=2`
   - rerun stored base `configId=1`
   - verify direct `Procedure Enable(configId=2)` is rejected with `0x12`
+- `hcivprinventorydemo` now proves controller-owned config inventory reporting
+  on one live VPR session:
+  - base ready state reports `1`
+  - direct create of alternate `configId=2` reports `2`
+  - inactive remove of `configId=2` reports `1`
+  - remove of the last active base config reports `0` and closes the session
 - the supporting controller/VPR fixes for that slice are:
   - ready-phase host workflow shadow no longer clears live session/config
     ownership when `Config Complete(action=remove)` targets an inactive config
@@ -346,8 +352,12 @@ Immediate next follow-up from this checkpoint:
   - the dedicated CS image now removes all stored copies of a removed
     `configId`, including the previous-slot fallback, so removed configs stop
     being runnable through stored-slot selection
+- the VPR shared-state seam now also exports stored-config count explicitly
+  through the host wrapper, so controller-side inventory is no longer inferred
+  only from a stream of complete events
 - the current remaining direct-control gap is no longer basic manual
-  start/abort/restart or direct parameter reconfiguration. The next slice is
+  start/abort/restart, direct parameter reconfiguration, or basic inventory
+  reporting. The next slice is
   richer controller ownership on VPR above that transport/control seam.
 
 This is the shortest path that advances the repo from "working VPR-backed CS
