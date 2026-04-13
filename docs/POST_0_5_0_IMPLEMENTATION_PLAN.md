@@ -419,6 +419,21 @@ Immediate next follow-up from this checkpoint:
   start/abort/restart, direct parameter reconfiguration, or basic inventory
   reporting. The next slice is
   richer controller ownership on VPR above that transport/control seam.
+- that seam is now stronger than simple count/slot reporting:
+  - VPR now owns controller-side stored-config count, slot metadata,
+    runnable/readiness flags, active-remove promotion, and a real
+    `2 primary + 1 overflow(previous)` third-config policy
+  - `hcivprthirdcfgdemo` now proves direct create/select/run of stored
+    `configId=3` on one live VPR session without recreating `configId=1/2`
+  - `hcivprmulticfgdemo` still stays green after that overflow-slot slice
+
+The next slice after this checkpoint is:
+
+- richer controller-owned stored-config policy on VPR above the current
+  `2 primary + 1 overflow` model
+- specifically, selection/eviction/reporting policy that goes beyond simple
+  slot occupancy and lets the host stop inferring what VPR considers the best
+  retained config set after more complex direct-control sequences
 
 This is the shortest path that advances the repo from "working VPR-backed CS
 demo" to "real BLE controller work is starting to move off CPUAPP".

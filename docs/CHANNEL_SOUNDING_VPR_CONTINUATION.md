@@ -759,6 +759,33 @@ When resuming this work:
     - that fixed a real stale-cache direct-command failure where later
       `Remove Config` traffic could be blocked behind an already-cleared host
       slot
+  - the dedicated CS image now uses the previous-slot seam as a real third
+    stored-config overflow slot when both primary slots are occupied and the
+    current active config already lives in a primary slot
+    - that keeps the two primary stored configs intact while making a third
+      distinct `configId` controller-owned and directly selectable on VPR
+    - the current live policy is `2 primary + 1 overflow(previous)` rather
+      than silent host-side recreate
+  - `hcivprthirdcfgdemo` now proves that third-config policy on one live VPR
+    session:
+    - base `configId=1` is ready in `slot0`
+    - direct create/security/set-proc of `configId=2` fills `slot1`
+    - direct create/security/set-proc of `configId=3` moves it into the
+      overflow `previous` slot without evicting `slot0/slot1`
+    - direct `Set Procedure Parameters(configId=2)` reselects stored primary
+      config `2`
+    - direct `Set Procedure Parameters(configId=3)` reselects the stored
+      overflow config
+    - direct `Procedure Enable(configId=3)` runs the third config with its own
+      `0+5 / 0+5` mode-2 step shape
+    - direct `Procedure Enable(configId=1)` still runs base immediately after
+      that while `configId=3` remains stored+runnable in the overflow slot
+  - `hcivprmulticfgdemo` is still green after this slice
+    - the final stored-config bounce remains `configId=2` with
+      `alt2_steps=0+4/0+4`
+    - the demo now uses a slightly wider final poll window because the second
+      bounce on the live session can land later than the earlier tighter
+      timeout allowed
 - The two attached boards were restored to `VprSharedTransportProbe` after the
   resume/restart experiments and both were left healthy on the known-good
   `svc=1.7` / `opmask=0x3FF` path.
