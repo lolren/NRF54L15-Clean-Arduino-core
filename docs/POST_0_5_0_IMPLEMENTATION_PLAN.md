@@ -272,6 +272,13 @@ Immediate next follow-up from this checkpoint:
   VPR-owned heartbeat timing derived from `minSubeventLen`, so the local and
   peer packet trains are no longer drained back-to-back within the same
   controller step
+- the host/session layer now aggregates multiple complete subevents with the
+  same procedure counter into one completed procedure result pair, so the
+  procedure-level estimate waits for the final complete subevent instead of
+  triggering on the first one
+- the dedicated image can now split a larger RTT-enabled synthetic procedure
+  across multiple complete subevents instead of only shaping one fixed
+  subevent plus continuations
 
 This is the shortest path that advances the repo from "working VPR-backed CS
 demo" to "real BLE controller work is starting to move off CPUAPP".

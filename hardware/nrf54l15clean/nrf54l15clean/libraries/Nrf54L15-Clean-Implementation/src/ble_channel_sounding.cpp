@@ -2594,8 +2594,12 @@ BleCsControllerSession::BleCsControllerSession()
       peerReassembler_{},
       localResult_{},
       peerResult_{},
+      accumulatedLocalResult_{},
+      accumulatedPeerResult_{},
       completedLocalResult_{},
       completedPeerResult_{},
+      accumulatedLocalStepData_{0},
+      accumulatedPeerStepData_{0},
       completedLocalStepData_{0},
       completedPeerStepData_{0} {}
 
@@ -2613,6 +2617,8 @@ void BleCsControllerSession::reset() {
   peerReassembler_.reset();
   localResult_ = BleCsSubeventResult{};
   peerResult_ = BleCsSubeventResult{};
+  accumulatedLocalResult_ = BleCsSubeventResult{};
+  accumulatedPeerResult_ = BleCsSubeventResult{};
   completedLocalResult_ = BleCsSubeventResult{};
   completedPeerResult_ = BleCsSubeventResult{};
 }
@@ -2704,6 +2710,68 @@ const BleCsSubeventResult& BleCsControllerSession::completedPeerResult() const {
   return completedPeerResult_;
 }
 
+void BleCsControllerSession::resetAccumulatedProcedureResults() {
+  resetAccumulatedProcedureResult(BleCsControllerResultSource::kLocal);
+  resetAccumulatedProcedureResult(BleCsControllerResultSource::kPeer);
+}
+
+void BleCsControllerSession::resetAccumulatedProcedureResult(
+    BleCsControllerResultSource source) {
+  if (source == BleCsControllerResultSource::kLocal) {
+    accumulatedLocalResult_ = BleCsSubeventResult{};
+  } else {
+    accumulatedPeerResult_ = BleCsSubeventResult{};
+  }
+}
+
+bool BleCsControllerSession::accumulateProcedureResult(BleCsControllerResultSource source,
+                                                       const BleCsSubeventResult& result) {
+  if (!result.isComplete || result.stepData == nullptr || result.stepDataLen == 0U) {
+    return false;
+  }
+
+  BleCsSubeventResult& accumulated =
+      (source == BleCsControllerResultSource::kLocal) ? accumulatedLocalResult_
+                                                      : accumulatedPeerResult_;
+  uint8_t* storage =
+      (source == BleCsControllerResultSource::kLocal) ? accumulatedLocalStepData_
+                                                      : accumulatedPeerStepData_;
+
+  const bool sameProcedure =
+      accumulated.stepData != nullptr &&
+      accumulated.header.connHandle == result.header.connHandle &&
+      accumulated.header.configId == result.header.configId &&
+      accumulated.header.procedureCounter == result.header.procedureCounter &&
+      accumulated.header.numAntennaPaths == result.header.numAntennaPaths;
+  if (!sameProcedure) {
+    accumulated = BleCsSubeventResult{};
+  }
+
+  const uint16_t previousSteps = accumulated.header.numStepsReported;
+  const uint16_t previousBytes = accumulated.stepDataLen;
+  if (static_cast<size_t>(previousBytes) + result.stepDataLen >
+      kBleCsMaxControllerStepDataBytes) {
+    accumulated = BleCsSubeventResult{};
+    return false;
+  }
+
+  if (result.stepDataLen > 0U) {
+    memcpy(storage + previousBytes, result.stepData, result.stepDataLen);
+  }
+
+  accumulated.header = result.header;
+  accumulated.header.numStepsReported =
+      static_cast<uint16_t>(previousSteps + result.header.numStepsReported);
+  accumulated.stepData = storage;
+  accumulated.stepDataLen =
+      static_cast<uint16_t>(previousBytes + result.stepDataLen);
+  accumulated.isContinuation = false;
+  accumulated.isPartial =
+      (result.header.procedureDoneStatus == kBleCsProcedureDonePartial);
+  accumulated.isComplete = !accumulated.isPartial;
+  return true;
+}
+
 bool BleCsControllerSession::onWorkflowPacket(const uint8_t* packet,
                                               size_t packetLen,
                                               void* userData) {
@@ -2757,54 +2825,67 @@ bool BleCsControllerSession::consumeResultPacket(BleCsControllerResultSource sou
   } else {
     state_.peerResultComplete = result.isComplete;
   }
+  if (result.isComplete) {
+    if (!accumulateProcedureResult(source, result)) {
+      return false;
+    }
+  }
   updateEstimateIfComplete();
   return true;
 }
 
-bool BleCsControllerSession::snapshotCompletedResultPair() {
-  if (localResult_.stepData == nullptr || peerResult_.stepData == nullptr ||
-      localResult_.stepDataLen > sizeof(completedLocalStepData_) ||
-      peerResult_.stepDataLen > sizeof(completedPeerStepData_)) {
+bool BleCsControllerSession::snapshotCompletedResultPair(
+    const BleCsSubeventResult& localResult,
+    const BleCsSubeventResult& peerResult) {
+  if (localResult.stepData == nullptr || peerResult.stepData == nullptr ||
+      localResult.stepDataLen > sizeof(completedLocalStepData_) ||
+      peerResult.stepDataLen > sizeof(completedPeerStepData_)) {
     return false;
   }
 
-  completedLocalResult_ = localResult_;
-  completedPeerResult_ = peerResult_;
-  if (localResult_.stepDataLen > 0U) {
-    memcpy(completedLocalStepData_, localResult_.stepData, localResult_.stepDataLen);
+  completedLocalResult_ = localResult;
+  completedPeerResult_ = peerResult;
+  if (localResult.stepDataLen > 0U) {
+    memcpy(completedLocalStepData_, localResult.stepData, localResult.stepDataLen);
   }
-  if (peerResult_.stepDataLen > 0U) {
-    memcpy(completedPeerStepData_, peerResult_.stepData, peerResult_.stepDataLen);
+  if (peerResult.stepDataLen > 0U) {
+    memcpy(completedPeerStepData_, peerResult.stepData, peerResult.stepDataLen);
   }
   completedLocalResult_.stepData =
-      (localResult_.stepDataLen > 0U) ? completedLocalStepData_ : nullptr;
+      (localResult.stepDataLen > 0U) ? completedLocalStepData_ : nullptr;
   completedPeerResult_.stepData =
-      (peerResult_.stepDataLen > 0U) ? completedPeerStepData_ : nullptr;
+      (peerResult.stepDataLen > 0U) ? completedPeerStepData_ : nullptr;
   return true;
 }
 
 void BleCsControllerSession::updateEstimateIfComplete() {
-  if (!localResult_.isComplete || !peerResult_.isComplete) {
+  if (!accumulatedLocalResult_.isComplete || !accumulatedPeerResult_.isComplete) {
     return;
   }
-  if (localResult_.header.connHandle != peerResult_.header.connHandle ||
-      localResult_.header.configId != peerResult_.header.configId ||
-      localResult_.header.procedureCounter != peerResult_.header.procedureCounter) {
+  if (accumulatedLocalResult_.header.procedureDoneStatus != kBleCsProcedureDoneComplete ||
+      accumulatedPeerResult_.header.procedureDoneStatus != kBleCsProcedureDoneComplete) {
     return;
   }
-  if (!snapshotCompletedResultPair()) {
+  if (accumulatedLocalResult_.header.connHandle != accumulatedPeerResult_.header.connHandle ||
+      accumulatedLocalResult_.header.configId != accumulatedPeerResult_.header.configId ||
+      accumulatedLocalResult_.header.procedureCounter !=
+          accumulatedPeerResult_.header.procedureCounter) {
+    return;
+  }
+  if (!snapshotCompletedResultPair(accumulatedLocalResult_, accumulatedPeerResult_)) {
     return;
   }
   BleCsEstimate estimate{};
   if (!BleChannelSoundingRadio::estimateDistanceFromSubeventResults(
-          completedLocalResult_, completedPeerResult_, config_.localRoleIsInitiator,
-          &estimate)) {
+      completedLocalResult_, completedPeerResult_, config_.localRoleIsInitiator,
+      &estimate)) {
     return;
   }
   state_.estimate = estimate;
   state_.estimateValid = estimate.valid;
   state_.completedProcedureCounter = completedLocalResult_.header.procedureCounter;
   state_.completedConfigId = completedLocalResult_.header.configId;
+  resetAccumulatedProcedureResults();
 }
 
 BleCsControllerHost::BleCsControllerHost()
@@ -2908,6 +2989,8 @@ bool BleCsControllerHost::consumeIngressPacket(BleCsControllerIngressSource sour
       const BleCsControllerResultSource resultSource =
           controllerPeerResultsExpected_ ? BleCsControllerResultSource::kPeer
                                          : BleCsControllerResultSource::kLocal;
+      const bool isInitialSubevent =
+          parsedResultValid && metaEvent.subeventCode == kBleCsHciEvtSubeventResult;
       if (parsedResultValid && resultSource == BleCsControllerResultSource::kLocal &&
           metaEvent.subeventCode == kBleCsHciEvtSubeventResult) {
         state_.vendorPeerResultConfigId = parsedResult.header.configId;
@@ -2917,8 +3000,14 @@ bool BleCsControllerHost::consumeIngressPacket(BleCsControllerIngressSource sour
       if (ok) {
         if (resultSource == BleCsControllerResultSource::kLocal) {
           ++state_.localResultPackets;
+          if (isInitialSubevent) {
+            ++state_.localSubeventResults;
+          }
         } else {
           ++state_.peerResultPackets;
+          if (isInitialSubevent) {
+            ++state_.peerSubeventResults;
+          }
           if (parsedResultValid && parsedResult.isComplete) {
             controllerPeerResultsExpected_ = false;
           }

@@ -16,8 +16,8 @@ responder:
 - `Remove Config` now tears the active link session down fully
 - the dedicated image now explicitly reinitializes its CS state on boot instead
   of relying on static-image data staying sane across reloads
-- the reserved dedicated CS image window is now `0x2000` bytes at
-  `0x2003DE00 - 0x2003FE00`
+- the reserved dedicated CS image window is now `0x2400` bytes at
+  `0x2003DA00 - 0x2003FE00`
 - the dedicated CS linker script now reserves an explicit stack inside that
   window instead of leaving the runtime to collide with code/rodata when the
   image grows
@@ -573,6 +573,22 @@ When resuming this work:
   - `hcivprsubeventdemo` now proves nonzero packet gaps on both sides while
     still landing at `6` local and `6` peer result packets for the tight
     `minSubeventLen = maxSubeventLen = 0x000100` case
+- The host/session layer now aggregates complete partial-procedure subevents
+  into one completed procedure result pair:
+  - VPR can now publish more than one complete subevent for the same procedure
+    counter without the host estimating too early on the first subevent
+  - the stable `completedLocalResult()` / `completedPeerResult()` pair now
+    represents the full completed procedure, not only the last complete
+    subevent that arrived
+- The dedicated CS image now owns a higher-level procedure publication policy
+  too:
+  - larger RTT-enabled synthetic procedures can now be split into multiple
+    complete subevents instead of only one complete subevent with many
+    continuation packets
+  - `hcivprmultisubdemo` proves that path with one seven-step
+    RTT-enabled procedure that lands as `2` local subevents and `2` peer
+    subevents while the host still reassembles one completed seven-step
+    procedure estimate at `~0.75 m`
 - The two attached boards were restored to `VprSharedTransportProbe` after the
   resume/restart experiments and both were left healthy on the known-good
   `svc=1.7` / `opmask=0x3FF` path.

@@ -764,7 +764,12 @@ class BleCsControllerSession {
   bool consumeResultPacket(BleCsControllerResultSource source,
                            const uint8_t* packet,
                            size_t packetLen);
-  bool snapshotCompletedResultPair();
+  void resetAccumulatedProcedureResults();
+  void resetAccumulatedProcedureResult(BleCsControllerResultSource source);
+  bool accumulateProcedureResult(BleCsControllerResultSource source,
+                                 const BleCsSubeventResult& result);
+  bool snapshotCompletedResultPair(const BleCsSubeventResult& localResult,
+                                   const BleCsSubeventResult& peerResult);
   void updateEstimateIfComplete();
 
   BleCsControllerSessionConfig config_;
@@ -777,8 +782,12 @@ class BleCsControllerSession {
   BleCsSubeventResultReassembler peerReassembler_;
   BleCsSubeventResult localResult_;
   BleCsSubeventResult peerResult_;
+  BleCsSubeventResult accumulatedLocalResult_;
+  BleCsSubeventResult accumulatedPeerResult_;
   BleCsSubeventResult completedLocalResult_;
   BleCsSubeventResult completedPeerResult_;
+  uint8_t accumulatedLocalStepData_[kBleCsMaxControllerStepDataBytes];
+  uint8_t accumulatedPeerStepData_[kBleCsMaxControllerStepDataBytes];
   uint8_t completedLocalStepData_[kBleCsMaxControllerStepDataBytes];
   uint8_t completedPeerStepData_[kBleCsMaxControllerStepDataBytes];
 };
@@ -800,6 +809,8 @@ struct BleCsControllerHostState {
   uint32_t controllerEventPackets = 0U;
   uint32_t localResultPackets = 0U;
   uint32_t peerResultPackets = 0U;
+  uint32_t localSubeventResults = 0U;
+  uint32_t peerSubeventResults = 0U;
   uint32_t vendorPeerResultTriggers = 0U;
   uint32_t controllerPeerResultMarkers = 0U;
   uint8_t vendorPeerResultConfigId = 0U;

@@ -108,10 +108,12 @@ static uint32_t g_ticker_event_queue_count = 0U;
 static uint8_t g_pending_cs_result_stage = 0U;
 #if VPR_CS_DEDICATED_IMAGE
 static uint32_t g_cs_next_procedure_heartbeat = 0U;
+static uint32_t g_cs_next_subevent_heartbeat = 0U;
 static uint32_t g_cs_next_peer_stage_heartbeat = 0U;
 static uint32_t g_cs_next_chunk_stage_heartbeat = 0U;
 static uint8_t g_cs_last_peer_gap_ticks = 0U;
 static uint8_t g_cs_last_interval_selector = 0U;
+static uint8_t g_cs_active_subevent_index = 0U;
 static uint8_t g_cs_local_chunk_start_step = 0U;
 static uint8_t g_cs_peer_chunk_start_step = 0U;
 typedef struct __attribute__((packed)) {
@@ -325,10 +327,12 @@ static void reset_dedicated_cs_state(void) {
   g_cs_procedure_enabled = 0U;
   g_cs_session_open = 0U;
   g_cs_next_procedure_heartbeat = 0U;
+  g_cs_next_subevent_heartbeat = 0U;
   g_cs_next_peer_stage_heartbeat = 0U;
   g_cs_next_chunk_stage_heartbeat = 0U;
   g_cs_last_peer_gap_ticks = 0U;
   g_cs_last_interval_selector = 0U;
+  g_cs_active_subevent_index = 0U;
   g_cs_local_chunk_start_step = 0U;
   g_cs_peer_chunk_start_step = 0U;
 }
@@ -842,17 +846,68 @@ static uint8_t current_demo_total_step_count(void) {
   return (uint8_t)(current_demo_step_count() + (current_demo_has_mode1_timing_step() ? 1U : 0U));
 }
 
+static uint8_t current_demo_subevent_count(void) {
+#if VPR_CS_DEDICATED_IMAGE
+  return (current_demo_total_step_count() > 6U) ? 2U : 1U;
+#else
+  return 1U;
+#endif
+}
+
+static uint8_t current_demo_subevent_start_step(uint8_t subevent_index) {
+  const uint8_t total_steps = current_demo_total_step_count();
+  const uint8_t subevent_count = current_demo_subevent_count();
+  if (subevent_count <= 1U || subevent_index == 0U) {
+    return 0U;
+  }
+  if (subevent_index >= subevent_count) {
+    return total_steps;
+  }
+
+  uint8_t start = 0U;
+  for (uint8_t i = 0U; i < subevent_index; ++i) {
+    const uint8_t remaining_steps = (uint8_t)(total_steps - start);
+    const uint8_t remaining_subevents = (uint8_t)(subevent_count - i);
+    start = (uint8_t)(start +
+                      ((uint8_t)((remaining_steps + remaining_subevents - 1U) /
+                                 remaining_subevents)));
+  }
+  return start;
+}
+
+static uint8_t current_demo_subevent_step_count(uint8_t subevent_index) {
+  const uint8_t total_steps = current_demo_total_step_count();
+  const uint8_t start = current_demo_subevent_start_step(subevent_index);
+  if (start >= total_steps) {
+    return 0U;
+  }
+  const uint8_t next_start = current_demo_subevent_start_step((uint8_t)(subevent_index + 1U));
+  return (next_start > start) ? (uint8_t)(next_start - start)
+                              : (uint8_t)(total_steps - start);
+}
+
 static size_t current_demo_encoded_step_len(uint8_t step_index) {
   return (current_demo_has_mode1_timing_step() && step_index == 0U) ? 9U : 8U;
 }
 
-static size_t current_demo_total_encoded_step_bytes(void) {
+static size_t current_demo_total_encoded_step_bytes_for_range(uint8_t start_step_index,
+                                                              uint8_t step_count) {
   size_t total = 0U;
-  const uint8_t total_steps = current_demo_total_step_count();
-  for (uint8_t step_index = 0U; step_index < total_steps; ++step_index) {
+  const uint8_t end_step_index = (uint8_t)(start_step_index + step_count);
+  for (uint8_t step_index = start_step_index; step_index < end_step_index; ++step_index) {
     total += current_demo_encoded_step_len(step_index);
   }
   return total;
+}
+
+static size_t current_demo_total_encoded_step_bytes(void) {
+  return current_demo_total_encoded_step_bytes_for_range(0U, current_demo_total_step_count());
+}
+
+static size_t current_demo_subevent_encoded_step_bytes(uint8_t subevent_index) {
+  return current_demo_total_encoded_step_bytes_for_range(
+      current_demo_subevent_start_step(subevent_index),
+      current_demo_subevent_step_count(subevent_index));
 }
 
 static uint8_t current_demo_phase_step_index(uint8_t step_index) {
@@ -883,11 +938,11 @@ static size_t append_peer_demo_step(uint8_t *dst, const uint8_t *channels, uint8
   return 8U;
 }
 
-static uint8_t count_demo_steps_for_budget(size_t budget, uint8_t start_step_index) {
-  const uint8_t total_steps = current_demo_total_step_count();
+static uint8_t count_demo_steps_for_budget(size_t budget, uint8_t start_step_index,
+                                           uint8_t end_step_index) {
   size_t used = 0U;
   uint8_t count = 0U;
-  for (uint8_t step_index = start_step_index; step_index < total_steps; ++step_index) {
+  for (uint8_t step_index = start_step_index; step_index < end_step_index; ++step_index) {
     const size_t step_len = current_demo_encoded_step_len(step_index);
     if (used + step_len > budget) {
       break;
@@ -898,9 +953,9 @@ static uint8_t count_demo_steps_for_budget(size_t budget, uint8_t start_step_ind
   return count;
 }
 
-static size_t current_demo_initial_chunk_budget(void) {
+static size_t current_demo_initial_chunk_budget(uint8_t subevent_index) {
 #if VPR_CS_DEDICATED_IMAGE
-  if (current_demo_total_encoded_step_bytes() > 32U) {
+  if (current_demo_subevent_encoded_step_bytes(subevent_index) > 32U) {
     if (g_cs_min_subevent_len <= 0x000180UL) {
       return 9U;
     }
@@ -910,10 +965,11 @@ static size_t current_demo_initial_chunk_budget(void) {
   return 25U;
 }
 
-static size_t current_demo_continue_chunk_budget(uint8_t start_step_index) {
+static size_t current_demo_continue_chunk_budget(uint8_t subevent_index,
+                                                 uint8_t start_step_index) {
   (void)start_step_index;
 #if VPR_CS_DEDICATED_IMAGE
-  if (current_demo_total_encoded_step_bytes() > 32U) {
+  if (current_demo_subevent_encoded_step_bytes(subevent_index) > 32U) {
     if (g_cs_min_subevent_len <= 0x000180UL) {
       return 8U;
     }
@@ -1053,10 +1109,12 @@ static void update_create_config_from_command(void) {
   g_pending_cs_result_stage = 0U;
   g_cs_procedure_counter = 0U;
   g_cs_next_procedure_heartbeat = 0U;
+  g_cs_next_subevent_heartbeat = 0U;
   g_cs_next_peer_stage_heartbeat = 0U;
   g_cs_next_chunk_stage_heartbeat = 0U;
   g_cs_last_interval_selector = 0U;
   g_cs_last_peer_gap_ticks = 0U;
+  g_cs_active_subevent_index = 0U;
   g_cs_local_chunk_start_step = 0U;
   g_cs_peer_chunk_start_step = 0U;
   update_demo_channels_from_create_config();
@@ -1104,10 +1162,12 @@ static void update_procedure_params_from_command(void) {
   g_cs_tx_power_delta = (int8_t)g_host_transport->hostData[23];
   g_cs_procedure_params_applied = 1U;
   g_cs_next_procedure_heartbeat = 0U;
+  g_cs_next_subevent_heartbeat = 0U;
   g_cs_next_peer_stage_heartbeat = 0U;
   g_cs_next_chunk_stage_heartbeat = 0U;
   g_cs_last_interval_selector = 0U;
   g_cs_last_peer_gap_ticks = 0U;
+  g_cs_active_subevent_index = 0U;
   g_cs_local_chunk_start_step = 0U;
   g_cs_peer_chunk_start_step = 0U;
 }
@@ -1120,10 +1180,12 @@ static void clear_active_cs_state(void) {
   g_pending_cs_result_stage = 0U;
   g_cs_procedure_counter = 0U;
   g_cs_next_procedure_heartbeat = 0U;
+  g_cs_next_subevent_heartbeat = 0U;
   g_cs_next_peer_stage_heartbeat = 0U;
   g_cs_next_chunk_stage_heartbeat = 0U;
   g_cs_last_interval_selector = 0U;
   g_cs_last_peer_gap_ticks = 0U;
+  g_cs_active_subevent_index = 0U;
   g_cs_local_chunk_start_step = 0U;
   g_cs_peer_chunk_start_step = 0U;
 }
@@ -1279,6 +1341,17 @@ static uint32_t current_peer_stage_delay_ticks(void) {
   return ticks;
 }
 
+static uint32_t current_subevent_stage_delay_ticks(void) {
+  uint32_t ticks = g_cs_min_subevent_len / 192U;
+  if (ticks == 0U) {
+    ticks = 1U;
+  }
+  if (ticks > 16U) {
+    ticks = 16U;
+  }
+  return ticks;
+}
+
 static uint32_t current_chunk_stage_delay_ticks(void) {
   uint32_t ticks = g_cs_min_subevent_len / 128U;
   if (ticks == 0U) {
@@ -1304,11 +1377,35 @@ static bool schedule_next_cs_procedure(void) {
   if (g_cs_procedure_counter == 0U) {
     g_cs_procedure_counter = 1U;
   }
+  g_cs_active_subevent_index = 0U;
   g_pending_cs_result_stage = 1U;
-  g_cs_local_chunk_start_step = 0U;
-  g_cs_peer_chunk_start_step = 0U;
+  g_cs_local_chunk_start_step = current_demo_subevent_start_step(0U);
+  g_cs_peer_chunk_start_step = current_demo_subevent_start_step(0U);
   g_cs_next_procedure_heartbeat = 0U;
+  g_cs_next_subevent_heartbeat = 0U;
   g_cs_next_chunk_stage_heartbeat = 0U;
+  return true;
+}
+
+static bool schedule_next_cs_subevent(void) {
+  const uint8_t subevent_count = current_demo_subevent_count();
+  if (g_cs_procedure_enabled == 0U || g_pending_cs_result_stage != 0U ||
+      g_cs_procedure_counter == 0U || subevent_count <= 1U ||
+      g_cs_active_subevent_index + 1U >= subevent_count || host_request_pending() ||
+      (g_vpr_transport->vprFlags & NRF54L15_VPR_TRANSPORT_FLAG_PENDING) != 0U) {
+    return false;
+  }
+  if (g_vpr_transport->heartbeat < g_cs_next_subevent_heartbeat) {
+    return false;
+  }
+  g_cs_active_subevent_index = (uint8_t)(g_cs_active_subevent_index + 1U);
+  g_pending_cs_result_stage = 1U;
+  g_cs_local_chunk_start_step = current_demo_subevent_start_step(g_cs_active_subevent_index);
+  g_cs_peer_chunk_start_step = g_cs_local_chunk_start_step;
+  g_cs_next_subevent_heartbeat = 0U;
+  g_cs_next_chunk_stage_heartbeat = 0U;
+  g_cs_next_peer_stage_heartbeat = 0U;
+  g_cs_last_peer_gap_ticks = 0U;
   return true;
 }
 #endif
@@ -1464,29 +1561,48 @@ static size_t build_demo_subevent_payload(uint8_t *payload, size_t max_len,
   uint8_t channels[6];
   uint8_t step_count = 4U;
   uint8_t total_steps = 4U;
+  uint8_t subevent_index = 0U;
+  uint8_t subevent_count = 1U;
+  uint8_t subevent_start_step = 0U;
+  uint8_t subevent_step_count = 4U;
+  uint8_t subevent_end_step = 4U;
   uint8_t chunk_steps = 0U;
   bool has_more = false;
+  bool procedure_partial = false;
+  bool subevent_partial = false;
 #if VPR_CS_DEDICATED_IMAGE
   step_count = current_demo_step_count();
   if (step_count == 0U) {
     step_count = 1U;
   }
   total_steps = current_demo_total_step_count();
-  if (start_step_index >= total_steps) {
+  subevent_count = current_demo_subevent_count();
+  subevent_index = g_cs_active_subevent_index;
+  if (subevent_index >= subevent_count) {
+    return 0U;
+  }
+  subevent_start_step = current_demo_subevent_start_step(subevent_index);
+  subevent_step_count = current_demo_subevent_step_count(subevent_index);
+  subevent_end_step = (uint8_t)(subevent_start_step + subevent_step_count);
+  if (start_step_index < subevent_start_step || start_step_index >= subevent_end_step ||
+      start_step_index >= total_steps) {
     return 0U;
   }
   size_t budget =
-      continuation ? current_demo_continue_chunk_budget(start_step_index)
-                   : current_demo_initial_chunk_budget();
+      continuation ? current_demo_continue_chunk_budget(subevent_index, start_step_index)
+                   : current_demo_initial_chunk_budget(subevent_index);
   const size_t payload_budget = max_len - header_len;
   if (budget > payload_budget) {
     budget = payload_budget;
   }
-  chunk_steps = count_demo_steps_for_budget(budget, start_step_index);
+  chunk_steps = count_demo_steps_for_budget(budget, start_step_index, subevent_end_step);
   if (chunk_steps == 0U) {
     return 0U;
   }
-  has_more = ((uint8_t)(start_step_index + chunk_steps) < total_steps);
+  has_more = ((uint8_t)(start_step_index + chunk_steps) < subevent_end_step);
+  subevent_partial = has_more;
+  procedure_partial =
+      has_more || ((uint8_t)(subevent_index + 1U) < subevent_count);
   fill_demo_channels_for_procedure(channels, step_count);
 #else
   const uint32_t packed_channels = g_host_transport->reserved;
@@ -1499,6 +1615,8 @@ static size_t build_demo_subevent_payload(uint8_t *payload, size_t max_len,
   }
   chunk_steps = 4U;
   has_more = continuation;
+  subevent_partial = has_more;
+  procedure_partial = has_more;
 #endif
 
   bytes_zero(payload, max_len);
@@ -1534,8 +1652,8 @@ static size_t build_demo_subevent_payload(uint8_t *payload, size_t max_len,
 #else
         0U;
 #endif
-    payload[10] = has_more ? 0x01U : 0x00U;
-    payload[11] = has_more ? 0x01U : 0x00U;
+    payload[10] = procedure_partial ? 0x01U : 0x00U;
+    payload[11] = subevent_partial ? 0x01U : 0x00U;
     payload[12] = 0U;
     payload[13] =
 #if VPR_CS_DEDICATED_IMAGE
@@ -1545,8 +1663,8 @@ static size_t build_demo_subevent_payload(uint8_t *payload, size_t max_len,
 #endif
     payload[14] = chunk_steps;
   } else {
-    payload[3] = has_more ? 0x01U : 0x00U;
-    payload[4] = has_more ? 0x01U : 0x00U;
+    payload[3] = procedure_partial ? 0x01U : 0x00U;
+    payload[4] = subevent_partial ? 0x01U : 0x00U;
     payload[5] = 0U;
     payload[6] =
 #if VPR_CS_DEDICATED_IMAGE
@@ -2015,23 +2133,27 @@ static bool publish_builtin_response_for_opcode(uint16_t opcode) {
           g_cs_procedure_enabled = 0U;
           g_pending_cs_result_stage = 0U;
           g_cs_next_procedure_heartbeat = 0U;
+          g_cs_next_subevent_heartbeat = 0U;
           g_cs_next_peer_stage_heartbeat = 0U;
           g_cs_next_chunk_stage_heartbeat = 0U;
           g_cs_last_interval_selector = 0U;
           g_cs_last_peer_gap_ticks = 0U;
+          g_cs_active_subevent_index = 0U;
           g_cs_local_chunk_start_step = 0U;
           g_cs_peer_chunk_start_step = 0U;
         } else if (status == 0U) {
           g_cs_procedure_enabled = 1U;
           g_cs_procedure_counter = 1U;
+          g_cs_active_subevent_index = 0U;
           g_pending_cs_result_stage = 1U;
           g_cs_next_procedure_heartbeat = 0U;
+          g_cs_next_subevent_heartbeat = 0U;
           g_cs_next_peer_stage_heartbeat = 0U;
           g_cs_next_chunk_stage_heartbeat = 0U;
           g_cs_last_interval_selector = 0U;
           g_cs_last_peer_gap_ticks = 0U;
-          g_cs_local_chunk_start_step = 0U;
-          g_cs_peer_chunk_start_step = 0U;
+          g_cs_local_chunk_start_step = current_demo_subevent_start_step(0U);
+          g_cs_peer_chunk_start_step = current_demo_subevent_start_step(0U);
         }
       }
 #endif
@@ -2324,6 +2446,11 @@ static bool publish_pending_cs_result_packet(void) {
   g_vpr_transport->vprSeq = g_vpr_transport->vprSeq + 1U;
   g_vpr_transport->vprFlags = NRF54L15_VPR_TRANSPORT_FLAG_PENDING;
 #if VPR_CS_DEDICATED_IMAGE
+  const uint8_t subevent_count = current_demo_subevent_count();
+  const bool has_more_subevents =
+      ((uint8_t)(g_cs_active_subevent_index + 1U) < subevent_count);
+  const uint8_t next_subevent_start =
+      current_demo_subevent_start_step((uint8_t)(g_cs_active_subevent_index + 1U));
   if (g_pending_cs_result_stage == 1U) {
     g_cs_local_chunk_start_step = (uint8_t)(g_cs_local_chunk_start_step + steps_built);
     if (has_more) {
@@ -2333,7 +2460,8 @@ static bool publish_pending_cs_result_packet(void) {
     } else {
       const uint32_t peer_gap = current_peer_stage_delay_ticks();
       g_pending_cs_result_stage = 3U;
-      g_cs_peer_chunk_start_step = 0U;
+      g_cs_peer_chunk_start_step =
+          current_demo_subevent_start_step(g_cs_active_subevent_index);
       g_cs_next_chunk_stage_heartbeat = 0U;
       g_cs_next_peer_stage_heartbeat = g_vpr_transport->heartbeat + peer_gap;
       g_cs_last_peer_gap_ticks = (peer_gap > 7U) ? 7U : (uint8_t)peer_gap;
@@ -2347,14 +2475,16 @@ static bool publish_pending_cs_result_packet(void) {
     } else {
       const uint32_t peer_gap = current_peer_stage_delay_ticks();
       g_pending_cs_result_stage = 3U;
-      g_cs_peer_chunk_start_step = 0U;
+      g_cs_peer_chunk_start_step =
+          current_demo_subevent_start_step(g_cs_active_subevent_index);
       g_cs_next_chunk_stage_heartbeat = 0U;
       g_cs_next_peer_stage_heartbeat = g_vpr_transport->heartbeat + peer_gap;
       g_cs_last_peer_gap_ticks = (peer_gap > 7U) ? 7U : (uint8_t)peer_gap;
     }
   } else if (g_pending_cs_result_stage == 3U) {
     g_pending_cs_result_stage = 4U;
-    g_cs_peer_chunk_start_step = 0U;
+    g_cs_peer_chunk_start_step =
+        current_demo_subevent_start_step(g_cs_active_subevent_index);
     g_cs_next_chunk_stage_heartbeat = 0U;
     g_cs_next_peer_stage_heartbeat = g_vpr_transport->heartbeat + 1U;
   } else if (g_pending_cs_result_stage == 4U) {
@@ -2368,13 +2498,17 @@ static bool publish_pending_cs_result_packet(void) {
       g_pending_cs_result_stage = 0U;
       g_cs_next_chunk_stage_heartbeat = 0U;
       g_cs_next_peer_stage_heartbeat = 0U;
-      if (g_cs_procedure_enabled != 0U &&
+      if (has_more_subevents) {
+        g_cs_next_subevent_heartbeat =
+            g_vpr_transport->heartbeat + current_subevent_stage_delay_ticks();
+      } else if (g_cs_procedure_enabled != 0U &&
           g_cs_procedure_counter < g_cs_max_procedure_count) {
         g_cs_next_procedure_heartbeat =
             g_vpr_transport->heartbeat + current_procedure_interval_ticks();
       } else {
         g_cs_procedure_enabled = 0U;
         g_cs_next_procedure_heartbeat = 0U;
+        g_cs_next_subevent_heartbeat = 0U;
         g_cs_last_interval_selector = 0U;
       }
     }
@@ -2385,22 +2519,33 @@ static bool publish_pending_cs_result_packet(void) {
       g_cs_next_chunk_stage_heartbeat =
           g_vpr_transport->heartbeat + current_chunk_stage_delay_ticks();
       g_cs_next_peer_stage_heartbeat = g_vpr_transport->heartbeat + 1U;
+    } else if (has_more_subevents) {
+      g_cs_next_subevent_heartbeat =
+          g_vpr_transport->heartbeat + current_subevent_stage_delay_ticks();
+      g_cs_local_chunk_start_step = next_subevent_start;
+      g_cs_peer_chunk_start_step = next_subevent_start;
+      g_cs_next_chunk_stage_heartbeat = 0U;
+      g_cs_next_peer_stage_heartbeat = 0U;
+      g_pending_cs_result_stage = 0U;
     } else if (g_cs_procedure_enabled != 0U &&
                g_cs_procedure_counter < g_cs_max_procedure_count) {
       g_cs_next_procedure_heartbeat =
           g_vpr_transport->heartbeat + current_procedure_interval_ticks();
+      g_cs_next_subevent_heartbeat = 0U;
       g_cs_next_chunk_stage_heartbeat = 0U;
       g_cs_next_peer_stage_heartbeat = 0U;
       g_pending_cs_result_stage = 0U;
     } else {
       g_cs_procedure_enabled = 0U;
       g_cs_next_procedure_heartbeat = 0U;
+      g_cs_next_subevent_heartbeat = 0U;
       g_cs_next_chunk_stage_heartbeat = 0U;
       g_cs_next_peer_stage_heartbeat = 0U;
       g_cs_last_interval_selector = 0U;
       g_pending_cs_result_stage = 0U;
     }
   } else {
+    g_cs_next_subevent_heartbeat = 0U;
     g_cs_next_chunk_stage_heartbeat = 0U;
     g_cs_next_peer_stage_heartbeat = 0U;
     g_pending_cs_result_stage = 0U;
@@ -2555,7 +2700,9 @@ __attribute__((noreturn, used, externally_visible)) void vpr_main(void) {
         (void)publish_pending_ticker_event();
       }
 #else
-      (void)schedule_next_cs_procedure();
+      if (!schedule_next_cs_subevent()) {
+        (void)schedule_next_cs_procedure();
+      }
       (void)publish_pending_cs_result_packet();
 #endif
     }
