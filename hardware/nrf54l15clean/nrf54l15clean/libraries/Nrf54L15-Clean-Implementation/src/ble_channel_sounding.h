@@ -988,6 +988,14 @@ struct BleCsControllerVprHostState {
   bool linkSlot0Runnable = false;
   bool linkSlot1Runnable = false;
   bool linkPreviousSlotRunnable = false;
+  bool linkSelectedConfigSecurityEnabled = false;
+  bool linkSlot0SecurityEnabled = false;
+  bool linkSlot1SecurityEnabled = false;
+  bool linkPreviousSlotSecurityEnabled = false;
+  bool linkSelectedConfigProcedureParamsApplied = false;
+  bool linkSlot0ProcedureParamsApplied = false;
+  bool linkSlot1ProcedureParamsApplied = false;
+  bool linkPreviousSlotProcedureParamsApplied = false;
 };
 
 class BleCsControllerVprHost {

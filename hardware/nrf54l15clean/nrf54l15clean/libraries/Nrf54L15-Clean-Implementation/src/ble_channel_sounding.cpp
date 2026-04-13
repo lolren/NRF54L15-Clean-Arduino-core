@@ -3700,6 +3700,14 @@ bool BleCsControllerVprHost::resetTransport(bool clearScripts) {
   vprState_.linkSlot0Runnable = false;
   vprState_.linkSlot1Runnable = false;
   vprState_.linkPreviousSlotRunnable = false;
+  vprState_.linkSelectedConfigSecurityEnabled = false;
+  vprState_.linkSlot0SecurityEnabled = false;
+  vprState_.linkSlot1SecurityEnabled = false;
+  vprState_.linkPreviousSlotSecurityEnabled = false;
+  vprState_.linkSelectedConfigProcedureParamsApplied = false;
+  vprState_.linkSlot0ProcedureParamsApplied = false;
+  vprState_.linkSlot1ProcedureParamsApplied = false;
+  vprState_.linkPreviousSlotProcedureParamsApplied = false;
   syncVprState();
   return ok;
 }
@@ -3938,6 +3946,14 @@ void BleCsControllerVprHost::syncVprState() {
   nextState.linkSlot1Runnable = (packedConfigState & 0x02U) != 0U;
   nextState.linkPreviousSlotRunnable = (packedConfigState & 0x04U) != 0U;
   nextState.linkSelectedConfigRunnable = (packedConfigState & 0x08U) != 0U;
+  nextState.linkSlot0SecurityEnabled = (packedConfigState & 0x10U) != 0U;
+  nextState.linkSlot1SecurityEnabled = (packedConfigState & 0x20U) != 0U;
+  nextState.linkPreviousSlotSecurityEnabled = (packedConfigState & 0x40U) != 0U;
+  nextState.linkSelectedConfigSecurityEnabled = (packedConfigState & 0x80U) != 0U;
+  nextState.linkSlot0ProcedureParamsApplied = (packedConfigState & 0x100U) != 0U;
+  nextState.linkSlot1ProcedureParamsApplied = (packedConfigState & 0x200U) != 0U;
+  nextState.linkPreviousSlotProcedureParamsApplied = (packedConfigState & 0x400U) != 0U;
+  nextState.linkSelectedConfigProcedureParamsApplied = (packedConfigState & 0x800U) != 0U;
   nextState.linkProcedureCounter = 0U;
   vprState_ = nextState;
 

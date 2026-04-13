@@ -699,6 +699,10 @@ When resuming this work:
   - the same seam now also exposes controller-owned runnable metadata:
     - selected-config runnable flag
     - slot0 / slot1 / previous-slot runnable flags
+  - the same seam now also exposes controller-owned slot readiness metadata:
+    - selected / slot0 / slot1 / previous-slot security-enabled flags
+    - selected / slot0 / slot1 / previous-slot procedure-parameters-applied
+      flags
   - `hcivprslotdemo` now proves those slot semantics on one live VPR session:
     - initial ready state is `slot0=1 slot1=0 previous=0`
     - direct create of alternate `configId=2` yields
@@ -712,11 +716,17 @@ When resuming this work:
       runnable with `slot0` runnable
     - direct create of alternate `configId=2` selects it immediately but keeps
       it not runnable until security and procedure parameters are applied
+      while the stored base config stays ready in slot metadata
+    - direct `Security Enable` on selected `configId=2` now shows the selected
+      config becoming security-enabled before it becomes runnable
     - direct `Set Procedure Parameters(configId=2)` after security flips the
-      selected-config runnable flag high without needing `Procedure Enable`
+      selected-config runnable flag high without needing `Procedure Enable`,
+      and slot readiness metadata now reports `security=1` and
+      `procedureParamsApplied=1` for both the selected config and its stored
+      slot
     - direct `Set Procedure Parameters(configId=1)` selects stored base config
       again and moves active ownership back to slot0 while both stored primary
-      slots stay runnable
+      slots stay runnable and ready
     - direct `Set Procedure Parameters(configId=2)` selects stored alternate
       config again and moves active ownership back to slot1 with runnable state
       still preserved

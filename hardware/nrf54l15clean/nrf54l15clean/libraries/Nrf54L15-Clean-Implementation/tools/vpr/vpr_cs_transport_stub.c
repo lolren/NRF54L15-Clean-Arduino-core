@@ -628,6 +628,30 @@ static uint32_t current_link_state_config_packed(void) {
       g_cs_procedure_params_applied != 0U) {
     flags |= 0x08U;
   }
+  if (g_cs_slots[0].inUse != 0U && g_cs_slots[0].securityEnabled != 0U) {
+    flags |= 0x10U;
+  }
+  if (g_cs_slots[1].inUse != 0U && g_cs_slots[1].securityEnabled != 0U) {
+    flags |= 0x20U;
+  }
+  if (g_cs_previous_slot.inUse != 0U && g_cs_previous_slot.securityEnabled != 0U) {
+    flags |= 0x40U;
+  }
+  if (g_cs_config_created != 0U && g_cs_security_enabled != 0U) {
+    flags |= 0x80U;
+  }
+  if (g_cs_slots[0].inUse != 0U && g_cs_slots[0].procedureParamsApplied != 0U) {
+    flags |= 0x100U;
+  }
+  if (g_cs_slots[1].inUse != 0U && g_cs_slots[1].procedureParamsApplied != 0U) {
+    flags |= 0x200U;
+  }
+  if (g_cs_previous_slot.inUse != 0U && g_cs_previous_slot.procedureParamsApplied != 0U) {
+    flags |= 0x400U;
+  }
+  if (g_cs_config_created != 0U && g_cs_procedure_params_applied != 0U) {
+    flags |= 0x800U;
+  }
 
   return flags;
 }
