@@ -1534,6 +1534,19 @@ static size_t build_config_complete_payload(uint8_t *payload, size_t max_len,
   return 33U;
 }
 
+static size_t build_remove_config_complete_payload(uint8_t *payload, size_t max_len,
+                                                   uint16_t conn_handle, uint8_t config_id) {
+  if (payload == NULL || max_len < 33U) {
+    return 0U;
+  }
+  bytes_zero(payload, 33U);
+  payload[0] = 0U;
+  write_le16(&payload[1], conn_handle);
+  payload[3] = config_id;
+  payload[4] = 0U;
+  return 33U;
+}
+
 static size_t build_procedure_enable_complete_payload(uint8_t *payload, size_t max_len,
                                                       uint16_t conn_handle) {
   if (payload == NULL || max_len < 21U) {
@@ -2085,9 +2098,11 @@ static bool publish_builtin_response_for_opcode(uint16_t opcode) {
     }
     case BLE_CS_HCI_OP_REMOVE_CONFIG: {
       uint8_t status = 0U;
+      uint8_t removed_config_id = 0U;
 #if VPR_CS_DEDICATED_IMAGE
       status = validate_remove_config_command();
       if (status == 0U) {
+        removed_config_id = g_cs_config_id;
         clear_active_cs_state();
         g_cs_session_open = 0U;
         g_cs_session_conn_handle = 0U;
@@ -2096,6 +2111,26 @@ static bool publish_builtin_response_for_opcode(uint16_t opcode) {
       size_t len = append_h4_command_complete((uint8_t *)g_vpr_transport->vprData + offset,
                                               NRF54L15_VPR_TRANSPORT_MAX_VPR_DATA - offset,
                                               opcode, status);
+      if (len == 0U) {
+        return false;
+      }
+      offset += len;
+      if (status != 0U) {
+        break;
+      }
+      len = build_remove_config_complete_payload(payload, sizeof(payload), conn_handle,
+#if VPR_CS_DEDICATED_IMAGE
+                                                 removed_config_id
+#else
+                                                 1U
+#endif
+      );
+      if (len == 0U) {
+        return false;
+      }
+      len = append_h4_le_meta((uint8_t *)g_vpr_transport->vprData + offset,
+                              NRF54L15_VPR_TRANSPORT_MAX_VPR_DATA - offset,
+                              BLE_CS_HCI_EVT_CONFIG_COMPLETE, payload, len);
       if (len == 0U) {
         return false;
       }

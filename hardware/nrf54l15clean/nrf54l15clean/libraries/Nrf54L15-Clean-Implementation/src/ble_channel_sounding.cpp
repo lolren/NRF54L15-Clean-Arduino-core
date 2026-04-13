@@ -2229,6 +2229,39 @@ bool BleCsControllerWorkflow::acknowledgeCommandStatus(uint16_t opcode, uint8_t 
   }
 }
 
+bool BleCsControllerWorkflow::acknowledgeReadyCommandStatus(uint16_t opcode, uint8_t status) {
+  if (failed() || !ready()) {
+    return false;
+  }
+
+  state_.lastOpcode = opcode;
+  state_.lastStatus = status;
+
+  switch (opcode) {
+    case kBleCsHciOpReadRemoteSupportedCapabilities:
+    case kBleCsHciOpCreateConfig:
+    case kBleCsHciOpRemoveConfig:
+    case kBleCsHciOpSecurityEnable:
+    case kBleCsHciOpProcedureEnable:
+      return true;
+
+    case kBleCsHciOpSetDefaultSettings:
+      if (status == 0U) {
+        state_.defaultSettingsApplied = true;
+      }
+      return true;
+
+    case kBleCsHciOpSetProcedureParameters:
+      if (status == 0U) {
+        state_.procedureParametersApplied = true;
+      }
+      return true;
+
+    default:
+      return false;
+  }
+}
+
 bool BleCsControllerWorkflow::consumeEvent(uint8_t subeventCode,
                                            const uint8_t* eventData,
                                            size_t eventLen) {
@@ -2350,20 +2383,127 @@ bool BleCsControllerWorkflow::consumeEvent(uint8_t subeventCode,
   }
 }
 
+bool BleCsControllerWorkflow::consumeReadyEvent(uint8_t subeventCode,
+                                                const uint8_t* eventData,
+                                                size_t eventLen) {
+  if (eventData == nullptr || failed() || !ready()) {
+    return false;
+  }
+
+  switch (subeventCode) {
+    case kBleCsHciEvtReadRemoteSupportedCapabilitiesComplete: {
+      BleCsControllerCapabilities capabilities{};
+      if (!BleChannelSoundingRadio::parseHciRemoteSupportedCapabilitiesCompleteEvent(
+              eventData, eventLen, &capabilities) ||
+          capabilities.connHandle != state_.connHandle) {
+        return false;
+      }
+      state_.lastStatus = capabilities.status;
+      if (capabilities.status == 0U) {
+        state_.remoteCapabilities = capabilities;
+        state_.remoteCapabilitiesValid = capabilities.valid;
+      }
+      return true;
+    }
+
+    case kBleCsHciEvtReadRemoteSupportedCapabilitiesCompleteV2: {
+      BleCsControllerCapabilities capabilities{};
+      if (!BleChannelSoundingRadio::parseHciRemoteSupportedCapabilitiesCompleteV2Event(
+              eventData, eventLen, &capabilities) ||
+          capabilities.connHandle != state_.connHandle) {
+        return false;
+      }
+      state_.lastStatus = capabilities.status;
+      if (capabilities.status == 0U) {
+        state_.remoteCapabilities = capabilities;
+        state_.remoteCapabilitiesValid = capabilities.valid;
+      }
+      return true;
+    }
+
+    case kBleCsHciEvtConfigComplete: {
+      BleCsConfigComplete complete{};
+      if (!BleChannelSoundingRadio::parseHciConfigCompleteEvent(eventData, eventLen,
+                                                                &complete) ||
+          complete.connHandle != state_.connHandle) {
+        return false;
+      }
+      state_.lastStatus = complete.status;
+      state_.configComplete = complete;
+      if (complete.status != 0U) {
+        return true;
+      }
+      state_.configCreated = (complete.action != 0U);
+      if (complete.action == 0U) {
+        state_.remoteCapabilities = BleCsControllerCapabilities{};
+        state_.remoteCapabilitiesValid = false;
+        state_.defaultSettingsApplied = false;
+        state_.securityEnabled = false;
+      }
+      state_.procedureParametersApplied = false;
+      state_.procedureEnabled = false;
+      state_.procedureEnableComplete = BleCsProcedureEnableComplete{};
+      state_.procedureEnableComplete.connHandle = complete.connHandle;
+      state_.procedureEnableComplete.configId = complete.configId;
+      return true;
+    }
+
+    case kBleCsHciEvtSecurityEnableComplete: {
+      BleCsSecurityEnableComplete complete{};
+      if (!BleChannelSoundingRadio::parseHciSecurityEnableCompleteEvent(eventData, eventLen,
+                                                                        &complete) ||
+          complete.connHandle != state_.connHandle) {
+        return false;
+      }
+      state_.lastStatus = complete.status;
+      if (complete.status == 0U) {
+        state_.securityEnabled = true;
+      }
+      return true;
+    }
+
+    case kBleCsHciEvtProcedureEnableComplete: {
+      BleCsProcedureEnableComplete complete{};
+      if (!BleChannelSoundingRadio::parseHciProcedureEnableCompleteEvent(eventData, eventLen,
+                                                                         &complete) ||
+          complete.connHandle != state_.connHandle) {
+        return false;
+      }
+      state_.lastStatus = complete.status;
+      state_.procedureEnableComplete = complete;
+      if (complete.status == 0U) {
+        state_.procedureEnabled = (complete.state != 0U);
+        if (complete.state != 0U) {
+          state_.procedureParametersApplied = true;
+        }
+      }
+      return true;
+    }
+
+    default:
+      return false;
+  }
+}
+
 bool BleCsControllerWorkflow::consumeHciEventPacket(const uint8_t* packet, size_t packetLen) {
   BleCsHciCommandStatusEvent statusEvent{};
   if (BleChannelSoundingRadio::parseHciCommandStatusEvent(packet, packetLen, &statusEvent)) {
-    return acknowledgeCommandStatus(statusEvent.opcode, statusEvent.status);
+    return ready() ? acknowledgeReadyCommandStatus(statusEvent.opcode, statusEvent.status)
+                   : acknowledgeCommandStatus(statusEvent.opcode, statusEvent.status);
   }
 
   BleCsHciCommandCompleteEvent completeEvent{};
   if (BleChannelSoundingRadio::parseHciCommandCompleteEvent(packet, packetLen, &completeEvent)) {
-    return acknowledgeCommandStatus(completeEvent.opcode, completeEvent.status);
+    return ready() ? acknowledgeReadyCommandStatus(completeEvent.opcode, completeEvent.status)
+                   : acknowledgeCommandStatus(completeEvent.opcode, completeEvent.status);
   }
 
   BleCsHciLeMetaEvent metaEvent{};
   if (BleChannelSoundingRadio::parseHciLeMetaEvent(packet, packetLen, &metaEvent)) {
-    return consumeEvent(metaEvent.subeventCode, metaEvent.payload, metaEvent.payloadLen);
+    return ready() ? consumeReadyEvent(metaEvent.subeventCode, metaEvent.payload,
+                                       metaEvent.payloadLen)
+                   : consumeEvent(metaEvent.subeventCode, metaEvent.payload,
+                                  metaEvent.payloadLen);
   }
 
   return false;

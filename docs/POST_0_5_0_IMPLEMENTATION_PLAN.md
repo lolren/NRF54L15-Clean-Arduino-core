@@ -298,16 +298,29 @@ Immediate next follow-up from this checkpoint:
     (`Create Config`, `Remove Config`, `Set Procedure Parameters`,
     `Procedure Enable`) so out-of-band control behaves like the workflow-driven
     command path
+  - feeds ready-phase direct control events back into workflow shadow state
+    instead of only tolerating them
+- the dedicated CS image now publishes `Config Complete(action=remove)` on
+  direct `Remove Config`, which closes the gap between the controller-facing
+  transport and the host-side workflow shadow
 - the current live proofs for that controller-lifecycle cleanup are now:
   - `hcivprtransportdemo`
   - `hcivprsubcountdemo`
   - `hcivprabortdemo`
   - `hcivprmanualdemo`
   - `hcivprreconfigdemo`
+  - `hcivprcfgswapdemo`
 - `hcivprreconfigdemo` now proves direct out-of-band
   `Set Procedure Parameters` reconfiguration on one live VPR session by
   changing the same seven-step procedure from `2` complete subevents per side
   to `3` complete subevents per side without rebooting the transport
+- `hcivprcfgswapdemo` now proves a direct full-session rebuild on one live VPR
+  session:
+  - remove the current config
+  - reopen the VPR CS session with direct `Read Remote Supported Capabilities`
+    and `Set Default Settings`
+  - create a new config with a new `configId`
+  - re-enable security, apply parameters, and run it to completion
 - the current remaining direct-control gap is no longer basic manual
   start/abort/restart or direct parameter reconfiguration. The next slice is
   richer controller ownership on VPR above that transport/control seam.

@@ -611,12 +611,22 @@ When resuming this work:
   - direct out-of-band run-shape commands now also reset in-flight host
     procedure assembly before the command is sent, matching the existing
     workflow-driven command path
+  - once the workflow is already `ready`, out-of-band CS control traffic now
+    updates the workflow shadow state instead of only being tolerated
+    - direct `Remove Config` now clears the ready-phase host shadow flags
+    - direct `Read Remote Supported Capabilities`, `Set Default Settings`,
+      `Create Config`, `Security Enable`, `Set Procedure Parameters`, and
+      `Procedure Enable` now repopulate that shadow on the live VPR session
+  - the dedicated CS image now emits a real
+    `Config Complete(action=remove)` LE meta event on `Remove Config`, instead
+    of only returning `Command Complete`
   - the stable live proofs for this slice are now:
     - `hcivprtransportdemo`
     - `hcivprsubcountdemo`
     - `hcivprabortdemo`
     - `hcivprmanualdemo`
     - `hcivprreconfigdemo`
+    - `hcivprcfgswapdemo`
   - `hcivprmanualdemo` is now the focused regression for direct out-of-band
     `Procedure Enable(enable=1/0/1/0)` control on the VPR path
   - `hcivprreconfigdemo` now proves direct out-of-band
@@ -626,6 +636,17 @@ When resuming this work:
     - a second direct run, on the same live session and without rebooting the
       transport, tightens subevent budget and lands at `3` local and `3` peer
       complete subevents for that same procedure shape
+  - `hcivprcfgswapdemo` now proves a full direct config rebuild on one live
+    VPR session without rebooting the transport:
+    - direct `Remove Config`
+    - direct `Read Remote Supported Capabilities`
+    - direct `Set Default Settings`
+    - direct `Create Config` with a new `configId`
+    - direct `Security Enable`
+    - direct `Set Procedure Parameters`
+    - direct `Procedure Enable`
+    - the rebuilt run now completes on `configId=2` with a pure mode-2
+      four-step synthetic shape (`steps=0+4/0+4`)
 - The two attached boards were restored to `VprSharedTransportProbe` after the
   resume/restart experiments and both were left healthy on the known-good
   `svc=1.7` / `opmask=0x3FF` path.

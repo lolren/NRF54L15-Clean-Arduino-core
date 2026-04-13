@@ -670,6 +670,8 @@ class BleCsControllerWorkflow {
   static bool validateConfigAgainstCapabilities(
       const BleCsControllerWorkflowConfig& config,
       const BleCsControllerCapabilities& capabilities);
+  bool acknowledgeReadyCommandStatus(uint16_t opcode, uint8_t status);
+  bool consumeReadyEvent(uint8_t subeventCode, const uint8_t* eventData, size_t eventLen);
   void fail(uint8_t status);
 
   BleCsControllerWorkflowConfig config_;
