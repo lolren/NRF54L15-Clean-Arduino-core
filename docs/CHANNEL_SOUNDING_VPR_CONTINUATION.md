@@ -703,6 +703,13 @@ When resuming this work:
     - direct run of stored `configId=2` keeps slot1 active
     - direct run of stored `configId=1` switches activity back to slot0 and
       moves the previous slot to `configId=2`
+  - `hcivprselectdemo` now proves stored-config selection on VPR without a
+    run:
+    - direct `Set Procedure Parameters(configId=1)` selects stored base config
+      and moves active ownership back to slot0
+    - direct `Set Procedure Parameters(configId=2)` selects stored alternate
+      config again and moves active ownership back to slot1
+    - no `Procedure Enable` is needed to switch that selected-config state
   - `hcivprmultidemo` now reads VPR-owned peer-gap ticks from decoded host state
     rather than directly peeling raw bits out of shared transport memory
   - the host shared-transport write path now invalidates CPU cache before

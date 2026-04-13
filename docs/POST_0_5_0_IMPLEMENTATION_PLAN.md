@@ -367,6 +367,13 @@ Immediate next follow-up from this checkpoint:
   - alternate create: `slot0=1 slot1=2 previous=1`
   - direct stored-base rerun flips activity back to slot0 with
     `previous=2`
+- `hcivprselectdemo` now proves stored-config selection on VPR without a run:
+  - direct `Set Procedure Parameters(configId=1)` selects stored base config
+    and returns active ownership to slot0
+  - direct `Set Procedure Parameters(configId=2)` selects stored alternate
+    config again and returns active ownership to slot1
+  - that selected-config policy is now visible directly at the host/VPR
+    boundary instead of only through later `Procedure Enable` side effects
 - the host shared-transport write path now invalidates CPU cache before
   checking the shared pending flags, which fixed a real stale-cache direct
   command failure on later `Remove Config` traffic
