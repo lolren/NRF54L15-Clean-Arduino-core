@@ -648,16 +648,17 @@ When resuming this work:
     - direct `Procedure Enable`
     - the rebuilt run now completes on `configId=2` with a pure mode-2
       four-step synthetic shape (`steps=0+4/0+4`)
-  - `hcivprmulticfgdemo` now proves stored config bouncing on one live VPR
-    session without transport reboot:
+  - `hcivprmulticfgdemo` now proves true stored config run switching on one
+    live VPR session without transport reboot:
     - build and run an alternate `configId=2`
-    - directly select stored `configId=1` again on that same live session with
-      `Set Procedure Parameters(configId=1)`
-    - run `configId=1` again without recreating it and without re-enabling
-      security
-    - the two direct runs now land on different synthetic result shapes on the
-      same live session (`0+4/0+4` for the alternate config, then `0+3/0+3`
-      after bouncing back to the stored base config)
+    - directly run stored base `configId=1` again with
+      `Procedure Enable(configId=1)` only
+    - directly run stored alternate `configId=2` again with
+      `Procedure Enable(configId=2)` only
+    - no config recreate, no repeated security enable, and no repeated
+      procedure-parameter write is needed for those follow-on runs
+    - the live proof now lands on three runs with stored-slot-owned shape
+      switching: `0+4/0+4 -> 0+3/0+3 -> 0+4/0+4`
 - The two attached boards were restored to `VprSharedTransportProbe` after the
   resume/restart experiments and both were left healthy on the known-good
   `svc=1.7` / `opmask=0x3FF` path.

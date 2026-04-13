@@ -322,13 +322,13 @@ Immediate next follow-up from this checkpoint:
     and `Set Default Settings`
   - create a new config with a new `configId`
   - re-enable security, apply parameters, and run it to completion
-- `hcivprmulticfgdemo` now proves stored config bounce on one live VPR session:
+- `hcivprmulticfgdemo` now proves stored config run switching on one live VPR
+  session:
   - run a direct alternate `configId=2`
-  - directly select stored `configId=1` again with
-    `Set Procedure Parameters(configId=1)`
-  - run it again without recreating `configId=1` and without re-enabling
-    security
-  - the two runs now land on different synthetic shapes without transport reboot
+  - then run stored `configId=1` again with `Procedure Enable(configId=1)` only
+  - then run stored `configId=2` again with `Procedure Enable(configId=2)` only
+  - those follow-on runs no longer need config recreate, security re-enable, or
+    another procedure-parameter write
 - the current remaining direct-control gap is no longer basic manual
   start/abort/restart or direct parameter reconfiguration. The next slice is
   richer controller ownership on VPR above that transport/control seam.
