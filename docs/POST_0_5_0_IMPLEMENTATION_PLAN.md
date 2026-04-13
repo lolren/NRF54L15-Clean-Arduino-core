@@ -245,6 +245,9 @@ Immediate next follow-up from this checkpoint:
   - continuation splitting is now derived from actual encoded step sizes, so
     the mixed mode-1/mode-2 layout still chunks correctly on the dedicated
     image
+  - that mode-1 insertion is now tied to `createConfig.rttType`, so the
+    dedicated image can also publish a pure mode-2 layout when RTT is turned
+    off and still keep the nominal `~0.75 m` estimate stable
 
 This is the shortest path that advances the repo from "working VPR-backed CS
 demo" to "real BLE controller work is starting to move off CPUAPP".

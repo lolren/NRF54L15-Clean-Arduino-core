@@ -824,7 +824,7 @@ static uint8_t current_demo_step_count(void) {
 }
 
 static bool current_demo_has_mode1_timing_step(void) {
-  return current_demo_step_count() > 3U;
+  return (g_cs_rtt_type != 0U) && (current_demo_step_count() > 3U);
 }
 
 static uint8_t current_demo_total_step_count(void) {

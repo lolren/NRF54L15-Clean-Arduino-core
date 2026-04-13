@@ -539,6 +539,9 @@ When resuming this work:
   - followed by the existing mode-2 phase-tone steps
   - continuation chunking is now based on actual encoded step sizes, not an
     old fixed `8 bytes per step` assumption
+  - that inserted timing step is now gated by `createConfig.rttType`, so the
+    dedicated image can cleanly fall back to a pure phase-only mode-2 layout
+    when RTT is disabled
 - The two attached boards were restored to `VprSharedTransportProbe` after the
   resume/restart experiments and both were left healthy on the known-good
   `svc=1.7` / `opmask=0x3FF` path.
