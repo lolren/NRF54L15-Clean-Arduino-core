@@ -596,6 +596,17 @@ When resuming this work:
     `minSubeventLen = maxSubeventLen = 0x000100` path, which now lands at
     `3` local subevents and `3` peer subevents while still reassembling the
     same completed seven-step procedure estimate at `~0.75 m`
+- The host/session layer now has a narrower controller-lifecycle reset seam:
+  - workflow-driven `Create Config`, `Remove Config`,
+    `Set Procedure Parameters`, and `Procedure Enable` commands now flush
+    in-flight result assembly before the next controller-owned run shape starts
+  - once the CS workflow is already `ready`, later out-of-band CS control
+    replies (`Command Status`, `Command Complete`, and the matching CS LE meta
+    completion events) are tolerated instead of failing the session parser
+  - the stable live proofs for this slice are still the existing
+    `hcivprtransportdemo`, `hcivprsubcountdemo`, and `hcivprabortdemo`
+  - true direct manual-start / abort / restart ownership on that out-of-band
+    path is still unfinished and should stay out of the public demo surface
 - The two attached boards were restored to `VprSharedTransportProbe` after the
   resume/restart experiments and both were left healthy on the known-good
   `svc=1.7` / `opmask=0x3FF` path.

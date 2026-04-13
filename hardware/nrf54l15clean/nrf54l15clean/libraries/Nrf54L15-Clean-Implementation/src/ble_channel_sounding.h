@@ -756,6 +756,7 @@ class BleCsControllerSession {
   const BleCsSubeventResult& peerResult() const;
   const BleCsSubeventResult& completedLocalResult() const;
   const BleCsSubeventResult& completedPeerResult() const;
+  void resetProcedureRunState();
 
  private:
   static bool onWorkflowPacket(const uint8_t* packet, size_t packetLen, void* userData);
@@ -844,6 +845,7 @@ class BleCsControllerHost {
   const BleCsSubeventResult& peerResult() const;
   const BleCsSubeventResult& completedLocalResult() const;
   const BleCsSubeventResult& completedPeerResult() const;
+  void resetProcedureRunState();
 
  private:
   static bool onControllerPacket(const uint8_t* packet, size_t packetLen, void* userData);
@@ -900,6 +902,7 @@ class BleCsControllerStreamHost {
   const BleCsSubeventResult& peerResult() const;
   const BleCsSubeventResult& completedLocalResult() const;
   const BleCsSubeventResult& completedPeerResult() const;
+  void resetProcedureRunState();
 
  private:
   static bool onSendPacket(const uint8_t* packet, size_t packetLen, void* userData);

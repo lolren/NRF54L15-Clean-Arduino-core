@@ -2710,6 +2710,20 @@ const BleCsSubeventResult& BleCsControllerSession::completedPeerResult() const {
   return completedPeerResult_;
 }
 
+void BleCsControllerSession::resetProcedureRunState() {
+  localDecoder_.reset();
+  peerDecoder_.reset();
+  localDecoder_.setAcceptedPacketTypes(1UL << kBleHciPacketTypeEvent);
+  peerDecoder_.setAcceptedPacketTypes(1UL << kBleHciPacketTypeEvent);
+  localReassembler_.reset();
+  peerReassembler_.reset();
+  localResult_ = BleCsSubeventResult{};
+  peerResult_ = BleCsSubeventResult{};
+  state_.localResultComplete = false;
+  state_.peerResultComplete = false;
+  resetAccumulatedProcedureResults();
+}
+
 void BleCsControllerSession::resetAccumulatedProcedureResults() {
   resetAccumulatedProcedureResult(BleCsControllerResultSource::kLocal);
   resetAccumulatedProcedureResult(BleCsControllerResultSource::kPeer);
@@ -2934,8 +2948,17 @@ bool BleCsControllerHost::pumpCommands(uint8_t maxCommands) {
     if (!session_.buildNextCommandPacket(packet, sizeof(packet), &packetLen)) {
       break;
     }
-    const uint16_t opcode =
-        (packetLen >= 3U) ? readLe16(packet + 1U) : 0U;
+    const uint16_t opcode = (packetLen >= 3U) ? readLe16(packet + 1U) : 0U;
+    switch (opcode) {
+      case kBleCsHciOpCreateConfig:
+      case kBleCsHciOpRemoveConfig:
+      case kBleCsHciOpSetProcedureParameters:
+      case kBleCsHciOpProcedureEnable:
+        resetProcedureRunState();
+        break;
+      default:
+        break;
+    }
     if (!config_.sendPacket(packet, packetLen, config_.userData)) {
       return false;
     }
@@ -2945,6 +2968,11 @@ bool BleCsControllerHost::pumpCommands(uint8_t maxCommands) {
     state_.lastCommandOpcode = opcode;
   }
   return true;
+}
+
+void BleCsControllerHost::resetProcedureRunState() {
+  session_.resetProcedureRunState();
+  controllerPeerResultsExpected_ = false;
 }
 
 bool BleCsControllerHost::consumeIngressPacket(BleCsControllerIngressSource source,
@@ -3019,8 +3047,62 @@ bool BleCsControllerHost::consumeIngressPacket(BleCsControllerIngressSource sour
     const bool ok = session_.consumeWorkflowEventPacket(packet, packetLen);
     if (ok) {
       ++state_.controllerEventPackets;
+      return true;
     }
-    return ok;
+
+    if (session_.ready()) {
+      BleCsHciCommandStatusEvent statusEvent{};
+      if (BleChannelSoundingRadio::parseHciCommandStatusEvent(packet, packetLen, &statusEvent)) {
+        switch (statusEvent.opcode) {
+          case kBleCsHciOpReadRemoteSupportedCapabilities:
+          case kBleCsHciOpSecurityEnable:
+          case kBleCsHciOpSetDefaultSettings:
+          case kBleCsHciOpCreateConfig:
+          case kBleCsHciOpRemoveConfig:
+          case kBleCsHciOpSetProcedureParameters:
+          case kBleCsHciOpProcedureEnable:
+            ++state_.controllerEventPackets;
+            return true;
+          default:
+            break;
+        }
+      }
+
+      BleCsHciCommandCompleteEvent completeEvent{};
+      if (BleChannelSoundingRadio::parseHciCommandCompleteEvent(packet, packetLen,
+                                                                &completeEvent)) {
+        switch (completeEvent.opcode) {
+          case kBleCsHciOpReadRemoteSupportedCapabilities:
+          case kBleCsHciOpSecurityEnable:
+          case kBleCsHciOpSetDefaultSettings:
+          case kBleCsHciOpCreateConfig:
+          case kBleCsHciOpRemoveConfig:
+          case kBleCsHciOpSetProcedureParameters:
+          case kBleCsHciOpProcedureEnable:
+            ++state_.controllerEventPackets;
+            return true;
+          default:
+            break;
+        }
+      }
+
+      BleCsHciLeMetaEvent ignoredMetaEvent{};
+      if (BleChannelSoundingRadio::parseHciLeMetaEvent(packet, packetLen, &ignoredMetaEvent)) {
+        switch (ignoredMetaEvent.subeventCode) {
+          case kBleCsHciEvtReadRemoteSupportedCapabilitiesComplete:
+          case kBleCsHciEvtReadRemoteSupportedCapabilitiesCompleteV2:
+          case kBleCsHciEvtConfigComplete:
+          case kBleCsHciEvtSecurityEnableComplete:
+          case kBleCsHciEvtProcedureEnableComplete:
+            ++state_.controllerEventPackets;
+            return true;
+          default:
+            break;
+        }
+      }
+    }
+
+    return false;
   }
 
   const BleCsControllerResultSource resultSource =
@@ -3244,6 +3326,10 @@ const BleCsSubeventResult& BleCsControllerStreamHost::completedLocalResult() con
 
 const BleCsSubeventResult& BleCsControllerStreamHost::completedPeerResult() const {
   return host_.completedPeerResult();
+}
+
+void BleCsControllerStreamHost::resetProcedureRunState() {
+  host_.resetProcedureRunState();
 }
 
 bool BleCsControllerStreamHost::onSendPacket(const uint8_t* packet,
@@ -3490,23 +3576,36 @@ const VprSharedTransportStream& BleCsControllerVprHost::transport() const {
 }
 
 void BleCsControllerVprHost::syncVprState() {
-  vprState_.heartbeat = transport_.heartbeat();
-  vprState_.lastOpcode = transport_.lastOpcode();
-  vprState_.transportStatus = transport_.transportStatus();
-  vprState_.lastError = transport_.lastError();
-  vprState_.running = transport_.isRunning();
-  vprState_.secureAccessEnabled = transport_.secureAccessEnabled();
+  const BleCsControllerVprHostState previous = vprState_;
+  BleCsControllerVprHostState nextState = previous;
+  nextState.heartbeat = transport_.heartbeat();
+  nextState.lastOpcode = transport_.lastOpcode();
+  nextState.transportStatus = transport_.transportStatus();
+  nextState.lastError = transport_.lastError();
+  nextState.running = transport_.isRunning();
+  nextState.secureAccessEnabled = transport_.secureAccessEnabled();
   const uint32_t packedLinkState = transport_.reservedState();
-  vprState_.linkConnHandle = static_cast<uint16_t>(packedLinkState & 0x0FFFU);
-  vprState_.linkProcedureIntervalSelector =
+  nextState.linkConnHandle = static_cast<uint16_t>(packedLinkState & 0x0FFFU);
+  nextState.linkProcedureIntervalSelector =
       static_cast<uint8_t>((packedLinkState >> 12U) & 0x0FU);
-  vprState_.linkSessionOpen = (packedLinkState & (1UL << 16U)) != 0U;
-  vprState_.linkConfigCreated = (packedLinkState & (1UL << 17U)) != 0U;
-  vprState_.linkSecurityEnabled = (packedLinkState & (1UL << 18U)) != 0U;
-  vprState_.linkProcedureParamsApplied = (packedLinkState & (1UL << 19U)) != 0U;
-  vprState_.linkProcedureEnabled = (packedLinkState & (1UL << 20U)) != 0U;
-  vprState_.linkConfigId = static_cast<uint8_t>((packedLinkState >> 21U) & 0xFFU);
-  vprState_.linkProcedureCounter = 0U;
+  nextState.linkSessionOpen = (packedLinkState & (1UL << 16U)) != 0U;
+  nextState.linkConfigCreated = (packedLinkState & (1UL << 17U)) != 0U;
+  nextState.linkSecurityEnabled = (packedLinkState & (1UL << 18U)) != 0U;
+  nextState.linkProcedureParamsApplied = (packedLinkState & (1UL << 19U)) != 0U;
+  nextState.linkProcedureEnabled = (packedLinkState & (1UL << 20U)) != 0U;
+  nextState.linkConfigId = static_cast<uint8_t>((packedLinkState >> 21U) & 0xFFU);
+  nextState.linkProcedureCounter = 0U;
+  vprState_ = nextState;
+
+  const bool linkSessionInvalidated =
+      (previous.linkSessionOpen && !nextState.linkSessionOpen) ||
+      (previous.linkConnHandle != 0U && previous.linkConnHandle != nextState.linkConnHandle);
+  const bool linkConfigInvalidated =
+      (previous.linkConfigCreated && !nextState.linkConfigCreated) ||
+      (previous.linkConfigId != 0U && previous.linkConfigId != nextState.linkConfigId);
+  if (linkSessionInvalidated || linkConfigInvalidated) {
+    host_.resetProcedureRunState();
+  }
 }
 
 BleCsDfeCaptureInfo BleChannelSoundingRadio::lastDfeCaptureInfo() const {

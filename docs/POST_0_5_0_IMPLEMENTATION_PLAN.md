@@ -285,6 +285,18 @@ Immediate next follow-up from this checkpoint:
   - the tighter `minSubeventLen = maxSubeventLen = 0x000100` path lands at
     `3` complete subevents for the same seven-step procedure while the host
     still reassembles one completed procedure estimate
+- the host/session layer now also tolerates later out-of-band CS control
+  replies once the workflow is already `ready`, and workflow-driven
+  controller-shape changes now flush in-flight result assembly before the next
+  run starts
+- the current live proofs for that controller-lifecycle cleanup are still the
+  stable existing regressions:
+  - `hcivprtransportdemo`
+  - `hcivprsubcountdemo`
+  - `hcivprabortdemo`
+- true direct manual-start / abort / restart ownership on the out-of-band
+  path is still unfinished and should remain in the continuation notes rather
+  than the public demo surface
 
 This is the shortest path that advances the repo from "working VPR-backed CS
 demo" to "real BLE controller work is starting to move off CPUAPP".
