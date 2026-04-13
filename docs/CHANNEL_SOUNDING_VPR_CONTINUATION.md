@@ -731,6 +731,17 @@ When resuming this work:
     - direct `Procedure Enable(configId=2)` still runs immediately after that
       promotion
     - direct `Procedure Enable(configId=1)` is then rejected with `0x12`
+  - the host ready-phase workflow shadow is now reconciled against controller-
+    owned VPR state for the direct-control path:
+    - `procedureEnabled` now drops back to `false` when VPR reports the run has
+      actually stopped, so direct-control demos no longer end with stale
+      shadow `...E`
+    - active-remove promotion now restores a consistent shadow state
+      (`RDCSP-`) instead of leaving the host model latched in the pre-promotion
+      remove state
+    - inactive-remove event semantics are still preserved; `hcivprrmstoredemo`
+      continues to report `Config Complete(action=remove)` for the removed
+      inactive config instead of having that event overwritten by reconciliation
   - `hcivprmultidemo` now reads VPR-owned peer-gap ticks from decoded host state
     rather than directly peeling raw bits out of shared transport memory
   - the host shared-transport write path now invalidates CPU cache before

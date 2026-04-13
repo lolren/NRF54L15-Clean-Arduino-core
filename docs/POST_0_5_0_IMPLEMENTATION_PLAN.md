@@ -393,6 +393,15 @@ Immediate next follow-up from this checkpoint:
   - direct `Procedure Enable(configId=2)` still runs immediately after that
     promotion, while direct `Procedure Enable(configId=1)` is rejected with
     `0x12`
+- the host ready-phase workflow shadow is now reconciled against controller-
+  owned VPR state for these direct-control paths:
+  - `procedureEnabled` now drops back to `false` when VPR reports the run has
+    stopped, instead of sticking high in the host shadow after direct runs
+  - active-remove promotion now restores a consistent shadow state
+    (`RDCSP-`) after VPR reselects the remaining stored config
+  - inactive-remove event semantics are still preserved; the host keeps the
+    `Config Complete(action=remove)` view for the removed inactive config
+    instead of overwriting that event during reconciliation
 - the host shared-transport write path now invalidates CPU cache before
   checking the shared pending flags, which fixed a real stale-cache direct
   command failure on later `Remove Config` traffic

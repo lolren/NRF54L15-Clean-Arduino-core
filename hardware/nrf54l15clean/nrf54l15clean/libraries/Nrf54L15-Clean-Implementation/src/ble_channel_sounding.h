@@ -663,6 +663,12 @@ class BleCsControllerWorkflow {
   bool acknowledgeCommandStatus(uint16_t opcode, uint8_t status);
   bool consumeEvent(uint8_t subeventCode, const uint8_t* eventData, size_t eventLen);
   bool consumeHciEventPacket(const uint8_t* packet, size_t packetLen);
+  void reconcileReadyShadowState(uint8_t selectedConfigId,
+                                 bool sessionOpen,
+                                 bool configCreated,
+                                 bool securityEnabled,
+                                 bool procedureParametersApplied,
+                                 bool procedureEnabled);
 
   static const char* phaseName(BleCsControllerWorkflowPhase phase);
 
@@ -759,6 +765,12 @@ class BleCsControllerSession {
   const BleCsSubeventResult& completedLocalResult() const;
   const BleCsSubeventResult& completedPeerResult() const;
   void resetProcedureRunState();
+  void reconcileReadyWorkflowShadow(uint8_t selectedConfigId,
+                                    bool sessionOpen,
+                                    bool configCreated,
+                                    bool securityEnabled,
+                                    bool procedureParametersApplied,
+                                    bool procedureEnabled);
 
  private:
   static bool onWorkflowPacket(const uint8_t* packet, size_t packetLen, void* userData);
@@ -848,6 +860,12 @@ class BleCsControllerHost {
   const BleCsSubeventResult& completedLocalResult() const;
   const BleCsSubeventResult& completedPeerResult() const;
   void resetProcedureRunState();
+  void reconcileReadyWorkflowShadow(uint8_t selectedConfigId,
+                                    bool sessionOpen,
+                                    bool configCreated,
+                                    bool securityEnabled,
+                                    bool procedureParametersApplied,
+                                    bool procedureEnabled);
 
  private:
   static bool onControllerPacket(const uint8_t* packet, size_t packetLen, void* userData);
@@ -906,6 +924,12 @@ class BleCsControllerStreamHost {
   const BleCsSubeventResult& completedLocalResult() const;
   const BleCsSubeventResult& completedPeerResult() const;
   void resetProcedureRunState();
+  void reconcileReadyWorkflowShadow(uint8_t selectedConfigId,
+                                    bool sessionOpen,
+                                    bool configCreated,
+                                    bool securityEnabled,
+                                    bool procedureParametersApplied,
+                                    bool procedureEnabled);
 
  private:
   static bool onSendPacket(const uint8_t* packet, size_t packetLen, void* userData);

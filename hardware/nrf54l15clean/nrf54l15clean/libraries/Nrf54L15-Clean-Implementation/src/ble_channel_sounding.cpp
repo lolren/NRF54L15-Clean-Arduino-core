@@ -2523,6 +2523,61 @@ bool BleCsControllerWorkflow::consumeHciEventPacket(const uint8_t* packet, size_
   return false;
 }
 
+void BleCsControllerWorkflow::reconcileReadyShadowState(uint8_t selectedConfigId,
+                                                        bool sessionOpen,
+                                                        bool configCreated,
+                                                        bool securityEnabled,
+                                                        bool procedureParametersApplied,
+                                                        bool procedureEnabled) {
+  if (!ready()) {
+    return;
+  }
+
+  if (!sessionOpen) {
+    state_.remoteCapabilities = BleCsControllerCapabilities{};
+    state_.remoteCapabilitiesValid = false;
+    state_.defaultSettingsApplied = false;
+    state_.configCreated = false;
+    state_.securityEnabled = false;
+    state_.procedureParametersApplied = false;
+    state_.procedureEnabled = false;
+    state_.procedureEnableComplete = BleCsProcedureEnableComplete{};
+    state_.procedureEnableComplete.connHandle = state_.connHandle;
+    return;
+  }
+
+  const bool recoveredSelectedConfig = !state_.configCreated && configCreated;
+  if (recoveredSelectedConfig) {
+    state_.remoteCapabilitiesValid = true;
+    state_.defaultSettingsApplied = true;
+    state_.configCreated = true;
+    state_.securityEnabled = securityEnabled;
+    state_.procedureParametersApplied = procedureParametersApplied;
+    if (selectedConfigId != 0U) {
+      state_.configComplete.connHandle = state_.connHandle;
+      state_.configComplete.status = 0U;
+      state_.configComplete.action = 1U;
+      state_.configComplete.configId = selectedConfigId;
+    }
+  }
+
+  if (state_.configCreated && configCreated && selectedConfigId != 0U &&
+      state_.configComplete.action != 0U) {
+    state_.configComplete.connHandle = state_.connHandle;
+    state_.configComplete.status = 0U;
+    state_.configComplete.configId = selectedConfigId;
+  }
+
+  if (state_.procedureEnabled != procedureEnabled) {
+    state_.procedureEnabled = procedureEnabled;
+    if (selectedConfigId != 0U) {
+      state_.procedureEnableComplete.connHandle = state_.connHandle;
+      state_.procedureEnableComplete.configId = selectedConfigId;
+      state_.procedureEnableComplete.state = procedureEnabled ? 1U : 0U;
+    }
+  }
+}
+
 const char* BleCsControllerWorkflow::phaseName(BleCsControllerWorkflowPhase phase) {
   switch (phase) {
     case BleCsControllerWorkflowPhase::kIdle:
@@ -2878,6 +2933,15 @@ void BleCsControllerSession::resetProcedureRunState() {
   resetAccumulatedProcedureResults();
 }
 
+void BleCsControllerSession::reconcileReadyWorkflowShadow(
+    uint8_t selectedConfigId, bool sessionOpen, bool configCreated,
+    bool securityEnabled, bool procedureParametersApplied, bool procedureEnabled) {
+  workflow_.reconcileReadyShadowState(selectedConfigId, sessionOpen, configCreated,
+                                      securityEnabled, procedureParametersApplied,
+                                      procedureEnabled);
+  state_.workflowReady = workflow_.ready();
+}
+
 void BleCsControllerSession::resetAccumulatedProcedureResults() {
   resetAccumulatedProcedureResult(BleCsControllerResultSource::kLocal);
   resetAccumulatedProcedureResult(BleCsControllerResultSource::kPeer);
@@ -3127,6 +3191,14 @@ bool BleCsControllerHost::pumpCommands(uint8_t maxCommands) {
 void BleCsControllerHost::resetProcedureRunState() {
   session_.resetProcedureRunState();
   controllerPeerResultsExpected_ = false;
+}
+
+void BleCsControllerHost::reconcileReadyWorkflowShadow(
+    uint8_t selectedConfigId, bool sessionOpen, bool configCreated,
+    bool securityEnabled, bool procedureParametersApplied, bool procedureEnabled) {
+  session_.reconcileReadyWorkflowShadow(selectedConfigId, sessionOpen, configCreated,
+                                        securityEnabled, procedureParametersApplied,
+                                        procedureEnabled);
 }
 
 bool BleCsControllerHost::consumeIngressPacket(BleCsControllerIngressSource source,
@@ -3492,6 +3564,14 @@ const BleCsSubeventResult& BleCsControllerStreamHost::completedPeerResult() cons
 
 void BleCsControllerStreamHost::resetProcedureRunState() {
   host_.resetProcedureRunState();
+}
+
+void BleCsControllerStreamHost::reconcileReadyWorkflowShadow(
+    uint8_t selectedConfigId, bool sessionOpen, bool configCreated,
+    bool securityEnabled, bool procedureParametersApplied, bool procedureEnabled) {
+  host_.reconcileReadyWorkflowShadow(selectedConfigId, sessionOpen, configCreated,
+                                     securityEnabled, procedureParametersApplied,
+                                     procedureEnabled);
 }
 
 bool BleCsControllerStreamHost::onSendPacket(const uint8_t* packet,
@@ -3870,6 +3950,11 @@ void BleCsControllerVprHost::syncVprState() {
   if (linkSessionInvalidated || linkConfigInvalidated) {
     host_.resetProcedureRunState();
   }
+  host_.reconcileReadyWorkflowShadow(nextState.linkConfigId, nextState.linkSessionOpen,
+                                     nextState.linkConfigCreated,
+                                     nextState.linkSecurityEnabled,
+                                     nextState.linkProcedureParamsApplied,
+                                     nextState.linkProcedureEnabled);
 }
 
 BleCsDfeCaptureInfo BleChannelSoundingRadio::lastDfeCaptureInfo() const {
