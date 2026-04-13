@@ -248,6 +248,10 @@ Immediate next follow-up from this checkpoint:
   - that mode-1 insertion is now tied to `createConfig.rttType`, so the
     dedicated image can also publish a pure mode-2 layout when RTT is turned
     off and still keep the nominal `~0.75 m` estimate stable
+- the dedicated image now derives next-procedure spacing from the configured
+  `min/max procedure interval` range instead of always using the minimum, and
+  the VPR-owned interval selector is now exposed through shared state so the
+  host regression can prove the policy moved across the range
 
 This is the shortest path that advances the repo from "working VPR-backed CS
 demo" to "real BLE controller work is starting to move off CPUAPP".

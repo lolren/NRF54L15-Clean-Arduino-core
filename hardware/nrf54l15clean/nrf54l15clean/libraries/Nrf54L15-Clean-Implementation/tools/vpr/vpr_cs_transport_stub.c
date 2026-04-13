@@ -110,6 +110,7 @@ static uint8_t g_pending_cs_result_stage = 0U;
 static uint32_t g_cs_next_procedure_heartbeat = 0U;
 static uint32_t g_cs_next_peer_stage_heartbeat = 0U;
 static uint8_t g_cs_last_peer_gap_ticks = 0U;
+static uint8_t g_cs_last_interval_selector = 0U;
 typedef struct __attribute__((packed)) {
   uint8_t configId;
   uint16_t procedureCounter;
@@ -321,6 +322,7 @@ static void reset_dedicated_cs_state(void) {
   g_cs_procedure_enabled = 0U;
   g_cs_session_open = 0U;
   g_cs_next_procedure_heartbeat = 0U;
+  g_cs_last_interval_selector = 0U;
 }
 #endif
 
@@ -460,7 +462,8 @@ static uint16_t current_conn_handle(void) {
 
 #if VPR_CS_DEDICATED_IMAGE
 static uint32_t current_link_state_packed(void) {
-  return ((uint32_t)g_cs_session_conn_handle) |
+  return ((uint32_t)(g_cs_session_conn_handle & 0x0FFFU)) |
+         (((uint32_t)g_cs_last_interval_selector & 0x0FU) << 12U) |
          ((g_cs_session_open != 0U ? 1UL : 0UL) << 16U) |
          ((g_cs_config_created != 0U ? 1UL : 0UL) << 17U) |
          ((g_cs_security_enabled != 0U ? 1UL : 0UL) << 18U) |
@@ -1014,6 +1017,7 @@ static void update_create_config_from_command(void) {
   g_cs_procedure_counter = 0U;
   g_cs_next_procedure_heartbeat = 0U;
   g_cs_next_peer_stage_heartbeat = 0U;
+  g_cs_last_interval_selector = 0U;
   update_demo_channels_from_create_config();
 }
 
@@ -1060,6 +1064,7 @@ static void update_procedure_params_from_command(void) {
   g_cs_procedure_params_applied = 1U;
   g_cs_next_procedure_heartbeat = 0U;
   g_cs_next_peer_stage_heartbeat = 0U;
+  g_cs_last_interval_selector = 0U;
   g_cs_last_peer_gap_ticks = 0U;
 }
 
@@ -1072,6 +1077,7 @@ static void clear_active_cs_state(void) {
   g_cs_procedure_counter = 0U;
   g_cs_next_procedure_heartbeat = 0U;
   g_cs_next_peer_stage_heartbeat = 0U;
+  g_cs_last_interval_selector = 0U;
   g_cs_last_peer_gap_ticks = 0U;
 }
 
@@ -1190,7 +1196,29 @@ static uint8_t validate_read_remote_caps_command(void) {
 }
 
 static uint32_t current_procedure_interval_ticks(void) {
-  return (g_cs_min_procedure_interval != 0U) ? (uint32_t)g_cs_min_procedure_interval : 1U;
+  const uint32_t min_ticks =
+      (g_cs_min_procedure_interval != 0U) ? (uint32_t)g_cs_min_procedure_interval : 1U;
+  const uint32_t max_ticks =
+      (g_cs_max_procedure_interval >= g_cs_min_procedure_interval &&
+       g_cs_max_procedure_interval != 0U)
+          ? (uint32_t)g_cs_max_procedure_interval
+          : min_ticks;
+  if (max_ticks <= min_ticks) {
+    g_cs_last_interval_selector = 0U;
+    return min_ticks;
+  }
+  if (g_cs_max_procedure_count <= 2U || g_cs_procedure_counter <= 1U) {
+    g_cs_last_interval_selector = 0U;
+    return min_ticks;
+  }
+  const uint32_t gap_index = (uint32_t)g_cs_procedure_counter - 1U;
+  const uint32_t gap_span = (uint32_t)g_cs_max_procedure_count - 2U;
+  uint32_t selector = (gap_index * 15U + (gap_span / 2U)) / gap_span;
+  if (selector > 15U) {
+    selector = 15U;
+  }
+  g_cs_last_interval_selector = (uint8_t)selector;
+  return min_ticks + (((max_ticks - min_ticks) * selector + 7U) / 15U);
 }
 
 static uint32_t current_peer_stage_delay_ticks(void) {
@@ -1987,6 +2015,7 @@ static bool publish_builtin_response_for_opcode(uint16_t opcode) {
           g_pending_cs_result_stage = 0U;
           g_cs_next_procedure_heartbeat = 0U;
           g_cs_next_peer_stage_heartbeat = 0U;
+          g_cs_last_interval_selector = 0U;
           g_cs_last_peer_gap_ticks = 0U;
         } else if (status == 0U) {
           g_cs_procedure_enabled = 1U;
@@ -1994,6 +2023,7 @@ static bool publish_builtin_response_for_opcode(uint16_t opcode) {
           g_pending_cs_result_stage = 1U;
           g_cs_next_procedure_heartbeat = 0U;
           g_cs_next_peer_stage_heartbeat = 0U;
+          g_cs_last_interval_selector = 0U;
           g_cs_last_peer_gap_ticks = 0U;
         }
       }
@@ -2022,6 +2052,7 @@ static bool publish_builtin_response_for_opcode(uint16_t opcode) {
       if (enable != 0U) {
         g_pending_cs_result_stage = 1U;
         g_cs_next_peer_stage_heartbeat = 0U;
+        g_cs_last_interval_selector = 0U;
         g_cs_last_peer_gap_ticks = 0U;
       }
       break;
@@ -2301,6 +2332,7 @@ static bool publish_pending_cs_result_packet(void) {
       } else {
         g_cs_procedure_enabled = 0U;
         g_cs_next_procedure_heartbeat = 0U;
+        g_cs_last_interval_selector = 0U;
       }
     }
   } else if (g_pending_cs_result_stage == 5U &&
@@ -2314,6 +2346,7 @@ static bool publish_pending_cs_result_packet(void) {
     g_cs_procedure_enabled = 0U;
     g_cs_next_procedure_heartbeat = 0U;
     g_cs_next_peer_stage_heartbeat = 0U;
+    g_cs_last_interval_selector = 0U;
     g_pending_cs_result_stage = 0U;
   } else {
     g_cs_next_peer_stage_heartbeat = 0U;

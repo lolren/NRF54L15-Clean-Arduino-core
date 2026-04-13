@@ -3060,6 +3060,8 @@ void printHciVprMultiDemo() {
   uint32_t lastTransitionHeartbeat = 0U;
   uint32_t minTransitionGap = 0U;
   uint32_t maxTransitionGap = 0U;
+  uint8_t minIntervalSelector = 0xFFU;
+  uint8_t maxIntervalSelector = 0U;
   uint8_t lastLocalResultPackets = 0U;
   uint8_t lastPeerMarkers = 0U;
   uint32_t lastLocalPacketHeartbeat = 0U;
@@ -3071,6 +3073,13 @@ void printHciVprMultiDemo() {
     ok = vprHost.poll();
     ++pollCount;
     const uint32_t heartbeat = vprHost.vprState().heartbeat;
+    const uint8_t intervalSelector = vprHost.vprState().linkProcedureIntervalSelector;
+    if (intervalSelector < minIntervalSelector) {
+      minIntervalSelector = intervalSelector;
+    }
+    if (intervalSelector > maxIntervalSelector) {
+      maxIntervalSelector = intervalSelector;
+    }
     const uint8_t localResultPackets = vprHost.hostState().localResultPackets;
     if (localResultPackets != lastLocalResultPackets) {
       lastLocalResultPackets = localResultPackets;
@@ -3132,10 +3141,16 @@ void printHciVprMultiDemo() {
       collectStepPhase(vprHost.completedLocalResult());
   const StepPhaseCollectContext peerPhase =
       collectStepPhase(vprHost.completedPeerResult());
+  const bool intervalPolicyMoved =
+      (hostConfig.session.workflow.procedureParameters.maxProcedureInterval >
+       hostConfig.session.workflow.procedureParameters.minProcedureInterval)
+          ? (maxIntervalSelector > minIntervalSelector)
+          : true;
   const bool finalOk =
       !vprHost.failed() && vprHost.ready() && countersReached && markersReached &&
       peerPacketsReached && vprHost.estimateValid() && stopped &&
-      finalModes.mode1Count == 1U && finalModes.mode2Count >= 4U;
+      finalModes.mode1Count == 1U && finalModes.mode2Count >= 4U &&
+      intervalPolicyMoved;
 
   Serial.print(F("hcivprmultidemo ok="));
   Serial.print(finalOk ? 1 : 0);
@@ -3161,6 +3176,10 @@ void printHciVprMultiDemo() {
   Serial.print(minTransitionGap);
   Serial.print('/');
   Serial.print(maxTransitionGap);
+  Serial.print(F(" int_sel="));
+  Serial.print(minIntervalSelector);
+  Serial.print('/');
+  Serial.print(maxIntervalSelector);
   Serial.print(F(" peer_gap="));
   Serial.print(vprPeerGapTicks);
   Serial.print(F(" host_peer_gap="));

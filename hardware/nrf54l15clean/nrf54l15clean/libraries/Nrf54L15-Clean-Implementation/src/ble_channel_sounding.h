@@ -925,6 +925,7 @@ struct BleCsControllerVprHostState {
   bool secureAccessEnabled = false;
   bool linkSessionOpen = false;
   uint16_t linkConnHandle = 0U;
+  uint8_t linkProcedureIntervalSelector = 0U;
   uint8_t linkConfigId = 0U;
   uint16_t linkProcedureCounter = 0U;
   bool linkConfigCreated = false;

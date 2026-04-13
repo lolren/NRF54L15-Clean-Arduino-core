@@ -3261,6 +3261,7 @@ bool BleCsControllerVprHost::resetTransport(bool clearScripts) {
   const bool ok = transport_.resetSharedState(clearScripts);
   vprState_.linkSessionOpen = false;
   vprState_.linkConnHandle = 0U;
+  vprState_.linkProcedureIntervalSelector = 0U;
   vprState_.linkConfigId = 0U;
   vprState_.linkProcedureCounter = 0U;
   vprState_.linkConfigCreated = false;
@@ -3407,7 +3408,9 @@ void BleCsControllerVprHost::syncVprState() {
   vprState_.running = transport_.isRunning();
   vprState_.secureAccessEnabled = transport_.secureAccessEnabled();
   const uint32_t packedLinkState = transport_.reservedState();
-  vprState_.linkConnHandle = static_cast<uint16_t>(packedLinkState & 0xFFFFU);
+  vprState_.linkConnHandle = static_cast<uint16_t>(packedLinkState & 0x0FFFU);
+  vprState_.linkProcedureIntervalSelector =
+      static_cast<uint8_t>((packedLinkState >> 12U) & 0x0FU);
   vprState_.linkSessionOpen = (packedLinkState & (1UL << 16U)) != 0U;
   vprState_.linkConfigCreated = (packedLinkState & (1UL << 17U)) != 0U;
   vprState_.linkSecurityEnabled = (packedLinkState & (1UL << 18U)) != 0U;

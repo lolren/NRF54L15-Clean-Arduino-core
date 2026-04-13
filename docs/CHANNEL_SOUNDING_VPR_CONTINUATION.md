@@ -542,6 +542,10 @@ When resuming this work:
   - that inserted timing step is now gated by `createConfig.rttType`, so the
     dedicated image can cleanly fall back to a pure phase-only mode-2 layout
     when RTT is disabled
+- The dedicated CS image now also exposes a VPR-owned procedure-interval
+  selector in the shared link-state word, so the host can see that scheduling
+  is actually using the configured min/max interval range rather than always
+  the minimum interval.
 - The two attached boards were restored to `VprSharedTransportProbe` after the
   resume/restart experiments and both were left healthy on the known-good
   `svc=1.7` / `opmask=0x3FF` path.
