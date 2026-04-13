@@ -3276,6 +3276,14 @@ bool BleCsControllerStreamHost::pollPeerResults() {
   return host_.consumeIngressBytes(BleCsControllerIngressSource::kPeerResult, bytes, count);
 }
 
+bool BleCsControllerStreamHost::consumeControllerPacket(const uint8_t* packet, size_t packetLen) {
+  if (packet == nullptr || packetLen == 0U) {
+    return false;
+  }
+  state_.controllerBytesRead = static_cast<uint32_t>(state_.controllerBytesRead + packetLen);
+  return host_.consumeIngressPacket(BleCsControllerIngressSource::kController, packet, packetLen);
+}
+
 bool BleCsControllerStreamHost::consumePeerPacket(const uint8_t* packet, size_t packetLen) {
   if (packet == nullptr || packetLen == 0U) {
     return false;
@@ -3509,6 +3517,22 @@ bool BleCsControllerVprHost::beginHost(uint16_t connHandle,
   return ok;
 }
 
+bool BleCsControllerVprHost::sendDirectHciCommand(uint16_t opcode,
+                                                  const uint8_t* params,
+                                                  size_t paramsLen,
+                                                  uint8_t* response,
+                                                  size_t responseSize,
+                                                  size_t* responseLen) {
+  VprControllerServiceHost directHost(&transport_);
+  const bool ok =
+      directHost.sendHciCommand(opcode, params, paramsLen, response, responseSize, responseLen);
+  const bool drained =
+      ok && drainDirectControllerEvents(&directHost, response,
+                                        (responseLen != nullptr) ? *responseLen : 0U);
+  syncVprState();
+  return ok && drained;
+}
+
 bool BleCsControllerVprHost::pumpCommands() {
   const bool ok = host_.pumpCommands();
   syncVprState();
@@ -3573,6 +3597,32 @@ VprSharedTransportStream& BleCsControllerVprHost::transport() { return transport
 
 const VprSharedTransportStream& BleCsControllerVprHost::transport() const {
   return transport_;
+}
+
+bool BleCsControllerVprHost::drainDirectControllerEvents(VprControllerServiceHost* directHost,
+                                                         const uint8_t* response,
+                                                         size_t responseLen) {
+  if (directHost == nullptr || !host_.hostState().began) {
+    return true;
+  }
+
+  bool ok = true;
+  if (response != nullptr && responseLen > 0U) {
+    ok = host_.consumeControllerPacket(response, responseLen);
+  }
+
+  uint8_t packet[NRF54L15_VPR_TRANSPORT_MAX_VPR_DATA] = {0};
+  size_t packetLen = 0U;
+  while (ok && directHost->popPendingH4Event(packet, sizeof(packet), &packetLen)) {
+    ok = host_.consumeControllerPacket(packet, packetLen);
+  }
+
+  uint8_t pollCount = 0U;
+  while (ok && transport_.available() > 0 && pollCount < 8U) {
+    ok = host_.pollController();
+    ++pollCount;
+  }
+  return ok;
 }
 
 void BleCsControllerVprHost::syncVprState() {

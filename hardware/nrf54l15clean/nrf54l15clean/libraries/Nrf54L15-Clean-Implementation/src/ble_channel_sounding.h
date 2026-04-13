@@ -887,6 +887,7 @@ class BleCsControllerStreamHost {
   bool pumpCommands();
   bool pollController();
   bool pollPeerResults();
+  bool consumeControllerPacket(const uint8_t* packet, size_t packetLen);
   bool consumePeerPacket(const uint8_t* packet, size_t packetLen);
   bool poll();
   bool loopOnce();
@@ -960,6 +961,12 @@ class BleCsControllerVprHost {
   bool bootTransport(uint32_t readySpinLimit = 100000UL);
   bool refreshLinkSession();
   bool beginHost(uint16_t connHandle, const BleCsControllerVprHostConfig& config);
+  bool sendDirectHciCommand(uint16_t opcode,
+                            const uint8_t* params,
+                            size_t paramsLen,
+                            uint8_t* response,
+                            size_t responseSize,
+                            size_t* responseLen);
   bool pumpCommands();
   bool poll();
   bool loopOnce();
@@ -981,6 +988,9 @@ class BleCsControllerVprHost {
   const VprSharedTransportStream& transport() const;
 
  private:
+  bool drainDirectControllerEvents(VprControllerServiceHost* directHost,
+                                   const uint8_t* response,
+                                   size_t responseLen);
   void syncVprState();
 
   BleCsControllerVprHostConfig config_;

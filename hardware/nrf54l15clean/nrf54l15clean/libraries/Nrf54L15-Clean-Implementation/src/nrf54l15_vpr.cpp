@@ -1034,6 +1034,12 @@ size_t VprSharedTransportStream::writeInternal(const uint8_t* buffer,
 
 VprControllerServiceHost::VprControllerServiceHost(VprSharedTransportStream* transport)
     : transport_(transport),
+      pendingH4Events_{},
+      pendingH4EventLens_{},
+      pendingH4EventHead_(0U),
+      pendingH4EventTail_(0U),
+      pendingH4EventCount_(0U),
+      pendingH4EventDropped_(0U),
       pendingTickerEvents_{},
       pendingTickerEventHead_(0U),
       pendingTickerEventTail_(0U),
@@ -1042,6 +1048,16 @@ VprControllerServiceHost::VprControllerServiceHost(VprSharedTransportStream* tra
 
 void VprControllerServiceHost::attach(VprSharedTransportStream* transport) {
   transport_ = transport;
+  clearPendingEvents();
+}
+
+void VprControllerServiceHost::clearPendingEvents() {
+  memset(pendingH4Events_, 0, sizeof(pendingH4Events_));
+  memset(pendingH4EventLens_, 0, sizeof(pendingH4EventLens_));
+  pendingH4EventHead_ = 0U;
+  pendingH4EventTail_ = 0U;
+  pendingH4EventCount_ = 0U;
+  pendingH4EventDropped_ = 0U;
   memset(pendingTickerEvents_, 0, sizeof(pendingTickerEvents_));
   pendingTickerEventHead_ = 0U;
   pendingTickerEventTail_ = 0U;
@@ -1055,11 +1071,7 @@ bool VprControllerServiceHost::bootDefaultService(bool rebootTransport) {
   if (!attached()) {
     return false;
   }
-  memset(pendingTickerEvents_, 0, sizeof(pendingTickerEvents_));
-  pendingTickerEventHead_ = 0U;
-  pendingTickerEventTail_ = 0U;
-  pendingTickerEventCount_ = 0U;
-  pendingTickerEventDropped_ = 0U;
+  clearPendingEvents();
   if (rebootTransport) {
     transport_->stop();
     delay(10);
@@ -1071,20 +1083,12 @@ bool VprControllerServiceHost::bootDefaultService(bool rebootTransport) {
 }
 
 bool VprControllerServiceHost::restartLoadedService(bool clearScripts) {
-  memset(pendingTickerEvents_, 0, sizeof(pendingTickerEvents_));
-  pendingTickerEventHead_ = 0U;
-  pendingTickerEventTail_ = 0U;
-  pendingTickerEventCount_ = 0U;
-  pendingTickerEventDropped_ = 0U;
+  clearPendingEvents();
   return attached() && transport_->restartLoadedFirmware(clearScripts);
 }
 
 bool VprControllerServiceHost::restartAfterHibernateReset(uint32_t spinLimit) {
-  memset(pendingTickerEvents_, 0, sizeof(pendingTickerEvents_));
-  pendingTickerEventHead_ = 0U;
-  pendingTickerEventTail_ = 0U;
-  pendingTickerEventCount_ = 0U;
-  pendingTickerEventDropped_ = 0U;
+  clearPendingEvents();
   return attached() && transport_->restartAfterHibernateReset(spinLimit);
 }
 
@@ -1225,12 +1229,34 @@ bool VprControllerServiceHost::pushPendingTickerEvent(const VprTickerEvent& even
   return true;
 }
 
+bool VprControllerServiceHost::pushPendingH4Event(const uint8_t* packet, size_t packetLen) {
+  if (packet == nullptr || packetLen == 0U || packetLen > kPendingH4EventMaxBytes) {
+    pendingH4EventDropped_ += 1U;
+    return false;
+  }
+  if (pendingH4EventCount_ >= kPendingH4EventQueueDepth) {
+    pendingH4EventDropped_ += 1U;
+    return false;
+  }
+  memcpy(pendingH4Events_[pendingH4EventTail_], packet, packetLen);
+  pendingH4EventLens_[pendingH4EventTail_] = packetLen;
+  pendingH4EventTail_ = (pendingH4EventTail_ + 1U) % kPendingH4EventQueueDepth;
+  pendingH4EventCount_ += 1U;
+  return true;
+}
+
 bool VprControllerServiceHost::stashAsyncEvent(const uint8_t* packet, size_t packetLen) {
+  bool handled = false;
+  if (packet != nullptr && packetLen >= 3U && packet[0] == 0x04U) {
+    handled = true;
+    (void)pushPendingH4Event(packet, packetLen);
+  }
+
   const uint8_t* payload = nullptr;
   size_t payloadLen = 0U;
   if (!parseVendorEvent(packet, packetLen, kVendorEventTicker, &payload, &payloadLen) ||
       payloadLen < 13U) {
-    return false;
+    return handled;
   }
   VprTickerEvent event{};
   event.flags = payload[0];
@@ -1238,7 +1264,39 @@ bool VprControllerServiceHost::stashAsyncEvent(const uint8_t* packet, size_t pac
   event.step = readLe32(&payload[5]);
   event.heartbeat = readLe32(&payload[9]);
   event.sequence = (payloadLen >= 17U) ? readLe32(&payload[13]) : 0U;
-  return pushPendingTickerEvent(event);
+  (void)pushPendingTickerEvent(event);
+  return true;
+}
+
+bool VprControllerServiceHost::popPendingH4Event(uint8_t* packet,
+                                                 size_t packetSize,
+                                                 size_t* packetLen) {
+  if (packetLen != nullptr) {
+    *packetLen = 0U;
+  }
+  if (packet == nullptr || packetLen == nullptr || pendingH4EventCount_ == 0U) {
+    return false;
+  }
+
+  const size_t copyLen = pendingH4EventLens_[pendingH4EventHead_];
+  if (copyLen == 0U || copyLen > packetSize) {
+    pendingH4EventDropped_ += 1U;
+    memset(pendingH4Events_[pendingH4EventHead_], 0,
+           sizeof(pendingH4Events_[pendingH4EventHead_]));
+    pendingH4EventLens_[pendingH4EventHead_] = 0U;
+    pendingH4EventHead_ = (pendingH4EventHead_ + 1U) % kPendingH4EventQueueDepth;
+    pendingH4EventCount_ -= 1U;
+    return false;
+  }
+
+  memcpy(packet, pendingH4Events_[pendingH4EventHead_], copyLen);
+  *packetLen = copyLen;
+  memset(pendingH4Events_[pendingH4EventHead_], 0,
+         sizeof(pendingH4Events_[pendingH4EventHead_]));
+  pendingH4EventLens_[pendingH4EventHead_] = 0U;
+  pendingH4EventHead_ = (pendingH4EventHead_ + 1U) % kPendingH4EventQueueDepth;
+  pendingH4EventCount_ -= 1U;
+  return true;
 }
 
 bool VprControllerServiceHost::popPendingTickerEvent(VprTickerEvent* event) {
@@ -1273,29 +1331,45 @@ bool VprControllerServiceHost::sendHciCommand(uint16_t opcode,
   }
 
   const size_t commandLen = 4U + paramsLen;
-  size_t written = transport_->write(command, commandLen);
-  if (written != commandLen) {
-    return false;
-  }
-
+  uint8_t packet[kPendingH4EventMaxBytes] = {0};
+  size_t packetLen = 0U;
   const uint32_t start = millis();
+  bool commandSent = false;
   while ((millis() - start) < 5000UL) {
     const uint32_t elapsed = millis() - start;
     const uint32_t remaining = (elapsed < 5000UL) ? (5000UL - elapsed) : 0U;
-    if (!readH4Event(response, responseSize, responseLen, remaining)) {
+
+    if (!commandSent) {
+      const size_t written = transport_->write(command, commandLen);
+      if (written == commandLen) {
+        commandSent = true;
+        continue;
+      }
+    }
+
+    const uint32_t readBudget = (remaining > 50UL) ? 50UL : remaining;
+    if (!readH4Event(packet, sizeof(packet), &packetLen, readBudget)) {
+      if (!commandSent) {
+        delay(2);
+        continue;
+      }
       return false;
     }
 
     const uint8_t* payload = nullptr;
     size_t payloadLen = 0U;
-    if (parseCommandComplete(response, *responseLen, opcode, &payload, &payloadLen)) {
-      return true;
-    }
-    if (parseCommandStatus(response, *responseLen, opcode, &payload, &payloadLen)) {
+    if (commandSent &&
+        (parseCommandComplete(packet, packetLen, opcode, &payload, &payloadLen) ||
+         parseCommandStatus(packet, packetLen, opcode, &payload, &payloadLen))) {
+      if (packetLen > responseSize) {
+        return false;
+      }
+      memcpy(response, packet, packetLen);
+      *responseLen = packetLen;
       return true;
     }
 
-    if (stashAsyncEvent(response, *responseLen)) {
+    if (stashAsyncEvent(packet, packetLen)) {
       continue;
     }
   }
@@ -1601,6 +1675,10 @@ bool VprControllerServiceHost::waitTickerEvent(VprTickerEvent* event, uint32_t t
     }
   }
   return false;
+}
+
+uint32_t VprControllerServiceHost::pendingH4EventDropCount() const {
+  return pendingH4EventDropped_;
 }
 
 uint32_t VprControllerServiceHost::pendingTickerEventDropCount() const {

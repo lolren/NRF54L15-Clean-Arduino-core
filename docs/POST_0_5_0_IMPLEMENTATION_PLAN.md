@@ -289,14 +289,19 @@ Immediate next follow-up from this checkpoint:
   replies once the workflow is already `ready`, and workflow-driven
   controller-shape changes now flush in-flight result assembly before the next
   run starts
-- the current live proofs for that controller-lifecycle cleanup are still the
-  stable existing regressions:
+- the direct VPR controller helper now also:
+  - preserves non-response H4 controller packets encountered while waiting for
+    a direct reply
+  - retries command writes until the shared transport has a free slot while
+    VPR is still publishing CS result packets
+- the current live proofs for that controller-lifecycle cleanup are now:
   - `hcivprtransportdemo`
   - `hcivprsubcountdemo`
   - `hcivprabortdemo`
-- true direct manual-start / abort / restart ownership on the out-of-band
-  path is still unfinished and should remain in the continuation notes rather
-  than the public demo surface
+  - `hcivprmanualdemo`
+- the current remaining direct-control gap is no longer basic
+  manual start/abort/restart. The next slice is richer controller ownership on
+  VPR above that transport/control seam.
 
 This is the shortest path that advances the repo from "working VPR-backed CS
 demo" to "real BLE controller work is starting to move off CPUAPP".

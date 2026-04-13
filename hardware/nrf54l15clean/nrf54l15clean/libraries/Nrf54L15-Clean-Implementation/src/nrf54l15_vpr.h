@@ -186,6 +186,9 @@ struct VprTickerEvent {
 class VprControllerServiceHost {
  public:
   static constexpr size_t kPendingTickerEventQueueDepth = 8U;
+  static constexpr size_t kPendingH4EventQueueDepth = 8U;
+  static constexpr size_t kPendingH4EventMaxBytes =
+      NRF54L15_VPR_TRANSPORT_MAX_VPR_DATA;
   static constexpr uint8_t kTransportFlagRestoredFromHibernate = 0x80U;
   static constexpr uint16_t kVendorPingOpcode = 0xFCF0U;
   static constexpr uint16_t kVendorInfoOpcode = 0xFCF1U;
@@ -253,6 +256,8 @@ class VprControllerServiceHost {
                              uint32_t* appliedEmitEveryCount = nullptr,
                              uint32_t* droppedEvents = nullptr);
   bool waitTickerEvent(VprTickerEvent* event, uint32_t timeoutMs = 5000UL);
+  bool popPendingH4Event(uint8_t* packet, size_t packetSize, size_t* packetLen);
+  uint32_t pendingH4EventDropCount() const;
   uint32_t pendingTickerEventDropCount() const;
   bool enterHibernate();
   bool probe(uint32_t cookie,
@@ -280,12 +285,20 @@ class VprControllerServiceHost {
                                uint8_t expectedSubevent,
                                const uint8_t** payload,
                                size_t* payloadLen);
+  void clearPendingEvents();
+  bool pushPendingH4Event(const uint8_t* packet, size_t packetLen);
   bool pushPendingTickerEvent(const VprTickerEvent& event);
   bool stashAsyncEvent(const uint8_t* packet, size_t packetLen);
   bool popPendingTickerEvent(VprTickerEvent* event);
   static uint32_t readLe32(const uint8_t* data);
 
   VprSharedTransportStream* transport_;
+  uint8_t pendingH4Events_[kPendingH4EventQueueDepth][kPendingH4EventMaxBytes];
+  size_t pendingH4EventLens_[kPendingH4EventQueueDepth];
+  size_t pendingH4EventHead_;
+  size_t pendingH4EventTail_;
+  size_t pendingH4EventCount_;
+  uint32_t pendingH4EventDropped_;
   VprTickerEvent pendingTickerEvents_[kPendingTickerEventQueueDepth];
   size_t pendingTickerEventHead_;
   size_t pendingTickerEventTail_;

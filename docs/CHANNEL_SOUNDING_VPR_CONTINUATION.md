@@ -603,10 +603,18 @@ When resuming this work:
   - once the CS workflow is already `ready`, later out-of-band CS control
     replies (`Command Status`, `Command Complete`, and the matching CS LE meta
     completion events) are tolerated instead of failing the session parser
-  - the stable live proofs for this slice are still the existing
-    `hcivprtransportdemo`, `hcivprsubcountdemo`, and `hcivprabortdemo`
-  - true direct manual-start / abort / restart ownership on that out-of-band
-    path is still unfinished and should stay out of the public demo surface
+  - the direct VPR controller helper now preserves non-response H4 controller
+    packets instead of dropping them while waiting for a direct reply
+  - that helper also now waits for a writable shared-transport slot while VPR
+    is still publishing CS result packets, instead of failing immediately on a
+    busy transport window
+  - the stable live proofs for this slice are now:
+    - `hcivprtransportdemo`
+    - `hcivprsubcountdemo`
+    - `hcivprabortdemo`
+    - `hcivprmanualdemo`
+  - `hcivprmanualdemo` is now the focused regression for direct out-of-band
+    `Procedure Enable(enable=1/0/1/0)` control on the VPR path
 - The two attached boards were restored to `VprSharedTransportProbe` after the
   resume/restart experiments and both were left healthy on the known-good
   `svc=1.7` / `opmask=0x3FF` path.
