@@ -589,6 +589,13 @@ When resuming this work:
     RTT-enabled procedure that lands as `2` local subevents and `2` peer
     subevents while the host still reassembles one completed seven-step
     procedure estimate at `~0.75 m`
+  - that subevent count is now derived from configured subevent policy for the
+    larger seven-step procedure shape instead of staying fixed at `2`
+  - the default policy still lands at `2` complete subevents
+  - `hcivprsubcountdemo` proves the tighter
+    `minSubeventLen = maxSubeventLen = 0x000100` path, which now lands at
+    `3` local subevents and `3` peer subevents while still reassembling the
+    same completed seven-step procedure estimate at `~0.75 m`
 - The two attached boards were restored to `VprSharedTransportProbe` after the
   resume/restart experiments and both were left healthy on the known-good
   `svc=1.7` / `opmask=0x3FF` path.

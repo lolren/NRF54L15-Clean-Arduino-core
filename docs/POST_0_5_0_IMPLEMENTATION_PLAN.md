@@ -279,6 +279,12 @@ Immediate next follow-up from this checkpoint:
 - the dedicated image can now split a larger RTT-enabled synthetic procedure
   across multiple complete subevents instead of only shaping one fixed
   subevent plus continuations
+- that larger-procedure subevent count is now also derived from configured
+  subevent policy:
+  - the default seven-step RTT-enabled path lands at `2` complete subevents
+  - the tighter `minSubeventLen = maxSubeventLen = 0x000100` path lands at
+    `3` complete subevents for the same seven-step procedure while the host
+    still reassembles one completed procedure estimate
 
 This is the shortest path that advances the repo from "working VPR-backed CS
 demo" to "real BLE controller work is starting to move off CPUAPP".

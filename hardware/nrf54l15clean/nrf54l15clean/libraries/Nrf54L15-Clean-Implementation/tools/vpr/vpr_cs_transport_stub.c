@@ -822,6 +822,7 @@ static uint16_t current_step_count_group(void) {
 }
 
 static uint8_t current_demo_num_antenna_paths(void);
+static size_t current_demo_total_encoded_step_bytes(void);
 
 static uint8_t current_demo_step_count(void) {
   uint8_t min_steps = (g_cs_min_main_mode_steps != 0U) ? g_cs_min_main_mode_steps : 1U;
@@ -846,9 +847,37 @@ static uint8_t current_demo_total_step_count(void) {
   return (uint8_t)(current_demo_step_count() + (current_demo_has_mode1_timing_step() ? 1U : 0U));
 }
 
+static size_t current_demo_subevent_policy_budget_bytes(void) {
+#if VPR_CS_DEDICATED_IMAGE
+  if (g_cs_max_subevent_len <= 0x000180UL) {
+    return 24U;
+  }
+  if (g_cs_max_subevent_len <= 0x000300UL) {
+    return 32U;
+  }
+  return 40U;
+#else
+  return 40U;
+#endif
+}
+
 static uint8_t current_demo_subevent_count(void) {
 #if VPR_CS_DEDICATED_IMAGE
-  return (current_demo_total_step_count() > 6U) ? 2U : 1U;
+  const uint8_t total_steps = current_demo_total_step_count();
+  if (total_steps <= 6U) {
+    return 1U;
+  }
+  const size_t total_bytes = current_demo_total_encoded_step_bytes();
+  const size_t budget_bytes = current_demo_subevent_policy_budget_bytes();
+  uint8_t count =
+      (uint8_t)((total_bytes + budget_bytes - 1U) / budget_bytes);
+  if (count < 2U) {
+    count = 2U;
+  }
+  if (count > 3U) {
+    count = 3U;
+  }
+  return count;
 #else
   return 1U;
 #endif
