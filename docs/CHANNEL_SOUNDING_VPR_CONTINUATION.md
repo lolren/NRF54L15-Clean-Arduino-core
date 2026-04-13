@@ -628,6 +628,7 @@ When resuming this work:
     - `hcivprreconfigdemo`
     - `hcivprcfgswapdemo`
     - `hcivprmulticfgdemo`
+    - `hcivprrmstoredemo`
   - `hcivprmanualdemo` is now the focused regression for direct out-of-band
     `Procedure Enable(enable=1/0/1/0)` control on the VPR path
   - `hcivprreconfigdemo` now proves direct out-of-band
@@ -659,6 +660,23 @@ When resuming this work:
       procedure-parameter write is needed for those follow-on runs
     - the live proof now lands on three runs with stored-slot-owned shape
       switching: `0+4/0+4 -> 0+3/0+3 -> 0+4/0+4`
+  - `hcivprrmstoredemo` now proves inactive stored-config removal on one live
+    VPR session:
+    - run alternate `configId=2`
+    - switch back to stored base `configId=1`
+    - directly remove inactive `configId=2`
+    - directly rerun stored base `configId=1`
+    - direct `Procedure Enable(configId=2)` is then rejected with `0x12`
+  - the host ready-phase workflow shadow no longer clears its live
+    session/config/security state when `Config Complete(action=remove)` targets
+    an inactive stored config
+  - the dedicated CS image now purges every stored slot for a removed
+    `configId`, including the previous-slot fallback, so removed configs do not
+    remain indirectly runnable
+  - direct `Remove Config` now resets host procedure-run assembly after the
+    direct response/drain succeeds instead of before it starts draining, which
+    avoids poisoning live-session inactive remove with stale trailing result
+    packets from the previous run
 - The two attached boards were restored to `VprSharedTransportProbe` after the
   resume/restart experiments and both were left healthy on the known-good
   `svc=1.7` / `opmask=0x3FF` path.

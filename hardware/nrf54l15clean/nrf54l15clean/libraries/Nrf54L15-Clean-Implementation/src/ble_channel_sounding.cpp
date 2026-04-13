@@ -2428,23 +2428,37 @@ bool BleCsControllerWorkflow::consumeReadyEvent(uint8_t subeventCode,
           complete.connHandle != state_.connHandle) {
         return false;
       }
+      const BleCsConfigComplete previousConfigComplete = state_.configComplete;
+      const BleCsProcedureEnableComplete previousProcedureEnable =
+          state_.procedureEnableComplete;
       state_.lastStatus = complete.status;
       state_.configComplete = complete;
       if (complete.status != 0U) {
         return true;
       }
-      state_.configCreated = (complete.action != 0U);
-      if (complete.action == 0U) {
+      const bool removedActiveConfig =
+          complete.action == 0U &&
+          ((previousProcedureEnable.configId != 0U &&
+            previousProcedureEnable.configId == complete.configId) ||
+           (previousProcedureEnable.configId == 0U &&
+            previousConfigComplete.action != 0U &&
+            previousConfigComplete.configId == complete.configId));
+      if (complete.action != 0U) {
+        state_.configCreated = true;
+      } else if (removedActiveConfig) {
+        state_.configCreated = false;
         state_.remoteCapabilities = BleCsControllerCapabilities{};
         state_.remoteCapabilitiesValid = false;
         state_.defaultSettingsApplied = false;
         state_.securityEnabled = false;
       }
-      state_.procedureParametersApplied = false;
-      state_.procedureEnabled = false;
-      state_.procedureEnableComplete = BleCsProcedureEnableComplete{};
-      state_.procedureEnableComplete.connHandle = complete.connHandle;
-      state_.procedureEnableComplete.configId = complete.configId;
+      if (complete.action != 0U || removedActiveConfig) {
+        state_.procedureParametersApplied = false;
+        state_.procedureEnabled = false;
+        state_.procedureEnableComplete = BleCsProcedureEnableComplete{};
+        state_.procedureEnableComplete.connHandle = complete.connHandle;
+        state_.procedureEnableComplete.configId = complete.configId;
+      }
       return true;
     }
 
@@ -3663,15 +3677,22 @@ bool BleCsControllerVprHost::sendDirectHciCommand(uint16_t opcode,
                                                   uint8_t* response,
                                                   size_t responseSize,
                                                   size_t* responseLen) {
+  bool resetRunStateBefore = false;
+  bool resetRunStateAfter = false;
   switch (opcode) {
     case kBleCsHciOpCreateConfig:
-    case kBleCsHciOpRemoveConfig:
     case kBleCsHciOpSetProcedureParameters:
     case kBleCsHciOpProcedureEnable:
-      host_.resetProcedureRunState();
+      resetRunStateBefore = true;
+      break;
+    case kBleCsHciOpRemoveConfig:
+      resetRunStateAfter = true;
       break;
     default:
       break;
+  }
+  if (resetRunStateBefore) {
+    host_.resetProcedureRunState();
   }
 
   VprControllerServiceHost directHost(&transport_);
@@ -3680,6 +3701,9 @@ bool BleCsControllerVprHost::sendDirectHciCommand(uint16_t opcode,
   const bool drained =
       ok && drainDirectControllerEvents(&directHost, response,
                                         (responseLen != nullptr) ? *responseLen : 0U);
+  if (ok && drained && resetRunStateAfter) {
+    host_.resetProcedureRunState();
+  }
   syncVprState();
   return ok && drained;
 }

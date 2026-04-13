@@ -1150,6 +1150,17 @@ static void clear_cs_slot(vpr_cs_config_slot_t *slot) {
   bytes_zero(slot, sizeof(*slot));
 }
 
+static void clear_cs_slots_for_config(uint8_t config_id) {
+  for (uint8_t i = 0U; i < (uint8_t)(sizeof(g_cs_slots) / sizeof(g_cs_slots[0])); ++i) {
+    if (g_cs_slots[i].inUse != 0U && g_cs_slots[i].configId == config_id) {
+      clear_cs_slot(&g_cs_slots[i]);
+    }
+  }
+  if (g_cs_previous_slot.inUse != 0U && g_cs_previous_slot.configId == config_id) {
+    clear_cs_slot(&g_cs_previous_slot);
+  }
+}
+
 static bool any_cs_slot_in_use(void) {
   for (uint8_t i = 0U; i < (uint8_t)(sizeof(g_cs_slots) / sizeof(g_cs_slots[0])); ++i) {
     if (g_cs_slots[i].inUse != 0U) {
@@ -2408,17 +2419,13 @@ static bool publish_builtin_response_for_opcode(uint16_t opcode) {
       uint8_t status = 0U;
       uint8_t removed_config_id = 0U;
 #if VPR_CS_DEDICATED_IMAGE
-      vpr_cs_config_slot_t *slot = NULL;
       status = validate_remove_config_command();
       if (status == 0U) {
         removed_config_id = g_host_transport->hostData[6];
-        slot = find_cs_slot(removed_config_id);
-        if (slot != NULL) {
-          if (removed_config_id == g_cs_config_id) {
-            clear_active_config_selection();
-          }
-          clear_cs_slot(slot);
+        if (removed_config_id == g_cs_config_id) {
+          clear_active_config_selection();
         }
+        clear_cs_slots_for_config(removed_config_id);
         if (!any_cs_slot_in_use()) {
           clear_active_cs_state();
         }

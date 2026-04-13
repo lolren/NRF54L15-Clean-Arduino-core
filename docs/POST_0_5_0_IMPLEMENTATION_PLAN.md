@@ -311,6 +311,7 @@ Immediate next follow-up from this checkpoint:
   - `hcivprreconfigdemo`
   - `hcivprcfgswapdemo`
   - `hcivprmulticfgdemo`
+  - `hcivprrmstoredemo`
 - `hcivprreconfigdemo` now proves direct out-of-band
   `Set Procedure Parameters` reconfiguration on one live VPR session by
   changing the same seven-step procedure from `2` complete subevents per side
@@ -329,6 +330,22 @@ Immediate next follow-up from this checkpoint:
   - then run stored `configId=2` again with `Procedure Enable(configId=2)` only
   - those follow-on runs no longer need config recreate, security re-enable, or
     another procedure-parameter write
+- `hcivprrmstoredemo` now proves inactive stored-config removal on one live
+  VPR session:
+  - run alternate `configId=2`
+  - switch back to stored base `configId=1`
+  - remove inactive `configId=2`
+  - rerun stored base `configId=1`
+  - verify direct `Procedure Enable(configId=2)` is rejected with `0x12`
+- the supporting controller/VPR fixes for that slice are:
+  - ready-phase host workflow shadow no longer clears live session/config
+    ownership when `Config Complete(action=remove)` targets an inactive config
+  - direct `Remove Config` now resets procedure-run assembly after its direct
+    response/drain succeeds, which avoids stale trailing result packets from the
+    previous run poisoning the direct control path
+  - the dedicated CS image now removes all stored copies of a removed
+    `configId`, including the previous-slot fallback, so removed configs stop
+    being runnable through stored-slot selection
 - the current remaining direct-control gap is no longer basic manual
   start/abort/restart or direct parameter reconfiguration. The next slice is
   richer controller ownership on VPR above that transport/control seam.
