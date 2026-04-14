@@ -442,6 +442,23 @@ That retained-authority slice is now in:
 - the hard validation path now uses a retained `.noinit` summary build, so this
   checkpoint no longer depends on live CDC capture timing
 
+The next cleanup slice after that is also in:
+
+- the retained-config direct-control demos now route through reusable
+  `BleCsControllerVprHost` direct helpers instead of rebuilding raw HCI command
+  packets in the sketch
+- that helper surface now covers:
+  `Read Remote Supported Capabilities`, `Set Default Settings`,
+  `Create Config`, `Remove Config`, `Security Enable`,
+  `Set Procedure Parameters`, and `Procedure Enable`
+- the retained-config initiator demos now share that same boundary instead of
+  each carrying their own `parseDirectStatus` / `sendDirectCommand` plumbing
+- the remaining raw direct transport usage in the initiator example is now
+  intentionally limited to lower-level diagnostics like the direct abort,
+  link-boundary, and trace demos
+- repo-local compile proof for this checkpoint is:
+  `/home/lolren/Desktop/Nrf54L15/.build/cs_vpr_boundary_compile`
+
 The next slice after this checkpoint is broader than retained-config policy:
 
 - start moving from the strong CS-specific VPR path toward a more general

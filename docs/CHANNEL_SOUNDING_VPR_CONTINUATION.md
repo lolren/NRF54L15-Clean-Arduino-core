@@ -846,6 +846,23 @@ When resuming this work:
       - `armed=2/1/0`
       - `base_selected=1/2/0`
       - `alt_selected=2/1/0`
+  - the retained-config direct-control demos now route through reusable
+    `BleCsControllerVprHost` helpers instead of rebuilding raw HCI command
+    packets inside the sketch:
+    - direct helper coverage now includes:
+      `Read Remote Supported Capabilities`, `Set Default Settings`,
+      `Create Config`, `Remove Config`, `Security Enable`,
+      `Set Procedure Parameters`, and `Procedure Enable`
+    - retained-config demos such as
+      `hcivprmanualdemo`, `hcivprmulticfgdemo`, `hcivprrmstoredemo`,
+      `hcivprrmactivedemo`, `hcivprinventorydemo`, `hcivprslotdemo`,
+      `hcivprselectdemo`, `hcivprthirdcfgdemo`, `hcivprevictdemo`, and
+      `hcivprpromotedemo` now use that shared helper surface
+    - the remaining raw direct transport usage in the initiator example is now
+      intentionally isolated to lower-level diagnostics like the direct abort,
+      link-boundary, and trace demos
+    - repo-local compile proof for this boundary cleanup is:
+      `/home/lolren/Desktop/Nrf54L15/.build/cs_vpr_boundary_compile`
 - The two attached boards were restored to `VprSharedTransportProbe` after the
   resume/restart experiments and both were left healthy on the known-good
   `svc=1.7` / `opmask=0x3FF` path.

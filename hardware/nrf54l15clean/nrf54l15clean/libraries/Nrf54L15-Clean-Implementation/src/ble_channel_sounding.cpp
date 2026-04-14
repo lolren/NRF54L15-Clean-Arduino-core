@@ -2832,6 +2832,31 @@ void BleCsControllerSession::reset() {
   completedPeerResult_ = BleCsSubeventResult{};
 }
 
+bool parseDirectStatusResponse(const uint8_t* packet,
+                               size_t packetLen,
+                               uint16_t expectedOpcode,
+                               uint8_t* outStatus) {
+  if (outStatus == nullptr) {
+    return false;
+  }
+  BleCsHciCommandStatusEvent statusEvent{};
+  if (BleChannelSoundingRadio::parseHciCommandStatusEvent(packet, packetLen, &statusEvent) &&
+      statusEvent.opcode == expectedOpcode) {
+    *outStatus = statusEvent.status;
+    return true;
+  }
+
+  BleCsHciCommandCompleteEvent completeEvent{};
+  if (BleChannelSoundingRadio::parseHciCommandCompleteEvent(packet, packetLen,
+                                                            &completeEvent) &&
+      completeEvent.opcode == expectedOpcode) {
+    *outStatus = completeEvent.status;
+    return true;
+  }
+
+  return false;
+}
+
 bool BleCsControllerSession::begin(uint16_t connHandle,
                                    const BleCsControllerSessionConfig& config) {
   reset();
@@ -3812,6 +3837,106 @@ bool BleCsControllerVprHost::sendDirectHciCommand(uint16_t opcode,
   }
   syncVprState();
   return ok && drained;
+}
+
+bool BleCsControllerVprHost::currentConnHandle(uint16_t* outConnHandle) const {
+  if (outConnHandle == nullptr) {
+    return false;
+  }
+
+  uint16_t connHandle = workflowState().connHandle;
+  if (connHandle == 0U) {
+    connHandle = vprState_.linkConnHandle;
+  }
+  if (connHandle == 0U) {
+    return false;
+  }
+
+  *outConnHandle = connHandle;
+  return true;
+}
+
+bool BleCsControllerVprHost::sendDirectBuiltCommand(const BleCsHciCommand& command,
+                                                    uint8_t* outStatus) {
+  uint8_t response[64] = {0};
+  size_t responseLen = 0U;
+  if (!sendDirectHciCommand(command.opcode, command.payload, command.payloadLen, response,
+                            sizeof(response), &responseLen)) {
+    return false;
+  }
+  return parseDirectStatusResponse(response, responseLen, command.opcode, outStatus);
+}
+
+bool BleCsControllerVprHost::directReadRemoteSupportedCapabilities(uint8_t* outStatus) {
+  uint16_t connHandle = 0U;
+  BleCsHciCommand command{};
+  return currentConnHandle(&connHandle) &&
+         BleChannelSoundingRadio::buildHciReadRemoteSupportedCapabilitiesCommand(connHandle,
+                                                                                 &command) &&
+         sendDirectBuiltCommand(command, outStatus);
+}
+
+bool BleCsControllerVprHost::directSetDefaultSettings(const BleCsDefaultSettings& settings,
+                                                      uint8_t* outStatus) {
+  uint16_t connHandle = 0U;
+  BleCsHciCommand command{};
+  return currentConnHandle(&connHandle) &&
+         BleChannelSoundingRadio::buildHciSetDefaultSettingsCommand(connHandle, settings,
+                                                                    &command) &&
+         sendDirectBuiltCommand(command, outStatus);
+}
+
+bool BleCsControllerVprHost::directCreateConfig(const BleCsControllerCreateConfig& config,
+                                                uint8_t* outStatus) {
+  uint16_t connHandle = 0U;
+  BleCsHciCommand command{};
+  return currentConnHandle(&connHandle) &&
+         BleChannelSoundingRadio::buildHciCreateConfigCommand(connHandle, config, &command) &&
+         sendDirectBuiltCommand(command, outStatus);
+}
+
+bool BleCsControllerVprHost::directRemoveConfig(uint8_t configId, uint8_t* outStatus) {
+  uint16_t connHandle = 0U;
+  BleCsHciCommand command{};
+  return currentConnHandle(&connHandle) &&
+         BleChannelSoundingRadio::buildHciRemoveConfigCommand(connHandle, configId, &command) &&
+         sendDirectBuiltCommand(command, outStatus);
+}
+
+bool BleCsControllerVprHost::directSecurityEnable(uint8_t* outStatus) {
+  uint16_t connHandle = 0U;
+  BleCsHciCommand command{};
+  return currentConnHandle(&connHandle) &&
+         BleChannelSoundingRadio::buildHciSecurityEnableCommand(connHandle, &command) &&
+         sendDirectBuiltCommand(command, outStatus);
+}
+
+bool BleCsControllerVprHost::directSetProcedureParameters(const BleCsProcedureParameters& params,
+                                                          uint8_t* outStatus) {
+  uint16_t connHandle = 0U;
+  BleCsHciCommand command{};
+  return currentConnHandle(&connHandle) &&
+         BleChannelSoundingRadio::buildHciSetProcedureParametersCommand(connHandle, params,
+                                                                        &command) &&
+         sendDirectBuiltCommand(command, outStatus);
+}
+
+bool BleCsControllerVprHost::directProcedureEnable(const BleCsProcedureEnable& params,
+                                                   uint8_t* outStatus) {
+  uint16_t connHandle = 0U;
+  BleCsHciCommand command{};
+  return currentConnHandle(&connHandle) &&
+         BleChannelSoundingRadio::buildHciProcedureEnableCommand(connHandle, params, &command) &&
+         sendDirectBuiltCommand(command, outStatus);
+}
+
+bool BleCsControllerVprHost::directProcedureEnable(uint8_t configId,
+                                                   bool enable,
+                                                   uint8_t* outStatus) {
+  BleCsProcedureEnable params{};
+  params.configId = configId;
+  params.enable = enable ? 1U : 0U;
+  return directProcedureEnable(params, outStatus);
 }
 
 bool BleCsControllerVprHost::pumpCommands() {

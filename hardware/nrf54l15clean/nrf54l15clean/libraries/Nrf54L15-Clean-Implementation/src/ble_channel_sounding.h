@@ -1020,6 +1020,15 @@ class BleCsControllerVprHost {
                             uint8_t* response,
                             size_t responseSize,
                             size_t* responseLen);
+  bool directReadRemoteSupportedCapabilities(uint8_t* outStatus);
+  bool directSetDefaultSettings(const BleCsDefaultSettings& settings, uint8_t* outStatus);
+  bool directCreateConfig(const BleCsControllerCreateConfig& config, uint8_t* outStatus);
+  bool directRemoveConfig(uint8_t configId, uint8_t* outStatus);
+  bool directSecurityEnable(uint8_t* outStatus);
+  bool directSetProcedureParameters(const BleCsProcedureParameters& params,
+                                    uint8_t* outStatus);
+  bool directProcedureEnable(const BleCsProcedureEnable& params, uint8_t* outStatus);
+  bool directProcedureEnable(uint8_t configId, bool enable, uint8_t* outStatus);
   bool pumpCommands();
   bool poll();
   bool loopOnce();
@@ -1041,6 +1050,8 @@ class BleCsControllerVprHost {
   const VprSharedTransportStream& transport() const;
 
  private:
+  bool currentConnHandle(uint16_t* outConnHandle) const;
+  bool sendDirectBuiltCommand(const BleCsHciCommand& command, uint8_t* outStatus);
   bool drainDirectControllerEvents(VprControllerServiceHost* directHost,
                                    const uint8_t* response,
                                    size_t responseLen);

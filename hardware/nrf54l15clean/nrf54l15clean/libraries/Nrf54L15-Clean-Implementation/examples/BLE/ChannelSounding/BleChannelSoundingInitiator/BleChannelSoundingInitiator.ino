@@ -114,6 +114,45 @@ struct HciHostDemoContext {
   uint8_t aclPacket[32] = {0};
 };
 
+bool sendVprDirectReadCaps(BleCsControllerVprHost& vprHost, uint8_t* outStatus) {
+  return vprHost.directReadRemoteSupportedCapabilities(outStatus);
+}
+
+bool sendVprDirectSetDefaults(BleCsControllerVprHost& vprHost,
+                              const BleCsDefaultSettings& settings,
+                              uint8_t* outStatus) {
+  return vprHost.directSetDefaultSettings(settings, outStatus);
+}
+
+bool sendVprDirectCreate(BleCsControllerVprHost& vprHost,
+                         const BleCsControllerCreateConfig& config,
+                         uint8_t* outStatus) {
+  return vprHost.directCreateConfig(config, outStatus);
+}
+
+bool sendVprDirectRemove(BleCsControllerVprHost& vprHost,
+                         uint8_t configId,
+                         uint8_t* outStatus) {
+  return vprHost.directRemoveConfig(configId, outStatus);
+}
+
+bool sendVprDirectSecurity(BleCsControllerVprHost& vprHost, uint8_t* outStatus) {
+  return vprHost.directSecurityEnable(outStatus);
+}
+
+bool sendVprDirectSetProc(BleCsControllerVprHost& vprHost,
+                          const BleCsProcedureParameters& params,
+                          uint8_t* outStatus) {
+  return vprHost.directSetProcedureParameters(params, outStatus);
+}
+
+bool sendVprDirectEnable(BleCsControllerVprHost& vprHost,
+                         uint8_t configId,
+                         uint8_t enable,
+                         uint8_t* outStatus) {
+  return vprHost.directProcedureEnable(configId, enable != 0U, outStatus);
+}
+
 class ByteQueueStream : public Stream {
  public:
   ByteQueueStream() : buffer_{0}, head_(0U), tail_(0U), used_(0U) {}
@@ -4035,46 +4074,11 @@ void printHciVprManualDemo() {
   }
   ok = ok && vprHost.ready() && !vprHost.vprState().linkProcedureEnabled;
 
-  auto parseDirectStatus = [](const uint8_t* packet, size_t packetLen,
-                              uint16_t expectedOpcode,
-                              uint8_t* outStatus) -> bool {
-    if (outStatus == nullptr) {
-      return false;
-    }
-    BleCsHciCommandStatusEvent statusEvent{};
-    if (BleChannelSoundingRadio::parseHciCommandStatusEvent(packet, packetLen,
-                                                            &statusEvent) &&
-        statusEvent.opcode == expectedOpcode) {
-      *outStatus = statusEvent.status;
-      return true;
-    }
-    BleCsHciCommandCompleteEvent completeEvent{};
-    if (BleChannelSoundingRadio::parseHciCommandCompleteEvent(packet, packetLen,
-                                                              &completeEvent) &&
-        completeEvent.opcode == expectedOpcode) {
-      *outStatus = completeEvent.status;
-      return true;
-    }
-    return false;
-  };
-
   auto sendDirectProcedureEnable = [&](uint8_t enable, uint8_t* outStatus) -> bool {
-    BleCsProcedureEnable params{};
-    params.configId = vprHost.workflowState().configComplete.configId;
-    params.enable = enable;
-    BleCsHciCommand command{};
-    if (!BleChannelSoundingRadio::buildHciProcedureEnableCommand(
-            kDemoConnHandle, params, &command)) {
-      return false;
-    }
-    uint8_t response[64] = {0};
-    size_t responseLen = 0U;
-    if (!vprHost.sendDirectHciCommand(command.opcode, command.payload,
-                                      command.payloadLen, response,
-                                      sizeof(response), &responseLen)) {
-      return false;
-    }
-    return parseDirectStatus(response, responseLen, command.opcode, outStatus);
+    return sendVprDirectEnable(vprHost,
+                               vprHost.workflowState().configComplete.configId,
+                               enable,
+                               outStatus);
   };
 
   uint8_t startStatus = 0xFFU;
@@ -4214,63 +4218,15 @@ void printHciVprReconfigDemo() {
   }
   ok = ok && vprHost.ready() && !vprHost.vprState().linkProcedureEnabled;
 
-  auto parseDirectStatus = [](const uint8_t* packet, size_t packetLen,
-                              uint16_t expectedOpcode,
-                              uint8_t* outStatus) -> bool {
-    if (outStatus == nullptr) {
-      return false;
-    }
-    BleCsHciCommandStatusEvent statusEvent{};
-    if (BleChannelSoundingRadio::parseHciCommandStatusEvent(packet, packetLen,
-                                                            &statusEvent) &&
-        statusEvent.opcode == expectedOpcode) {
-      *outStatus = statusEvent.status;
-      return true;
-    }
-    BleCsHciCommandCompleteEvent completeEvent{};
-    if (BleChannelSoundingRadio::parseHciCommandCompleteEvent(packet, packetLen,
-                                                              &completeEvent) &&
-        completeEvent.opcode == expectedOpcode) {
-      *outStatus = completeEvent.status;
-      return true;
-    }
-    return false;
-  };
-
   auto sendDirectSetProc = [&](const BleCsProcedureParameters& params,
                                uint8_t* outStatus) -> bool {
-    BleCsHciCommand command{};
-    if (!BleChannelSoundingRadio::buildHciSetProcedureParametersCommand(
-            kDemoConnHandle, params, &command)) {
-      return false;
-    }
-    uint8_t response[64] = {0};
-    size_t responseLen = 0U;
-    if (!vprHost.sendDirectHciCommand(command.opcode, command.payload,
-                                      command.payloadLen, response,
-                                      sizeof(response), &responseLen)) {
-      return false;
-    }
-    return parseDirectStatus(response, responseLen, command.opcode, outStatus);
+    return sendVprDirectSetProc(vprHost, params, outStatus);
   };
 
   auto sendDirectEnable = [&](uint8_t enable, uint8_t* outStatus) -> bool {
-    BleCsProcedureEnable params{};
-    params.configId = vprHost.workflowState().configComplete.configId;
-    params.enable = enable;
-    BleCsHciCommand command{};
-    if (!BleChannelSoundingRadio::buildHciProcedureEnableCommand(
-            kDemoConnHandle, params, &command)) {
-      return false;
-    }
-    uint8_t response[64] = {0};
-    size_t responseLen = 0U;
-    if (!vprHost.sendDirectHciCommand(command.opcode, command.payload,
-                                      command.payloadLen, response,
-                                      sizeof(response), &responseLen)) {
-      return false;
-    }
-    return parseDirectStatus(response, responseLen, command.opcode, outStatus);
+    return sendVprDirectEnable(vprHost,
+                               vprHost.workflowState().configComplete.configId,
+                               enable, outStatus);
   };
 
   auto pollUntilRunComplete = [&](uint32_t targetLocalSubevents,
@@ -4439,93 +4395,36 @@ void printHciVprConfigSwapDemo() {
   }
   ok = ok && vprHost.ready();
 
-  auto parseDirectStatus = [](const uint8_t* packet, size_t packetLen,
-                              uint16_t expectedOpcode,
-                              uint8_t* outStatus) -> bool {
-    if (outStatus == nullptr) {
-      return false;
-    }
-    BleCsHciCommandStatusEvent statusEvent{};
-    if (BleChannelSoundingRadio::parseHciCommandStatusEvent(packet, packetLen,
-                                                            &statusEvent) &&
-        statusEvent.opcode == expectedOpcode) {
-      *outStatus = statusEvent.status;
-      return true;
-    }
-    BleCsHciCommandCompleteEvent completeEvent{};
-    if (BleChannelSoundingRadio::parseHciCommandCompleteEvent(packet, packetLen,
-                                                              &completeEvent) &&
-        completeEvent.opcode == expectedOpcode) {
-      *outStatus = completeEvent.status;
-      return true;
-    }
-    return false;
-  };
-
-  auto sendDirectCommand = [&](const BleCsHciCommand& command, uint8_t* outStatus) -> bool {
-    uint8_t response[64] = {0};
-    size_t responseLen = 0U;
-    if (!vprHost.sendDirectHciCommand(command.opcode, command.payload,
-                                      command.payloadLen, response,
-                                      sizeof(response), &responseLen)) {
-      return false;
-    }
-    return parseDirectStatus(response, responseLen, command.opcode, outStatus);
-  };
-
   auto sendDirectReadCaps = [&](uint8_t* outStatus) -> bool {
-    BleCsHciCommand command{};
-    return BleChannelSoundingRadio::buildHciReadRemoteSupportedCapabilitiesCommand(
-               kDemoConnHandle, &command) &&
-           sendDirectCommand(command, outStatus);
+    return sendVprDirectReadCaps(vprHost, outStatus);
   };
 
   auto sendDirectSetDefaults = [&](uint8_t* outStatus) -> bool {
-    BleCsHciCommand command{};
-    return BleChannelSoundingRadio::buildHciSetDefaultSettingsCommand(
-               kDemoConnHandle, hostConfig.session.workflow.defaultSettings, &command) &&
-           sendDirectCommand(command, outStatus);
+    return sendVprDirectSetDefaults(vprHost, hostConfig.session.workflow.defaultSettings,
+                                    outStatus);
   };
 
   auto sendDirectRemove = [&](uint8_t configId, uint8_t* outStatus) -> bool {
-    BleCsHciCommand command{};
-    return BleChannelSoundingRadio::buildHciRemoveConfigCommand(
-               kDemoConnHandle, configId, &command) &&
-           sendDirectCommand(command, outStatus);
+    return sendVprDirectRemove(vprHost, configId, outStatus);
   };
 
   auto sendDirectCreate = [&](const BleCsControllerCreateConfig& config,
                               uint8_t* outStatus) -> bool {
-    BleCsHciCommand command{};
-    return BleChannelSoundingRadio::buildHciCreateConfigCommand(
-               kDemoConnHandle, config, &command) &&
-           sendDirectCommand(command, outStatus);
+    return sendVprDirectCreate(vprHost, config, outStatus);
   };
 
   auto sendDirectSecurity = [&](uint8_t* outStatus) -> bool {
-    BleCsHciCommand command{};
-    return BleChannelSoundingRadio::buildHciSecurityEnableCommand(kDemoConnHandle,
-                                                                  &command) &&
-           sendDirectCommand(command, outStatus);
+    return sendVprDirectSecurity(vprHost, outStatus);
   };
 
   auto sendDirectSetProc = [&](const BleCsProcedureParameters& params,
                                uint8_t* outStatus) -> bool {
-    BleCsHciCommand command{};
-    return BleChannelSoundingRadio::buildHciSetProcedureParametersCommand(
-               kDemoConnHandle, params, &command) &&
-           sendDirectCommand(command, outStatus);
+    return sendVprDirectSetProc(vprHost, params, outStatus);
   };
 
   auto sendDirectEnable = [&](uint8_t configId, uint8_t enable,
                               uint8_t* outStatus) -> bool {
-    BleCsProcedureEnable params{};
-    params.configId = configId;
-    params.enable = enable;
-    BleCsHciCommand command{};
-    return BleChannelSoundingRadio::buildHciProcedureEnableCommand(
-               kDemoConnHandle, params, &command) &&
-           sendDirectCommand(command, outStatus);
+    return sendVprDirectEnable(vprHost, configId, enable, outStatus);
   };
 
   const uint8_t baseConfigId = vprHost.workflowState().configComplete.configId;
@@ -4754,72 +4653,23 @@ void printHciVprMultiConfigDemo() {
   }
   ok = ok && vprHost.ready();
 
-  auto parseDirectStatus = [](const uint8_t* packet, size_t packetLen,
-                              uint16_t expectedOpcode,
-                              uint8_t* outStatus) -> bool {
-    if (outStatus == nullptr) {
-      return false;
-    }
-    BleCsHciCommandStatusEvent statusEvent{};
-    if (BleChannelSoundingRadio::parseHciCommandStatusEvent(packet, packetLen,
-                                                            &statusEvent) &&
-        statusEvent.opcode == expectedOpcode) {
-      *outStatus = statusEvent.status;
-      return true;
-    }
-    BleCsHciCommandCompleteEvent completeEvent{};
-    if (BleChannelSoundingRadio::parseHciCommandCompleteEvent(packet, packetLen,
-                                                              &completeEvent) &&
-        completeEvent.opcode == expectedOpcode) {
-      *outStatus = completeEvent.status;
-      return true;
-    }
-    return false;
-  };
-
-  auto sendDirectCommand = [&](const BleCsHciCommand& command, uint8_t* outStatus) -> bool {
-    uint8_t response[64] = {0};
-    size_t responseLen = 0U;
-    if (!vprHost.sendDirectHciCommand(command.opcode, command.payload,
-                                      command.payloadLen, response,
-                                      sizeof(response), &responseLen)) {
-      return false;
-    }
-    return parseDirectStatus(response, responseLen, command.opcode, outStatus);
-  };
-
   auto sendDirectCreate = [&](const BleCsControllerCreateConfig& config,
                               uint8_t* outStatus) -> bool {
-    BleCsHciCommand command{};
-    return BleChannelSoundingRadio::buildHciCreateConfigCommand(
-               kDemoConnHandle, config, &command) &&
-           sendDirectCommand(command, outStatus);
+    return sendVprDirectCreate(vprHost, config, outStatus);
   };
 
   auto sendDirectSecurity = [&](uint8_t* outStatus) -> bool {
-    BleCsHciCommand command{};
-    return BleChannelSoundingRadio::buildHciSecurityEnableCommand(kDemoConnHandle,
-                                                                  &command) &&
-           sendDirectCommand(command, outStatus);
+    return sendVprDirectSecurity(vprHost, outStatus);
   };
 
   auto sendDirectSetProc = [&](const BleCsProcedureParameters& params,
                                uint8_t* outStatus) -> bool {
-    BleCsHciCommand command{};
-    return BleChannelSoundingRadio::buildHciSetProcedureParametersCommand(
-               kDemoConnHandle, params, &command) &&
-           sendDirectCommand(command, outStatus);
+    return sendVprDirectSetProc(vprHost, params, outStatus);
   };
 
   auto sendDirectEnable = [&](uint8_t configId, uint8_t enable,
                               uint8_t* outStatus) -> bool {
-    BleCsProcedureEnable params{};
-    params.configId = configId;
-    params.enable = enable;
-    BleCsHciCommand command{};
-    return BleChannelSoundingRadio::buildHciProcedureEnableCommand(
-               kDemoConnHandle, params, &command) &&
-           sendDirectCommand(command, outStatus);
+    return sendVprDirectEnable(vprHost, configId, enable, outStatus);
   };
 
   auto pollUntilStoppedWithProcedure = [&](uint16_t targetProcedureCount,
@@ -5096,79 +4946,27 @@ void printHciVprStoredRemoveDemo() {
   }
   ok = ok && vprHost.ready();
 
-  auto parseDirectStatus = [](const uint8_t* packet, size_t packetLen,
-                              uint16_t expectedOpcode,
-                              uint8_t* outStatus) -> bool {
-    if (outStatus == nullptr) {
-      return false;
-    }
-    BleCsHciCommandStatusEvent statusEvent{};
-    if (BleChannelSoundingRadio::parseHciCommandStatusEvent(packet, packetLen,
-                                                            &statusEvent) &&
-        statusEvent.opcode == expectedOpcode) {
-      *outStatus = statusEvent.status;
-      return true;
-    }
-    BleCsHciCommandCompleteEvent completeEvent{};
-    if (BleChannelSoundingRadio::parseHciCommandCompleteEvent(packet, packetLen,
-                                                              &completeEvent) &&
-        completeEvent.opcode == expectedOpcode) {
-      *outStatus = completeEvent.status;
-      return true;
-    }
-    return false;
-  };
-
-  auto sendDirectCommand = [&](const BleCsHciCommand& command, uint8_t* outStatus) -> bool {
-    uint8_t response[64] = {0};
-    size_t responseLen = 0U;
-    if (!vprHost.sendDirectHciCommand(command.opcode, command.payload,
-                                      command.payloadLen, response,
-                                      sizeof(response), &responseLen)) {
-      return false;
-    }
-    return parseDirectStatus(response, responseLen, command.opcode, outStatus);
-  };
-
   auto sendDirectCreate = [&](const BleCsControllerCreateConfig& config,
                               uint8_t* outStatus) -> bool {
-    BleCsHciCommand command{};
-    return BleChannelSoundingRadio::buildHciCreateConfigCommand(
-               kDemoConnHandle, config, &command) &&
-           sendDirectCommand(command, outStatus);
+    return sendVprDirectCreate(vprHost, config, outStatus);
   };
 
   auto sendDirectRemove = [&](uint8_t configId, uint8_t* outStatus) -> bool {
-    BleCsHciCommand command{};
-    return BleChannelSoundingRadio::buildHciRemoveConfigCommand(
-               kDemoConnHandle, configId, &command) &&
-           sendDirectCommand(command, outStatus);
+    return sendVprDirectRemove(vprHost, configId, outStatus);
   };
 
   auto sendDirectSecurity = [&](uint8_t* outStatus) -> bool {
-    BleCsHciCommand command{};
-    return BleChannelSoundingRadio::buildHciSecurityEnableCommand(kDemoConnHandle,
-                                                                  &command) &&
-           sendDirectCommand(command, outStatus);
+    return sendVprDirectSecurity(vprHost, outStatus);
   };
 
   auto sendDirectSetProc = [&](const BleCsProcedureParameters& params,
                                uint8_t* outStatus) -> bool {
-    BleCsHciCommand command{};
-    return BleChannelSoundingRadio::buildHciSetProcedureParametersCommand(
-               kDemoConnHandle, params, &command) &&
-           sendDirectCommand(command, outStatus);
+    return sendVprDirectSetProc(vprHost, params, outStatus);
   };
 
   auto sendDirectEnable = [&](uint8_t configId, uint8_t enable,
                               uint8_t* outStatus) -> bool {
-    BleCsProcedureEnable params{};
-    params.configId = configId;
-    params.enable = enable;
-    BleCsHciCommand command{};
-    return BleChannelSoundingRadio::buildHciProcedureEnableCommand(
-               kDemoConnHandle, params, &command) &&
-           sendDirectCommand(command, outStatus);
+    return sendVprDirectEnable(vprHost, configId, enable, outStatus);
   };
 
   auto pollUntilStoppedOnConfig = [&](uint8_t targetConfigId,
@@ -5482,79 +5280,27 @@ void printHciVprActiveRemoveDemo() {
   }
   ok = ok && vprHost.ready();
 
-  auto parseDirectStatus = [](const uint8_t* packet, size_t packetLen,
-                              uint16_t expectedOpcode,
-                              uint8_t* outStatus) -> bool {
-    if (outStatus == nullptr) {
-      return false;
-    }
-    BleCsHciCommandStatusEvent statusEvent{};
-    if (BleChannelSoundingRadio::parseHciCommandStatusEvent(packet, packetLen,
-                                                            &statusEvent) &&
-        statusEvent.opcode == expectedOpcode) {
-      *outStatus = statusEvent.status;
-      return true;
-    }
-    BleCsHciCommandCompleteEvent completeEvent{};
-    if (BleChannelSoundingRadio::parseHciCommandCompleteEvent(packet, packetLen,
-                                                              &completeEvent) &&
-        completeEvent.opcode == expectedOpcode) {
-      *outStatus = completeEvent.status;
-      return true;
-    }
-    return false;
-  };
-
-  auto sendDirectCommand = [&](const BleCsHciCommand& command, uint8_t* outStatus) -> bool {
-    uint8_t response[64] = {0};
-    size_t responseLen = 0U;
-    if (!vprHost.sendDirectHciCommand(command.opcode, command.payload,
-                                      command.payloadLen, response,
-                                      sizeof(response), &responseLen)) {
-      return false;
-    }
-    return parseDirectStatus(response, responseLen, command.opcode, outStatus);
-  };
-
   auto sendDirectCreate = [&](const BleCsControllerCreateConfig& config,
                               uint8_t* outStatus) -> bool {
-    BleCsHciCommand command{};
-    return BleChannelSoundingRadio::buildHciCreateConfigCommand(
-               kDemoConnHandle, config, &command) &&
-           sendDirectCommand(command, outStatus);
+    return sendVprDirectCreate(vprHost, config, outStatus);
   };
 
   auto sendDirectRemove = [&](uint8_t configId, uint8_t* outStatus) -> bool {
-    BleCsHciCommand command{};
-    return BleChannelSoundingRadio::buildHciRemoveConfigCommand(
-               kDemoConnHandle, configId, &command) &&
-           sendDirectCommand(command, outStatus);
+    return sendVprDirectRemove(vprHost, configId, outStatus);
   };
 
   auto sendDirectSecurity = [&](uint8_t* outStatus) -> bool {
-    BleCsHciCommand command{};
-    return BleChannelSoundingRadio::buildHciSecurityEnableCommand(kDemoConnHandle,
-                                                                  &command) &&
-           sendDirectCommand(command, outStatus);
+    return sendVprDirectSecurity(vprHost, outStatus);
   };
 
   auto sendDirectSetProc = [&](const BleCsProcedureParameters& params,
                                uint8_t* outStatus) -> bool {
-    BleCsHciCommand command{};
-    return BleChannelSoundingRadio::buildHciSetProcedureParametersCommand(
-               kDemoConnHandle, params, &command) &&
-           sendDirectCommand(command, outStatus);
+    return sendVprDirectSetProc(vprHost, params, outStatus);
   };
 
   auto sendDirectEnable = [&](uint8_t configId, uint8_t enable,
                               uint8_t* outStatus) -> bool {
-    BleCsProcedureEnable params{};
-    params.configId = configId;
-    params.enable = enable;
-    BleCsHciCommand command{};
-    return BleChannelSoundingRadio::buildHciProcedureEnableCommand(
-               kDemoConnHandle, params, &command) &&
-           sendDirectCommand(command, outStatus);
+    return sendVprDirectEnable(vprHost, configId, enable, outStatus);
   };
 
   auto pollUntilStoppedOnConfig = [&](uint8_t targetConfigId,
@@ -5794,79 +5540,27 @@ void printHciVprInventoryDemo() {
   }
   ok = ok && vprHost.ready();
 
-  auto parseDirectStatus = [](const uint8_t* packet, size_t packetLen,
-                              uint16_t expectedOpcode,
-                              uint8_t* outStatus) -> bool {
-    if (outStatus == nullptr) {
-      return false;
-    }
-    BleCsHciCommandStatusEvent statusEvent{};
-    if (BleChannelSoundingRadio::parseHciCommandStatusEvent(packet, packetLen,
-                                                            &statusEvent) &&
-        statusEvent.opcode == expectedOpcode) {
-      *outStatus = statusEvent.status;
-      return true;
-    }
-    BleCsHciCommandCompleteEvent completeEvent{};
-    if (BleChannelSoundingRadio::parseHciCommandCompleteEvent(packet, packetLen,
-                                                              &completeEvent) &&
-        completeEvent.opcode == expectedOpcode) {
-      *outStatus = completeEvent.status;
-      return true;
-    }
-    return false;
-  };
-
-  auto sendDirectCommand = [&](const BleCsHciCommand& command, uint8_t* outStatus) -> bool {
-    uint8_t response[64] = {0};
-    size_t responseLen = 0U;
-    if (!vprHost.sendDirectHciCommand(command.opcode, command.payload,
-                                      command.payloadLen, response,
-                                      sizeof(response), &responseLen)) {
-      return false;
-    }
-    return parseDirectStatus(response, responseLen, command.opcode, outStatus);
-  };
-
   auto sendDirectCreate = [&](const BleCsControllerCreateConfig& config,
                               uint8_t* outStatus) -> bool {
-    BleCsHciCommand command{};
-    return BleChannelSoundingRadio::buildHciCreateConfigCommand(
-               kDemoConnHandle, config, &command) &&
-           sendDirectCommand(command, outStatus);
+    return sendVprDirectCreate(vprHost, config, outStatus);
   };
 
   auto sendDirectRemove = [&](uint8_t configId, uint8_t* outStatus) -> bool {
-    BleCsHciCommand command{};
-    return BleChannelSoundingRadio::buildHciRemoveConfigCommand(
-               kDemoConnHandle, configId, &command) &&
-           sendDirectCommand(command, outStatus);
+    return sendVprDirectRemove(vprHost, configId, outStatus);
   };
 
   auto sendDirectSecurity = [&](uint8_t* outStatus) -> bool {
-    BleCsHciCommand command{};
-    return BleChannelSoundingRadio::buildHciSecurityEnableCommand(kDemoConnHandle,
-                                                                  &command) &&
-           sendDirectCommand(command, outStatus);
+    return sendVprDirectSecurity(vprHost, outStatus);
   };
 
   auto sendDirectSetProc = [&](const BleCsProcedureParameters& params,
                                uint8_t* outStatus) -> bool {
-    BleCsHciCommand command{};
-    return BleChannelSoundingRadio::buildHciSetProcedureParametersCommand(
-               kDemoConnHandle, params, &command) &&
-           sendDirectCommand(command, outStatus);
+    return sendVprDirectSetProc(vprHost, params, outStatus);
   };
 
   auto sendDirectEnable = [&](uint8_t configId, uint8_t enable,
                               uint8_t* outStatus) -> bool {
-    BleCsProcedureEnable params{};
-    params.configId = configId;
-    params.enable = enable;
-    BleCsHciCommand command{};
-    return BleChannelSoundingRadio::buildHciProcedureEnableCommand(
-               kDemoConnHandle, params, &command) &&
-           sendDirectCommand(command, outStatus);
+    return sendVprDirectEnable(vprHost, configId, enable, outStatus);
   };
 
   auto pollUntilStoppedOnConfig = [&](uint8_t targetConfigId,
@@ -6117,79 +5811,27 @@ void printHciVprSlotDemo() {
   }
   ok = ok && vprHost.ready();
 
-  auto parseDirectStatus = [](const uint8_t* packet, size_t packetLen,
-                              uint16_t expectedOpcode,
-                              uint8_t* outStatus) -> bool {
-    if (outStatus == nullptr) {
-      return false;
-    }
-    BleCsHciCommandStatusEvent statusEvent{};
-    if (BleChannelSoundingRadio::parseHciCommandStatusEvent(packet, packetLen,
-                                                            &statusEvent) &&
-        statusEvent.opcode == expectedOpcode) {
-      *outStatus = statusEvent.status;
-      return true;
-    }
-    BleCsHciCommandCompleteEvent completeEvent{};
-    if (BleChannelSoundingRadio::parseHciCommandCompleteEvent(packet, packetLen,
-                                                              &completeEvent) &&
-        completeEvent.opcode == expectedOpcode) {
-      *outStatus = completeEvent.status;
-      return true;
-    }
-    return false;
-  };
-
-  auto sendDirectCommand = [&](const BleCsHciCommand& command, uint8_t* outStatus) -> bool {
-    uint8_t response[64] = {0};
-    size_t responseLen = 0U;
-    if (!vprHost.sendDirectHciCommand(command.opcode, command.payload,
-                                      command.payloadLen, response,
-                                      sizeof(response), &responseLen)) {
-      return false;
-    }
-    return parseDirectStatus(response, responseLen, command.opcode, outStatus);
-  };
-
   auto sendDirectCreate = [&](const BleCsControllerCreateConfig& config,
                               uint8_t* outStatus) -> bool {
-    BleCsHciCommand command{};
-    return BleChannelSoundingRadio::buildHciCreateConfigCommand(
-               kDemoConnHandle, config, &command) &&
-           sendDirectCommand(command, outStatus);
+    return sendVprDirectCreate(vprHost, config, outStatus);
   };
 
   auto sendDirectSecurity = [&](uint8_t* outStatus) -> bool {
-    BleCsHciCommand command{};
-    return BleChannelSoundingRadio::buildHciSecurityEnableCommand(kDemoConnHandle,
-                                                                  &command) &&
-           sendDirectCommand(command, outStatus);
+    return sendVprDirectSecurity(vprHost, outStatus);
   };
 
   auto sendDirectSetProc = [&](const BleCsProcedureParameters& params,
                                uint8_t* outStatus) -> bool {
-    BleCsHciCommand command{};
-    return BleChannelSoundingRadio::buildHciSetProcedureParametersCommand(
-               kDemoConnHandle, params, &command) &&
-           sendDirectCommand(command, outStatus);
+    return sendVprDirectSetProc(vprHost, params, outStatus);
   };
 
   auto sendDirectEnable = [&](uint8_t configId, uint8_t enable,
                               uint8_t* outStatus) -> bool {
-    BleCsProcedureEnable params{};
-    params.configId = configId;
-    params.enable = enable;
-    BleCsHciCommand command{};
-    return BleChannelSoundingRadio::buildHciProcedureEnableCommand(
-               kDemoConnHandle, params, &command) &&
-           sendDirectCommand(command, outStatus);
+    return sendVprDirectEnable(vprHost, configId, enable, outStatus);
   };
 
   auto sendDirectRemove = [&](uint8_t configId, uint8_t* outStatus) -> bool {
-    BleCsHciCommand command{};
-    return BleChannelSoundingRadio::buildHciRemoveConfigCommand(
-               kDemoConnHandle, configId, &command) &&
-           sendDirectCommand(command, outStatus);
+    return sendVprDirectRemove(vprHost, configId, outStatus);
   };
 
   auto pollUntilStoppedOnConfig = [&](uint8_t targetConfigId,
@@ -6516,61 +6158,18 @@ void printHciVprSelectDemo() {
   }
   ok = ok && vprHost.ready();
 
-  auto parseDirectStatus = [](const uint8_t* packet, size_t packetLen,
-                              uint16_t expectedOpcode,
-                              uint8_t* outStatus) -> bool {
-    if (outStatus == nullptr) {
-      return false;
-    }
-    BleCsHciCommandStatusEvent statusEvent{};
-    if (BleChannelSoundingRadio::parseHciCommandStatusEvent(packet, packetLen,
-                                                            &statusEvent) &&
-        statusEvent.opcode == expectedOpcode) {
-      *outStatus = statusEvent.status;
-      return true;
-    }
-    BleCsHciCommandCompleteEvent completeEvent{};
-    if (BleChannelSoundingRadio::parseHciCommandCompleteEvent(packet, packetLen,
-                                                              &completeEvent) &&
-        completeEvent.opcode == expectedOpcode) {
-      *outStatus = completeEvent.status;
-      return true;
-    }
-    return false;
-  };
-
-  auto sendDirectCommand = [&](const BleCsHciCommand& command, uint8_t* outStatus) -> bool {
-    uint8_t response[64] = {0};
-    size_t responseLen = 0U;
-    if (!vprHost.sendDirectHciCommand(command.opcode, command.payload,
-                                      command.payloadLen, response,
-                                      sizeof(response), &responseLen)) {
-      return false;
-    }
-    return parseDirectStatus(response, responseLen, command.opcode, outStatus);
-  };
-
   auto sendDirectCreate = [&](const BleCsControllerCreateConfig& config,
                               uint8_t* outStatus) -> bool {
-    BleCsHciCommand command{};
-    return BleChannelSoundingRadio::buildHciCreateConfigCommand(
-               kDemoConnHandle, config, &command) &&
-           sendDirectCommand(command, outStatus);
+    return sendVprDirectCreate(vprHost, config, outStatus);
   };
 
   auto sendDirectSecurity = [&](uint8_t* outStatus) -> bool {
-    BleCsHciCommand command{};
-    return BleChannelSoundingRadio::buildHciSecurityEnableCommand(kDemoConnHandle,
-                                                                  &command) &&
-           sendDirectCommand(command, outStatus);
+    return sendVprDirectSecurity(vprHost, outStatus);
   };
 
   auto sendDirectSetProc = [&](const BleCsProcedureParameters& params,
                                uint8_t* outStatus) -> bool {
-    BleCsHciCommand command{};
-    return BleChannelSoundingRadio::buildHciSetProcedureParametersCommand(
-               kDemoConnHandle, params, &command) &&
-           sendDirectCommand(command, outStatus);
+    return sendVprDirectSetProc(vprHost, params, outStatus);
   };
 
   auto slotStateMatches = [&](uint8_t activeConfigId, uint8_t slot0ConfigId,
@@ -7207,72 +6806,23 @@ void printHciVprThirdConfigDemo() {
   }
   ok = ok && vprHost.ready() && !vprHost.failed();
 
-  auto parseDirectStatus = [](const uint8_t* packet, size_t packetLen,
-                              uint16_t opcode, uint8_t* outStatus) -> bool {
-    BleCsHciCommandStatusEvent statusEvent{};
-    if (BleChannelSoundingRadio::parseHciCommandStatusEvent(packet, packetLen,
-                                                            &statusEvent) &&
-        statusEvent.opcode == opcode) {
-      if (outStatus != nullptr) {
-        *outStatus = statusEvent.status;
-      }
-      return true;
-    }
-    BleCsHciCommandCompleteEvent completeEvent{};
-    if (BleChannelSoundingRadio::parseHciCommandCompleteEvent(packet, packetLen,
-                                                              &completeEvent) &&
-        completeEvent.opcode == opcode) {
-      if (outStatus != nullptr) {
-        *outStatus = completeEvent.status;
-      }
-      return true;
-    }
-    return false;
-  };
-
-  auto sendDirectCommand = [&](const BleCsHciCommand& command, uint8_t* outStatus) -> bool {
-    uint8_t response[64] = {0};
-    size_t responseLen = 0U;
-    if (!vprHost.sendDirectHciCommand(command.opcode, command.payload,
-                                      command.payloadLen, response,
-                                      sizeof(response), &responseLen)) {
-      return false;
-    }
-    return parseDirectStatus(response, responseLen, command.opcode, outStatus);
-  };
-
   auto sendDirectCreate = [&](const BleCsControllerCreateConfig& config,
                               uint8_t* outStatus) -> bool {
-    BleCsHciCommand command{};
-    return BleChannelSoundingRadio::buildHciCreateConfigCommand(
-               kDemoConnHandle, config, &command) &&
-           sendDirectCommand(command, outStatus);
+    return sendVprDirectCreate(vprHost, config, outStatus);
   };
 
   auto sendDirectSecurity = [&](uint8_t* outStatus) -> bool {
-    BleCsHciCommand command{};
-    return BleChannelSoundingRadio::buildHciSecurityEnableCommand(kDemoConnHandle,
-                                                                  &command) &&
-           sendDirectCommand(command, outStatus);
+    return sendVprDirectSecurity(vprHost, outStatus);
   };
 
   auto sendDirectSetProc = [&](const BleCsProcedureParameters& params,
                                uint8_t* outStatus) -> bool {
-    BleCsHciCommand command{};
-    return BleChannelSoundingRadio::buildHciSetProcedureParametersCommand(
-               kDemoConnHandle, params, &command) &&
-           sendDirectCommand(command, outStatus);
+    return sendVprDirectSetProc(vprHost, params, outStatus);
   };
 
   auto sendDirectEnable = [&](uint8_t configId, uint8_t enable,
                               uint8_t* outStatus) -> bool {
-    BleCsProcedureEnable params{};
-    params.configId = configId;
-    params.enable = enable;
-    BleCsHciCommand command{};
-    return BleChannelSoundingRadio::buildHciProcedureEnableCommand(
-               kDemoConnHandle, params, &command) &&
-           sendDirectCommand(command, outStatus);
+    return sendVprDirectEnable(vprHost, configId, enable, outStatus);
   };
 
   auto stateMatches = [&](uint8_t activeConfigId, uint8_t slot0ConfigId,
@@ -7685,72 +7235,23 @@ void printHciVprEvictDemo() {
   }
   ok = ok && vprHost.ready() && !vprHost.failed();
 
-  auto parseDirectStatus = [](const uint8_t* packet, size_t packetLen,
-                              uint16_t opcode, uint8_t* outStatus) -> bool {
-    BleCsHciCommandStatusEvent statusEvent{};
-    if (BleChannelSoundingRadio::parseHciCommandStatusEvent(packet, packetLen,
-                                                            &statusEvent) &&
-        statusEvent.opcode == opcode) {
-      if (outStatus != nullptr) {
-        *outStatus = statusEvent.status;
-      }
-      return true;
-    }
-    BleCsHciCommandCompleteEvent completeEvent{};
-    if (BleChannelSoundingRadio::parseHciCommandCompleteEvent(packet, packetLen,
-                                                              &completeEvent) &&
-        completeEvent.opcode == opcode) {
-      if (outStatus != nullptr) {
-        *outStatus = completeEvent.status;
-      }
-      return true;
-    }
-    return false;
-  };
-
-  auto sendDirectCommand = [&](const BleCsHciCommand& command, uint8_t* outStatus) -> bool {
-    uint8_t response[64] = {0};
-    size_t responseLen = 0U;
-    if (!vprHost.sendDirectHciCommand(command.opcode, command.payload,
-                                      command.payloadLen, response,
-                                      sizeof(response), &responseLen)) {
-      return false;
-    }
-    return parseDirectStatus(response, responseLen, command.opcode, outStatus);
-  };
-
   auto sendDirectCreate = [&](const BleCsControllerCreateConfig& config,
                               uint8_t* outStatus) -> bool {
-    BleCsHciCommand command{};
-    return BleChannelSoundingRadio::buildHciCreateConfigCommand(
-               kDemoConnHandle, config, &command) &&
-           sendDirectCommand(command, outStatus);
+    return sendVprDirectCreate(vprHost, config, outStatus);
   };
 
   auto sendDirectSecurity = [&](uint8_t* outStatus) -> bool {
-    BleCsHciCommand command{};
-    return BleChannelSoundingRadio::buildHciSecurityEnableCommand(kDemoConnHandle,
-                                                                  &command) &&
-           sendDirectCommand(command, outStatus);
+    return sendVprDirectSecurity(vprHost, outStatus);
   };
 
   auto sendDirectSetProc = [&](const BleCsProcedureParameters& params,
                                uint8_t* outStatus) -> bool {
-    BleCsHciCommand command{};
-    return BleChannelSoundingRadio::buildHciSetProcedureParametersCommand(
-               kDemoConnHandle, params, &command) &&
-           sendDirectCommand(command, outStatus);
+    return sendVprDirectSetProc(vprHost, params, outStatus);
   };
 
   auto sendDirectEnable = [&](uint8_t configId, uint8_t enable,
                               uint8_t* outStatus) -> bool {
-    BleCsProcedureEnable params{};
-    params.configId = configId;
-    params.enable = enable;
-    BleCsHciCommand command{};
-    return BleChannelSoundingRadio::buildHciProcedureEnableCommand(
-               kDemoConnHandle, params, &command) &&
-           sendDirectCommand(command, outStatus);
+    return sendVprDirectEnable(vprHost, configId, enable, outStatus);
   };
 
   auto stateMatches = [&](uint8_t activeConfigId, uint8_t slot0ConfigId,
@@ -8169,72 +7670,23 @@ void printHciVprPromoteDemo() {
   }
   ok = ok && vprHost.ready() && !vprHost.failed();
 
-  auto parseDirectStatus = [](const uint8_t* packet, size_t packetLen,
-                              uint16_t opcode, uint8_t* outStatus) -> bool {
-    BleCsHciCommandStatusEvent statusEvent{};
-    if (BleChannelSoundingRadio::parseHciCommandStatusEvent(packet, packetLen,
-                                                            &statusEvent) &&
-        statusEvent.opcode == opcode) {
-      if (outStatus != nullptr) {
-        *outStatus = statusEvent.status;
-      }
-      return true;
-    }
-    BleCsHciCommandCompleteEvent completeEvent{};
-    if (BleChannelSoundingRadio::parseHciCommandCompleteEvent(packet, packetLen,
-                                                              &completeEvent) &&
-        completeEvent.opcode == opcode) {
-      if (outStatus != nullptr) {
-        *outStatus = completeEvent.status;
-      }
-      return true;
-    }
-    return false;
-  };
-
-  auto sendDirectCommand = [&](const BleCsHciCommand& command, uint8_t* outStatus) -> bool {
-    uint8_t response[64] = {0};
-    size_t responseLen = 0U;
-    if (!vprHost.sendDirectHciCommand(command.opcode, command.payload,
-                                      command.payloadLen, response,
-                                      sizeof(response), &responseLen)) {
-      return false;
-    }
-    return parseDirectStatus(response, responseLen, command.opcode, outStatus);
-  };
-
   auto sendDirectCreate = [&](const BleCsControllerCreateConfig& config,
                               uint8_t* outStatus) -> bool {
-    BleCsHciCommand command{};
-    return BleChannelSoundingRadio::buildHciCreateConfigCommand(
-               kDemoConnHandle, config, &command) &&
-           sendDirectCommand(command, outStatus);
+    return sendVprDirectCreate(vprHost, config, outStatus);
   };
 
   auto sendDirectSecurity = [&](uint8_t* outStatus) -> bool {
-    BleCsHciCommand command{};
-    return BleChannelSoundingRadio::buildHciSecurityEnableCommand(kDemoConnHandle,
-                                                                  &command) &&
-           sendDirectCommand(command, outStatus);
+    return sendVprDirectSecurity(vprHost, outStatus);
   };
 
   auto sendDirectSetProc = [&](const BleCsProcedureParameters& params,
                                uint8_t* outStatus) -> bool {
-    BleCsHciCommand command{};
-    return BleChannelSoundingRadio::buildHciSetProcedureParametersCommand(
-               kDemoConnHandle, params, &command) &&
-           sendDirectCommand(command, outStatus);
+    return sendVprDirectSetProc(vprHost, params, outStatus);
   };
 
   auto sendDirectEnable = [&](uint8_t configId, uint8_t enable,
                               uint8_t* outStatus) -> bool {
-    BleCsProcedureEnable params{};
-    params.configId = configId;
-    params.enable = enable;
-    BleCsHciCommand command{};
-    return BleChannelSoundingRadio::buildHciProcedureEnableCommand(
-               kDemoConnHandle, params, &command) &&
-           sendDirectCommand(command, outStatus);
+    return sendVprDirectEnable(vprHost, configId, enable, outStatus);
   };
 
   auto pollUntilStoppedOnConfig = [&](uint8_t targetConfigId,
