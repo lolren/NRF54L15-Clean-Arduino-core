@@ -502,6 +502,18 @@ The next cleanup slice after that is also in:
 - repo-local compile proof for this checkpoint is:
   `/home/lolren/Desktop/Nrf54L15/.build/cs_vpr_expectations_compile`
 
+The next cleanup slice after that is also in:
+
+- the retained-config direct-control sketch surface is now thinner too
+- `BleChannelSoundingInitiator.ino` no longer carries the extra top-level
+  `sendVprDirect*` shim layer that only forwarded into
+  `BleCsControllerVprHost::direct*`
+- retained-config demos now call the reusable host direct-control surface
+  directly, which removes another sketch-local boundary layer without changing
+  controller behavior
+- repo-local compile proof for this checkpoint is:
+  `/home/lolren/Desktop/Nrf54L15/.build/cs_vpr_directsurface_compile`
+
 The next slice after this checkpoint is broader than retained-config policy:
 
 - start moving from the strong CS-specific VPR path toward a more general

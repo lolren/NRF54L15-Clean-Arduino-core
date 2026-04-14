@@ -901,6 +901,15 @@ When resuming this work:
       contract in sketch-local lambdas
     - repo-local compile proof for this typed-expectation cleanup is:
       `/home/lolren/Desktop/Nrf54L15/.build/cs_vpr_expectations_compile`
+  - the retained-config direct-control sketch surface is now thinner too:
+    - `BleChannelSoundingInitiator.ino` no longer carries the extra top-level
+      `sendVprDirect*` shim layer that only forwarded into
+      `BleCsControllerVprHost::direct*`
+    - retained-config demos now call the reusable host direct-control surface
+      directly, which removes another sketch-local boundary layer without
+      changing controller behavior
+    - repo-local compile proof for this direct-surface cleanup is:
+      `/home/lolren/Desktop/Nrf54L15/.build/cs_vpr_directsurface_compile`
 - The two attached boards were restored to `VprSharedTransportProbe` after the
   resume/restart experiments and both were left healthy on the known-good
   `svc=1.7` / `opmask=0x3FF` path.

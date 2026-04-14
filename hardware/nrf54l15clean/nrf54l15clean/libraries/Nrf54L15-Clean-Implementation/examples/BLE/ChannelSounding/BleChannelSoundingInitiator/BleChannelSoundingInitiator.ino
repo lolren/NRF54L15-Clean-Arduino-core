@@ -114,45 +114,6 @@ struct HciHostDemoContext {
   uint8_t aclPacket[32] = {0};
 };
 
-bool sendVprDirectReadCaps(BleCsControllerVprHost& vprHost, uint8_t* outStatus) {
-  return vprHost.directReadRemoteSupportedCapabilities(outStatus);
-}
-
-bool sendVprDirectSetDefaults(BleCsControllerVprHost& vprHost,
-                              const BleCsDefaultSettings& settings,
-                              uint8_t* outStatus) {
-  return vprHost.directSetDefaultSettings(settings, outStatus);
-}
-
-bool sendVprDirectCreate(BleCsControllerVprHost& vprHost,
-                         const BleCsControllerCreateConfig& config,
-                         uint8_t* outStatus) {
-  return vprHost.directCreateConfig(config, outStatus);
-}
-
-bool sendVprDirectRemove(BleCsControllerVprHost& vprHost,
-                         uint8_t configId,
-                         uint8_t* outStatus) {
-  return vprHost.directRemoveConfig(configId, outStatus);
-}
-
-bool sendVprDirectSecurity(BleCsControllerVprHost& vprHost, uint8_t* outStatus) {
-  return vprHost.directSecurityEnable(outStatus);
-}
-
-bool sendVprDirectSetProc(BleCsControllerVprHost& vprHost,
-                          const BleCsProcedureParameters& params,
-                          uint8_t* outStatus) {
-  return vprHost.directSetProcedureParameters(params, outStatus);
-}
-
-bool sendVprDirectEnable(BleCsControllerVprHost& vprHost,
-                         uint8_t configId,
-                         uint8_t enable,
-                         uint8_t* outStatus) {
-  return vprHost.directProcedureEnable(configId, enable != 0U, outStatus);
-}
-
 class ByteQueueStream : public Stream {
  public:
   ByteQueueStream() : buffer_{0}, head_(0U), tail_(0U), used_(0U) {}
@@ -4075,10 +4036,7 @@ void printHciVprManualDemo() {
   ok = ok && vprHost.ready() && !vprHost.vprState().linkProcedureEnabled;
 
   auto sendDirectProcedureEnable = [&](uint8_t enable, uint8_t* outStatus) -> bool {
-    return sendVprDirectEnable(vprHost,
-                               vprHost.workflowState().configComplete.configId,
-                               enable,
-                               outStatus);
+    return vprHost.directProcedureEnable(vprHost.workflowState().configComplete.configId, enable != 0U, outStatus);
   };
 
   uint8_t startStatus = 0xFFU;
@@ -4220,13 +4178,11 @@ void printHciVprReconfigDemo() {
 
   auto sendDirectSetProc = [&](const BleCsProcedureParameters& params,
                                uint8_t* outStatus) -> bool {
-    return sendVprDirectSetProc(vprHost, params, outStatus);
+    return vprHost.directSetProcedureParameters(params, outStatus);
   };
 
   auto sendDirectEnable = [&](uint8_t enable, uint8_t* outStatus) -> bool {
-    return sendVprDirectEnable(vprHost,
-                               vprHost.workflowState().configComplete.configId,
-                               enable, outStatus);
+    return vprHost.directProcedureEnable(vprHost.workflowState().configComplete.configId, enable != 0U, outStatus);
   };
 
   auto pollUntilRunComplete = [&](uint32_t targetLocalSubevents,
@@ -4396,35 +4352,34 @@ void printHciVprConfigSwapDemo() {
   ok = ok && vprHost.ready();
 
   auto sendDirectReadCaps = [&](uint8_t* outStatus) -> bool {
-    return sendVprDirectReadCaps(vprHost, outStatus);
+    return vprHost.directReadRemoteSupportedCapabilities(outStatus);
   };
 
   auto sendDirectSetDefaults = [&](uint8_t* outStatus) -> bool {
-    return sendVprDirectSetDefaults(vprHost, hostConfig.session.workflow.defaultSettings,
-                                    outStatus);
+    return vprHost.directSetDefaultSettings(hostConfig.session.workflow.defaultSettings, outStatus);
   };
 
   auto sendDirectRemove = [&](uint8_t configId, uint8_t* outStatus) -> bool {
-    return sendVprDirectRemove(vprHost, configId, outStatus);
+    return vprHost.directRemoveConfig(configId, outStatus);
   };
 
   auto sendDirectCreate = [&](const BleCsControllerCreateConfig& config,
                               uint8_t* outStatus) -> bool {
-    return sendVprDirectCreate(vprHost, config, outStatus);
+    return vprHost.directCreateConfig(config, outStatus);
   };
 
   auto sendDirectSecurity = [&](uint8_t* outStatus) -> bool {
-    return sendVprDirectSecurity(vprHost, outStatus);
+    return vprHost.directSecurityEnable(outStatus);
   };
 
   auto sendDirectSetProc = [&](const BleCsProcedureParameters& params,
                                uint8_t* outStatus) -> bool {
-    return sendVprDirectSetProc(vprHost, params, outStatus);
+    return vprHost.directSetProcedureParameters(params, outStatus);
   };
 
   auto sendDirectEnable = [&](uint8_t configId, uint8_t enable,
                               uint8_t* outStatus) -> bool {
-    return sendVprDirectEnable(vprHost, configId, enable, outStatus);
+    return vprHost.directProcedureEnable(configId, enable != 0U, outStatus);
   };
 
   const uint8_t baseConfigId = vprHost.workflowState().configComplete.configId;
@@ -4655,21 +4610,21 @@ void printHciVprMultiConfigDemo() {
 
   auto sendDirectCreate = [&](const BleCsControllerCreateConfig& config,
                               uint8_t* outStatus) -> bool {
-    return sendVprDirectCreate(vprHost, config, outStatus);
+    return vprHost.directCreateConfig(config, outStatus);
   };
 
   auto sendDirectSecurity = [&](uint8_t* outStatus) -> bool {
-    return sendVprDirectSecurity(vprHost, outStatus);
+    return vprHost.directSecurityEnable(outStatus);
   };
 
   auto sendDirectSetProc = [&](const BleCsProcedureParameters& params,
                                uint8_t* outStatus) -> bool {
-    return sendVprDirectSetProc(vprHost, params, outStatus);
+    return vprHost.directSetProcedureParameters(params, outStatus);
   };
 
   auto sendDirectEnable = [&](uint8_t configId, uint8_t enable,
                               uint8_t* outStatus) -> bool {
-    return sendVprDirectEnable(vprHost, configId, enable, outStatus);
+    return vprHost.directProcedureEnable(configId, enable != 0U, outStatus);
   };
 
   auto pollUntilStoppedWithProcedure = [&](uint16_t targetProcedureCount,
@@ -4883,25 +4838,25 @@ void printHciVprStoredRemoveDemo() {
 
   auto sendDirectCreate = [&](const BleCsControllerCreateConfig& config,
                               uint8_t* outStatus) -> bool {
-    return sendVprDirectCreate(vprHost, config, outStatus);
+    return vprHost.directCreateConfig(config, outStatus);
   };
 
   auto sendDirectRemove = [&](uint8_t configId, uint8_t* outStatus) -> bool {
-    return sendVprDirectRemove(vprHost, configId, outStatus);
+    return vprHost.directRemoveConfig(configId, outStatus);
   };
 
   auto sendDirectSecurity = [&](uint8_t* outStatus) -> bool {
-    return sendVprDirectSecurity(vprHost, outStatus);
+    return vprHost.directSecurityEnable(outStatus);
   };
 
   auto sendDirectSetProc = [&](const BleCsProcedureParameters& params,
                                uint8_t* outStatus) -> bool {
-    return sendVprDirectSetProc(vprHost, params, outStatus);
+    return vprHost.directSetProcedureParameters(params, outStatus);
   };
 
   auto sendDirectEnable = [&](uint8_t configId, uint8_t enable,
                               uint8_t* outStatus) -> bool {
-    return sendVprDirectEnable(vprHost, configId, enable, outStatus);
+    return vprHost.directProcedureEnable(configId, enable != 0U, outStatus);
   };
 
   auto pollUntilStoppedOnConfig = [&](uint8_t targetConfigId,
@@ -5171,25 +5126,25 @@ void printHciVprActiveRemoveDemo() {
 
   auto sendDirectCreate = [&](const BleCsControllerCreateConfig& config,
                               uint8_t* outStatus) -> bool {
-    return sendVprDirectCreate(vprHost, config, outStatus);
+    return vprHost.directCreateConfig(config, outStatus);
   };
 
   auto sendDirectRemove = [&](uint8_t configId, uint8_t* outStatus) -> bool {
-    return sendVprDirectRemove(vprHost, configId, outStatus);
+    return vprHost.directRemoveConfig(configId, outStatus);
   };
 
   auto sendDirectSecurity = [&](uint8_t* outStatus) -> bool {
-    return sendVprDirectSecurity(vprHost, outStatus);
+    return vprHost.directSecurityEnable(outStatus);
   };
 
   auto sendDirectSetProc = [&](const BleCsProcedureParameters& params,
                                uint8_t* outStatus) -> bool {
-    return sendVprDirectSetProc(vprHost, params, outStatus);
+    return vprHost.directSetProcedureParameters(params, outStatus);
   };
 
   auto sendDirectEnable = [&](uint8_t configId, uint8_t enable,
                               uint8_t* outStatus) -> bool {
-    return sendVprDirectEnable(vprHost, configId, enable, outStatus);
+    return vprHost.directProcedureEnable(configId, enable != 0U, outStatus);
   };
 
   auto pollUntilStoppedOnConfig = [&](uint8_t targetConfigId,
@@ -5389,25 +5344,25 @@ void printHciVprInventoryDemo() {
 
   auto sendDirectCreate = [&](const BleCsControllerCreateConfig& config,
                               uint8_t* outStatus) -> bool {
-    return sendVprDirectCreate(vprHost, config, outStatus);
+    return vprHost.directCreateConfig(config, outStatus);
   };
 
   auto sendDirectRemove = [&](uint8_t configId, uint8_t* outStatus) -> bool {
-    return sendVprDirectRemove(vprHost, configId, outStatus);
+    return vprHost.directRemoveConfig(configId, outStatus);
   };
 
   auto sendDirectSecurity = [&](uint8_t* outStatus) -> bool {
-    return sendVprDirectSecurity(vprHost, outStatus);
+    return vprHost.directSecurityEnable(outStatus);
   };
 
   auto sendDirectSetProc = [&](const BleCsProcedureParameters& params,
                                uint8_t* outStatus) -> bool {
-    return sendVprDirectSetProc(vprHost, params, outStatus);
+    return vprHost.directSetProcedureParameters(params, outStatus);
   };
 
   auto sendDirectEnable = [&](uint8_t configId, uint8_t enable,
                               uint8_t* outStatus) -> bool {
-    return sendVprDirectEnable(vprHost, configId, enable, outStatus);
+    return vprHost.directProcedureEnable(configId, enable != 0U, outStatus);
   };
 
   auto pollUntilStoppedOnConfig = [&](uint8_t targetConfigId,
@@ -5614,25 +5569,25 @@ void printHciVprSlotDemo() {
 
   auto sendDirectCreate = [&](const BleCsControllerCreateConfig& config,
                               uint8_t* outStatus) -> bool {
-    return sendVprDirectCreate(vprHost, config, outStatus);
+    return vprHost.directCreateConfig(config, outStatus);
   };
 
   auto sendDirectSecurity = [&](uint8_t* outStatus) -> bool {
-    return sendVprDirectSecurity(vprHost, outStatus);
+    return vprHost.directSecurityEnable(outStatus);
   };
 
   auto sendDirectSetProc = [&](const BleCsProcedureParameters& params,
                                uint8_t* outStatus) -> bool {
-    return sendVprDirectSetProc(vprHost, params, outStatus);
+    return vprHost.directSetProcedureParameters(params, outStatus);
   };
 
   auto sendDirectEnable = [&](uint8_t configId, uint8_t enable,
                               uint8_t* outStatus) -> bool {
-    return sendVprDirectEnable(vprHost, configId, enable, outStatus);
+    return vprHost.directProcedureEnable(configId, enable != 0U, outStatus);
   };
 
   auto sendDirectRemove = [&](uint8_t configId, uint8_t* outStatus) -> bool {
-    return sendVprDirectRemove(vprHost, configId, outStatus);
+    return vprHost.directRemoveConfig(configId, outStatus);
   };
 
   auto pollUntilStoppedOnConfig = [&](uint8_t targetConfigId,
@@ -5895,16 +5850,16 @@ void printHciVprSelectDemo() {
 
   auto sendDirectCreate = [&](const BleCsControllerCreateConfig& config,
                               uint8_t* outStatus) -> bool {
-    return sendVprDirectCreate(vprHost, config, outStatus);
+    return vprHost.directCreateConfig(config, outStatus);
   };
 
   auto sendDirectSecurity = [&](uint8_t* outStatus) -> bool {
-    return sendVprDirectSecurity(vprHost, outStatus);
+    return vprHost.directSecurityEnable(outStatus);
   };
 
   auto sendDirectSetProc = [&](const BleCsProcedureParameters& params,
                                uint8_t* outStatus) -> bool {
-    return sendVprDirectSetProc(vprHost, params, outStatus);
+    return vprHost.directSetProcedureParameters(params, outStatus);
   };
 
   auto slotStateMatches = [&](uint8_t activeConfigId, uint8_t slot0ConfigId,
@@ -6515,21 +6470,21 @@ void printHciVprThirdConfigDemo() {
 
   auto sendDirectCreate = [&](const BleCsControllerCreateConfig& config,
                               uint8_t* outStatus) -> bool {
-    return sendVprDirectCreate(vprHost, config, outStatus);
+    return vprHost.directCreateConfig(config, outStatus);
   };
 
   auto sendDirectSecurity = [&](uint8_t* outStatus) -> bool {
-    return sendVprDirectSecurity(vprHost, outStatus);
+    return vprHost.directSecurityEnable(outStatus);
   };
 
   auto sendDirectSetProc = [&](const BleCsProcedureParameters& params,
                                uint8_t* outStatus) -> bool {
-    return sendVprDirectSetProc(vprHost, params, outStatus);
+    return vprHost.directSetProcedureParameters(params, outStatus);
   };
 
   auto sendDirectEnable = [&](uint8_t configId, uint8_t enable,
                               uint8_t* outStatus) -> bool {
-    return sendVprDirectEnable(vprHost, configId, enable, outStatus);
+    return vprHost.directProcedureEnable(configId, enable != 0U, outStatus);
   };
 
   auto makeRetainedSelectionExpectation =
@@ -6915,21 +6870,21 @@ void printHciVprEvictDemo() {
 
   auto sendDirectCreate = [&](const BleCsControllerCreateConfig& config,
                               uint8_t* outStatus) -> bool {
-    return sendVprDirectCreate(vprHost, config, outStatus);
+    return vprHost.directCreateConfig(config, outStatus);
   };
 
   auto sendDirectSecurity = [&](uint8_t* outStatus) -> bool {
-    return sendVprDirectSecurity(vprHost, outStatus);
+    return vprHost.directSecurityEnable(outStatus);
   };
 
   auto sendDirectSetProc = [&](const BleCsProcedureParameters& params,
                                uint8_t* outStatus) -> bool {
-    return sendVprDirectSetProc(vprHost, params, outStatus);
+    return vprHost.directSetProcedureParameters(params, outStatus);
   };
 
   auto sendDirectEnable = [&](uint8_t configId, uint8_t enable,
                               uint8_t* outStatus) -> bool {
-    return sendVprDirectEnable(vprHost, configId, enable, outStatus);
+    return vprHost.directProcedureEnable(configId, enable != 0U, outStatus);
   };
 
   auto makeRetainedSelectionExpectation =
@@ -7337,21 +7292,21 @@ void printHciVprPromoteDemo() {
 
   auto sendDirectCreate = [&](const BleCsControllerCreateConfig& config,
                               uint8_t* outStatus) -> bool {
-    return sendVprDirectCreate(vprHost, config, outStatus);
+    return vprHost.directCreateConfig(config, outStatus);
   };
 
   auto sendDirectSecurity = [&](uint8_t* outStatus) -> bool {
-    return sendVprDirectSecurity(vprHost, outStatus);
+    return vprHost.directSecurityEnable(outStatus);
   };
 
   auto sendDirectSetProc = [&](const BleCsProcedureParameters& params,
                                uint8_t* outStatus) -> bool {
-    return sendVprDirectSetProc(vprHost, params, outStatus);
+    return vprHost.directSetProcedureParameters(params, outStatus);
   };
 
   auto sendDirectEnable = [&](uint8_t configId, uint8_t enable,
                               uint8_t* outStatus) -> bool {
-    return sendVprDirectEnable(vprHost, configId, enable, outStatus);
+    return vprHost.directProcedureEnable(configId, enable != 0U, outStatus);
   };
 
   auto pollUntilStoppedOnConfig = [&](uint8_t targetConfigId,
