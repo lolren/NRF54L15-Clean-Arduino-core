@@ -3685,6 +3685,9 @@ bool BleCsControllerVprHost::resetTransport(bool clearScripts) {
   vprState_.linkSlot0ConfigId = 0U;
   vprState_.linkSlot1ConfigId = 0U;
   vprState_.linkPreviousConfigId = 0U;
+  vprState_.linkAuthority0ConfigId = 0U;
+  vprState_.linkAuthority1ConfigId = 0U;
+  vprState_.linkAuthority2ConfigId = 0U;
   vprState_.linkActivePrimarySlotIndex = 0xFFU;
   vprState_.linkFreePrimarySlotCount = 0U;
   vprState_.linkProcedureCounter = 0U;
@@ -3923,6 +3926,7 @@ void BleCsControllerVprHost::syncVprState() {
   nextState.linkStoredConfigCount = static_cast<uint8_t>(packedAuxState & 0x0FU);
   nextState.linkPeerGapTicks = static_cast<uint8_t>((packedAuxState >> 8U) & 0x0FU);
   nextState.linkLastEvictedConfigId = static_cast<uint8_t>((packedAuxState >> 16U) & 0xFFU);
+  nextState.linkAuthority2ConfigId = static_cast<uint8_t>((packedAuxState >> 24U) & 0xFFU);
   nextState.linkSessionOpen = (packedLinkState & (1UL << 16U)) != 0U;
   nextState.linkConfigCreated = (packedLinkState & (1UL << 17U)) != 0U;
   nextState.linkSecurityEnabled = (packedLinkState & (1UL << 18U)) != 0U;
@@ -3932,6 +3936,8 @@ void BleCsControllerVprHost::syncVprState() {
   nextState.linkSlot0ConfigId = static_cast<uint8_t>(packedMetaState & 0xFFU);
   nextState.linkSlot1ConfigId = static_cast<uint8_t>((packedMetaState >> 8U) & 0xFFU);
   nextState.linkPreviousConfigId = static_cast<uint8_t>((packedMetaState >> 16U) & 0xFFU);
+  nextState.linkAuthority0ConfigId = static_cast<uint8_t>((packedConfigState >> 12U) & 0xFFU);
+  nextState.linkAuthority1ConfigId = static_cast<uint8_t>((packedConfigState >> 20U) & 0xFFU);
   nextState.linkSlot0InUse = (slotFlags & 0x01U) != 0U;
   nextState.linkSlot1InUse = (slotFlags & 0x02U) != 0U;
   nextState.linkPreviousSlotInUse = (slotFlags & 0x04U) != 0U;

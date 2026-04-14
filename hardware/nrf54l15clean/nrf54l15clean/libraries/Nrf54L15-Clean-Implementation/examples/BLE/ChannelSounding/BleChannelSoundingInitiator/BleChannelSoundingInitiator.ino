@@ -77,6 +77,21 @@ static float gCalibrationScale = kCalibrationScaleDefault;
 static float gCalibrationOffsetMeters = kCalibrationOffsetMetersDefault;
 static char gCommandBuffer[48] = {0};
 static uint8_t gCommandLength = 0U;
+
+#ifdef NRF54L15_CS_VPR_SELECT_SUMMARY
+struct VprSelectDemoSummary {
+  uint32_t magic;
+  uint32_t ok;
+  uint32_t initialAuthority;
+  uint32_t createdAuthority;
+  uint32_t securedAuthority;
+  uint32_t armedAuthority;
+  uint32_t baseSelectedAuthority;
+  uint32_t altSelectedAuthority;
+};
+
+volatile VprSelectDemoSummary gVprSelectDemoSummary{};
+#endif
 static BleCsDfeCaptureInfo gLastDfeInfo{};
 
 struct StepDemoContext {
@@ -6686,6 +6701,12 @@ void printHciVprSelectDemo() {
     return false;
   };
 
+  auto packAuthority = [&](const BleCsControllerVprHostState& state) -> uint32_t {
+    return (uint32_t)state.linkAuthority0ConfigId |
+           ((uint32_t)state.linkAuthority1ConfigId << 8U) |
+           ((uint32_t)state.linkAuthority2ConfigId << 16U);
+  };
+
   ok = ok && pollUntilState(baseConfigId, baseConfigId, 0U, 0U, 0U, 1U, 1U,
                             true, true, false, false, true, true, false, false,
                             true, true, false, false, &initPolls);
@@ -6741,7 +6762,36 @@ void printHciVprSelectDemo() {
   ok = ok && createStatus == 0U && securityStatus == 0U && setAltStatus == 0U &&
        setBaseStatus == 0U && setAltAgainStatus == 0U &&
        !vprHost.vprState().linkProcedureEnabled &&
-       vprHost.vprState().linkProcedureParamsApplied;
+       vprHost.vprState().linkProcedureParamsApplied &&
+       initialState.linkAuthority0ConfigId == baseConfigId &&
+       initialState.linkAuthority1ConfigId == 0U &&
+       initialState.linkAuthority2ConfigId == 0U &&
+       createdState.linkAuthority0ConfigId == altConfig.configId &&
+       createdState.linkAuthority1ConfigId == baseConfigId &&
+       createdState.linkAuthority2ConfigId == 0U &&
+       securedState.linkAuthority0ConfigId == altConfig.configId &&
+       securedState.linkAuthority1ConfigId == baseConfigId &&
+       securedState.linkAuthority2ConfigId == 0U &&
+       armedState.linkAuthority0ConfigId == altConfig.configId &&
+       armedState.linkAuthority1ConfigId == baseConfigId &&
+       armedState.linkAuthority2ConfigId == 0U &&
+       baseSelectedState.linkAuthority0ConfigId == baseConfigId &&
+       baseSelectedState.linkAuthority1ConfigId == altConfig.configId &&
+       baseSelectedState.linkAuthority2ConfigId == 0U &&
+       altSelectedState.linkAuthority0ConfigId == altConfig.configId &&
+       altSelectedState.linkAuthority1ConfigId == baseConfigId &&
+       altSelectedState.linkAuthority2ConfigId == 0U;
+
+#ifdef NRF54L15_CS_VPR_SELECT_SUMMARY
+  gVprSelectDemoSummary.magic = 0x56504155UL;
+  gVprSelectDemoSummary.ok = ok ? 1UL : 0UL;
+  gVprSelectDemoSummary.initialAuthority = packAuthority(initialState);
+  gVprSelectDemoSummary.createdAuthority = packAuthority(createdState);
+  gVprSelectDemoSummary.securedAuthority = packAuthority(securedState);
+  gVprSelectDemoSummary.armedAuthority = packAuthority(armedState);
+  gVprSelectDemoSummary.baseSelectedAuthority = packAuthority(baseSelectedState);
+  gVprSelectDemoSummary.altSelectedAuthority = packAuthority(altSelectedState);
+#endif
 
   Serial.print(F("hcivprselectdemo ok="));
   Serial.print(ok ? 1 : 0);
@@ -6843,6 +6893,42 @@ void printHciVprSelectDemo() {
   Serial.print(baseSelectedState.linkStoredConfigCount);
   Serial.print('>');
   Serial.print(altSelectedState.linkStoredConfigCount);
+  Serial.print(F(" auth="));
+  Serial.print(initialState.linkAuthority0ConfigId);
+  Serial.print('/');
+  Serial.print(initialState.linkAuthority1ConfigId);
+  Serial.print('/');
+  Serial.print(initialState.linkAuthority2ConfigId);
+  Serial.print('>');
+  Serial.print(createdState.linkAuthority0ConfigId);
+  Serial.print('/');
+  Serial.print(createdState.linkAuthority1ConfigId);
+  Serial.print('/');
+  Serial.print(createdState.linkAuthority2ConfigId);
+  Serial.print('>');
+  Serial.print(securedState.linkAuthority0ConfigId);
+  Serial.print('/');
+  Serial.print(securedState.linkAuthority1ConfigId);
+  Serial.print('/');
+  Serial.print(securedState.linkAuthority2ConfigId);
+  Serial.print('>');
+  Serial.print(armedState.linkAuthority0ConfigId);
+  Serial.print('/');
+  Serial.print(armedState.linkAuthority1ConfigId);
+  Serial.print('/');
+  Serial.print(armedState.linkAuthority2ConfigId);
+  Serial.print('>');
+  Serial.print(baseSelectedState.linkAuthority0ConfigId);
+  Serial.print('/');
+  Serial.print(baseSelectedState.linkAuthority1ConfigId);
+  Serial.print('/');
+  Serial.print(baseSelectedState.linkAuthority2ConfigId);
+  Serial.print('>');
+  Serial.print(altSelectedState.linkAuthority0ConfigId);
+  Serial.print('/');
+  Serial.print(altSelectedState.linkAuthority1ConfigId);
+  Serial.print('/');
+  Serial.print(altSelectedState.linkAuthority2ConfigId);
   Serial.print(F(" cfg="));
   Serial.print(initialState.linkConfigId);
   Serial.print('>');
@@ -8956,6 +9042,10 @@ void setup() {
 #ifdef NRF54L15_CS_VPR_AUTO_DEMO
   delay(1500U);
   printHciVprTransportDemo();
+#endif
+#ifdef NRF54L15_CS_VPR_AUTO_SELECT_DEMO
+  delay(1500U);
+  printHciVprSelectDemo();
 #endif
   pulse(1U, 45U, 80U);
 }

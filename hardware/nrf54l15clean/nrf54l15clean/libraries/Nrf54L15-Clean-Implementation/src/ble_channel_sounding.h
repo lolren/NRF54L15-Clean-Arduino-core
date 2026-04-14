@@ -974,6 +974,9 @@ struct BleCsControllerVprHostState {
   uint8_t linkSlot0ConfigId = 0U;
   uint8_t linkSlot1ConfigId = 0U;
   uint8_t linkPreviousConfigId = 0U;
+  uint8_t linkAuthority0ConfigId = 0U;
+  uint8_t linkAuthority1ConfigId = 0U;
+  uint8_t linkAuthority2ConfigId = 0U;
   uint8_t linkActivePrimarySlotIndex = 0xFFU;
   uint8_t linkFreePrimarySlotCount = 0U;
   uint16_t linkProcedureCounter = 0U;

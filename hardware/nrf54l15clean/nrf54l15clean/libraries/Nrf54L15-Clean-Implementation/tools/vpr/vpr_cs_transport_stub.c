@@ -570,10 +570,39 @@ static uint8_t current_unique_cs_config_count(void) {
   return count;
 }
 
+static void current_authority_config_ids(uint8_t *out0, uint8_t *out1, uint8_t *out2) {
+  uint8_t ids[4] = {0U, 0U, 0U, 0U};
+  uint8_t count = 0U;
+  if (g_cs_config_created != 0U && g_cs_config_id != 0U) {
+    (void)append_unique_config_id(g_cs_config_id, ids, &count);
+  }
+  if (g_cs_slots[0].inUse != 0U) {
+    (void)append_unique_config_id(g_cs_slots[0].configId, ids, &count);
+  }
+  if (g_cs_slots[1].inUse != 0U) {
+    (void)append_unique_config_id(g_cs_slots[1].configId, ids, &count);
+  }
+  if (g_cs_previous_slot.inUse != 0U) {
+    (void)append_unique_config_id(g_cs_previous_slot.configId, ids, &count);
+  }
+  if (out0 != NULL) {
+    *out0 = ids[0];
+  }
+  if (out1 != NULL) {
+    *out1 = ids[1];
+  }
+  if (out2 != NULL) {
+    *out2 = ids[2];
+  }
+}
+
 static uint32_t current_link_state_aux_packed(void) {
+  uint8_t authority2 = 0U;
+  current_authority_config_ids(NULL, NULL, &authority2);
   return ((uint32_t)(current_unique_cs_config_count() & 0x0FU)) |
          (((uint32_t)g_cs_last_peer_gap_ticks & 0x0FU) << 8U) |
-         (((uint32_t)g_cs_last_evicted_config_id & 0xFFU) << 16U);
+         (((uint32_t)g_cs_last_evicted_config_id & 0xFFU) << 16U) |
+         (((uint32_t)authority2 & 0xFFU) << 24U);
 }
 
 static uint32_t current_link_state_meta_packed(void) {
@@ -616,6 +645,9 @@ static uint32_t current_link_state_meta_packed(void) {
 
 static uint32_t current_link_state_config_packed(void) {
   uint32_t flags = 0U;
+  uint8_t authority0 = 0U;
+  uint8_t authority1 = 0U;
+  current_authority_config_ids(&authority0, &authority1, NULL);
 
   if (g_cs_slots[0].inUse != 0U && g_cs_slots[0].securityEnabled != 0U &&
       g_cs_slots[0].procedureParamsApplied != 0U) {
@@ -657,6 +689,8 @@ static uint32_t current_link_state_config_packed(void) {
   if (g_cs_config_created != 0U && g_cs_procedure_params_applied != 0U) {
     flags |= 0x800U;
   }
+  flags |= ((uint32_t)authority0 << 12U);
+  flags |= ((uint32_t)authority1 << 20U);
 
   return flags;
 }
