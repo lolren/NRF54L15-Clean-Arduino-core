@@ -1220,6 +1220,13 @@ class BleCsControllerVprHost {
                       const BleCsControllerVprHostConfig& config,
                       uint8_t maxPumpCount,
                       uint8_t* outPumpCount);
+  bool beginFreshHostFromBleConnection(
+      VprControllerServiceHost& sourceService,
+      const BleCsControllerVprHostConfig& config,
+      uint8_t maxPumpCount,
+      uint8_t* outPumpCount,
+      VprBleConnectionSharedState* outImportedState = nullptr,
+      uint32_t sourceStateTimeoutMs = 2500UL);
   bool sendDirectHciCommand(uint16_t opcode,
                             const uint8_t* params,
                             size_t paramsLen,

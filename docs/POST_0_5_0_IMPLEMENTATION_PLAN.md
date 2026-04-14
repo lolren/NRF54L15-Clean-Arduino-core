@@ -69,9 +69,14 @@ Current checkpoint inside Phase 2:
   retained legacy advertising payload storage/readback, single-link connected
   session state, CPUAPP-readable shared link-state reporting, and async event
   publication on VPR
+- one real CPUAPP-side CS workflow can now import that VPR-owned connected
+  handle into the dedicated CS image through
+  `VprBleConnectionCsHandoffProbe`, run one nominal synthetic CS procedure,
+  and produce a valid completed estimate on the imported link
 - the actual BLE radio launch path is still CPUAPP-owned, so the next Phase 2
-  step should be binding one real connected CPUAPP workflow to that VPR-owned
-  link state, not another generic scheduler-style probe
+  step should be moving more of that imported-link CS lifecycle away from
+  one-off probe logic and toward a reusable controller-service path, not
+  another generic scheduler-style probe
 
 ## Phase 3: Full Channel Sounding Completion
 

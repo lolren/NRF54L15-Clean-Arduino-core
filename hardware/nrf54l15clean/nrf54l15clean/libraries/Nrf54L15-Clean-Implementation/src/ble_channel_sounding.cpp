@@ -3828,6 +3828,40 @@ bool BleCsControllerVprHost::beginFreshHost(
   return ok;
 }
 
+bool BleCsControllerVprHost::beginFreshHostFromBleConnection(
+    VprControllerServiceHost& sourceService,
+    const BleCsControllerVprHostConfig& config,
+    uint8_t maxPumpCount,
+    uint8_t* outPumpCount,
+    VprBleConnectionSharedState* outImportedState,
+    uint32_t sourceStateTimeoutMs) {
+  if (outPumpCount != nullptr) {
+    *outPumpCount = 0U;
+  }
+  if (outImportedState != nullptr) {
+    *outImportedState = VprBleConnectionSharedState{};
+  }
+
+  VprBleConnectionSharedState importedState{};
+  if (!sourceService.readBleConnectionSharedState(&importedState)) {
+    return false;
+  }
+  if (!importedState.connected || importedState.connHandle == 0U) {
+    if (!sourceService.waitBleConnectionSharedState(true, 1U, &importedState,
+                                                    sourceStateTimeoutMs)) {
+      return false;
+    }
+  }
+  if (!importedState.connected || importedState.connHandle == 0U) {
+    return false;
+  }
+
+  if (outImportedState != nullptr) {
+    *outImportedState = importedState;
+  }
+  return beginFreshHost(importedState.connHandle, config, maxPumpCount, outPumpCount);
+}
+
 bool BleCsControllerVprHost::sendDirectHciCommand(uint16_t opcode,
                                                   const uint8_t* params,
                                                   size_t paramsLen,

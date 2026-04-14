@@ -34,6 +34,7 @@ controller-service path:
 - `VprTickerAsyncEventProbe`
 - `VprBleLegacyAdvertisingProbe`
 - `VprBleConnectionStateProbe`
+- `VprBleConnectionCsHandoffProbe`
 - `VprHibernateContextProbe`
 - `VprHibernateWakeProbe`
 - `VprHibernateResumeProbe`
@@ -56,6 +57,9 @@ Current validated generic service state on hardware:
   - CPUAPP-readable shared-state link snapshot for that single-link session
   - VPR-owned connect/disconnect async event publication
   - host-side configure/read/wait APIs through `VprControllerServiceHost`
+  - one real CPUAPP-side CS workflow can now import that VPR-owned connected
+    handle into the dedicated CS image through
+    `VprBleConnectionCsHandoffProbe`
   - proof is in `/home/lolren/Desktop/Nrf54L15/.build/vpr_ble_legacy_adv_payload_runtime/read_summary.log`
   - current SWD-readable summary decodes to:
     - `probeOk=1`
@@ -80,6 +84,20 @@ Current validated generic service state on hardware:
     - `shared2Connected=0`
     - `event1Flags=0x02`
     - `event1Reason=0x13`
+  - connection-to-CS handoff proof is in
+    `/home/lolren/Desktop/Nrf54L15/.build/vpr_ble_cs_handoff_runtime/read_summary.log`
+  - current SWD-readable summary decodes to:
+    - `probeOk=1`
+    - source/imported connected handle `0x0041`
+    - `handoffPumpCount=12`
+    - `completedProcedureCounter=1`
+    - `completedConfigId=1`
+    - `distanceQ4=7537` (`~0.7537 m` nominal synthetic regression output only)
+  - the current handoff is an imported-handle boundary:
+    - CPUAPP first validates generic VPR-owned connected state
+    - then the dedicated CS image is booted
+    - then the imported connected handle is used to start one real CS workflow
+    - this is not yet a persistent in-place generic-service-to-CS runtime
 - VPR hibernate now writes a nonzero saved-context image into the documented
   `0x2003FE00` / `512 B` window when the required MEMCONF retention bits are enabled
 - loaded-image restart is now validated on both attached boards through
@@ -505,31 +523,33 @@ Still missing. There are 2 major VPR capability areas left:
 
 ## Immediate Next TODO
 
-The next concrete implementation target should be the first real connected
+The next concrete implementation target should be the next real connected
 BLE-controller slice on VPR, not more demo-only CS result shaping.
 
-That is now one step past pure groundwork:
+That is now past pure groundwork:
 
 - the generic VPR service has its first BLE-controller-facing skeleton slice
   through `VprBleLegacyAdvertisingProbe`
-- the next step should therefore be one real connected BLE controller
-  responsibility, not another scheduler-only probe
+- the first connected imported-handle CS handoff slice now exists through
+  `VprBleConnectionCsHandoffProbe`
+- the next step should therefore be reducing the remaining probe-local
+  handoff logic instead of adding another scheduler-only probe
 
 That work should now do these things in order:
 
-1. Bind one real CPUAPP-side connected workflow to the new VPR-owned
-   single-link state.
-   - start with connection-owned CS procedure/session state rather than only
-     demo command handling
-2. Bind CS procedure enable/disable and result flow to that real link state on
-   the host side.
+1. Bind CS procedure enable/disable and result flow to that imported real link
+   state on the host side.
+   - the initial imported-handle handoff now exists through
+     `VprBleConnectionCsHandoffProbe`
+   - the next step is reducing the remaining one-off probe logic around that
+     path
+2. Make the dedicated CS image own more of procedure/session lifetime on top of
+   that imported link state.
    - no new synthetic sketch-side assumptions
    - no host-side fake peer packet construction for the new path
-3. Make the dedicated CS image own procedure lifetime, result staging, and
-   teardown for that one connected path.
-4. Keep the current demo responders as a fallback regression harness until the
+3. Keep the current demo responders as a fallback regression harness until the
    real connected path is stable.
-5. Use the existing regressions after each step:
+4. Use the existing regressions after each step:
    - `hcivprtransportdemo`
    - `hcivprstatedemo`
    - `hcivprmultidemo`
