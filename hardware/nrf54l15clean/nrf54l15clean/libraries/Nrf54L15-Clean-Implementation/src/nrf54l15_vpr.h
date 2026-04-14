@@ -211,10 +211,41 @@ struct VprBleLegacyAdvertisingEvent {
   uint32_t sequence;
 };
 
+struct VprBleConnectionState {
+  bool connected;
+  uint16_t connHandle;
+  uint8_t role;
+  bool encrypted;
+  uint16_t intervalUnits;
+  uint16_t latency;
+  uint16_t supervisionTimeout;
+  uint8_t txPhy;
+  uint8_t rxPhy;
+  uint32_t eventCount;
+  uint32_t disconnectCount;
+};
+
+struct VprBleConnectionEvent {
+  uint8_t flags;
+  uint16_t connHandle;
+  uint8_t reason;
+  uint8_t role;
+  bool encrypted;
+  uint16_t intervalUnits;
+  uint16_t latency;
+  uint16_t supervisionTimeout;
+  uint8_t txPhy;
+  uint8_t rxPhy;
+  uint32_t eventCount;
+  uint32_t disconnectCount;
+  uint32_t sequence;
+};
+
 class VprControllerServiceHost {
  public:
   static constexpr size_t kPendingTickerEventQueueDepth = 8U;
   static constexpr size_t kPendingBleLegacyAdvertisingEventQueueDepth = 8U;
+  static constexpr size_t kPendingBleConnectionEventQueueDepth = 8U;
   static constexpr size_t kPendingH4EventQueueDepth = 8U;
   static constexpr size_t kPendingH4EventMaxBytes =
       NRF54L15_VPR_TRANSPORT_MAX_VPR_DATA;
@@ -233,9 +264,13 @@ class VprControllerServiceHost {
   static constexpr uint16_t kVendorBleLegacyAdvertisingReadStateOpcode = 0xFCFBU;
   static constexpr uint16_t kVendorBleLegacyAdvertisingWriteDataOpcode = 0xFCFCU;
   static constexpr uint16_t kVendorBleLegacyAdvertisingReadDataOpcode = 0xFCFDU;
+  static constexpr uint16_t kVendorBleConnectionConfigureOpcode = 0xFCE0U;
+  static constexpr uint16_t kVendorBleConnectionReadStateOpcode = 0xFCE1U;
+  static constexpr uint16_t kVendorBleConnectionDisconnectOpcode = 0xFCE2U;
   static constexpr uint8_t kVendorEventCode = 0xFFU;
   static constexpr uint8_t kVendorEventTicker = 0xA0U;
   static constexpr uint8_t kVendorEventBleLegacyAdvertising = 0xA1U;
+  static constexpr uint8_t kVendorEventBleConnection = 0xA2U;
   static constexpr uint32_t kOpPing = (1UL << 0U);
   static constexpr uint32_t kOpInfo = (1UL << 1U);
   static constexpr uint32_t kOpFnv1a32 = (1UL << 2U);
@@ -251,6 +286,9 @@ class VprControllerServiceHost {
   static constexpr uint32_t kOpBleLegacyAdvertisingEvent = (1UL << 12U);
   static constexpr uint32_t kOpBleLegacyAdvertisingWriteData = (1UL << 13U);
   static constexpr uint32_t kOpBleLegacyAdvertisingReadData = (1UL << 14U);
+  static constexpr uint32_t kOpBleConnectionConfigure = (1UL << 15U);
+  static constexpr uint32_t kOpBleConnectionReadState = (1UL << 16U);
+  static constexpr uint32_t kOpBleConnectionEvent = (1UL << 17U);
 
   explicit VprControllerServiceHost(VprSharedTransportStream* transport = nullptr);
 
@@ -307,10 +345,26 @@ class VprControllerServiceHost {
   bool readBleLegacyAdvertisingData(VprBleLegacyAdvertisingData* data);
   bool waitBleLegacyAdvertisingEvent(VprBleLegacyAdvertisingEvent* event,
                                      uint32_t timeoutMs = 5000UL);
+  bool configureBleConnection(uint16_t connHandle,
+                              uint8_t role,
+                              bool encrypted,
+                              uint16_t intervalUnits,
+                              uint16_t latency,
+                              uint16_t supervisionTimeout,
+                              uint8_t txPhy,
+                              uint8_t rxPhy,
+                              VprBleConnectionState* state = nullptr);
+  bool readBleConnectionState(VprBleConnectionState* state);
+  bool disconnectBleConnection(uint16_t connHandle,
+                               uint8_t reason,
+                               VprBleConnectionState* state = nullptr);
+  bool waitBleConnectionEvent(VprBleConnectionEvent* event,
+                              uint32_t timeoutMs = 5000UL);
   bool popPendingH4Event(uint8_t* packet, size_t packetSize, size_t* packetLen);
   uint32_t pendingH4EventDropCount() const;
   uint32_t pendingTickerEventDropCount() const;
   uint32_t pendingBleLegacyAdvertisingEventDropCount() const;
+  uint32_t pendingBleConnectionEventDropCount() const;
   bool enterHibernate();
   bool probe(uint32_t cookie,
              VprControllerServiceInfo* info = nullptr,
@@ -342,9 +396,11 @@ class VprControllerServiceHost {
   bool pushPendingTickerEvent(const VprTickerEvent& event);
   bool pushPendingBleLegacyAdvertisingEvent(
       const VprBleLegacyAdvertisingEvent& event);
+  bool pushPendingBleConnectionEvent(const VprBleConnectionEvent& event);
   bool stashAsyncEvent(const uint8_t* packet, size_t packetLen);
   bool popPendingTickerEvent(VprTickerEvent* event);
   bool popPendingBleLegacyAdvertisingEvent(VprBleLegacyAdvertisingEvent* event);
+  bool popPendingBleConnectionEvent(VprBleConnectionEvent* event);
   static uint32_t readLe32(const uint8_t* data);
 
   VprSharedTransportStream* transport_;
@@ -365,6 +421,12 @@ class VprControllerServiceHost {
   size_t pendingBleLegacyAdvertisingEventTail_;
   size_t pendingBleLegacyAdvertisingEventCount_;
   uint32_t pendingBleLegacyAdvertisingEventDropped_;
+  VprBleConnectionEvent
+      pendingBleConnectionEvents_[kPendingBleConnectionEventQueueDepth];
+  size_t pendingBleConnectionEventHead_;
+  size_t pendingBleConnectionEventTail_;
+  size_t pendingBleConnectionEventCount_;
+  uint32_t pendingBleConnectionEventDropped_;
 };
 
 }  // namespace xiao_nrf54l15

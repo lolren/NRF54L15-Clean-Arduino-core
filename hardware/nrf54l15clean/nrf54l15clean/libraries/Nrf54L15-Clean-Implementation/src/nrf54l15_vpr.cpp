@@ -1065,7 +1065,12 @@ VprControllerServiceHost::VprControllerServiceHost(VprSharedTransportStream* tra
       pendingBleLegacyAdvertisingEventHead_(0U),
       pendingBleLegacyAdvertisingEventTail_(0U),
       pendingBleLegacyAdvertisingEventCount_(0U),
-      pendingBleLegacyAdvertisingEventDropped_(0U) {}
+      pendingBleLegacyAdvertisingEventDropped_(0U),
+      pendingBleConnectionEvents_{},
+      pendingBleConnectionEventHead_(0U),
+      pendingBleConnectionEventTail_(0U),
+      pendingBleConnectionEventCount_(0U),
+      pendingBleConnectionEventDropped_(0U) {}
 
 void VprControllerServiceHost::attach(VprSharedTransportStream* transport) {
   transport_ = transport;
@@ -1090,6 +1095,11 @@ void VprControllerServiceHost::clearPendingEvents() {
   pendingBleLegacyAdvertisingEventTail_ = 0U;
   pendingBleLegacyAdvertisingEventCount_ = 0U;
   pendingBleLegacyAdvertisingEventDropped_ = 0U;
+  memset(pendingBleConnectionEvents_, 0, sizeof(pendingBleConnectionEvents_));
+  pendingBleConnectionEventHead_ = 0U;
+  pendingBleConnectionEventTail_ = 0U;
+  pendingBleConnectionEventCount_ = 0U;
+  pendingBleConnectionEventDropped_ = 0U;
 }
 
 bool VprControllerServiceHost::attached() const { return transport_ != nullptr; }
@@ -1272,6 +1282,20 @@ bool VprControllerServiceHost::pushPendingBleLegacyAdvertisingEvent(
   return true;
 }
 
+bool VprControllerServiceHost::pushPendingBleConnectionEvent(
+    const VprBleConnectionEvent& event) {
+  if (pendingBleConnectionEventCount_ >= kPendingBleConnectionEventQueueDepth) {
+    pendingBleConnectionEventDropped_ += 1U;
+    return false;
+  }
+  pendingBleConnectionEvents_[pendingBleConnectionEventTail_] = event;
+  pendingBleConnectionEventTail_ =
+      (pendingBleConnectionEventTail_ + 1U) %
+      kPendingBleConnectionEventQueueDepth;
+  pendingBleConnectionEventCount_ += 1U;
+  return true;
+}
+
 bool VprControllerServiceHost::pushPendingH4Event(const uint8_t* packet, size_t packetLen) {
   if (packet == nullptr || packetLen == 0U || packetLen > kPendingH4EventMaxBytes) {
     pendingH4EventDropped_ += 1U;
@@ -1319,6 +1343,30 @@ bool VprControllerServiceHost::stashAsyncEvent(const uint8_t* packet, size_t pac
     advEvent.randomDelayTicks = readLe32(&payload[10]);
     advEvent.sequence = (payloadLen >= 18U) ? readLe32(&payload[14]) : 0U;
     (void)pushPendingBleLegacyAdvertisingEvent(advEvent);
+    handled = true;
+  }
+  if (parseVendorEvent(packet, packetLen, kVendorEventBleConnection,
+                       &payload, &payloadLen) &&
+      payloadLen >= 24U) {
+    VprBleConnectionEvent connEvent{};
+    connEvent.flags = payload[0];
+    connEvent.connHandle = static_cast<uint16_t>(payload[1]) |
+                           (static_cast<uint16_t>(payload[2]) << 8U);
+    connEvent.reason = payload[3];
+    connEvent.role = payload[4];
+    connEvent.encrypted = payload[5] != 0U;
+    connEvent.intervalUnits = static_cast<uint16_t>(payload[6]) |
+                              (static_cast<uint16_t>(payload[7]) << 8U);
+    connEvent.latency = static_cast<uint16_t>(payload[8]) |
+                        (static_cast<uint16_t>(payload[9]) << 8U);
+    connEvent.supervisionTimeout = static_cast<uint16_t>(payload[10]) |
+                                   (static_cast<uint16_t>(payload[11]) << 8U);
+    connEvent.txPhy = payload[12];
+    connEvent.rxPhy = payload[13];
+    connEvent.eventCount = readLe32(&payload[14]);
+    connEvent.disconnectCount = readLe32(&payload[18]);
+    connEvent.sequence = (payloadLen >= 26U) ? readLe32(&payload[22]) : 0U;
+    (void)pushPendingBleConnectionEvent(connEvent);
     handled = true;
   }
   return handled;
@@ -1379,6 +1427,21 @@ bool VprControllerServiceHost::popPendingBleLegacyAdvertisingEvent(
       (pendingBleLegacyAdvertisingEventHead_ + 1U) %
       kPendingBleLegacyAdvertisingEventQueueDepth;
   pendingBleLegacyAdvertisingEventCount_ -= 1U;
+  return true;
+}
+
+bool VprControllerServiceHost::popPendingBleConnectionEvent(
+    VprBleConnectionEvent* event) {
+  if (event == nullptr || pendingBleConnectionEventCount_ == 0U) {
+    return false;
+  }
+  *event = pendingBleConnectionEvents_[pendingBleConnectionEventHead_];
+  memset(&pendingBleConnectionEvents_[pendingBleConnectionEventHead_], 0,
+         sizeof(pendingBleConnectionEvents_[pendingBleConnectionEventHead_]));
+  pendingBleConnectionEventHead_ =
+      (pendingBleConnectionEventHead_ + 1U) %
+      kPendingBleConnectionEventQueueDepth;
+  pendingBleConnectionEventCount_ -= 1U;
   return true;
 }
 
@@ -1927,6 +1990,177 @@ bool VprControllerServiceHost::waitBleLegacyAdvertisingEvent(
   return false;
 }
 
+bool VprControllerServiceHost::configureBleConnection(
+    uint16_t connHandle,
+    uint8_t role,
+    bool encrypted,
+    uint16_t intervalUnits,
+    uint16_t latency,
+    uint16_t supervisionTimeout,
+    uint8_t txPhy,
+    uint8_t rxPhy,
+    VprBleConnectionState* state) {
+  uint8_t params[12] = {
+      static_cast<uint8_t>(connHandle & 0xFFU),
+      static_cast<uint8_t>((connHandle >> 8U) & 0xFFU),
+      role,
+      static_cast<uint8_t>(encrypted ? 1U : 0U),
+      static_cast<uint8_t>(intervalUnits & 0xFFU),
+      static_cast<uint8_t>((intervalUnits >> 8U) & 0xFFU),
+      static_cast<uint8_t>(latency & 0xFFU),
+      static_cast<uint8_t>((latency >> 8U) & 0xFFU),
+      static_cast<uint8_t>(supervisionTimeout & 0xFFU),
+      static_cast<uint8_t>((supervisionTimeout >> 8U) & 0xFFU),
+      txPhy,
+      rxPhy,
+  };
+  uint8_t response[64];
+  size_t responseLen = 0U;
+  if (!sendHciCommand(kVendorBleConnectionConfigureOpcode, params, sizeof(params),
+                      response, sizeof(response), &responseLen)) {
+    return false;
+  }
+
+  const uint8_t* payload = nullptr;
+  size_t payloadLen = 0U;
+  if (!parseCommandComplete(response, responseLen,
+                            kVendorBleConnectionConfigureOpcode, &payload,
+                            &payloadLen) ||
+      payloadLen < 22U || payload[0] != 0U) {
+    return false;
+  }
+
+  if (state != nullptr) {
+    state->connected = payload[1] != 0U;
+    state->connHandle = static_cast<uint16_t>(payload[2]) |
+                        (static_cast<uint16_t>(payload[3]) << 8U);
+    state->role = payload[4];
+    state->encrypted = payload[5] != 0U;
+    state->intervalUnits = static_cast<uint16_t>(payload[6]) |
+                           (static_cast<uint16_t>(payload[7]) << 8U);
+    state->latency = static_cast<uint16_t>(payload[8]) |
+                     (static_cast<uint16_t>(payload[9]) << 8U);
+    state->supervisionTimeout = static_cast<uint16_t>(payload[10]) |
+                                (static_cast<uint16_t>(payload[11]) << 8U);
+    state->txPhy = payload[12];
+    state->rxPhy = payload[13];
+    state->eventCount = readLe32(&payload[14]);
+    state->disconnectCount = readLe32(&payload[18]);
+  }
+  return true;
+}
+
+bool VprControllerServiceHost::readBleConnectionState(
+    VprBleConnectionState* state) {
+  if (state == nullptr) {
+    return false;
+  }
+  uint8_t response[64];
+  size_t responseLen = 0U;
+  if (!sendHciCommand(kVendorBleConnectionReadStateOpcode, nullptr, 0U, response,
+                      sizeof(response), &responseLen)) {
+    return false;
+  }
+
+  const uint8_t* payload = nullptr;
+  size_t payloadLen = 0U;
+  if (!parseCommandComplete(response, responseLen,
+                            kVendorBleConnectionReadStateOpcode, &payload,
+                            &payloadLen) ||
+      payloadLen < 22U || payload[0] != 0U) {
+    return false;
+  }
+
+  state->connected = payload[1] != 0U;
+  state->connHandle = static_cast<uint16_t>(payload[2]) |
+                      (static_cast<uint16_t>(payload[3]) << 8U);
+  state->role = payload[4];
+  state->encrypted = payload[5] != 0U;
+  state->intervalUnits = static_cast<uint16_t>(payload[6]) |
+                         (static_cast<uint16_t>(payload[7]) << 8U);
+  state->latency = static_cast<uint16_t>(payload[8]) |
+                   (static_cast<uint16_t>(payload[9]) << 8U);
+  state->supervisionTimeout = static_cast<uint16_t>(payload[10]) |
+                              (static_cast<uint16_t>(payload[11]) << 8U);
+  state->txPhy = payload[12];
+  state->rxPhy = payload[13];
+  state->eventCount = readLe32(&payload[14]);
+  state->disconnectCount = readLe32(&payload[18]);
+  return true;
+}
+
+bool VprControllerServiceHost::disconnectBleConnection(
+    uint16_t connHandle,
+    uint8_t reason,
+    VprBleConnectionState* state) {
+  uint8_t params[3] = {
+      static_cast<uint8_t>(connHandle & 0xFFU),
+      static_cast<uint8_t>((connHandle >> 8U) & 0xFFU),
+      reason,
+  };
+  uint8_t response[64];
+  size_t responseLen = 0U;
+  if (!sendHciCommand(kVendorBleConnectionDisconnectOpcode, params, sizeof(params),
+                      response, sizeof(response), &responseLen)) {
+    return false;
+  }
+
+  const uint8_t* payload = nullptr;
+  size_t payloadLen = 0U;
+  if (!parseCommandComplete(response, responseLen,
+                            kVendorBleConnectionDisconnectOpcode, &payload,
+                            &payloadLen) ||
+      payloadLen < 22U || payload[0] != 0U) {
+    return false;
+  }
+
+  if (state != nullptr) {
+    state->connected = payload[1] != 0U;
+    state->connHandle = static_cast<uint16_t>(payload[2]) |
+                        (static_cast<uint16_t>(payload[3]) << 8U);
+    state->role = payload[4];
+    state->encrypted = payload[5] != 0U;
+    state->intervalUnits = static_cast<uint16_t>(payload[6]) |
+                           (static_cast<uint16_t>(payload[7]) << 8U);
+    state->latency = static_cast<uint16_t>(payload[8]) |
+                     (static_cast<uint16_t>(payload[9]) << 8U);
+    state->supervisionTimeout = static_cast<uint16_t>(payload[10]) |
+                                (static_cast<uint16_t>(payload[11]) << 8U);
+    state->txPhy = payload[12];
+    state->rxPhy = payload[13];
+    state->eventCount = readLe32(&payload[14]);
+    state->disconnectCount = readLe32(&payload[18]);
+  }
+  return true;
+}
+
+bool VprControllerServiceHost::waitBleConnectionEvent(
+    VprBleConnectionEvent* event,
+    uint32_t timeoutMs) {
+  if (event == nullptr || !attached()) {
+    return false;
+  }
+  if (popPendingBleConnectionEvent(event)) {
+    return true;
+  }
+
+  uint8_t packet[64];
+  size_t packetLen = 0U;
+  const uint32_t start = millis();
+  while ((millis() - start) < timeoutMs) {
+    const uint32_t elapsed = millis() - start;
+    const uint32_t remaining =
+        (elapsed < timeoutMs) ? (timeoutMs - elapsed) : 0U;
+    if (!readH4Event(packet, sizeof(packet), &packetLen, remaining)) {
+      return false;
+    }
+    if (stashAsyncEvent(packet, packetLen) && popPendingBleConnectionEvent(event)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 uint32_t VprControllerServiceHost::pendingH4EventDropCount() const {
   return pendingH4EventDropped_;
 }
@@ -1938,6 +2172,10 @@ uint32_t VprControllerServiceHost::pendingTickerEventDropCount() const {
 uint32_t VprControllerServiceHost::pendingBleLegacyAdvertisingEventDropCount()
     const {
   return pendingBleLegacyAdvertisingEventDropped_;
+}
+
+uint32_t VprControllerServiceHost::pendingBleConnectionEventDropCount() const {
+  return pendingBleConnectionEventDropped_;
 }
 
 bool VprControllerServiceHost::enterHibernate() {
