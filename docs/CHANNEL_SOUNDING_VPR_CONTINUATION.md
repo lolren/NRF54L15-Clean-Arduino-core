@@ -780,6 +780,28 @@ When resuming this work:
       `0+5 / 0+5` mode-2 step shape
     - direct `Procedure Enable(configId=1)` still runs base immediately after
       that while `configId=3` remains stored+runnable in the overflow slot
+  - the same shared-state seam now also exposes controller-owned eviction
+    metadata:
+    - `lastEvictedConfigId` is now exported through the host wrapper
+    - it changes only when VPR actually overwrites the overflow `previous`
+      slot with a new distinct stored config
+  - `hcivprevictdemo` now proves fourth-config eviction on one live VPR
+    session:
+    - base `configId=1` and alternate `configId=2` occupy the two primary
+      slots
+    - stored `configId=3` occupies the overflow `previous` slot
+    - direct create of `configId=4` while base is reselected in a primary slot
+      evicts stored `configId=3` and replaces the overflow slot with
+      `configId=4`
+    - VPR reports that explicitly as `lastEvictedConfigId=3`
+    - direct `Set Procedure Parameters(configId=3)` is then rejected with
+      `0x12`
+    - direct `Procedure Enable(configId=4)` still runs immediately with its own
+      `0+6 / 0+6` mode-2 step shape
+    - proof log:
+      `/home/lolren/Desktop/Nrf54L15/.build/cs_vpr_evict_runtime/hcivprevictdemo_full.log`
+      with
+      `hcivprevictdemo ok=1 ... count=1>2>3>3>3>3>3 evict=0>0>0>0>3>3>3 run4=0+6/0+6 ... dist_m=0.7505`
   - `hcivprmulticfgdemo` is still green after this slice
     - the final stored-config bounce remains `configId=2` with
       `alt2_steps=0+4/0+4`

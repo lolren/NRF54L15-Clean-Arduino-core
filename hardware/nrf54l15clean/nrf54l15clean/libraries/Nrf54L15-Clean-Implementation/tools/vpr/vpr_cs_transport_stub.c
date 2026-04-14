@@ -151,6 +151,7 @@ typedef struct __attribute__((packed)) {
   uint8_t procedureParamsApplied;
   uint8_t procedureEnabled;
   uint8_t sessionOpen;
+  uint8_t lastEvictedConfigId;
 } vpr_cs_dedicated_state_t;
 
 typedef struct {
@@ -259,6 +260,7 @@ static vpr_cs_config_slot_t g_cs_previous_slot;
 #define g_cs_procedure_params_applied g_cs_state.procedureParamsApplied
 #define g_cs_procedure_enabled g_cs_state.procedureEnabled
 #define g_cs_session_open g_cs_state.sessionOpen
+#define g_cs_last_evicted_config_id g_cs_state.lastEvictedConfigId
 #endif
 #if !VPR_CS_DEDICATED_IMAGE
 static uint32_t g_pending_hibernate = 0U;
@@ -373,6 +375,7 @@ static void reset_dedicated_cs_state(void) {
   g_cs_procedure_params_applied = 0U;
   g_cs_procedure_enabled = 0U;
   g_cs_session_open = 0U;
+  g_cs_last_evicted_config_id = 0U;
   g_cs_next_procedure_heartbeat = 0U;
   g_cs_next_subevent_heartbeat = 0U;
   g_cs_next_peer_stage_heartbeat = 0U;
@@ -568,7 +571,8 @@ static uint8_t current_unique_cs_config_count(void) {
 
 static uint32_t current_link_state_aux_packed(void) {
   return ((uint32_t)(current_unique_cs_config_count() & 0x0FU)) |
-         (((uint32_t)g_cs_last_peer_gap_ticks & 0x0FU) << 8U);
+         (((uint32_t)g_cs_last_peer_gap_ticks & 0x0FU) << 8U) |
+         (((uint32_t)g_cs_last_evicted_config_id & 0xFFU) << 16U);
 }
 
 static uint32_t current_link_state_meta_packed(void) {
@@ -1299,6 +1303,9 @@ static vpr_cs_config_slot_t *allocate_create_config_slot(uint8_t config_id,
   if (!allow_previous_overflow) {
     return NULL;
   }
+  if (g_cs_previous_slot.inUse != 0U && g_cs_previous_slot.configId != config_id) {
+    g_cs_last_evicted_config_id = g_cs_previous_slot.configId;
+  }
   clear_cs_slot(&g_cs_previous_slot);
   g_cs_previous_slot.inUse = 1U;
   g_cs_previous_slot.configId = config_id;
@@ -1677,6 +1684,7 @@ static void clear_active_config_selection(void) {
 
 static void clear_all_cs_state(void) {
   clear_active_config_selection();
+  g_cs_last_evicted_config_id = 0U;
   for (uint8_t i = 0U; i < (uint8_t)(sizeof(g_cs_slots) / sizeof(g_cs_slots[0])); ++i) {
     clear_cs_slot(&g_cs_slots[i]);
   }

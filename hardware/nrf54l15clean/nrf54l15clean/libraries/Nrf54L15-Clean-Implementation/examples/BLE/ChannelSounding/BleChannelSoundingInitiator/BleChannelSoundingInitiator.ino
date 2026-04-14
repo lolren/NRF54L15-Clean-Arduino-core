@@ -7462,6 +7462,490 @@ void printHciVprThirdConfigDemo() {
   }
 }
 
+void printHciVprEvictDemo() {
+  static constexpr uint16_t kDemoConnHandle = 0x0040U;
+  static const uint8_t kAltChannels[] = {6U, 18U, 30U, 39U};
+  static const uint8_t kThirdChannels[] = {4U, 12U, 20U, 28U, 36U};
+  static const uint8_t kFourthChannels[] = {1U, 9U, 17U, 25U, 33U, 37U};
+
+  BleCsControllerVprHost vprHost;
+  BleCsControllerVprHostConfig hostConfig{};
+  BleCsControllerVprHost::fillDemoConfig(&hostConfig);
+  hostConfig.session.workflow.procedureEnable.enable = 0U;
+  hostConfig.session.workflow.procedureParameters.maxProcedureCount = 1U;
+  hostConfig.session.workflow.procedureParameters.maxProcedureLen = 16U;
+  hostConfig.session.workflow.procedureParameters.minSubeventLen = 0x000100UL;
+  hostConfig.session.workflow.procedureParameters.maxSubeventLen = 0x000100UL;
+
+  bool ok = vprHost.resetTransport(true);
+  ok = ok && vprHost.loadDefaultTransportImage();
+  ok = ok && vprHost.bootTransport();
+  ok = ok && vprHost.beginHost(kDemoConnHandle, hostConfig);
+
+  uint8_t pumpCount = 0U;
+  while (ok && !vprHost.ready() && !vprHost.failed() && pumpCount < 48U) {
+    ok = vprHost.loopOnce();
+    ++pumpCount;
+  }
+  ok = ok && vprHost.ready() && !vprHost.failed();
+
+  auto parseDirectStatus = [](const uint8_t* packet, size_t packetLen,
+                              uint16_t opcode, uint8_t* outStatus) -> bool {
+    BleCsHciCommandStatusEvent statusEvent{};
+    if (BleChannelSoundingRadio::parseHciCommandStatusEvent(packet, packetLen,
+                                                            &statusEvent) &&
+        statusEvent.opcode == opcode) {
+      if (outStatus != nullptr) {
+        *outStatus = statusEvent.status;
+      }
+      return true;
+    }
+    BleCsHciCommandCompleteEvent completeEvent{};
+    if (BleChannelSoundingRadio::parseHciCommandCompleteEvent(packet, packetLen,
+                                                              &completeEvent) &&
+        completeEvent.opcode == opcode) {
+      if (outStatus != nullptr) {
+        *outStatus = completeEvent.status;
+      }
+      return true;
+    }
+    return false;
+  };
+
+  auto sendDirectCommand = [&](const BleCsHciCommand& command, uint8_t* outStatus) -> bool {
+    uint8_t response[64] = {0};
+    size_t responseLen = 0U;
+    if (!vprHost.sendDirectHciCommand(command.opcode, command.payload,
+                                      command.payloadLen, response,
+                                      sizeof(response), &responseLen)) {
+      return false;
+    }
+    return parseDirectStatus(response, responseLen, command.opcode, outStatus);
+  };
+
+  auto sendDirectCreate = [&](const BleCsControllerCreateConfig& config,
+                              uint8_t* outStatus) -> bool {
+    BleCsHciCommand command{};
+    return BleChannelSoundingRadio::buildHciCreateConfigCommand(
+               kDemoConnHandle, config, &command) &&
+           sendDirectCommand(command, outStatus);
+  };
+
+  auto sendDirectSecurity = [&](uint8_t* outStatus) -> bool {
+    BleCsHciCommand command{};
+    return BleChannelSoundingRadio::buildHciSecurityEnableCommand(kDemoConnHandle,
+                                                                  &command) &&
+           sendDirectCommand(command, outStatus);
+  };
+
+  auto sendDirectSetProc = [&](const BleCsProcedureParameters& params,
+                               uint8_t* outStatus) -> bool {
+    BleCsHciCommand command{};
+    return BleChannelSoundingRadio::buildHciSetProcedureParametersCommand(
+               kDemoConnHandle, params, &command) &&
+           sendDirectCommand(command, outStatus);
+  };
+
+  auto sendDirectEnable = [&](uint8_t configId, uint8_t enable,
+                              uint8_t* outStatus) -> bool {
+    BleCsProcedureEnable params{};
+    params.configId = configId;
+    params.enable = enable;
+    BleCsHciCommand command{};
+    return BleChannelSoundingRadio::buildHciProcedureEnableCommand(
+               kDemoConnHandle, params, &command) &&
+           sendDirectCommand(command, outStatus);
+  };
+
+  auto stateMatches = [&](uint8_t activeConfigId, uint8_t slot0ConfigId,
+                          uint8_t slot1ConfigId, uint8_t previousConfigId,
+                          uint8_t storedConfigCount,
+                          bool selectedRunnable, bool previousRunnable,
+                          uint8_t lastEvictedConfigId) -> bool {
+    const BleCsControllerVprHostState& state = vprHost.vprState();
+    return state.linkConfigId == activeConfigId &&
+           state.linkSlot0ConfigId == slot0ConfigId &&
+           state.linkSlot1ConfigId == slot1ConfigId &&
+           state.linkPreviousConfigId == previousConfigId &&
+           state.linkSlot0InUse == (slot0ConfigId != 0U) &&
+           state.linkSlot1InUse == (slot1ConfigId != 0U) &&
+           state.linkPreviousSlotInUse == (previousConfigId != 0U) &&
+           state.linkStoredConfigCount == storedConfigCount &&
+           state.linkSelectedConfigRunnable == selectedRunnable &&
+           state.linkPreviousSlotRunnable == previousRunnable &&
+           state.linkLastEvictedConfigId == lastEvictedConfigId;
+  };
+
+  auto pollUntilState = [&](uint8_t activeConfigId, uint8_t slot0ConfigId,
+                            uint8_t slot1ConfigId, uint8_t previousConfigId,
+                            uint8_t storedConfigCount,
+                            bool selectedRunnable, bool previousRunnable,
+                            uint8_t lastEvictedConfigId,
+                            uint8_t* outPolls) -> bool {
+    if (outPolls != nullptr) {
+      *outPolls = 0U;
+    }
+    while (!vprHost.failed()) {
+      if (stateMatches(activeConfigId, slot0ConfigId, slot1ConfigId, previousConfigId,
+                       storedConfigCount, selectedRunnable, previousRunnable,
+                       lastEvictedConfigId)) {
+        return true;
+      }
+      if (outPolls != nullptr && *outPolls >= 32U) {
+        break;
+      }
+      if (!vprHost.poll()) {
+        return false;
+      }
+      if (outPolls != nullptr) {
+        *outPolls = static_cast<uint8_t>(*outPolls + 1U);
+      }
+    }
+    return false;
+  };
+
+  auto pollUntilStoppedOnConfig = [&](uint8_t targetConfigId,
+                                      uint8_t* outPolls) -> bool {
+    if (outPolls != nullptr) {
+      *outPolls = 0U;
+    }
+    while (!vprHost.failed()) {
+      const BleCsSubeventResult currentLocal = vprHost.completedLocalResult();
+      const BleCsSubeventResult currentPeer = vprHost.completedPeerResult();
+      if (!vprHost.vprState().linkProcedureEnabled &&
+          currentLocal.header.configId == targetConfigId &&
+          currentPeer.header.configId == targetConfigId) {
+        return true;
+      }
+      if (outPolls != nullptr && *outPolls >= 96U) {
+        break;
+      }
+      if (!vprHost.poll()) {
+        return false;
+      }
+      if (outPolls != nullptr) {
+        *outPolls = static_cast<uint8_t>(*outPolls + 1U);
+      }
+    }
+    return false;
+  };
+
+  const uint8_t baseConfigId = vprHost.workflowState().configComplete.configId;
+  BleCsControllerCreateConfig altConfig = hostConfig.session.workflow.createConfig;
+  altConfig.configId = static_cast<uint8_t>(baseConfigId + 1U);
+  altConfig.rttType = 0U;
+  altConfig.minMainModeSteps = 4U;
+  altConfig.maxMainModeSteps = 4U;
+  memset(altConfig.channelMap, 0, sizeof(altConfig.channelMap));
+  for (size_t i = 0U; i < sizeof(kAltChannels) / sizeof(kAltChannels[0]); ++i) {
+    const uint8_t channel = kAltChannels[i];
+    altConfig.channelMap[channel >> 3U] |= static_cast<uint8_t>(1U << (channel & 0x07U));
+  }
+
+  BleCsControllerCreateConfig thirdConfig = hostConfig.session.workflow.createConfig;
+  thirdConfig.configId = static_cast<uint8_t>(baseConfigId + 2U);
+  thirdConfig.rttType = 0U;
+  thirdConfig.minMainModeSteps = 5U;
+  thirdConfig.maxMainModeSteps = 5U;
+  memset(thirdConfig.channelMap, 0, sizeof(thirdConfig.channelMap));
+  for (size_t i = 0U; i < sizeof(kThirdChannels) / sizeof(kThirdChannels[0]); ++i) {
+    const uint8_t channel = kThirdChannels[i];
+    thirdConfig.channelMap[channel >> 3U] |= static_cast<uint8_t>(1U << (channel & 0x07U));
+  }
+
+  BleCsControllerCreateConfig fourthConfig = hostConfig.session.workflow.createConfig;
+  fourthConfig.configId = static_cast<uint8_t>(baseConfigId + 3U);
+  fourthConfig.rttType = 0U;
+  fourthConfig.minMainModeSteps = 6U;
+  fourthConfig.maxMainModeSteps = 6U;
+  memset(fourthConfig.channelMap, 0, sizeof(fourthConfig.channelMap));
+  for (size_t i = 0U; i < sizeof(kFourthChannels) / sizeof(kFourthChannels[0]); ++i) {
+    const uint8_t channel = kFourthChannels[i];
+    fourthConfig.channelMap[channel >> 3U] |= static_cast<uint8_t>(1U << (channel & 0x07U));
+  }
+
+  BleCsProcedureParameters baseParams = hostConfig.session.workflow.procedureParameters;
+  baseParams.maxProcedureCount = 1U;
+  baseParams.maxProcedureLen = 16U;
+  baseParams.minSubeventLen = 0x000100UL;
+  baseParams.maxSubeventLen = 0x000100UL;
+
+  BleCsProcedureParameters altParams = baseParams;
+  altParams.configId = altConfig.configId;
+
+  BleCsProcedureParameters thirdParams = baseParams;
+  thirdParams.configId = thirdConfig.configId;
+  thirdParams.maxProcedureLen = 18U;
+
+  BleCsProcedureParameters fourthParams = baseParams;
+  fourthParams.configId = fourthConfig.configId;
+  fourthParams.maxProcedureLen = 20U;
+
+  uint8_t initPolls = 0U;
+  uint8_t altCreateStatus = 0xFFU;
+  uint8_t altSecurityStatus = 0xFFU;
+  uint8_t altSetStatus = 0xFFU;
+  uint8_t baseSelectStatus = 0xFFU;
+  uint8_t thirdCreateStatus = 0xFFU;
+  uint8_t thirdSecurityStatus = 0xFFU;
+  uint8_t thirdSetStatus = 0xFFU;
+  uint8_t baseReselectStatus = 0xFFU;
+  uint8_t fourthCreateStatus = 0xFFU;
+  uint8_t fourthSecurityStatus = 0xFFU;
+  uint8_t fourthSetStatus = 0xFFU;
+  uint8_t thirdSelectStatus = 0xFFU;
+  uint8_t fourthRunStatus = 0xFFU;
+  uint8_t altCreatePolls = 0U;
+  uint8_t altSecurityPolls = 0U;
+  uint8_t altSetPolls = 0U;
+  uint8_t baseSelectPolls = 0U;
+  uint8_t thirdCreatePolls = 0U;
+  uint8_t thirdSecurityPolls = 0U;
+  uint8_t thirdSetPolls = 0U;
+  uint8_t baseReselectPolls = 0U;
+  uint8_t fourthCreatePolls = 0U;
+  uint8_t fourthSecurityPolls = 0U;
+  uint8_t fourthSetPolls = 0U;
+  uint8_t fourthRunPolls = 0U;
+
+  ok = ok && pollUntilState(baseConfigId, baseConfigId, 0U, 0U, 1U, true, false, 0U,
+                            &initPolls);
+  const BleCsControllerVprHostState initialState = vprHost.vprState();
+
+  ok = ok && sendDirectCreate(altConfig, &altCreateStatus);
+  ok = ok && pollUntilState(altConfig.configId, baseConfigId, altConfig.configId, 0U,
+                            2U, false, false, 0U, &altCreatePolls);
+  ok = ok && sendDirectSecurity(&altSecurityStatus);
+  ok = ok && pollUntilState(altConfig.configId, baseConfigId, altConfig.configId, 0U,
+                            2U, false, false, 0U, &altSecurityPolls);
+  ok = ok && sendDirectSetProc(altParams, &altSetStatus);
+  ok = ok && pollUntilState(altConfig.configId, baseConfigId, altConfig.configId, 0U,
+                            2U, true, false, 0U, &altSetPolls);
+  const BleCsControllerVprHostState altReadyState = vprHost.vprState();
+
+  ok = ok && sendDirectSetProc(baseParams, &baseSelectStatus);
+  ok = ok && pollUntilState(baseConfigId, baseConfigId, altConfig.configId, 0U, 2U,
+                            true, false, 0U, &baseSelectPolls);
+
+  ok = ok && sendDirectCreate(thirdConfig, &thirdCreateStatus);
+  ok = ok && pollUntilState(thirdConfig.configId, baseConfigId, altConfig.configId,
+                            thirdConfig.configId, 3U, false, false, 0U,
+                            &thirdCreatePolls);
+  ok = ok && sendDirectSecurity(&thirdSecurityStatus);
+  ok = ok && thirdSecurityStatus == 0U;
+  ok = ok && sendDirectSetProc(thirdParams, &thirdSetStatus);
+  ok = ok && pollUntilState(thirdConfig.configId, baseConfigId, altConfig.configId,
+                            thirdConfig.configId, 3U, true, true, 0U,
+                            &thirdSetPolls);
+  const BleCsControllerVprHostState thirdReadyState = vprHost.vprState();
+
+  ok = ok && sendDirectSetProc(baseParams, &baseReselectStatus);
+  ok = ok && pollUntilState(baseConfigId, baseConfigId, altConfig.configId,
+                            thirdConfig.configId, 3U, true, true, 0U,
+                            &baseReselectPolls);
+  const BleCsControllerVprHostState baseReselectedState = vprHost.vprState();
+
+  ok = ok && sendDirectCreate(fourthConfig, &fourthCreateStatus);
+  ok = ok && pollUntilState(fourthConfig.configId, baseConfigId, altConfig.configId,
+                            fourthConfig.configId, 3U, false, false,
+                            thirdConfig.configId, &fourthCreatePolls);
+  const BleCsControllerVprHostState fourthCreatedState = vprHost.vprState();
+
+  ok = ok && sendDirectSecurity(&fourthSecurityStatus);
+  ok = ok && pollUntilState(fourthConfig.configId, baseConfigId, altConfig.configId,
+                            fourthConfig.configId, 3U, false, false,
+                            thirdConfig.configId, &fourthSecurityPolls);
+  ok = ok && sendDirectSetProc(fourthParams, &fourthSetStatus);
+  ok = ok && pollUntilState(fourthConfig.configId, baseConfigId, altConfig.configId,
+                            fourthConfig.configId, 3U, true, true,
+                            thirdConfig.configId, &fourthSetPolls);
+  const BleCsControllerVprHostState fourthReadyState = vprHost.vprState();
+
+  ok = ok && sendDirectSetProc(thirdParams, &thirdSelectStatus);
+  ok = ok && thirdSelectStatus == 0x12U;
+  ok = ok && vprHost.vprState().linkConfigId == fourthConfig.configId &&
+       vprHost.vprState().linkPreviousConfigId == fourthConfig.configId &&
+       vprHost.vprState().linkLastEvictedConfigId == thirdConfig.configId;
+
+  ok = ok && sendDirectEnable(fourthConfig.configId, 1U, &fourthRunStatus);
+  ok = ok && pollUntilStoppedOnConfig(fourthConfig.configId, &fourthRunPolls);
+  const BleCsSubeventResult fourthLocal = vprHost.completedLocalResult();
+  const BleCsSubeventResult fourthPeer = vprHost.completedPeerResult();
+  const StepModeCollectContext fourthLocalModes = collectStepModes(fourthLocal);
+  const StepModeCollectContext fourthPeerModes = collectStepModes(fourthPeer);
+  const bool fourthRunOk =
+      fourthRunStatus == 0U &&
+      fourthLocal.header.configId == fourthConfig.configId &&
+      fourthPeer.header.configId == fourthConfig.configId &&
+      fourthLocalModes.mode1Count == 0U && fourthPeerModes.mode1Count == 0U &&
+      fourthLocalModes.mode2Count == 6U && fourthPeerModes.mode2Count == 6U &&
+      vprHost.vprState().linkStoredConfigCount == 3U &&
+      vprHost.vprState().linkLastEvictedConfigId == thirdConfig.configId;
+  ok = ok && fourthRunOk;
+
+  Serial.print(F("hcivprevictdemo ok="));
+  Serial.print(ok ? 1 : 0);
+  Serial.print(F(" pumped="));
+  Serial.print(pumpCount);
+  Serial.print(F(" st=0x"));
+  Serial.print(altCreateStatus, HEX);
+  Serial.print('/');
+  Serial.print(altSecurityStatus, HEX);
+  Serial.print('/');
+  Serial.print(altSetStatus, HEX);
+  Serial.print('/');
+  Serial.print(baseSelectStatus, HEX);
+  Serial.print('/');
+  Serial.print(thirdCreateStatus, HEX);
+  Serial.print('/');
+  Serial.print(thirdSecurityStatus, HEX);
+  Serial.print('/');
+  Serial.print(thirdSetStatus, HEX);
+  Serial.print('/');
+  Serial.print(baseReselectStatus, HEX);
+  Serial.print('/');
+  Serial.print(fourthCreateStatus, HEX);
+  Serial.print('/');
+  Serial.print(fourthSecurityStatus, HEX);
+  Serial.print('/');
+  Serial.print(fourthSetStatus, HEX);
+  Serial.print('/');
+  Serial.print(thirdSelectStatus, HEX);
+  Serial.print('/');
+  Serial.print(fourthRunStatus, HEX);
+  Serial.print(F(" polls="));
+  Serial.print(initPolls);
+  Serial.print('/');
+  Serial.print(altCreatePolls);
+  Serial.print('/');
+  Serial.print(altSecurityPolls);
+  Serial.print('/');
+  Serial.print(altSetPolls);
+  Serial.print('/');
+  Serial.print(baseSelectPolls);
+  Serial.print('/');
+  Serial.print(thirdCreatePolls);
+  Serial.print('/');
+  Serial.print(thirdSecurityPolls);
+  Serial.print('/');
+  Serial.print(thirdSetPolls);
+  Serial.print('/');
+  Serial.print(baseReselectPolls);
+  Serial.print('/');
+  Serial.print(fourthCreatePolls);
+  Serial.print('/');
+  Serial.print(fourthSecurityPolls);
+  Serial.print('/');
+  Serial.print(fourthSetPolls);
+  Serial.print('/');
+  Serial.print(fourthRunPolls);
+  Serial.print(F(" slots="));
+  Serial.print(initialState.linkSlot0ConfigId);
+  Serial.print('/');
+  Serial.print(initialState.linkSlot1ConfigId);
+  Serial.print('/');
+  Serial.print(initialState.linkPreviousConfigId);
+  Serial.print('>');
+  Serial.print(altReadyState.linkSlot0ConfigId);
+  Serial.print('/');
+  Serial.print(altReadyState.linkSlot1ConfigId);
+  Serial.print('/');
+  Serial.print(altReadyState.linkPreviousConfigId);
+  Serial.print('>');
+  Serial.print(thirdReadyState.linkSlot0ConfigId);
+  Serial.print('/');
+  Serial.print(thirdReadyState.linkSlot1ConfigId);
+  Serial.print('/');
+  Serial.print(thirdReadyState.linkPreviousConfigId);
+  Serial.print('>');
+  Serial.print(baseReselectedState.linkSlot0ConfigId);
+  Serial.print('/');
+  Serial.print(baseReselectedState.linkSlot1ConfigId);
+  Serial.print('/');
+  Serial.print(baseReselectedState.linkPreviousConfigId);
+  Serial.print('>');
+  Serial.print(fourthCreatedState.linkSlot0ConfigId);
+  Serial.print('/');
+  Serial.print(fourthCreatedState.linkSlot1ConfigId);
+  Serial.print('/');
+  Serial.print(fourthCreatedState.linkPreviousConfigId);
+  Serial.print('>');
+  Serial.print(fourthReadyState.linkSlot0ConfigId);
+  Serial.print('/');
+  Serial.print(fourthReadyState.linkSlot1ConfigId);
+  Serial.print('/');
+  Serial.print(fourthReadyState.linkPreviousConfigId);
+  Serial.print('>');
+  Serial.print(vprHost.vprState().linkSlot0ConfigId);
+  Serial.print('/');
+  Serial.print(vprHost.vprState().linkSlot1ConfigId);
+  Serial.print('/');
+  Serial.print(vprHost.vprState().linkPreviousConfigId);
+  Serial.print(F(" active="));
+  Serial.print(initialState.linkConfigId);
+  Serial.print('>');
+  Serial.print(altReadyState.linkConfigId);
+  Serial.print('>');
+  Serial.print(thirdReadyState.linkConfigId);
+  Serial.print('>');
+  Serial.print(baseReselectedState.linkConfigId);
+  Serial.print('>');
+  Serial.print(fourthCreatedState.linkConfigId);
+  Serial.print('>');
+  Serial.print(fourthReadyState.linkConfigId);
+  Serial.print('>');
+  Serial.print(vprHost.vprState().linkConfigId);
+  Serial.print(F(" count="));
+  Serial.print(initialState.linkStoredConfigCount);
+  Serial.print('>');
+  Serial.print(altReadyState.linkStoredConfigCount);
+  Serial.print('>');
+  Serial.print(thirdReadyState.linkStoredConfigCount);
+  Serial.print('>');
+  Serial.print(baseReselectedState.linkStoredConfigCount);
+  Serial.print('>');
+  Serial.print(fourthCreatedState.linkStoredConfigCount);
+  Serial.print('>');
+  Serial.print(fourthReadyState.linkStoredConfigCount);
+  Serial.print('>');
+  Serial.print(vprHost.vprState().linkStoredConfigCount);
+  Serial.print(F(" evict="));
+  Serial.print(initialState.linkLastEvictedConfigId);
+  Serial.print('>');
+  Serial.print(altReadyState.linkLastEvictedConfigId);
+  Serial.print('>');
+  Serial.print(thirdReadyState.linkLastEvictedConfigId);
+  Serial.print('>');
+  Serial.print(baseReselectedState.linkLastEvictedConfigId);
+  Serial.print('>');
+  Serial.print(fourthCreatedState.linkLastEvictedConfigId);
+  Serial.print('>');
+  Serial.print(fourthReadyState.linkLastEvictedConfigId);
+  Serial.print('>');
+  Serial.print(vprHost.vprState().linkLastEvictedConfigId);
+  Serial.print(F(" run4="));
+  Serial.print(fourthLocalModes.mode1Count);
+  Serial.print('+');
+  Serial.print(fourthLocalModes.mode2Count);
+  Serial.print('/');
+  Serial.print(fourthPeerModes.mode1Count);
+  Serial.print('+');
+  Serial.print(fourthPeerModes.mode2Count);
+  Serial.print(F(" flags="));
+  Serial.print(vprHost.vprState().linkConfigCreated ? 'C' : '-');
+  Serial.print(vprHost.vprState().linkSecurityEnabled ? 'S' : '-');
+  Serial.print(vprHost.vprState().linkProcedureParamsApplied ? 'P' : '-');
+  Serial.print(vprHost.vprState().linkProcedureEnabled ? 'E' : '-');
+  Serial.print(F(" last=0x"));
+  Serial.print(vprHost.workflowState().lastStatus, HEX);
+  Serial.print(F(" dist_m="));
+  if (vprHost.estimateValid()) {
+    Serial.println(vprHost.sessionState().estimate.distanceMeters, 4);
+  } else {
+    Serial.println(F("na"));
+  }
+}
+
 void printHciVprLinkDemo() {
   static constexpr uint16_t kDemoConnHandle = 0x0040U;
   static constexpr uint16_t kWrongConnHandle = 0x0041U;
@@ -7929,6 +8413,11 @@ void handleCalibrationCommand(const char* command) {
     return;
   }
 
+  if (strcmp(command, "hcivprevictdemo") == 0) {
+    printHciVprEvictDemo();
+    return;
+  }
+
   if (strcmp(command, "hcivprlinkdemo") == 0) {
     printHciVprLinkDemo();
     return;
@@ -8003,7 +8492,7 @@ void handleCalibrationCommand(const char* command) {
   }
 
   Serial.println(
-      F("commands=status|raw|stepdemo|stepestdemo|hcidemo|hcirttdemo|hcipktdemo|hciworkflowdemo|hcih4demo|hcisessiondemo|hcimixdemo|hcihostdemo|hcistreamdemo|hcivprtransportdemo|hcivprdumpdemo|hcivprrttoffdemo|hcivprstatedemo|hcivprmultidemo|hcivprchunkdemo|hcivprcontinuedemo|hcivprsubeventdemo|hcivprmultisubdemo|hcivprsubcountdemo|hcivprabortdemo|hcivprmanualdemo|hcivprreconfigdemo|hcivprcfgswapdemo|hcivprmulticfgdemo|hcivprrmstoredemo|hcivprrmactivedemo|hcivprinventorydemo|hcivprslotdemo|hcivprselectdemo|hcivprthirdcfgdemo|hcivprlinkdemo|hcivprtracedemo|clear|zero|ref <m>|offset <m>|scale <factor>"));
+      F("commands=status|raw|stepdemo|stepestdemo|hcidemo|hcirttdemo|hcipktdemo|hciworkflowdemo|hcih4demo|hcisessiondemo|hcimixdemo|hcihostdemo|hcistreamdemo|hcivprtransportdemo|hcivprdumpdemo|hcivprrttoffdemo|hcivprstatedemo|hcivprmultidemo|hcivprchunkdemo|hcivprcontinuedemo|hcivprsubeventdemo|hcivprmultisubdemo|hcivprsubcountdemo|hcivprabortdemo|hcivprmanualdemo|hcivprreconfigdemo|hcivprcfgswapdemo|hcivprmulticfgdemo|hcivprrmstoredemo|hcivprrmactivedemo|hcivprinventorydemo|hcivprslotdemo|hcivprselectdemo|hcivprthirdcfgdemo|hcivprevictdemo|hcivprlinkdemo|hcivprtracedemo|clear|zero|ref <m>|offset <m>|scale <factor>"));
 }
 
 void pollSerialCommands() {
@@ -8095,7 +8584,7 @@ void setup() {
   Serial.println(F("dfe_raw_capture=enabled"));
   Serial.println(F("control_channel=37"));
   Serial.println(F("pair_with=CoreBleChannelSoundingReflector"));
-  Serial.println(F("commands=status|raw|stepdemo|stepestdemo|hcidemo|hcirttdemo|hcipktdemo|hciworkflowdemo|hcih4demo|hcisessiondemo|hcimixdemo|hcihostdemo|hcistreamdemo|hcivprtransportdemo|hcivprdumpdemo|hcivprrttoffdemo|hcivprstatedemo|hcivprmultidemo|hcivprchunkdemo|hcivprcontinuedemo|hcivprsubeventdemo|hcivprmultisubdemo|hcivprsubcountdemo|hcivprabortdemo|hcivprmanualdemo|hcivprreconfigdemo|hcivprcfgswapdemo|hcivprmulticfgdemo|hcivprrmstoredemo|hcivprrmactivedemo|hcivprinventorydemo|hcivprslotdemo|hcivprselectdemo|hcivprthirdcfgdemo|hcivprlinkdemo|hcivprtracedemo|clear|zero|ref <m>|offset <m>|scale <factor>"));
+  Serial.println(F("commands=status|raw|stepdemo|stepestdemo|hcidemo|hcirttdemo|hcipktdemo|hciworkflowdemo|hcih4demo|hcisessiondemo|hcimixdemo|hcihostdemo|hcistreamdemo|hcivprtransportdemo|hcivprdumpdemo|hcivprrttoffdemo|hcivprstatedemo|hcivprmultidemo|hcivprchunkdemo|hcivprcontinuedemo|hcivprsubeventdemo|hcivprmultisubdemo|hcivprsubcountdemo|hcivprabortdemo|hcivprmanualdemo|hcivprreconfigdemo|hcivprcfgswapdemo|hcivprmulticfgdemo|hcivprrmstoredemo|hcivprrmactivedemo|hcivprinventorydemo|hcivprslotdemo|hcivprselectdemo|hcivprthirdcfgdemo|hcivprevictdemo|hcivprlinkdemo|hcivprtracedemo|clear|zero|ref <m>|offset <m>|scale <factor>"));
   uint8_t csChannelMap[kBleCsChannelMapBytes] = {0};
   BleChannelSoundingRadio::fillValidChannelMap(csChannelMap);
   Serial.print(F("cs_chmap[0..2]="));

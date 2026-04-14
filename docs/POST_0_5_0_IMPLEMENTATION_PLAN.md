@@ -425,15 +425,20 @@ Immediate next follow-up from this checkpoint:
     `2 primary + 1 overflow(previous)` third-config policy
   - `hcivprthirdcfgdemo` now proves direct create/select/run of stored
     `configId=3` on one live VPR session without recreating `configId=1/2`
+  - `hcivprevictdemo` now proves direct fourth-config overflow eviction on one
+    live VPR session, with controller-owned `lastEvictedConfigId=3` reporting
+    and immediate `0x12` rejection for the evicted stored config
   - `hcivprmulticfgdemo` still stays green after that overflow-slot slice
 
 The next slice after this checkpoint is:
 
-- richer controller-owned stored-config policy on VPR above the current
-  `2 primary + 1 overflow` model
-- specifically, selection/eviction/reporting policy that goes beyond simple
-  slot occupancy and lets the host stop inferring what VPR considers the best
-  retained config set after more complex direct-control sequences
+- richer controller-owned primary-slot promotion/eviction policy on VPR above
+  the current `2 primary + 1 overflow(previous)` model
+- specifically, move from “overflow replacement is reported” to a stronger
+  controller-owned policy that decides when a stored overflow config should be
+  promoted into a primary slot and what gets evicted after longer direct-
+  control sequences, so the host stops inferring retained-config authority from
+  slot snapshots alone
 
 This is the shortest path that advances the repo from "working VPR-backed CS
 demo" to "real BLE controller work is starting to move off CPUAPP".

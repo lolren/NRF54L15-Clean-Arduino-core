@@ -3922,6 +3922,7 @@ void BleCsControllerVprHost::syncVprState() {
       static_cast<uint8_t>((packedLinkState >> 12U) & 0x0FU);
   nextState.linkStoredConfigCount = static_cast<uint8_t>(packedAuxState & 0x0FU);
   nextState.linkPeerGapTicks = static_cast<uint8_t>((packedAuxState >> 8U) & 0x0FU);
+  nextState.linkLastEvictedConfigId = static_cast<uint8_t>((packedAuxState >> 16U) & 0xFFU);
   nextState.linkSessionOpen = (packedLinkState & (1UL << 16U)) != 0U;
   nextState.linkConfigCreated = (packedLinkState & (1UL << 17U)) != 0U;
   nextState.linkSecurityEnabled = (packedLinkState & (1UL << 18U)) != 0U;

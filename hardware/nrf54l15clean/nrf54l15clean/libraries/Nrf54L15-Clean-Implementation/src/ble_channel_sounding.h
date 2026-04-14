@@ -969,6 +969,7 @@ struct BleCsControllerVprHostState {
   uint8_t linkProcedureIntervalSelector = 0U;
   uint8_t linkStoredConfigCount = 0U;
   uint8_t linkPeerGapTicks = 0U;
+  uint8_t linkLastEvictedConfigId = 0U;
   uint8_t linkConfigId = 0U;
   uint8_t linkSlot0ConfigId = 0U;
   uint8_t linkSlot1ConfigId = 0U;
