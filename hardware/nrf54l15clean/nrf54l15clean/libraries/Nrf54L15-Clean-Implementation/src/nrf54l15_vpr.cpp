@@ -2266,7 +2266,7 @@ bool VprControllerServiceHost::configureBleCsWorkflow(
   if (!parseCommandComplete(response, responseLen,
                             kVendorBleCsWorkflowConfigureOpcode, &payload,
                             &payloadLen) ||
-      payloadLen < 16U || payload[0] != 0U) {
+      payloadLen < 26U || payload[0] != 0U) {
     return false;
   }
 
@@ -2276,14 +2276,21 @@ bool VprControllerServiceHost::configureBleCsWorkflow(
     state->linkRunnable = payload[2] != 0U;
     state->configured = payload[3] != 0U;
     state->enabled = payload[4] != 0U;
-    state->connected = payload[5] != 0U;
-    state->encrypted = payload[6] != 0U;
-    state->connHandle = static_cast<uint16_t>(payload[7]) |
-                        (static_cast<uint16_t>(payload[8]) << 8U);
-    state->role = payload[9];
-    state->configId = payload[10];
-    state->maxProcedureCount = payload[11];
-    state->eventCount = readLe32(&payload[12]);
+    state->running = payload[5] != 0U;
+    state->completed = payload[6] != 0U;
+    state->connected = payload[7] != 0U;
+    state->encrypted = payload[8] != 0U;
+    state->connHandle = static_cast<uint16_t>(payload[9]) |
+                        (static_cast<uint16_t>(payload[10]) << 8U);
+    state->role = payload[11];
+    state->configId = payload[12];
+    state->maxProcedureCount = payload[13];
+    state->eventCount = readLe32(&payload[14]);
+    state->completedProcedureCount = payload[18];
+    state->completedConfigId = payload[19];
+    state->nominalDistanceQ4 = static_cast<uint16_t>(payload[20]) |
+                               (static_cast<uint16_t>(payload[21]) << 8U);
+    state->workflowEventCount = readLe32(&payload[22]);
   }
   return true;
 }
@@ -2305,7 +2312,7 @@ bool VprControllerServiceHost::readBleCsWorkflowState(
   if (!parseCommandComplete(response, responseLen,
                             kVendorBleCsWorkflowReadStateOpcode, &payload,
                             &payloadLen) ||
-      payloadLen < 16U || payload[0] != 0U) {
+      payloadLen < 26U || payload[0] != 0U) {
     return false;
   }
 
@@ -2314,15 +2321,49 @@ bool VprControllerServiceHost::readBleCsWorkflowState(
   state->linkRunnable = payload[2] != 0U;
   state->configured = payload[3] != 0U;
   state->enabled = payload[4] != 0U;
-  state->connected = payload[5] != 0U;
-  state->encrypted = payload[6] != 0U;
-  state->connHandle = static_cast<uint16_t>(payload[7]) |
-                      (static_cast<uint16_t>(payload[8]) << 8U);
-  state->role = payload[9];
-  state->configId = payload[10];
-  state->maxProcedureCount = payload[11];
-  state->eventCount = readLe32(&payload[12]);
+  state->running = payload[5] != 0U;
+  state->completed = payload[6] != 0U;
+  state->connected = payload[7] != 0U;
+  state->encrypted = payload[8] != 0U;
+  state->connHandle = static_cast<uint16_t>(payload[9]) |
+                      (static_cast<uint16_t>(payload[10]) << 8U);
+  state->role = payload[11];
+  state->configId = payload[12];
+  state->maxProcedureCount = payload[13];
+  state->eventCount = readLe32(&payload[14]);
+  state->completedProcedureCount = payload[18];
+  state->completedConfigId = payload[19];
+  state->nominalDistanceQ4 = static_cast<uint16_t>(payload[20]) |
+                             (static_cast<uint16_t>(payload[21]) << 8U);
+  state->workflowEventCount = readLe32(&payload[22]);
   return true;
+}
+
+bool VprControllerServiceHost::waitBleCsWorkflowCompleted(
+    uint8_t minCompletedProcedureCount,
+    VprBleCsWorkflowState* state,
+    uint32_t timeoutMs) {
+  if (!attached()) {
+    return false;
+  }
+
+  VprBleCsWorkflowState snapshot{};
+  const uint32_t start = millis();
+  while ((millis() - start) < timeoutMs) {
+    (void)transport_->poll();
+    if (!readBleCsWorkflowState(&snapshot)) {
+      return false;
+    }
+    if (snapshot.completed &&
+        snapshot.completedProcedureCount >= minCompletedProcedureCount) {
+      if (state != nullptr) {
+        *state = snapshot;
+      }
+      return true;
+    }
+    delay(1);
+  }
+  return false;
 }
 
 bool VprControllerServiceHost::waitBleConnectionSharedState(

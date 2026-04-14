@@ -38,6 +38,9 @@ controller-service path:
 - `VprTickerAsyncEventProbe`
 - `VprBleLegacyAdvertisingProbe`
 - `VprBleConnectionStateProbe`
+- `VprBleConnectionCsBindProbe`
+- `VprBleConnectionCsWorkflowProbe`
+- `VprBleConnectionCsProcedureProbe`
 - `VprBleConnectionCsHandoffProbe`
 - `VprHibernateContextProbe`
 - `VprHibernateWakeProbe`
@@ -46,8 +49,8 @@ controller-service path:
 
 Current validated generic service state on hardware:
 
-- `svc=1.10`
-- `opmask=0x3FFFF`
+- `svc=1.13`
+- `opmask=0x3FFFFF`
 - `max_in=124`
 - cold-boot command path is good
 - autonomous ticker state progresses on VPR after the configure command returns
@@ -112,6 +115,22 @@ Current validated generic service state on hardware:
     - report `configured but not enabled` on an unencrypted bound link
     - report `configured and enabled` on an encrypted runnable link
     - clear that workflow state automatically on disconnect
+  - the generic VPR service now also owns a nominal CS procedure runtime and
+    completion summary on that current BLE connection through
+    `VprBleConnectionCsProcedureProbe`
+  - current live serial proof is in
+    `/home/lolren/Desktop/Nrf54L15/.build/vpr_ble_cs_procedure_runtime/serial_status_clean.log`
+  - current key proof line:
+    - `probe_ok=1 svc=1.13 opmask=0x3FFFFF weak=1/0/1/0/0 strong=1/1/1/1/1/1/3@7537 final=0/0/0/0/0#13 wf=0/0/0 host_drop=0`
+  - this proves the generic image can now:
+    - keep one nominal CS workflow running on the current encrypted live BLE link
+    - complete `maxProcedureCount` procedures without booting the dedicated CS
+      image
+    - report a reusable nominal completion summary for that generic-service
+      run (`configId`, completed-procedure count, nominal `distanceQ4`)
+    - clear that runtime summary automatically on disconnect
+  - that `7537` summary value remains nominal synthetic regression output
+    only, not a physical distance claim
   - connection-to-CS handoff proof is in
     `/home/lolren/Desktop/Nrf54L15/.build/vpr_ble_cs_handoff_runtime/read_summary.log`
   - current SWD-readable summary decodes to:

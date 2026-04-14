@@ -277,6 +277,8 @@ struct VprBleCsWorkflowState {
   bool linkRunnable;
   bool configured;
   bool enabled;
+  bool running;
+  bool completed;
   bool connected;
   bool encrypted;
   uint16_t connHandle;
@@ -284,6 +286,10 @@ struct VprBleCsWorkflowState {
   uint8_t configId;
   uint8_t maxProcedureCount;
   uint32_t eventCount;
+  uint8_t completedProcedureCount;
+  uint8_t completedConfigId;
+  uint16_t nominalDistanceQ4;
+  uint32_t workflowEventCount;
 };
 
 class VprControllerServiceHost {
@@ -425,6 +431,9 @@ class VprControllerServiceHost {
                               uint8_t maxProcedureCount,
                               VprBleCsWorkflowState* state = nullptr);
   bool readBleCsWorkflowState(VprBleCsWorkflowState* state);
+  bool waitBleCsWorkflowCompleted(uint8_t minCompletedProcedureCount,
+                                  VprBleCsWorkflowState* state = nullptr,
+                                  uint32_t timeoutMs = 5000UL);
   bool waitBleConnectionSharedState(bool connected,
                                     uint16_t minEventCount,
                                     VprBleConnectionSharedState* state = nullptr,

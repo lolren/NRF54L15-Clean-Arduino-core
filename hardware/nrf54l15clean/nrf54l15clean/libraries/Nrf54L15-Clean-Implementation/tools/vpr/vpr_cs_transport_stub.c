@@ -52,7 +52,7 @@
 #define VPR_HCI_OP_VENDOR_BLE_CS_WORKFLOW_READ_STATE 0xFCE6U
 
 #define VPR_VENDOR_SERVICE_VERSION_MAJOR 1U
-#define VPR_VENDOR_SERVICE_VERSION_MINOR 12U
+#define VPR_VENDOR_SERVICE_VERSION_MINOR 13U
 #define VPR_VENDOR_OP_PING (1UL << 0U)
 #define VPR_VENDOR_OP_INFO (1UL << 1U)
 #define VPR_VENDOR_OP_FNV1A32 (1UL << 2U)
@@ -197,6 +197,13 @@ static uint8_t g_ble_cs_workflow_params_applied = 0U;
 static uint8_t g_ble_cs_workflow_procedure_enabled = 0U;
 static uint8_t g_ble_cs_workflow_config_id = 0U;
 static uint8_t g_ble_cs_workflow_max_procedure_count = 0U;
+static uint8_t g_ble_cs_workflow_running = 0U;
+static uint8_t g_ble_cs_workflow_completed = 0U;
+static uint8_t g_ble_cs_workflow_completed_procedure_count = 0U;
+static uint8_t g_ble_cs_workflow_completed_config_id = 0U;
+static uint16_t g_ble_cs_workflow_nominal_distance_q4 = 0U;
+static uint32_t g_ble_cs_workflow_runtime_event_count = 0U;
+static uint32_t g_ble_cs_workflow_next_heartbeat = 0U;
 static vpr_ble_connection_event_entry_t
     g_ble_connection_event_queue[VPR_BLE_CONNECTION_EVENT_QUEUE_DEPTH];
 static uint32_t g_ble_connection_event_queue_head = 0U;
@@ -680,6 +687,8 @@ static uint8_t ble_cs_link_runnable(void) {
                        : 0U);
 }
 
+static void reset_ble_cs_workflow_runtime_state(bool clear_summary);
+
 static void clear_ble_cs_workflow_state(void) {
   g_ble_cs_workflow_defaults_applied = 0U;
   g_ble_cs_workflow_config_created = 0U;
@@ -688,6 +697,7 @@ static void clear_ble_cs_workflow_state(void) {
   g_ble_cs_workflow_procedure_enabled = 0U;
   g_ble_cs_workflow_config_id = 0U;
   g_ble_cs_workflow_max_procedure_count = 0U;
+  reset_ble_cs_workflow_runtime_state(true);
 }
 
 static uint8_t ble_cs_workflow_configured(void) {
@@ -696,6 +706,75 @@ static uint8_t ble_cs_workflow_configured(void) {
                     g_ble_cs_workflow_config_id != 0U)
                        ? 1U
                        : 0U);
+}
+
+static uint16_t current_ble_cs_workflow_nominal_distance_q4(void) {
+  return 7537U;
+}
+
+static uint32_t current_ble_cs_workflow_stage_ticks(void) {
+  uint32_t ticks = (uint32_t)g_ble_connection_interval_units;
+  if (ticks < 16U) {
+    ticks = 16U;
+  }
+  if (ticks > 128U) {
+    ticks = 128U;
+  }
+  return ticks;
+}
+
+static void reset_ble_cs_workflow_runtime_state(bool clear_summary) {
+  g_ble_cs_workflow_running = 0U;
+  g_ble_cs_workflow_next_heartbeat = 0U;
+  if (clear_summary) {
+    g_ble_cs_workflow_completed = 0U;
+    g_ble_cs_workflow_completed_procedure_count = 0U;
+    g_ble_cs_workflow_completed_config_id = 0U;
+    g_ble_cs_workflow_nominal_distance_q4 = 0U;
+    g_ble_cs_workflow_runtime_event_count = 0U;
+  }
+}
+
+static void maybe_start_ble_cs_workflow_runtime(void) {
+  reset_ble_cs_workflow_runtime_state(true);
+  if (g_ble_cs_workflow_procedure_enabled == 0U || ble_cs_link_runnable() == 0U ||
+      ble_cs_workflow_configured() == 0U || g_ble_cs_workflow_max_procedure_count == 0U) {
+    return;
+  }
+  g_ble_cs_workflow_running = 1U;
+  g_ble_cs_workflow_next_heartbeat =
+      g_vpr_transport->heartbeat + current_ble_cs_workflow_stage_ticks();
+}
+
+static void service_ble_cs_workflow_runtime(void) {
+  if (g_ble_cs_workflow_running == 0U) {
+    return;
+  }
+  if (g_ble_cs_workflow_procedure_enabled == 0U || ble_cs_link_runnable() == 0U ||
+      ble_cs_workflow_configured() == 0U || g_ble_cs_workflow_max_procedure_count == 0U) {
+    reset_ble_cs_workflow_runtime_state(true);
+    return;
+  }
+  if (g_vpr_transport->heartbeat < g_ble_cs_workflow_next_heartbeat) {
+    return;
+  }
+
+  g_ble_cs_workflow_completed_procedure_count =
+      (uint8_t)(g_ble_cs_workflow_completed_procedure_count + 1U);
+  g_ble_cs_workflow_runtime_event_count =
+      g_ble_cs_workflow_runtime_event_count + 1U;
+
+  if (g_ble_cs_workflow_completed_procedure_count >= g_ble_cs_workflow_max_procedure_count) {
+    g_ble_cs_workflow_running = 0U;
+    g_ble_cs_workflow_completed = 1U;
+    g_ble_cs_workflow_completed_config_id = g_ble_cs_workflow_config_id;
+    g_ble_cs_workflow_nominal_distance_q4 =
+        current_ble_cs_workflow_nominal_distance_q4();
+    g_ble_cs_workflow_next_heartbeat = 0U;
+  } else {
+    g_ble_cs_workflow_next_heartbeat =
+        g_vpr_transport->heartbeat + current_ble_cs_workflow_stage_ticks();
+  }
 }
 
 static uint32_t current_ble_connection_state_packed(uint32_t host_flags) {
@@ -3026,7 +3105,7 @@ static size_t build_vendor_ble_cs_link_state_payload(uint8_t *payload,
 static size_t build_vendor_ble_cs_workflow_state_payload(uint8_t *payload,
                                                          size_t max_len,
                                                          uint8_t status) {
-  if (payload == NULL || max_len < 16U) {
+  if (payload == NULL || max_len < 26U) {
     return 0U;
   }
   payload[0] = status;
@@ -3034,14 +3113,20 @@ static size_t build_vendor_ble_cs_workflow_state_payload(uint8_t *payload,
   payload[2] = ble_cs_link_runnable();
   payload[3] = ble_cs_workflow_configured();
   payload[4] = (uint8_t)(g_ble_cs_workflow_procedure_enabled != 0U ? 1U : 0U);
-  payload[5] = (uint8_t)(g_ble_connection_connected != 0U ? 1U : 0U);
-  payload[6] = (uint8_t)(g_ble_connection_encrypted != 0U ? 1U : 0U);
-  write_le16(&payload[7], g_ble_cs_link_bound != 0U ? g_ble_connection_conn_handle : 0U);
-  payload[9] = g_ble_cs_link_bound != 0U ? g_ble_connection_role : 0U;
-  payload[10] = g_ble_cs_workflow_config_id;
-  payload[11] = g_ble_cs_workflow_max_procedure_count;
-  write_le32(&payload[12], g_ble_connection_event_count);
-  return 16U;
+  payload[5] = (uint8_t)(g_ble_cs_workflow_running != 0U ? 1U : 0U);
+  payload[6] = (uint8_t)(g_ble_cs_workflow_completed != 0U ? 1U : 0U);
+  payload[7] = (uint8_t)(g_ble_connection_connected != 0U ? 1U : 0U);
+  payload[8] = (uint8_t)(g_ble_connection_encrypted != 0U ? 1U : 0U);
+  write_le16(&payload[9], g_ble_cs_link_bound != 0U ? g_ble_connection_conn_handle : 0U);
+  payload[11] = g_ble_cs_link_bound != 0U ? g_ble_connection_role : 0U;
+  payload[12] = g_ble_cs_workflow_config_id;
+  payload[13] = g_ble_cs_workflow_max_procedure_count;
+  write_le32(&payload[14], g_ble_connection_event_count);
+  payload[18] = g_ble_cs_workflow_completed_procedure_count;
+  payload[19] = g_ble_cs_workflow_completed_config_id;
+  write_le16(&payload[20], g_ble_cs_workflow_nominal_distance_q4);
+  write_le32(&payload[22], g_ble_cs_workflow_runtime_event_count);
+  return 26U;
 }
 
 static size_t build_vendor_ble_legacy_adv_configure_complete_payload(uint8_t *payload,
@@ -3140,6 +3225,9 @@ static size_t build_vendor_ble_connection_configure_complete_payload(uint8_t *pa
         g_ble_connection_event_count = g_ble_connection_event_count + 1U;
         (void)enqueue_ble_connection_event(0x01U, 0x00U);
       }
+      if (g_ble_cs_link_bound != 0U && g_ble_cs_workflow_procedure_enabled != 0U) {
+        maybe_start_ble_cs_workflow_runtime();
+      }
     }
   }
   return build_vendor_ble_connection_state_payload(payload, max_len, status);
@@ -3195,6 +3283,9 @@ static size_t build_vendor_ble_cs_link_configure_complete_payload(uint8_t *paylo
       status = 0x02U;
     } else {
       g_ble_cs_link_bound = 1U;
+      if (g_ble_cs_workflow_procedure_enabled != 0U) {
+        maybe_start_ble_cs_workflow_runtime();
+      }
     }
   }
   return build_vendor_ble_cs_link_state_payload(payload, max_len, status);
@@ -3245,6 +3336,7 @@ static size_t build_vendor_ble_cs_workflow_configure_complete_payload(uint8_t *p
                      procedure_enabled != 0U && ble_cs_link_runnable() != 0U)
                         ? 1U
                         : 0U);
+      maybe_start_ble_cs_workflow_runtime();
     }
   }
   return build_vendor_ble_cs_workflow_state_payload(payload, max_len, status);
@@ -4366,6 +4458,7 @@ __attribute__((noreturn, used, externally_visible)) void vpr_main(void) {
                                          g_vpr_transport->heartbeat,
                                          random_delay_ticks);
     }
+    service_ble_cs_workflow_runtime();
 #endif
     fence_rw();
 

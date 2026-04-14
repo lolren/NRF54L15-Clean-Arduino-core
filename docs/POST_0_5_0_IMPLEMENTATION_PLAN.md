@@ -77,6 +77,9 @@ Current checkpoint inside Phase 2:
   handle into the dedicated CS image through
   `VprBleConnectionCsHandoffProbe`, run one nominal synthetic CS procedure,
   and produce a valid completed estimate on the imported link
+- the generic VPR service now also owns one nominal CS workflow runtime and
+  completion summary on the current encrypted live BLE link through
+  `VprBleConnectionCsProcedureProbe`
 - the imported-link CS workflow startup is now host-boundary code instead of
   probe-local sequencing:
   `beginFreshWorkflowFromBleConnection(...)`,
