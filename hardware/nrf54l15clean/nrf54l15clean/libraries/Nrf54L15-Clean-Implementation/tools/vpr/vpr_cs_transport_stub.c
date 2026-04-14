@@ -1702,6 +1702,9 @@ static void update_procedure_params_from_command(void) {
   }
   if (slot != NULL) {
     store_active_procedure_state(slot);
+    if (slot == &g_cs_previous_slot) {
+      (void)promote_previous_slot_to_primary(true);
+    }
   }
 }
 

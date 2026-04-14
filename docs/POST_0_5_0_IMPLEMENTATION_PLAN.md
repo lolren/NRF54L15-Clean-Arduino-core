@@ -428,20 +428,18 @@ Immediate next follow-up from this checkpoint:
   - `hcivprevictdemo` now proves direct fourth-config overflow eviction on one
     live VPR session, with controller-owned `lastEvictedConfigId=3` reporting
     and immediate `0x12` rejection for the evicted stored config
-  - `hcivprpromotedemo` now proves direct run-time promotion of stored
+  - `hcivprpromotedemo` now proves direct selection-time promotion of stored
     overflow configs into a primary slot, with displaced primary ownership
-    demoted back into `previous`
+    demoted back into `previous` before the run starts
   - `hcivprmulticfgdemo` still stays green after that overflow-slot slice
 
 The next slice after this checkpoint is:
 
-- richer controller-owned retained-config authority policy on VPR above the
-  current run-time promotion rule
-- specifically, move from “overflow config is promoted when directly run” to a
-  stronger policy that decides when selected overflow configs, remove-driven
-  promotions, and longer direct-control sequences should also rewrite
-  authoritative primary-slot ownership without the host inferring it from slot
-  snapshots alone
+- richer controller-owned retained-config authority reporting on VPR above the
+  current selection/remove-driven promotion rules
+- specifically, make the controller report which retained config set it now
+  considers authoritative after longer direct-control sequences, instead of the
+  host inferring that from raw slot snapshots alone
 
 This is the shortest path that advances the repo from "working VPR-backed CS
 demo" to "real BLE controller work is starting to move off CPUAPP".

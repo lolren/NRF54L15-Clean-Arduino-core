@@ -7245,20 +7245,23 @@ void printHciVprThirdConfigDemo() {
   ok = ok && sendDirectSecurity(&thirdSecurityStatus);
   ok = ok && thirdSecurityStatus == 0U;
   ok = ok && sendDirectSetProc(thirdParams, &thirdSetStatus);
-  ok = ok && pollUntilState(thirdConfig.configId, baseConfigId, altConfig.configId,
-                            thirdConfig.configId, 0xFFU, 0U, 3U, true, true,
+  ok = ok && pollUntilState(thirdConfig.configId, thirdConfig.configId,
+                            altConfig.configId, baseConfigId, 0U, 0U, 3U,
+                            true, true,
                             &thirdSetPolls);
   const BleCsControllerVprHostState thirdReadyState = vprHost.vprState();
 
   ok = ok && sendDirectSetProc(altParams, &altSelectStatus);
-  ok = ok && pollUntilState(altConfig.configId, baseConfigId, altConfig.configId,
-                            thirdConfig.configId, 1U, 0U, 3U, true, true,
+  ok = ok && pollUntilState(altConfig.configId, thirdConfig.configId,
+                            altConfig.configId, baseConfigId, 1U, 0U, 3U,
+                            true, true,
                             &altSelectPolls);
   const BleCsControllerVprHostState altSelectedState = vprHost.vprState();
 
   ok = ok && sendDirectSetProc(thirdParams, &thirdSelectStatus);
-  ok = ok && pollUntilState(thirdConfig.configId, baseConfigId, altConfig.configId,
-                            thirdConfig.configId, 0xFFU, 0U, 3U, true, true,
+  ok = ok && pollUntilState(thirdConfig.configId, thirdConfig.configId,
+                            altConfig.configId, baseConfigId, 0U, 0U, 3U,
+                            true, true,
                             &thirdSelectPolls);
   const BleCsControllerVprHostState thirdSelectedState = vprHost.vprState();
 
@@ -7734,8 +7737,9 @@ void printHciVprEvictDemo() {
   ok = ok && sendDirectSecurity(&thirdSecurityStatus);
   ok = ok && thirdSecurityStatus == 0U;
   ok = ok && sendDirectSetProc(thirdParams, &thirdSetStatus);
-  ok = ok && pollUntilState(thirdConfig.configId, baseConfigId, altConfig.configId,
-                            thirdConfig.configId, 3U, true, true, 0U,
+  ok = ok && pollUntilState(thirdConfig.configId, thirdConfig.configId,
+                            altConfig.configId, baseConfigId, 3U, true, true,
+                            0U,
                             &thirdSetPolls);
   const BleCsControllerVprHostState thirdReadyState = vprHost.vprState();
 
@@ -7756,15 +7760,15 @@ void printHciVprEvictDemo() {
                             fourthConfig.configId, 3U, false, false,
                             thirdConfig.configId, &fourthSecurityPolls);
   ok = ok && sendDirectSetProc(fourthParams, &fourthSetStatus);
-  ok = ok && pollUntilState(fourthConfig.configId, baseConfigId, altConfig.configId,
-                            fourthConfig.configId, 3U, true, true,
+  ok = ok && pollUntilState(fourthConfig.configId, fourthConfig.configId,
+                            altConfig.configId, baseConfigId, 3U, true, true,
                             thirdConfig.configId, &fourthSetPolls);
   const BleCsControllerVprHostState fourthReadyState = vprHost.vprState();
 
   ok = ok && sendDirectSetProc(thirdParams, &thirdSelectStatus);
   ok = ok && thirdSelectStatus == 0x12U;
   ok = ok && vprHost.vprState().linkConfigId == fourthConfig.configId &&
-       vprHost.vprState().linkPreviousConfigId == fourthConfig.configId &&
+       vprHost.vprState().linkPreviousConfigId == baseConfigId &&
        vprHost.vprState().linkLastEvictedConfigId == thirdConfig.configId;
 
   ok = ok && sendDirectEnable(fourthConfig.configId, 1U, &fourthRunStatus);
@@ -8142,10 +8146,10 @@ void printHciVprPromoteDemo() {
 
   const bool thirdReadyOk =
       thirdReadyState.linkConfigId == thirdConfig.configId &&
-      thirdReadyState.linkSlot0ConfigId == baseConfigId &&
+      thirdReadyState.linkSlot0ConfigId == thirdConfig.configId &&
       thirdReadyState.linkSlot1ConfigId == altConfig.configId &&
-      thirdReadyState.linkPreviousConfigId == thirdConfig.configId &&
-      thirdReadyState.linkActivePrimarySlotIndex == 0xFFU &&
+      thirdReadyState.linkPreviousConfigId == baseConfigId &&
+      thirdReadyState.linkActivePrimarySlotIndex == 0U &&
       thirdReadyState.linkStoredConfigCount == 3U &&
       thirdReadyState.linkSelectedConfigRunnable &&
       thirdReadyState.linkPreviousSlotRunnable &&
