@@ -125,7 +125,10 @@ Current validated generic service state on hardware:
   - validated live log:
     `/home/lolren/Desktop/Nrf54L15/.build/cs_vpr_linked_example_runtime.log`
   - current key proof line:
-    - `run=2 ok=1 svc=1.10 src=1@0x41#1 import=1@0x41#1 pumped=12 polled=0 status=0/0/0/0/0/0 proc=1 local_evt=2 peer_evt=1 nominal_dist_m=0.7537`
+    - `run=2 ok=1 svc=1.10 src=1@0x41#1 boot=1@0x41 import=1@0x41#1 pumped=12 polled=0 status=0/0/0/0/0/0 proc=1 local_evt=2 peer_evt=1 nominal_dist_m=0.7537`
+  - the dedicated CS image now consumes a boot-time BLE link handoff from
+    shared memory, so the imported connection handle is already visible in the
+    dedicated-image link state before workflow commands run
 - VPR hibernate now writes a nonzero saved-context image into the documented
   `0x2003FE00` / `512 B` window when the required MEMCONF retention bits are enabled
 - loaded-image restart is now validated on both attached boards through

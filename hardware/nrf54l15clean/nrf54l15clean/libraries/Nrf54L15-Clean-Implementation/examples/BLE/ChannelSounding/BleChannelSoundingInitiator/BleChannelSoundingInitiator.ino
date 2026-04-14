@@ -2752,6 +2752,8 @@ void printHciVprHandoffDemo() {
   BleCsControllerVprHostConfig hostConfig{};
   BleCsControllerVprWorkflowStartStatus workflowStatus{};
   VprBleConnectionSharedState importedState{};
+  bool bootLinked = false;
+  uint16_t bootHandle = 0U;
 
   BleCsControllerVprHost::fillDemoConfig(&hostConfig);
   hostConfig.session.workflow.procedureParameters.maxProcedureCount = 1U;
@@ -2769,9 +2771,13 @@ void printHciVprHandoffDemo() {
   ok = ok &&
        sourceService.waitBleConnectionSharedState(true, 1U, &sourceShared,
                                                  kEventTimeoutMs);
-  ok = ok && csHost.beginFreshWorkflowFromBleConnection(
-                 sourceService, hostConfig, true, 16U, &pumpCount, &importedState,
-                 &workflowStatus, kEventTimeoutMs);
+  ok = ok && csHost.beginFreshHostFromBleConnection(
+                 sourceService, hostConfig, 16U, &pumpCount, &importedState,
+                 kEventTimeoutMs);
+  bootLinked = csHost.vprState().linkSessionOpen;
+  bootHandle = csHost.vprState().linkConnHandle;
+  ok = ok && bootLinked && bootHandle == kSourceConnHandle;
+  ok = ok && csHost.directStartConfiguredWorkflow(true, &workflowStatus);
   ok = ok &&
        csHost.pollUntilCompletedProcedureResult(1U, 1U, 1U, 24U, &pollCount);
 
@@ -2812,6 +2818,10 @@ void printHciVprHandoffDemo() {
   Serial.print(sourceShared.connHandle, HEX);
   Serial.print(F("#"));
   Serial.print(sourceShared.eventCount);
+  Serial.print(F(" boot="));
+  Serial.print(bootLinked ? 1 : 0);
+  Serial.print(F("@0x"));
+  Serial.print(bootHandle, HEX);
   Serial.print(F(" import="));
   Serial.print(importedState.connected ? 1 : 0);
   Serial.print(F("@0x"));

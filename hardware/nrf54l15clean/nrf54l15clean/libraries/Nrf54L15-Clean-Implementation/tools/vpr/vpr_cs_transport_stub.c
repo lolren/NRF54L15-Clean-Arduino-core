@@ -778,6 +778,32 @@ static void write_le32(uint8_t *dst, uint32_t value) {
   dst[3] = (uint8_t)((value >> 24U) & 0xFFU);
 }
 
+static void clear_ble_connection_handoff(void) {
+  g_host_transport->reserved = 0U;
+  for (uint8_t i = 0U; i < NRF54L15_VPR_BLE_CONN_HANDOFF_LEN; ++i) {
+    g_host_transport->hostData[i] = 0U;
+  }
+}
+
+#if VPR_CS_DEDICATED_IMAGE
+static void consume_ble_connection_handoff(void) {
+  if (g_host_transport->reserved != NRF54L15_VPR_BLE_CONN_HANDOFF_COOKIE) {
+    return;
+  }
+
+  const uint8_t connected = g_host_transport->hostData[0];
+  const uint16_t conn_handle = read_le16(&g_host_transport->hostData[1]);
+  clear_ble_connection_handoff();
+  if (connected == 0U || conn_handle == 0U) {
+    return;
+  }
+
+  g_cs_session_conn_handle = conn_handle;
+  g_cs_session_open = 1U;
+  g_cs_config_id = 0U;
+}
+#endif
+
 static uint16_t read_conn_handle(void) {
   if (g_host_transport->hostLen < 6U) {
     return 0x0040U;
@@ -4067,6 +4093,7 @@ __attribute__((noreturn, used, externally_visible)) void vpr_main(void) {
   g_pending_hibernate = 0U;
 #else
   reset_dedicated_cs_state();
+  consume_ble_connection_handoff();
   g_vpr_transport->reserved = current_link_state_packed();
   g_vpr_transport->reservedAux = current_link_state_aux_packed();
   g_vpr_transport->reservedMeta = current_link_state_meta_packed();

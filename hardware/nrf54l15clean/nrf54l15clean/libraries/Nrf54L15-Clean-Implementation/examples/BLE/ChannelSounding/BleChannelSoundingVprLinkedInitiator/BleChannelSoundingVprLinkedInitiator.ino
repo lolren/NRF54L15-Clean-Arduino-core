@@ -99,6 +99,8 @@ bool runMeasurement() {
   VprBleConnectionEvent connectEvent{};
   VprBleConnectionSharedState importedState{};
   BleCsControllerVprWorkflowStartStatus workflowStatus{};
+  bool bootLinked = false;
+  uint16_t bootHandle = 0U;
   uint8_t pumpCount = 0U;
   uint8_t pollCount = 0U;
 
@@ -114,9 +116,13 @@ bool runMeasurement() {
        gSourceService.waitBleConnectionEvent(&connectEvent, kEventTimeoutMs);
   ok = ok && gSourceService.waitBleConnectionSharedState(
                  true, 1U, &sourceShared, kEventTimeoutMs);
-  ok = ok && gCsHost.beginFreshWorkflowFromBleConnection(
-                 gSourceService, gHostConfig, true, 16U, &pumpCount,
-                 &importedState, &workflowStatus, kEventTimeoutMs);
+  ok = ok && gCsHost.beginFreshHostFromBleConnection(
+                 gSourceService, gHostConfig, 16U, &pumpCount, &importedState,
+                 kEventTimeoutMs);
+  bootLinked = gCsHost.vprState().linkSessionOpen;
+  bootHandle = gCsHost.vprState().linkConnHandle;
+  ok = ok && bootLinked && bootHandle == kConnHandle;
+  ok = ok && gCsHost.directStartConfiguredWorkflow(true, &workflowStatus);
   ok = ok &&
        gCsHost.pollUntilCompletedProcedureResult(1U, 1U, 1U, 24U, &pollCount);
 
@@ -155,6 +161,10 @@ bool runMeasurement() {
   Serial.print(sourceShared.connHandle, HEX);
   Serial.print(F("#"));
   Serial.print(sourceShared.eventCount);
+  Serial.print(F(" boot="));
+  Serial.print(bootLinked ? 1 : 0);
+  Serial.print(F("@0x"));
+  Serial.print(bootHandle, HEX);
   Serial.print(F(" import="));
   Serial.print(importedState.connected ? 1 : 0);
   Serial.print(F("@0x"));

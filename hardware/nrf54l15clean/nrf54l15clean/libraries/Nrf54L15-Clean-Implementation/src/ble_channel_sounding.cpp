@@ -104,6 +104,51 @@ inline void writeLe24(uint8_t* data, uint32_t value) {
   data[2] = static_cast<uint8_t>((value >> 16U) & 0xFFU);
 }
 
+inline void writeVolatileLe16(volatile uint8_t* data, uint16_t value) {
+  if (data == nullptr) {
+    return;
+  }
+  data[0] = static_cast<uint8_t>(value & 0xFFU);
+  data[1] = static_cast<uint8_t>((value >> 8U) & 0xFFU);
+}
+
+inline void writeVolatileLe32(volatile uint8_t* data, uint32_t value) {
+  if (data == nullptr) {
+    return;
+  }
+  data[0] = static_cast<uint8_t>(value & 0xFFU);
+  data[1] = static_cast<uint8_t>((value >> 8U) & 0xFFU);
+  data[2] = static_cast<uint8_t>((value >> 16U) & 0xFFU);
+  data[3] = static_cast<uint8_t>((value >> 24U) & 0xFFU);
+}
+
+bool writeBleConnectionBootHandoff(
+    volatile Nrf54l15VprTransportHostShared* sharedHost,
+    const VprBleConnectionSharedState& state) {
+  if (sharedHost == nullptr || !state.connected || state.connHandle == 0U ||
+      NRF54L15_VPR_BLE_CONN_HANDOFF_LEN > sizeof(sharedHost->hostData)) {
+    return false;
+  }
+
+  memset(const_cast<uint8_t*>(
+             &const_cast<Nrf54l15VprTransportHostShared*>(sharedHost)->hostData[0]),
+         0, sizeof(sharedHost->hostData));
+  sharedHost->reserved = NRF54L15_VPR_BLE_CONN_HANDOFF_COOKIE;
+  sharedHost->hostData[0] = state.connected ? 1U : 0U;
+  writeVolatileLe16(&sharedHost->hostData[1], state.connHandle);
+  sharedHost->hostData[3] = state.role;
+  sharedHost->hostData[4] = state.encrypted ? 1U : 0U;
+  writeVolatileLe16(&sharedHost->hostData[5], state.intervalUnits);
+  writeVolatileLe16(&sharedHost->hostData[7], state.latency);
+  writeVolatileLe16(&sharedHost->hostData[9], state.supervisionTimeout);
+  sharedHost->hostData[11] = state.txPhy;
+  sharedHost->hostData[12] = state.rxPhy;
+  writeVolatileLe32(&sharedHost->hostData[13], state.eventCount);
+  __DMB();
+  __DSB();
+  return true;
+}
+
 uint8_t csFrequencyOffsetMHz(uint8_t channel) {
   if (channel <= 10U) {
     return static_cast<uint8_t>(4U + (2U * channel));
@@ -3859,7 +3904,31 @@ bool BleCsControllerVprHost::beginFreshHostFromBleConnection(
   if (outImportedState != nullptr) {
     *outImportedState = importedState;
   }
-  return beginFreshHost(importedState.connHandle, config, maxPumpCount, outPumpCount);
+
+  bool ok = resetTransport(true);
+  ok = ok && loadDefaultTransportImage();
+  ok = ok && writeBleConnectionBootHandoff(nrf54l15_vpr_transport_host_shared(),
+                                           importedState);
+  ok = ok && bootTransport();
+  syncVprState();
+
+  uint16_t connHandle = importedState.connHandle;
+  if (vprState_.linkSessionOpen && vprState_.linkConnHandle != 0U) {
+    connHandle = vprState_.linkConnHandle;
+  }
+
+  ok = ok && beginHost(connHandle, config);
+
+  while (ok && !ready() && !failed()) {
+    if (outPumpCount != nullptr && *outPumpCount >= maxPumpCount) {
+      break;
+    }
+    ok = loopOnce();
+    if (outPumpCount != nullptr) {
+      *outPumpCount = static_cast<uint8_t>(*outPumpCount + 1U);
+    }
+  }
+  return ok;
 }
 
 bool BleCsControllerVprHost::beginFreshWorkflowFromBleConnection(
