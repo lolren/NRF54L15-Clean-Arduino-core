@@ -280,6 +280,7 @@ static void clear_active_cs_state(void);
 static uint32_t pack_demo_channels_from_map(const uint8_t *channel_map);
 static vpr_cs_config_slot_t *find_cs_slot(uint8_t config_id);
 static vpr_cs_config_slot_t *allocate_cs_slot(uint8_t config_id);
+static vpr_cs_config_slot_t *promote_previous_slot_to_primary(bool preserve_displaced);
 static void clear_cs_slot(vpr_cs_config_slot_t *slot);
 static bool any_cs_slot_in_use(void);
 static bool has_free_cs_slot(void);
@@ -1310,6 +1311,52 @@ static vpr_cs_config_slot_t *allocate_create_config_slot(uint8_t config_id,
   g_cs_previous_slot.inUse = 1U;
   g_cs_previous_slot.configId = config_id;
   return &g_cs_previous_slot;
+}
+
+static vpr_cs_config_slot_t *promote_previous_slot_to_primary(bool preserve_displaced) {
+  vpr_cs_config_slot_t promoted;
+  vpr_cs_config_slot_t displaced;
+  vpr_cs_config_slot_t *target = NULL;
+  bool have_displaced = false;
+
+  if (g_cs_previous_slot.inUse == 0U || g_cs_previous_slot.configId == 0U) {
+    return NULL;
+  }
+
+  bytes_zero(&promoted, sizeof(promoted));
+  bytes_zero(&displaced, sizeof(displaced));
+  bytes_copy(&promoted, &g_cs_previous_slot, sizeof(promoted));
+
+  if (g_cs_config_created != 0U && g_cs_config_id != 0U) {
+    target = find_cs_primary_slot(g_cs_config_id);
+  }
+  if (target == NULL) {
+    for (uint8_t i = 0U; i < (uint8_t)(sizeof(g_cs_slots) / sizeof(g_cs_slots[0])); ++i) {
+      if (g_cs_slots[i].inUse == 0U) {
+        target = &g_cs_slots[i];
+        break;
+      }
+    }
+  }
+  if (target == NULL) {
+    target = &g_cs_slots[0];
+  }
+
+  if (target->inUse != 0U && target->configId != promoted.configId) {
+    bytes_copy(&displaced, target, sizeof(displaced));
+    have_displaced = true;
+  }
+
+  bytes_copy(target, &promoted, sizeof(promoted));
+  target->inUse = 1U;
+
+  if (preserve_displaced && have_displaced && displaced.configId != 0U) {
+    bytes_copy(&g_cs_previous_slot, &displaced, sizeof(displaced));
+  } else {
+    clear_cs_slot(&g_cs_previous_slot);
+  }
+
+  return target;
 }
 
 static void clear_cs_slot(vpr_cs_config_slot_t *slot) {
@@ -2716,12 +2763,30 @@ static bool publish_builtin_response_for_opcode(uint16_t opcode) {
       if (g_host_transport->hostLen >= 8U) {
         const uint8_t requested_config_id = g_host_transport->hostData[6];
         vpr_cs_config_slot_t *slot = find_cs_slot(requested_config_id);
+        const bool slot_in_previous = (slot == &g_cs_previous_slot);
         enable = g_host_transport->hostData[7];
         if (status == 0U && enable != 0U && requested_config_id != g_cs_config_id) {
-          (void)activate_stored_config_slot(requested_config_id, true);
-          slot = find_cs_slot(requested_config_id);
+          if (slot_in_previous) {
+            slot = promote_previous_slot_to_primary(true);
+            if (slot == NULL || !load_active_state_from_slot(slot)) {
+              status = BLE_CS_HCI_STATUS_INVALID_PARAMS;
+            } else {
+              clear_active_runtime_state();
+            }
+          } else {
+            (void)activate_stored_config_slot(requested_config_id, true);
+            slot = find_cs_slot(requested_config_id);
+          }
         } else if (status == 0U && slot != NULL) {
-          (void)load_active_state_from_slot(slot);
+          if (enable != 0U && slot_in_previous) {
+            slot = promote_previous_slot_to_primary(true);
+            if (slot == NULL) {
+              status = BLE_CS_HCI_STATUS_INVALID_PARAMS;
+            }
+          }
+          if (status == 0U) {
+            (void)load_active_state_from_slot(slot);
+          }
         }
         if (enable == 0U) {
           g_cs_procedure_enabled = 0U;

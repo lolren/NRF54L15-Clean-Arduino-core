@@ -802,6 +802,19 @@ When resuming this work:
       `/home/lolren/Desktop/Nrf54L15/.build/cs_vpr_evict_runtime/hcivprevictdemo_full.log`
       with
       `hcivprevictdemo ok=1 ... count=1>2>3>3>3>3>3 evict=0>0>0>0>3>3>3 run4=0+6/0+6 ... dist_m=0.7505`
+  - `hcivprpromotedemo` now proves controller-owned primary-slot promotion for
+    stored overflow configs during direct run:
+    - before the run, stored `configId=3` is selected+runnable but still lives
+      in the overflow `previous` slot with `activePrimarySlotIndex=0xFF`
+    - direct `Procedure Enable(configId=3)` promotes that stored overflow
+      config into `slot0` and demotes displaced base `configId=1` into
+      `previous`
+    - direct `Procedure Enable(configId=1)` then promotes base back into
+      `slot0` and demotes `configId=3` back into `previous`
+    - proof log:
+      `/home/lolren/Desktop/Nrf54L15/.build/cs_vpr_promote_runtime/hcivprpromotedemo.log`
+      with
+      `hcivprpromotedemo ok=1 ... slots=1/2/3>3/2/1>1/2/3 active=3>3>1 pri=255>0>0 ...`
   - `hcivprmulticfgdemo` is still green after this slice
     - the final stored-config bounce remains `configId=2` with
       `alt2_steps=0+4/0+4`
