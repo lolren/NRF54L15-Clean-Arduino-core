@@ -825,6 +825,27 @@ When resuming this work:
     - the demo now uses a slightly wider final poll window because the second
       bounce on the live session can land later than the earlier tighter
       timeout allowed
+  - controller-owned retained-authority reporting is now exported and
+    validation-cleaned up:
+    - the shared-state seam now reports `authority0/authority1/authority2` as
+      `selected > fallback1 > fallback2`
+    - the normal initiator path prints that through `hcivprselectdemo auth=...`
+    - the hard proof path now uses a retained `.noinit` summary build, so this
+      slice no longer depends on flaky CDC capture timing
+    - proof log:
+      `/home/lolren/Desktop/Nrf54L15/.build/cs_vpr_authority_summary_runtime/read_summary.log`
+      with
+      `56504155 00000008 00000001 0000000c / 00000001 00000102 00000102 / 00000102 00000201 00000102`
+      meaning:
+      - `stage=8`
+      - `ok=1`
+      - `pump=12`
+      - `initial=1/0/0`
+      - `created=2/1/0`
+      - `secured=2/1/0`
+      - `armed=2/1/0`
+      - `base_selected=1/2/0`
+      - `alt_selected=2/1/0`
 - The two attached boards were restored to `VprSharedTransportProbe` after the
   resume/restart experiments and both were left healthy on the known-good
   `svc=1.7` / `opmask=0x3FF` path.

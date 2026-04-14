@@ -81,7 +81,10 @@ static uint8_t gCommandLength = 0U;
 #ifdef NRF54L15_CS_VPR_SELECT_SUMMARY
 struct VprSelectDemoSummary {
   uint32_t magic;
+  uint32_t stage;
   uint32_t ok;
+  uint32_t pumpCount;
+  uint32_t statusWord;
   uint32_t initialAuthority;
   uint32_t createdAuthority;
   uint32_t securedAuthority;
@@ -90,7 +93,7 @@ struct VprSelectDemoSummary {
   uint32_t altSelectedAuthority;
 };
 
-volatile VprSelectDemoSummary gVprSelectDemoSummary{};
+__attribute__((section(".noinit"))) static volatile VprSelectDemoSummary gVprSelectDemoSummary;
 #endif
 static BleCsDfeCaptureInfo gLastDfeInfo{};
 
@@ -6471,10 +6474,35 @@ void printHciVprSlotDemo() {
 void printHciVprSelectDemo() {
   static constexpr uint16_t kDemoConnHandle = 0x0040U;
   static constexpr uint8_t kAltChannels[] = {2U, 14U, 26U, 38U};
+#ifdef NRF54L15_CS_VPR_SELECT_SUMMARY
+  static constexpr uint32_t kSelectSummaryMagic = 0x56504155UL;
+  enum : uint32_t {
+    kSelectStageBooting = 1UL,
+    kSelectStageInitial = 2UL,
+    kSelectStageCreated = 3UL,
+    kSelectStageSecured = 4UL,
+    kSelectStageArmed = 5UL,
+    kSelectStageBaseSelected = 6UL,
+    kSelectStageAltSelected = 7UL,
+    kSelectStageDone = 8UL,
+  };
+#endif
+
+#if defined(NRF54L15_CS_VPR_SELECT_SUMMARY) && defined(NRF54L15_CS_VPR_AUTO_SELECT_DEMO)
+  const bool emitSerial = false;
+#else
+  const bool emitSerial = true;
+#endif
 
   BleCsControllerVprHost vprHost;
   BleCsControllerVprHostConfig hostConfig{};
   BleCsControllerVprHost::fillDemoConfig(&hostConfig);
+
+#ifdef NRF54L15_CS_VPR_SELECT_SUMMARY
+  memset((void*)&gVprSelectDemoSummary, 0, sizeof(gVprSelectDemoSummary));
+  gVprSelectDemoSummary.magic = kSelectSummaryMagic;
+  gVprSelectDemoSummary.stage = kSelectStageBooting;
+#endif
 
   bool ok = vprHost.resetTransport(true);
   ok = ok && vprHost.loadDefaultTransportImage();
@@ -6707,12 +6735,47 @@ void printHciVprSelectDemo() {
            ((uint32_t)state.linkAuthority2ConfigId << 16U);
   };
 
+#ifdef NRF54L15_CS_VPR_SELECT_SUMMARY
+  auto pollForSummary = [&](uint8_t maxPolls, uint8_t* outPolls) -> bool {
+    if (outPolls != nullptr) {
+      *outPolls = 0U;
+    }
+    while (!vprHost.failed()) {
+      if (outPolls != nullptr && *outPolls >= maxPolls) {
+        break;
+      }
+      delay(20U);
+      if (!vprHost.poll()) {
+        return false;
+      }
+      if (outPolls != nullptr) {
+        *outPolls = static_cast<uint8_t>(*outPolls + 1U);
+      }
+    }
+    return !vprHost.failed();
+  };
+#endif
+
   ok = ok && pollUntilState(baseConfigId, baseConfigId, 0U, 0U, 0U, 1U, 1U,
                             true, true, false, false, true, true, false, false,
                             true, true, false, false, &initPolls);
   const BleCsControllerVprHostState initialState = vprHost.vprState();
+#ifdef NRF54L15_CS_VPR_SELECT_SUMMARY
+  gVprSelectDemoSummary.stage = kSelectStageInitial;
+  gVprSelectDemoSummary.initialAuthority = packAuthority(initialState);
+#if defined(NRF54L15_CS_VPR_AUTO_SELECT_DEMO)
+  for (uint8_t settlePolls = 0U; ok && !vprHost.failed() && settlePolls < 60U;
+       ++settlePolls) {
+    delay(20U);
+    ok = vprHost.poll();
+  }
+#endif
+#endif
 
   ok = ok && sendDirectCreate(altConfig, &createStatus);
+#ifdef NRF54L15_CS_VPR_SELECT_SUMMARY
+  ok = ok && pollForSummary(16U, &createPolls);
+#else
   while (ok && !vprHost.failed() && createPolls < 24U) {
     const bool created =
         createStatus == 0U &&
@@ -6729,35 +6792,72 @@ void printHciVprSelectDemo() {
                             baseConfigId, 1U, 0U, 2U, false, true, false, true,
                             false, true, false, true, false, true, false, true,
                             nullptr);
+#endif
   const BleCsControllerVprHostState createdState = vprHost.vprState();
+#ifdef NRF54L15_CS_VPR_SELECT_SUMMARY
+  gVprSelectDemoSummary.stage = kSelectStageCreated;
+  gVprSelectDemoSummary.createdAuthority = packAuthority(createdState);
+#endif
 
   ok = ok && sendDirectSecurity(&securityStatus);
+#ifdef NRF54L15_CS_VPR_SELECT_SUMMARY
+  ok = ok && pollForSummary(16U, &securityPolls);
+#else
   ok = ok && pollUntilState(altConfig.configId, baseConfigId, altConfig.configId,
                             baseConfigId, 1U, 0U, 2U, false, true, false, true,
                             true, true, true, true, false, true, false, true,
                             &securityPolls);
+#endif
   const BleCsControllerVprHostState securedState = vprHost.vprState();
+#ifdef NRF54L15_CS_VPR_SELECT_SUMMARY
+  gVprSelectDemoSummary.stage = kSelectStageSecured;
+  gVprSelectDemoSummary.securedAuthority = packAuthority(securedState);
+#endif
   ok = ok && sendDirectSetProc(altParams, &setAltArmStatus);
+#ifdef NRF54L15_CS_VPR_SELECT_SUMMARY
+  ok = ok && pollForSummary(16U, &armPolls);
+#else
   ok = ok && pollUntilState(altConfig.configId, baseConfigId, altConfig.configId,
                             baseConfigId, 1U, 0U, 2U, true, true, true, true,
                             true, true, true, true, true, true, true, true,
                             &armPolls);
+#endif
   const BleCsControllerVprHostState armedState = vprHost.vprState();
+#ifdef NRF54L15_CS_VPR_SELECT_SUMMARY
+  gVprSelectDemoSummary.stage = kSelectStageArmed;
+  gVprSelectDemoSummary.armedAuthority = packAuthority(armedState);
+#endif
 
   setAltStatus = setAltArmStatus;
   ok = ok && sendDirectSetProc(baseParams, &setBaseStatus);
+#ifdef NRF54L15_CS_VPR_SELECT_SUMMARY
+  ok = ok && pollForSummary(16U, &selectBasePolls);
+#else
   ok = ok && pollUntilState(baseConfigId, baseConfigId, altConfig.configId,
                             altConfig.configId, 0U, 0U, 2U, true, true, true,
                             true, true, true, true, true, true, true, true,
                             true, &selectBasePolls);
+#endif
   const BleCsControllerVprHostState baseSelectedState = vprHost.vprState();
+#ifdef NRF54L15_CS_VPR_SELECT_SUMMARY
+  gVprSelectDemoSummary.stage = kSelectStageBaseSelected;
+  gVprSelectDemoSummary.baseSelectedAuthority = packAuthority(baseSelectedState);
+#endif
 
   ok = ok && sendDirectSetProc(altParams, &setAltAgainStatus);
+#ifdef NRF54L15_CS_VPR_SELECT_SUMMARY
+  ok = ok && pollForSummary(16U, &selectAltPolls);
+#else
   ok = ok && pollUntilState(altConfig.configId, baseConfigId, altConfig.configId,
                             baseConfigId, 1U, 0U, 2U, true, true, true, true,
                             true, true, true, true, true, true, true, true,
                             &selectAltPolls);
+#endif
   const BleCsControllerVprHostState altSelectedState = vprHost.vprState();
+#ifdef NRF54L15_CS_VPR_SELECT_SUMMARY
+  gVprSelectDemoSummary.stage = kSelectStageAltSelected;
+  gVprSelectDemoSummary.altSelectedAuthority = packAuthority(altSelectedState);
+#endif
 
   ok = ok && createStatus == 0U && securityStatus == 0U && setAltStatus == 0U &&
        setBaseStatus == 0U && setAltAgainStatus == 0U &&
@@ -6783,8 +6883,13 @@ void printHciVprSelectDemo() {
        altSelectedState.linkAuthority2ConfigId == 0U;
 
 #ifdef NRF54L15_CS_VPR_SELECT_SUMMARY
-  gVprSelectDemoSummary.magic = 0x56504155UL;
+  gVprSelectDemoSummary.magic = kSelectSummaryMagic;
+  gVprSelectDemoSummary.stage = kSelectStageDone;
   gVprSelectDemoSummary.ok = ok ? 1UL : 0UL;
+  gVprSelectDemoSummary.pumpCount = pumpCount;
+  gVprSelectDemoSummary.statusWord =
+      ((uint32_t)createStatus) | ((uint32_t)securityStatus << 8U) |
+      ((uint32_t)setAltArmStatus << 16U) | ((uint32_t)setBaseStatus << 24U);
   gVprSelectDemoSummary.initialAuthority = packAuthority(initialState);
   gVprSelectDemoSummary.createdAuthority = packAuthority(createdState);
   gVprSelectDemoSummary.securedAuthority = packAuthority(securedState);
@@ -6793,166 +6898,167 @@ void printHciVprSelectDemo() {
   gVprSelectDemoSummary.altSelectedAuthority = packAuthority(altSelectedState);
 #endif
 
-  Serial.print(F("hcivprselectdemo ok="));
-  Serial.print(ok ? 1 : 0);
-  Serial.print(F(" pumped="));
-  Serial.print(pumpCount);
-  Serial.print(F(" create=0x"));
-  Serial.print(createStatus, HEX);
-  Serial.print(F(" sec=0x"));
-  Serial.print(securityStatus, HEX);
-  Serial.print(F(" set=0x"));
-  Serial.print(setAltArmStatus, HEX);
-  Serial.print('/');
-  Serial.print(setAltStatus, HEX);
-  Serial.print('/');
-  Serial.print(setBaseStatus, HEX);
-  Serial.print('/');
-  Serial.print(setAltAgainStatus, HEX);
-  Serial.print(F(" polls="));
-  Serial.print(initPolls);
-  Serial.print('/');
-  Serial.print(createPolls);
-  Serial.print('/');
-  Serial.print(securityPolls);
-  Serial.print('/');
-  Serial.print(armPolls);
-  Serial.print('/');
-  Serial.print(selectBasePolls);
-  Serial.print('/');
-  Serial.print(selectAltPolls);
-  Serial.print(F(" slots="));
-  Serial.print(initialState.linkSlot0ConfigId);
-  Serial.print('/');
-  Serial.print(initialState.linkSlot1ConfigId);
-  Serial.print('/');
-  Serial.print(initialState.linkPreviousConfigId);
-  Serial.print('>');
-  Serial.print(createdState.linkSlot0ConfigId);
-  Serial.print('/');
-  Serial.print(createdState.linkSlot1ConfigId);
-  Serial.print('/');
-  Serial.print(createdState.linkPreviousConfigId);
-  Serial.print('>');
-  Serial.print(securedState.linkSlot0ConfigId);
-  Serial.print('/');
-  Serial.print(securedState.linkSlot1ConfigId);
-  Serial.print('/');
-  Serial.print(securedState.linkPreviousConfigId);
-  Serial.print('>');
-  Serial.print(armedState.linkSlot0ConfigId);
-  Serial.print('/');
-  Serial.print(armedState.linkSlot1ConfigId);
-  Serial.print('/');
-  Serial.print(armedState.linkPreviousConfigId);
-  Serial.print('>');
-  Serial.print(baseSelectedState.linkSlot0ConfigId);
-  Serial.print('/');
-  Serial.print(baseSelectedState.linkSlot1ConfigId);
-  Serial.print('/');
-  Serial.print(baseSelectedState.linkPreviousConfigId);
-  Serial.print('>');
-  Serial.print(altSelectedState.linkSlot0ConfigId);
-  Serial.print('/');
-  Serial.print(altSelectedState.linkSlot1ConfigId);
-  Serial.print('/');
-  Serial.print(altSelectedState.linkPreviousConfigId);
-  Serial.print(F(" active="));
-  Serial.print(initialState.linkActivePrimarySlotIndex);
-  Serial.print('>');
-  Serial.print(createdState.linkActivePrimarySlotIndex);
-  Serial.print('>');
-  Serial.print(securedState.linkActivePrimarySlotIndex);
-  Serial.print('>');
-  Serial.print(armedState.linkActivePrimarySlotIndex);
-  Serial.print('>');
-  Serial.print(baseSelectedState.linkActivePrimarySlotIndex);
-  Serial.print('>');
-  Serial.print(altSelectedState.linkActivePrimarySlotIndex);
-  Serial.print(F(" free="));
-  Serial.print(initialState.linkFreePrimarySlotCount);
-  Serial.print('>');
-  Serial.print(createdState.linkFreePrimarySlotCount);
-  Serial.print('>');
-  Serial.print(securedState.linkFreePrimarySlotCount);
-  Serial.print('>');
-  Serial.print(armedState.linkFreePrimarySlotCount);
-  Serial.print('>');
-  Serial.print(baseSelectedState.linkFreePrimarySlotCount);
-  Serial.print('>');
-  Serial.print(altSelectedState.linkFreePrimarySlotCount);
-  Serial.print(F(" count="));
-  Serial.print(initialState.linkStoredConfigCount);
-  Serial.print('>');
-  Serial.print(createdState.linkStoredConfigCount);
-  Serial.print('>');
-  Serial.print(securedState.linkStoredConfigCount);
-  Serial.print('>');
-  Serial.print(armedState.linkStoredConfigCount);
-  Serial.print('>');
-  Serial.print(baseSelectedState.linkStoredConfigCount);
-  Serial.print('>');
-  Serial.print(altSelectedState.linkStoredConfigCount);
-  Serial.print(F(" auth="));
-  Serial.print(initialState.linkAuthority0ConfigId);
-  Serial.print('/');
-  Serial.print(initialState.linkAuthority1ConfigId);
-  Serial.print('/');
-  Serial.print(initialState.linkAuthority2ConfigId);
-  Serial.print('>');
-  Serial.print(createdState.linkAuthority0ConfigId);
-  Serial.print('/');
-  Serial.print(createdState.linkAuthority1ConfigId);
-  Serial.print('/');
-  Serial.print(createdState.linkAuthority2ConfigId);
-  Serial.print('>');
-  Serial.print(securedState.linkAuthority0ConfigId);
-  Serial.print('/');
-  Serial.print(securedState.linkAuthority1ConfigId);
-  Serial.print('/');
-  Serial.print(securedState.linkAuthority2ConfigId);
-  Serial.print('>');
-  Serial.print(armedState.linkAuthority0ConfigId);
-  Serial.print('/');
-  Serial.print(armedState.linkAuthority1ConfigId);
-  Serial.print('/');
-  Serial.print(armedState.linkAuthority2ConfigId);
-  Serial.print('>');
-  Serial.print(baseSelectedState.linkAuthority0ConfigId);
-  Serial.print('/');
-  Serial.print(baseSelectedState.linkAuthority1ConfigId);
-  Serial.print('/');
-  Serial.print(baseSelectedState.linkAuthority2ConfigId);
-  Serial.print('>');
-  Serial.print(altSelectedState.linkAuthority0ConfigId);
-  Serial.print('/');
-  Serial.print(altSelectedState.linkAuthority1ConfigId);
-  Serial.print('/');
-  Serial.print(altSelectedState.linkAuthority2ConfigId);
-  Serial.print(F(" cfg="));
-  Serial.print(initialState.linkConfigId);
-  Serial.print('>');
-  Serial.print(createdState.linkConfigId);
-  Serial.print('>');
-  Serial.print(securedState.linkConfigId);
-  Serial.print('>');
-  Serial.print(armedState.linkConfigId);
-  Serial.print('>');
-  Serial.print(baseSelectedState.linkConfigId);
-  Serial.print('>');
-  Serial.print(altSelectedState.linkConfigId);
-  Serial.print(F(" run="));
-  Serial.print(initialState.linkSelectedConfigRunnable ? 1 : 0);
-  Serial.print('/');
-  Serial.print(createdState.linkSelectedConfigRunnable ? 1 : 0);
-  Serial.print('/');
-  Serial.print(securedState.linkSelectedConfigRunnable ? 1 : 0);
-  Serial.print('/');
-  Serial.print(armedState.linkSelectedConfigRunnable ? 1 : 0);
-  Serial.print('/');
-  Serial.print(baseSelectedState.linkSelectedConfigRunnable ? 1 : 0);
-  Serial.print('/');
-  Serial.print(altSelectedState.linkSelectedConfigRunnable ? 1 : 0);
+  if (emitSerial) {
+    Serial.print(F("hcivprselectdemo ok="));
+    Serial.print(ok ? 1 : 0);
+    Serial.print(F(" pumped="));
+    Serial.print(pumpCount);
+    Serial.print(F(" create=0x"));
+    Serial.print(createStatus, HEX);
+    Serial.print(F(" sec=0x"));
+    Serial.print(securityStatus, HEX);
+    Serial.print(F(" set=0x"));
+    Serial.print(setAltArmStatus, HEX);
+    Serial.print('/');
+    Serial.print(setAltStatus, HEX);
+    Serial.print('/');
+    Serial.print(setBaseStatus, HEX);
+    Serial.print('/');
+    Serial.print(setAltAgainStatus, HEX);
+    Serial.print(F(" polls="));
+    Serial.print(initPolls);
+    Serial.print('/');
+    Serial.print(createPolls);
+    Serial.print('/');
+    Serial.print(securityPolls);
+    Serial.print('/');
+    Serial.print(armPolls);
+    Serial.print('/');
+    Serial.print(selectBasePolls);
+    Serial.print('/');
+    Serial.print(selectAltPolls);
+    Serial.print(F(" slots="));
+    Serial.print(initialState.linkSlot0ConfigId);
+    Serial.print('/');
+    Serial.print(initialState.linkSlot1ConfigId);
+    Serial.print('/');
+    Serial.print(initialState.linkPreviousConfigId);
+    Serial.print('>');
+    Serial.print(createdState.linkSlot0ConfigId);
+    Serial.print('/');
+    Serial.print(createdState.linkSlot1ConfigId);
+    Serial.print('/');
+    Serial.print(createdState.linkPreviousConfigId);
+    Serial.print('>');
+    Serial.print(securedState.linkSlot0ConfigId);
+    Serial.print('/');
+    Serial.print(securedState.linkSlot1ConfigId);
+    Serial.print('/');
+    Serial.print(securedState.linkPreviousConfigId);
+    Serial.print('>');
+    Serial.print(armedState.linkSlot0ConfigId);
+    Serial.print('/');
+    Serial.print(armedState.linkSlot1ConfigId);
+    Serial.print('/');
+    Serial.print(armedState.linkPreviousConfigId);
+    Serial.print('>');
+    Serial.print(baseSelectedState.linkSlot0ConfigId);
+    Serial.print('/');
+    Serial.print(baseSelectedState.linkSlot1ConfigId);
+    Serial.print('/');
+    Serial.print(baseSelectedState.linkPreviousConfigId);
+    Serial.print('>');
+    Serial.print(altSelectedState.linkSlot0ConfigId);
+    Serial.print('/');
+    Serial.print(altSelectedState.linkSlot1ConfigId);
+    Serial.print('/');
+    Serial.print(altSelectedState.linkPreviousConfigId);
+    Serial.print(F(" active="));
+    Serial.print(initialState.linkActivePrimarySlotIndex);
+    Serial.print('>');
+    Serial.print(createdState.linkActivePrimarySlotIndex);
+    Serial.print('>');
+    Serial.print(securedState.linkActivePrimarySlotIndex);
+    Serial.print('>');
+    Serial.print(armedState.linkActivePrimarySlotIndex);
+    Serial.print('>');
+    Serial.print(baseSelectedState.linkActivePrimarySlotIndex);
+    Serial.print('>');
+    Serial.print(altSelectedState.linkActivePrimarySlotIndex);
+    Serial.print(F(" free="));
+    Serial.print(initialState.linkFreePrimarySlotCount);
+    Serial.print('>');
+    Serial.print(createdState.linkFreePrimarySlotCount);
+    Serial.print('>');
+    Serial.print(securedState.linkFreePrimarySlotCount);
+    Serial.print('>');
+    Serial.print(armedState.linkFreePrimarySlotCount);
+    Serial.print('>');
+    Serial.print(baseSelectedState.linkFreePrimarySlotCount);
+    Serial.print('>');
+    Serial.print(altSelectedState.linkFreePrimarySlotCount);
+    Serial.print(F(" count="));
+    Serial.print(initialState.linkStoredConfigCount);
+    Serial.print('>');
+    Serial.print(createdState.linkStoredConfigCount);
+    Serial.print('>');
+    Serial.print(securedState.linkStoredConfigCount);
+    Serial.print('>');
+    Serial.print(armedState.linkStoredConfigCount);
+    Serial.print('>');
+    Serial.print(baseSelectedState.linkStoredConfigCount);
+    Serial.print('>');
+    Serial.print(altSelectedState.linkStoredConfigCount);
+    Serial.print(F(" auth="));
+    Serial.print(initialState.linkAuthority0ConfigId);
+    Serial.print('/');
+    Serial.print(initialState.linkAuthority1ConfigId);
+    Serial.print('/');
+    Serial.print(initialState.linkAuthority2ConfigId);
+    Serial.print('>');
+    Serial.print(createdState.linkAuthority0ConfigId);
+    Serial.print('/');
+    Serial.print(createdState.linkAuthority1ConfigId);
+    Serial.print('/');
+    Serial.print(createdState.linkAuthority2ConfigId);
+    Serial.print('>');
+    Serial.print(securedState.linkAuthority0ConfigId);
+    Serial.print('/');
+    Serial.print(securedState.linkAuthority1ConfigId);
+    Serial.print('/');
+    Serial.print(securedState.linkAuthority2ConfigId);
+    Serial.print('>');
+    Serial.print(armedState.linkAuthority0ConfigId);
+    Serial.print('/');
+    Serial.print(armedState.linkAuthority1ConfigId);
+    Serial.print('/');
+    Serial.print(armedState.linkAuthority2ConfigId);
+    Serial.print('>');
+    Serial.print(baseSelectedState.linkAuthority0ConfigId);
+    Serial.print('/');
+    Serial.print(baseSelectedState.linkAuthority1ConfigId);
+    Serial.print('/');
+    Serial.print(baseSelectedState.linkAuthority2ConfigId);
+    Serial.print('>');
+    Serial.print(altSelectedState.linkAuthority0ConfigId);
+    Serial.print('/');
+    Serial.print(altSelectedState.linkAuthority1ConfigId);
+    Serial.print('/');
+    Serial.print(altSelectedState.linkAuthority2ConfigId);
+    Serial.print(F(" cfg="));
+    Serial.print(initialState.linkConfigId);
+    Serial.print('>');
+    Serial.print(createdState.linkConfigId);
+    Serial.print('>');
+    Serial.print(securedState.linkConfigId);
+    Serial.print('>');
+    Serial.print(armedState.linkConfigId);
+    Serial.print('>');
+    Serial.print(baseSelectedState.linkConfigId);
+    Serial.print('>');
+    Serial.print(altSelectedState.linkConfigId);
+    Serial.print(F(" run="));
+    Serial.print(initialState.linkSelectedConfigRunnable ? 1 : 0);
+    Serial.print('/');
+    Serial.print(createdState.linkSelectedConfigRunnable ? 1 : 0);
+    Serial.print('/');
+    Serial.print(securedState.linkSelectedConfigRunnable ? 1 : 0);
+    Serial.print('/');
+    Serial.print(armedState.linkSelectedConfigRunnable ? 1 : 0);
+    Serial.print('/');
+    Serial.print(baseSelectedState.linkSelectedConfigRunnable ? 1 : 0);
+    Serial.print('/');
+    Serial.print(altSelectedState.linkSelectedConfigRunnable ? 1 : 0);
   Serial.print(F(" slot_run="));
   Serial.print(initialState.linkSlot0Runnable ? 1 : 0);
   Serial.print(initialState.linkSlot1Runnable ? '1' : '0');
@@ -7072,6 +7178,7 @@ void printHciVprSelectDemo() {
   Serial.print(vprHost.workflowState().lastStatus, HEX);
   Serial.print(F(" dist_m="));
   Serial.println(F("na"));
+  }
 }
 
 void printHciVprThirdConfigDemo() {

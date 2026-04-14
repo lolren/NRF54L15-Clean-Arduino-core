@@ -433,13 +433,18 @@ Immediate next follow-up from this checkpoint:
     demoted back into `previous` before the run starts
   - `hcivprmulticfgdemo` still stays green after that overflow-slot slice
 
-The next slice after this checkpoint is:
+That retained-authority slice is now in:
 
-- richer controller-owned retained-config authority reporting on VPR above the
-  current selection/remove-driven promotion rules
-- specifically, make the controller report which retained config set it now
-  considers authoritative after longer direct-control sequences, instead of the
-  host inferring that from raw slot snapshots alone
+- VPR reports explicit `selected > fallback1 > fallback2` retained-config
+  authority IDs through the shared-state seam
+- `hcivprselectdemo` now validates that controller-owned authority order on the
+  normal initiator path
+- the hard validation path now uses a retained `.noinit` summary build, so this
+  checkpoint no longer depends on live CDC capture timing
 
-This is the shortest path that advances the repo from "working VPR-backed CS
-demo" to "real BLE controller work is starting to move off CPUAPP".
+The next slice after this checkpoint is broader than retained-config policy:
+
+- start moving from the strong CS-specific VPR path toward a more general
+  BLE-controller-facing VPR service boundary
+- keep reducing sketch/host-side inference so CPUAPP acts more like a boundary
+  layer and less like the place that still owns controller policy
