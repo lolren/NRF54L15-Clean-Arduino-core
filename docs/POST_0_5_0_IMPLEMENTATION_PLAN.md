@@ -64,8 +64,9 @@ Current checkpoint inside Phase 2:
 
 - the generic VPR service now has its first BLE-controller-facing skeleton
   slice through `VprBleLegacyAdvertisingProbe`
-- that slice owns legacy non-connectable advertising scheduler state and async
-  event publication on VPR
+- that slice owns legacy non-connectable advertising scheduler state, retained
+  legacy advertising payload storage/readback, and async event publication on
+  VPR
 - the actual BLE radio launch path is still CPUAPP-owned, so the next Phase 2
   step should be a connected controller responsibility, not another scheduler
   probe

@@ -9,6 +9,8 @@ constexpr uint8_t kDefaultChannelMask = 0x07U;
 constexpr uint32_t kEventTimeoutMs = 2500U;
 constexpr uint32_t kProbeSummaryMagic = 0x56424150UL;
 constexpr uint32_t kProbeSummaryVersion = 1U;
+constexpr uint8_t kDefaultAdvData[] = {'N', 'R', 'F', '5', '4', '-', 'V',
+                                       'P', 'R', '-', 'A', 'D', 'V'};
 
 struct VprBleLegacyAdvertisingProbeSummary {
   uint32_t magic;
@@ -29,6 +31,10 @@ struct VprBleLegacyAdvertisingProbeSummary {
   uint32_t state1LastMask;
   uint32_t state1EventCount;
   uint32_t state1DroppedEvents;
+  uint32_t data0Len;
+  uint32_t data1Len;
+  uint32_t data0Hash;
+  uint32_t data1Hash;
   uint32_t event0Mask;
   uint32_t event0Count;
   uint32_t event0Sequence;
@@ -45,11 +51,22 @@ VprControllerServiceHost g_service(&g_vpr);
 VprControllerServiceCapabilities g_caps{};
 VprBleLegacyAdvertisingState g_state0{};
 VprBleLegacyAdvertisingState g_state1{};
+VprBleLegacyAdvertisingData g_data0{};
+VprBleLegacyAdvertisingData g_data1{};
 VprBleLegacyAdvertisingEvent g_event0{};
 VprBleLegacyAdvertisingEvent g_event1{};
 uint32_t g_hostDropCount = 0U;
 bool g_lastProbeOk = false;
 bool g_lastRandomDelay = false;
+
+uint32_t fnv1a32(const uint8_t* data, size_t len) {
+  uint32_t hash = 0x811C9DC5UL;
+  for (size_t i = 0; i < len; ++i) {
+    hash ^= data[i];
+    hash *= 0x01000193UL;
+  }
+  return hash;
+}
 
 void initializeProbeSummary() {
   if (g_probeSummary.magic != kProbeSummaryMagic ||
@@ -76,6 +93,10 @@ void syncProbeSummary(bool completed = false) {
   g_probeSummary.state1LastMask = g_state1.lastChannelMask;
   g_probeSummary.state1EventCount = g_state1.eventCount;
   g_probeSummary.state1DroppedEvents = g_state1.droppedEvents;
+  g_probeSummary.data0Len = g_data0.length;
+  g_probeSummary.data1Len = g_data1.length;
+  g_probeSummary.data0Hash = fnv1a32(g_data0.bytes, g_data0.length);
+  g_probeSummary.data1Hash = fnv1a32(g_data1.bytes, g_data1.length);
   g_probeSummary.event0Mask = g_event0.channelMask;
   g_probeSummary.event0Count = g_event0.eventCount;
   g_probeSummary.event0Sequence = g_event0.sequence;
@@ -101,12 +122,20 @@ bool runProbe(bool rebootService, bool addRandomDelay) {
   memset(&g_caps, 0, sizeof(g_caps));
   memset(&g_state0, 0, sizeof(g_state0));
   memset(&g_state1, 0, sizeof(g_state1));
+  memset(&g_data0, 0, sizeof(g_data0));
+  memset(&g_data1, 0, sizeof(g_data1));
   memset(&g_event0, 0, sizeof(g_event0));
   memset(&g_event1, 0, sizeof(g_event1));
   g_hostDropCount = 0U;
   syncProbeSummary(false);
 
   if (!ensureService(rebootService)) {
+    return false;
+  }
+  if (!g_service.writeBleLegacyAdvertisingData(kDefaultAdvData,
+                                               sizeof(kDefaultAdvData),
+                                               &g_data0) ||
+      !g_service.readBleLegacyAdvertisingData(&g_data1)) {
     return false;
   }
   if (!g_service.configureBleLegacyAdvertising(true, kDefaultIntervalTicks,
@@ -125,6 +154,12 @@ bool runProbe(bool rebootService, bool addRandomDelay) {
       (g_caps.opMask & VprControllerServiceHost::kOpBleLegacyAdvertisingConfigure) != 0U &&
       (g_caps.opMask & VprControllerServiceHost::kOpBleLegacyAdvertisingReadState) != 0U &&
       (g_caps.opMask & VprControllerServiceHost::kOpBleLegacyAdvertisingEvent) != 0U &&
+      (g_caps.opMask & VprControllerServiceHost::kOpBleLegacyAdvertisingWriteData) != 0U &&
+      (g_caps.opMask & VprControllerServiceHost::kOpBleLegacyAdvertisingReadData) != 0U &&
+      g_data0.length == sizeof(kDefaultAdvData) &&
+      g_data1.length == sizeof(kDefaultAdvData) &&
+      memcmp(g_data0.bytes, kDefaultAdvData, sizeof(kDefaultAdvData)) == 0 &&
+      memcmp(g_data1.bytes, kDefaultAdvData, sizeof(kDefaultAdvData)) == 0 &&
       g_state0.enabled && g_state1.enabled &&
       g_state0.channelMask == kDefaultChannelMask &&
       g_state1.channelMask == kDefaultChannelMask &&
@@ -173,6 +208,10 @@ void printStatus() {
   Serial.print(g_state1.eventCount);
   Serial.print(" drop=");
   Serial.print(g_state1.droppedEvents);
+  Serial.print(" data=");
+  Serial.print(g_data1.length);
+  Serial.print("@0x");
+  Serial.print(fnv1a32(g_data1.bytes, g_data1.length), HEX);
   Serial.print(" host_drop=");
   Serial.print(g_hostDropCount);
   Serial.print(" ev0=");

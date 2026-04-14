@@ -197,6 +197,11 @@ struct VprBleLegacyAdvertisingState {
   uint32_t droppedEvents;
 };
 
+struct VprBleLegacyAdvertisingData {
+  uint8_t length;
+  uint8_t bytes[31];
+};
+
 struct VprBleLegacyAdvertisingEvent {
   uint8_t flags;
   uint8_t channelMask;
@@ -226,6 +231,8 @@ class VprControllerServiceHost {
   static constexpr uint16_t kVendorTickerEventConfigureOpcode = 0xFCF9U;
   static constexpr uint16_t kVendorBleLegacyAdvertisingConfigureOpcode = 0xFCFAU;
   static constexpr uint16_t kVendorBleLegacyAdvertisingReadStateOpcode = 0xFCFBU;
+  static constexpr uint16_t kVendorBleLegacyAdvertisingWriteDataOpcode = 0xFCFCU;
+  static constexpr uint16_t kVendorBleLegacyAdvertisingReadDataOpcode = 0xFCFDU;
   static constexpr uint8_t kVendorEventCode = 0xFFU;
   static constexpr uint8_t kVendorEventTicker = 0xA0U;
   static constexpr uint8_t kVendorEventBleLegacyAdvertising = 0xA1U;
@@ -242,6 +249,8 @@ class VprControllerServiceHost {
   static constexpr uint32_t kOpBleLegacyAdvertisingConfigure = (1UL << 10U);
   static constexpr uint32_t kOpBleLegacyAdvertisingReadState = (1UL << 11U);
   static constexpr uint32_t kOpBleLegacyAdvertisingEvent = (1UL << 12U);
+  static constexpr uint32_t kOpBleLegacyAdvertisingWriteData = (1UL << 13U);
+  static constexpr uint32_t kOpBleLegacyAdvertisingReadData = (1UL << 14U);
 
   explicit VprControllerServiceHost(VprSharedTransportStream* transport = nullptr);
 
@@ -292,6 +301,10 @@ class VprControllerServiceHost {
                                      bool addRandomDelay,
                                      VprBleLegacyAdvertisingState* state = nullptr);
   bool readBleLegacyAdvertisingState(VprBleLegacyAdvertisingState* state);
+  bool writeBleLegacyAdvertisingData(const uint8_t* data,
+                                     size_t len,
+                                     VprBleLegacyAdvertisingData* applied = nullptr);
+  bool readBleLegacyAdvertisingData(VprBleLegacyAdvertisingData* data);
   bool waitBleLegacyAdvertisingEvent(VprBleLegacyAdvertisingEvent* event,
                                      uint32_t timeoutMs = 5000UL);
   bool popPendingH4Event(uint8_t* packet, size_t packetSize, size_t* packetLen);

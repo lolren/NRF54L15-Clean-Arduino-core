@@ -41,9 +41,11 @@
 #define VPR_HCI_OP_VENDOR_TICKER_EVENT_CONFIGURE 0xFCF9U
 #define VPR_HCI_OP_VENDOR_BLE_LEGACY_ADV_CONFIGURE 0xFCFAU
 #define VPR_HCI_OP_VENDOR_BLE_LEGACY_ADV_READ_STATE 0xFCFBU
+#define VPR_HCI_OP_VENDOR_BLE_LEGACY_ADV_WRITE_DATA 0xFCFCU
+#define VPR_HCI_OP_VENDOR_BLE_LEGACY_ADV_READ_DATA 0xFCFDU
 
 #define VPR_VENDOR_SERVICE_VERSION_MAJOR 1U
-#define VPR_VENDOR_SERVICE_VERSION_MINOR 8U
+#define VPR_VENDOR_SERVICE_VERSION_MINOR 9U
 #define VPR_VENDOR_OP_PING (1UL << 0U)
 #define VPR_VENDOR_OP_INFO (1UL << 1U)
 #define VPR_VENDOR_OP_FNV1A32 (1UL << 2U)
@@ -57,6 +59,8 @@
 #define VPR_VENDOR_OP_BLE_LEGACY_ADV_CONFIGURE (1UL << 10U)
 #define VPR_VENDOR_OP_BLE_LEGACY_ADV_READ_STATE (1UL << 11U)
 #define VPR_VENDOR_OP_BLE_LEGACY_ADV_EVENT (1UL << 12U)
+#define VPR_VENDOR_OP_BLE_LEGACY_ADV_WRITE_DATA (1UL << 13U)
+#define VPR_VENDOR_OP_BLE_LEGACY_ADV_READ_DATA (1UL << 14U)
 #define VPR_VENDOR_TRANSPORT_FLAG_RESTORED_FROM_HIBERNATE 0x80U
 #define VPR_VENDOR_EVENT_TICKER 0xA0U
 #define VPR_VENDOR_EVENT_BLE_LEGACY_ADV 0xA1U
@@ -131,6 +135,8 @@ static uint8_t g_ble_legacy_adv_channel_mask = 0x07U;
 static uint8_t g_ble_legacy_adv_last_channel_mask = 0U;
 static uint8_t g_ble_legacy_adv_next_channel_index = 0U;
 static uint8_t g_ble_legacy_adv_add_random_delay = 0U;
+static uint8_t g_ble_legacy_adv_data_len = 0U;
+static uint8_t g_ble_legacy_adv_data[31];
 static vpr_ble_legacy_adv_event_entry_t
     g_ble_legacy_adv_event_queue[VPR_BLE_LEGACY_ADV_EVENT_QUEUE_DEPTH];
 static uint32_t g_ble_legacy_adv_event_queue_head = 0U;
@@ -2560,7 +2566,9 @@ static size_t build_vendor_capabilities_complete_payload(uint8_t *payload, size_
              VPR_VENDOR_OP_TICKER_EVENT_CONFIGURE |
              VPR_VENDOR_OP_BLE_LEGACY_ADV_CONFIGURE |
              VPR_VENDOR_OP_BLE_LEGACY_ADV_READ_STATE |
-             VPR_VENDOR_OP_BLE_LEGACY_ADV_EVENT);
+             VPR_VENDOR_OP_BLE_LEGACY_ADV_EVENT |
+             VPR_VENDOR_OP_BLE_LEGACY_ADV_WRITE_DATA |
+             VPR_VENDOR_OP_BLE_LEGACY_ADV_READ_DATA);
   write_le32(&payload[7], NRF54L15_VPR_TRANSPORT_MAX_HOST_DATA - 4U);
   return 11U;
 }
@@ -2756,6 +2764,23 @@ static size_t build_vendor_ble_legacy_adv_state_payload(uint8_t *payload,
   return 21U;
 }
 
+static size_t build_vendor_ble_legacy_adv_data_payload(uint8_t *payload,
+                                                       size_t max_len,
+                                                       uint8_t status) {
+  const uint8_t len = (g_ble_legacy_adv_data_len <= sizeof(g_ble_legacy_adv_data))
+                          ? g_ble_legacy_adv_data_len
+                          : (uint8_t)sizeof(g_ble_legacy_adv_data);
+  if (payload == NULL || max_len < (size_t)(2U + len)) {
+    return 0U;
+  }
+  payload[0] = status;
+  payload[1] = len;
+  if (len != 0U) {
+    bytes_copy(&payload[2], g_ble_legacy_adv_data, len);
+  }
+  return (size_t)(2U + len);
+}
+
 static size_t build_vendor_ble_legacy_adv_configure_complete_payload(uint8_t *payload,
                                                                      size_t max_len) {
   if (g_host_transport->hostLen >= 11U) {
@@ -2783,6 +2808,31 @@ static size_t build_vendor_ble_legacy_adv_configure_complete_payload(uint8_t *pa
         g_vpr_transport->heartbeat + g_ble_legacy_adv_interval_ticks;
   }
   return build_vendor_ble_legacy_adv_state_payload(payload, max_len);
+}
+
+static size_t build_vendor_ble_legacy_adv_write_data_complete_payload(uint8_t *payload,
+                                                                      size_t max_len) {
+  uint8_t status = 0x00U;
+  if (g_host_transport->hostLen < 5U) {
+    status = 0x12U;
+  } else {
+    const uint8_t len = g_host_transport->hostData[4];
+    if (len > sizeof(g_ble_legacy_adv_data) ||
+        g_host_transport->hostLen < (uint16_t)(5U + len)) {
+      status = 0x12U;
+    } else {
+      g_ble_legacy_adv_data_len = len;
+      if (len != 0U) {
+        const uint8_t *host_data = (const uint8_t *)&g_host_transport->hostData[5];
+        bytes_copy(g_ble_legacy_adv_data, host_data, len);
+      }
+      if (len < sizeof(g_ble_legacy_adv_data)) {
+        bytes_zero(&g_ble_legacy_adv_data[len],
+                   sizeof(g_ble_legacy_adv_data) - len);
+      }
+    }
+  }
+  return build_vendor_ble_legacy_adv_data_payload(payload, max_len, status);
 }
 
 static size_t build_vendor_ble_legacy_adv_event_payload(
@@ -3283,6 +3333,35 @@ static bool publish_builtin_response_for_opcode(uint16_t opcode) {
       offset += len;
       break;
     }
+    case VPR_HCI_OP_VENDOR_BLE_LEGACY_ADV_WRITE_DATA: {
+      size_t len =
+          build_vendor_ble_legacy_adv_write_data_complete_payload(payload, sizeof(payload));
+      if (len == 0U) {
+        return false;
+      }
+      len = append_h4_command_complete_payload((uint8_t *)g_vpr_transport->vprData + offset,
+                                               NRF54L15_VPR_TRANSPORT_MAX_VPR_DATA - offset,
+                                               opcode, payload, len);
+      if (len == 0U) {
+        return false;
+      }
+      offset += len;
+      break;
+    }
+    case VPR_HCI_OP_VENDOR_BLE_LEGACY_ADV_READ_DATA: {
+      size_t len = build_vendor_ble_legacy_adv_data_payload(payload, sizeof(payload), 0x00U);
+      if (len == 0U) {
+        return false;
+      }
+      len = append_h4_command_complete_payload((uint8_t *)g_vpr_transport->vprData + offset,
+                                               NRF54L15_VPR_TRANSPORT_MAX_VPR_DATA - offset,
+                                               opcode, payload, len);
+      if (len == 0U) {
+        return false;
+      }
+      offset += len;
+      break;
+    }
 #endif
     default:
       return false;
@@ -3647,6 +3726,8 @@ __attribute__((noreturn, used, externally_visible)) void vpr_main(void) {
   g_ble_legacy_adv_last_channel_mask = 0U;
   g_ble_legacy_adv_next_channel_index = 0U;
   g_ble_legacy_adv_add_random_delay = 0U;
+  g_ble_legacy_adv_data_len = 0U;
+  bytes_zero(g_ble_legacy_adv_data, sizeof(g_ble_legacy_adv_data));
   clear_ble_legacy_adv_event_queue();
   g_pending_cs_result_stage = 0U;
   g_pending_hibernate = 0U;

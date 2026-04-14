@@ -269,8 +269,8 @@ Working and validated:
 
 - shared-memory boot/control path on the XIAO nRF54L15 target
 - reusable `VprSharedTransportStream` and `VprControllerServiceHost` wrappers
-- built-in generic VPR service currently reporting `svc=1.8` /
-  `opmask=0x1FFF`
+- built-in generic VPR service currently reporting `svc=1.9` /
+  `opmask=0x7FFF`
 - validated non-CS offload/service probes:
   `VprSharedTransportProbe`, `VprFnv1aOffloadProbe`,
   `VprCrc32OffloadProbe`, `VprCrc32cOffloadProbe`,
@@ -281,9 +281,9 @@ Working and validated:
 - the VPR probe family now also appears directly in the normal
   `File -> Examples -> Nrf54L15-Clean-Implementation -> VPR` library menu
   instead of only in the board-package `Peripherals` examples
-- first broader BLE-controller-facing generic service slice now exists:
-  a VPR-owned legacy non-connectable advertising scheduler state and async
-  event path exposed through `VprControllerServiceHost`
+- first broader BLE-controller-facing generic service slices now exist:
+  a VPR-owned legacy non-connectable advertising scheduler, retained adv-data
+  storage, and async event path exposed through `VprControllerServiceHost`
 - queued unsolicited VPR ticker/vendor events on the host side instead of the
   old effectively single-depth handling
 - repeated loaded-image restart validated on both attached boards through

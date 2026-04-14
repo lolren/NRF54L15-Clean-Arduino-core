@@ -40,8 +40,8 @@ controller-service path:
 
 Current validated generic service state on hardware:
 
-- `svc=1.8`
-- `opmask=0x1FFF`
+- `svc=1.9`
+- `opmask=0x7FFF`
 - `max_in=124`
 - cold-boot command path is good
 - autonomous ticker state progresses on VPR after the configure command returns
@@ -49,14 +49,18 @@ Current validated generic service state on hardware:
   `VprTickerAsyncEventProbe`
 - the first broader BLE-controller-facing generic service slice now exists:
   - VPR-owned legacy non-connectable advertising scheduler state
+  - VPR-owned retained legacy advertising payload storage/readback
   - VPR-owned legacy advertising async event publication
   - host-side configure/read/wait APIs through `VprControllerServiceHost`
-  - proof is in `/home/lolren/Desktop/Nrf54L15/.build/vpr_ble_legacy_adv_runtime/read_summary.log`
+  - proof is in `/home/lolren/Desktop/Nrf54L15/.build/vpr_ble_legacy_adv_payload_runtime/read_summary.log`
   - current SWD-readable summary decodes to:
     - `probeOk=1`
-    - `svc=1.8`
-    - `opmask=0x1FFF`
+    - `svc=1.9`
+    - `opmask=0x7FFF`
     - `state1Mask=0x07`
+    - `data0Len=13`
+    - `data1Len=13`
+    - `data0Hash=data1Hash=0x11A95D51`
     - `event0Mask=0x01`
     - `event1Mask=0x02`
     - `event1Count=2`
@@ -960,7 +964,7 @@ When resuming this work:
       `/home/lolren/Desktop/Nrf54L15/.build/cs_vpr_starthost_compile`
 - The two attached boards were restored to `VprSharedTransportProbe` after the
   resume/restart experiments and both were left healthy on the known-good
-  `svc=1.8` / `opmask=0x1FFF` path.
+  `svc=1.9` / `opmask=0x7FFF` path.
 - The newer resume logs changed that picture during investigation:
   - `/dev/ttyACM0` stayed on the known-good `VprSharedTransportProbe` path
   - `/dev/ttyACM1` was used for the evolving `VprHibernateResumeProbe`

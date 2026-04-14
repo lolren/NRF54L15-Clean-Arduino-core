@@ -1826,6 +1826,79 @@ bool VprControllerServiceHost::readBleLegacyAdvertisingState(
   return true;
 }
 
+bool VprControllerServiceHost::writeBleLegacyAdvertisingData(
+    const uint8_t* data,
+    size_t len,
+    VprBleLegacyAdvertisingData* applied) {
+  if ((data == nullptr && len != 0U) || len > 31U) {
+    return false;
+  }
+
+  uint8_t params[32];
+  memset(params, 0, sizeof(params));
+  params[0] = static_cast<uint8_t>(len);
+  if (len != 0U) {
+    memcpy(&params[1], data, len);
+  }
+
+  uint8_t response[64];
+  size_t responseLen = 0U;
+  if (!sendHciCommand(kVendorBleLegacyAdvertisingWriteDataOpcode, params,
+                      len + 1U, response, sizeof(response), &responseLen)) {
+    return false;
+  }
+
+  const uint8_t* payload = nullptr;
+  size_t payloadLen = 0U;
+  if (!parseCommandComplete(response, responseLen,
+                            kVendorBleLegacyAdvertisingWriteDataOpcode, &payload,
+                            &payloadLen) ||
+      payloadLen < 2U || payload[0] != 0U || payload[1] > 31U ||
+      payloadLen < (size_t)(2U + payload[1])) {
+    return false;
+  }
+
+  if (applied != nullptr) {
+    memset(applied, 0, sizeof(*applied));
+    applied->length = payload[1];
+    if (applied->length != 0U) {
+      memcpy(applied->bytes, &payload[2], applied->length);
+    }
+  }
+  return true;
+}
+
+bool VprControllerServiceHost::readBleLegacyAdvertisingData(
+    VprBleLegacyAdvertisingData* data) {
+  if (data == nullptr) {
+    return false;
+  }
+
+  uint8_t response[64];
+  size_t responseLen = 0U;
+  if (!sendHciCommand(kVendorBleLegacyAdvertisingReadDataOpcode, nullptr, 0U,
+                      response, sizeof(response), &responseLen)) {
+    return false;
+  }
+
+  const uint8_t* payload = nullptr;
+  size_t payloadLen = 0U;
+  if (!parseCommandComplete(response, responseLen,
+                            kVendorBleLegacyAdvertisingReadDataOpcode, &payload,
+                            &payloadLen) ||
+      payloadLen < 2U || payload[0] != 0U || payload[1] > 31U ||
+      payloadLen < (size_t)(2U + payload[1])) {
+    return false;
+  }
+
+  memset(data, 0, sizeof(*data));
+  data->length = payload[1];
+  if (data->length != 0U) {
+    memcpy(data->bytes, &payload[2], data->length);
+  }
+  return true;
+}
+
 bool VprControllerServiceHost::waitBleLegacyAdvertisingEvent(
     VprBleLegacyAdvertisingEvent* event,
     uint32_t timeoutMs) {
