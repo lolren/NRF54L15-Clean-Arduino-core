@@ -1216,6 +1216,10 @@ class BleCsControllerVprHost {
   bool bootTransport(uint32_t readySpinLimit = 100000UL);
   bool refreshLinkSession();
   bool beginHost(uint16_t connHandle, const BleCsControllerVprHostConfig& config);
+  bool beginFreshHost(uint16_t connHandle,
+                      const BleCsControllerVprHostConfig& config,
+                      uint8_t maxPumpCount,
+                      uint8_t* outPumpCount);
   bool sendDirectHciCommand(uint16_t opcode,
                             const uint8_t* params,
                             size_t paramsLen,

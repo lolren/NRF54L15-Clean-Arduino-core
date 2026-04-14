@@ -3802,6 +3802,32 @@ bool BleCsControllerVprHost::beginHost(uint16_t connHandle,
   return ok;
 }
 
+bool BleCsControllerVprHost::beginFreshHost(
+    uint16_t connHandle,
+    const BleCsControllerVprHostConfig& config,
+    uint8_t maxPumpCount,
+    uint8_t* outPumpCount) {
+  if (outPumpCount != nullptr) {
+    *outPumpCount = 0U;
+  }
+
+  bool ok = resetTransport(true);
+  ok = ok && loadDefaultTransportImage();
+  ok = ok && bootTransport();
+  ok = ok && beginHost(connHandle, config);
+
+  while (ok && !ready() && !failed()) {
+    if (outPumpCount != nullptr && *outPumpCount >= maxPumpCount) {
+      break;
+    }
+    ok = loopOnce();
+    if (outPumpCount != nullptr) {
+      *outPumpCount = static_cast<uint8_t>(*outPumpCount + 1U);
+    }
+  }
+  return ok;
+}
+
 bool BleCsControllerVprHost::sendDirectHciCommand(uint16_t opcode,
                                                   const uint8_t* params,
                                                   size_t paramsLen,

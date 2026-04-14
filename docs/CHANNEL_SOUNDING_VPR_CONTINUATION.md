@@ -921,6 +921,16 @@ When resuming this work:
       out of CPUAPP sketch code and into the reusable VPR host boundary
     - repo-local compile proof for this lifecycle-wait cleanup is:
       `/home/lolren/Desktop/Nrf54L15/.build/cs_vpr_lifecyclewait_compile`
+  - reusable host bring-up now also lives on the VPR host boundary:
+    - `BleCsControllerVprHost::beginFreshHost(...)` now owns the common
+      `reset transport -> load default image -> boot -> begin host -> pump
+      until ready` sequence
+    - most VPR demos in `BleChannelSoundingInitiator.ino` now use that helper
+      instead of each carrying their own startup loop boilerplate
+    - the remaining manual startup paths are the intentionally special ones
+      that still need extra transport diagnostics around bring-up
+    - repo-local compile proof for this startup cleanup is:
+      `/home/lolren/Desktop/Nrf54L15/.build/cs_vpr_starthost_compile`
 - The two attached boards were restored to `VprSharedTransportProbe` after the
   resume/restart experiments and both were left healthy on the known-good
   `svc=1.7` / `opmask=0x3FF` path.

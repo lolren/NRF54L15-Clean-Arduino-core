@@ -3059,16 +3059,9 @@ void printHciVprMultiDemo() {
   hostConfig.session.workflow.procedureParameters.minProcedureInterval = 140U;
   hostConfig.session.workflow.procedureParameters.maxProcedureInterval = 260U;
 
-  bool ok = vprHost.resetTransport(true);
-  ok = ok && vprHost.loadDefaultTransportImage();
-  ok = ok && vprHost.bootTransport();
-  ok = ok && vprHost.beginHost(kDemoConnHandle, hostConfig);
-
   uint8_t pumpCount = 0U;
-  while (ok && !vprHost.ready() && !vprHost.failed() && pumpCount < 48U) {
-    ok = vprHost.loopOnce();
-    ++pumpCount;
-  }
+  bool ok = vprHost.beginFreshHost(kDemoConnHandle, hostConfig, 48U, &pumpCount);
+
 
   ok = ok && vprHost.ready();
 
@@ -3304,16 +3297,9 @@ void printHciVprChunkDemo() {
   hostConfig.session.workflow.procedureParameters.maxProcedureCount = 1U;
   hostConfig.session.workflow.procedureParameters.maxProcedureLen = 12U;
 
-  bool ok = vprHost.resetTransport(true);
-  ok = ok && vprHost.loadDefaultTransportImage();
-  ok = ok && vprHost.bootTransport();
-  ok = ok && vprHost.beginHost(kDemoConnHandle, hostConfig);
-
   uint8_t pumpCount = 0U;
-  while (ok && !vprHost.ready() && !vprHost.failed() && pumpCount < 48U) {
-    ok = vprHost.loopOnce();
-    ++pumpCount;
-  }
+  bool ok = vprHost.beginFreshHost(kDemoConnHandle, hostConfig, 48U, &pumpCount);
+
 
   ok = ok && vprHost.ready();
 
@@ -3398,16 +3384,9 @@ void printHciVprContinueDemo() {
   hostConfig.session.workflow.procedureParameters.maxProcedureCount = 1U;
   hostConfig.session.workflow.procedureParameters.maxProcedureLen = 12U;
 
-  bool ok = vprHost.resetTransport(true);
-  ok = ok && vprHost.loadDefaultTransportImage();
-  ok = ok && vprHost.bootTransport();
-  ok = ok && vprHost.beginHost(kDemoConnHandle, hostConfig);
-
   uint8_t pumpCount = 0U;
-  while (ok && !vprHost.ready() && !vprHost.failed() && pumpCount < 64U) {
-    ok = vprHost.loopOnce();
-    ++pumpCount;
-  }
+  bool ok = vprHost.beginFreshHost(kDemoConnHandle, hostConfig, 64U, &pumpCount);
+
 
   ok = ok && vprHost.ready();
 
@@ -3509,16 +3488,9 @@ void printHciVprSubeventDemo() {
   hostConfig.session.workflow.procedureParameters.minSubeventLen = 0x000100UL;
   hostConfig.session.workflow.procedureParameters.maxSubeventLen = 0x000100UL;
 
-  bool ok = vprHost.resetTransport(true);
-  ok = ok && vprHost.loadDefaultTransportImage();
-  ok = ok && vprHost.bootTransport();
-  ok = ok && vprHost.beginHost(kDemoConnHandle, hostConfig);
-
   uint8_t pumpCount = 0U;
-  while (ok && !vprHost.ready() && !vprHost.failed() && pumpCount < 64U) {
-    ok = vprHost.loopOnce();
-    ++pumpCount;
-  }
+  bool ok = vprHost.beginFreshHost(kDemoConnHandle, hostConfig, 64U, &pumpCount);
+
 
   ok = ok && vprHost.ready();
 
@@ -3666,16 +3638,9 @@ void printHciVprMultiSubeventDemo() {
   hostConfig.session.workflow.procedureParameters.maxProcedureCount = 1U;
   hostConfig.session.workflow.procedureParameters.maxProcedureLen = 16U;
 
-  bool ok = vprHost.resetTransport(true);
-  ok = ok && vprHost.loadDefaultTransportImage();
-  ok = ok && vprHost.bootTransport();
-  ok = ok && vprHost.beginHost(kDemoConnHandle, hostConfig);
-
   uint8_t pumpCount = 0U;
-  while (ok && !vprHost.ready() && !vprHost.failed() && pumpCount < 64U) {
-    ok = vprHost.loopOnce();
-    ++pumpCount;
-  }
+  bool ok = vprHost.beginFreshHost(kDemoConnHandle, hostConfig, 64U, &pumpCount);
+
 
   ok = ok && vprHost.ready();
 
@@ -3782,16 +3747,9 @@ void printHciVprSubcountDemo() {
   hostConfig.session.workflow.procedureParameters.minSubeventLen = 0x000100UL;
   hostConfig.session.workflow.procedureParameters.maxSubeventLen = 0x000100UL;
 
-  bool ok = vprHost.resetTransport(true);
-  ok = ok && vprHost.loadDefaultTransportImage();
-  ok = ok && vprHost.bootTransport();
-  ok = ok && vprHost.beginHost(kDemoConnHandle, hostConfig);
-
   uint8_t pumpCount = 0U;
-  while (ok && !vprHost.ready() && !vprHost.failed() && pumpCount < 64U) {
-    ok = vprHost.loopOnce();
-    ++pumpCount;
-  }
+  bool ok = vprHost.beginFreshHost(kDemoConnHandle, hostConfig, 64U, &pumpCount);
+
 
   ok = ok && vprHost.ready();
 
@@ -3888,16 +3846,9 @@ void printHciVprAbortDemo() {
   hostConfig.session.workflow.procedureParameters.minProcedureInterval = 220U;
   hostConfig.session.workflow.procedureParameters.maxProcedureInterval = 320U;
 
-  bool ok = vprHost.resetTransport(true);
-  ok = ok && vprHost.loadDefaultTransportImage();
-  ok = ok && vprHost.bootTransport();
-  ok = ok && vprHost.beginHost(kDemoConnHandle, hostConfig);
-
   uint8_t pumpCount = 0U;
-  while (ok && !vprHost.ready() && !vprHost.failed() && pumpCount < 48U) {
-    ok = vprHost.loopOnce();
-    ++pumpCount;
-  }
+  bool ok = vprHost.beginFreshHost(kDemoConnHandle, hostConfig, 48U, &pumpCount);
+
 
   ok = ok && vprHost.ready();
 
@@ -4023,16 +3974,9 @@ void printHciVprManualDemo() {
   hostConfig.session.workflow.procedureParameters.minProcedureInterval = 220U;
   hostConfig.session.workflow.procedureParameters.maxProcedureInterval = 320U;
 
-  bool ok = vprHost.resetTransport(true);
-  ok = ok && vprHost.loadDefaultTransportImage();
-  ok = ok && vprHost.bootTransport();
-  ok = ok && vprHost.beginHost(kDemoConnHandle, hostConfig);
-
   uint8_t pumpCount = 0U;
-  while (ok && !vprHost.ready() && !vprHost.failed() && pumpCount < 48U) {
-    ok = vprHost.loopOnce();
-    ++pumpCount;
-  }
+  bool ok = vprHost.beginFreshHost(kDemoConnHandle, hostConfig, 48U, &pumpCount);
+
   ok = ok && vprHost.ready() && !vprHost.vprState().linkProcedureEnabled;
 
   uint8_t startStatus = 0xFFU;
@@ -4144,16 +4088,9 @@ void printHciVprReconfigDemo() {
   hostConfig.session.workflow.procedureParameters.minSubeventLen = 0x000100UL;
   hostConfig.session.workflow.procedureParameters.maxSubeventLen = 0x000100UL;
 
-  bool ok = vprHost.resetTransport(true);
-  ok = ok && vprHost.loadDefaultTransportImage();
-  ok = ok && vprHost.bootTransport();
-  ok = ok && vprHost.beginHost(kDemoConnHandle, hostConfig);
-
   uint8_t pumpCount = 0U;
-  while (ok && !vprHost.ready() && !vprHost.failed() && pumpCount < 48U) {
-    ok = vprHost.loopOnce();
-    ++pumpCount;
-  }
+  bool ok = vprHost.beginFreshHost(kDemoConnHandle, hostConfig, 48U, &pumpCount);
+
   ok = ok && vprHost.ready() && !vprHost.vprState().linkProcedureEnabled;
 
   const BleCsProcedureParameters tightParams = hostConfig.session.workflow.procedureParameters;
@@ -4285,16 +4222,9 @@ void printHciVprConfigSwapDemo() {
   hostConfig.session.workflow.procedureParameters.minSubeventLen = 0x000100UL;
   hostConfig.session.workflow.procedureParameters.maxSubeventLen = 0x000100UL;
 
-  bool ok = vprHost.resetTransport(true);
-  ok = ok && vprHost.loadDefaultTransportImage();
-  ok = ok && vprHost.bootTransport();
-  ok = ok && vprHost.beginHost(kDemoConnHandle, hostConfig);
-
   uint8_t pumpCount = 0U;
-  while (ok && !vprHost.ready() && !vprHost.failed() && pumpCount < 48U) {
-    ok = vprHost.loopOnce();
-    ++pumpCount;
-  }
+  bool ok = vprHost.beginFreshHost(kDemoConnHandle, hostConfig, 48U, &pumpCount);
+
   ok = ok && vprHost.ready();
 
   auto sendDirectReadCaps = [&](uint8_t* outStatus) -> bool {
@@ -4542,16 +4472,9 @@ void printHciVprMultiConfigDemo() {
   hostConfig.session.workflow.procedureParameters.minSubeventLen = 0x000100UL;
   hostConfig.session.workflow.procedureParameters.maxSubeventLen = 0x000100UL;
 
-  bool ok = vprHost.resetTransport(true);
-  ok = ok && vprHost.loadDefaultTransportImage();
-  ok = ok && vprHost.bootTransport();
-  ok = ok && vprHost.beginHost(kDemoConnHandle, hostConfig);
-
   uint8_t pumpCount = 0U;
-  while (ok && !vprHost.ready() && !vprHost.failed() && pumpCount < 48U) {
-    ok = vprHost.loopOnce();
-    ++pumpCount;
-  }
+  bool ok = vprHost.beginFreshHost(kDemoConnHandle, hostConfig, 48U, &pumpCount);
+
   ok = ok && vprHost.ready();
 
   auto sendDirectCreate = [&](const BleCsControllerCreateConfig& config,
@@ -4770,16 +4693,9 @@ void printHciVprStoredRemoveDemo() {
   hostConfig.session.workflow.procedureParameters.minSubeventLen = 0x000100UL;
   hostConfig.session.workflow.procedureParameters.maxSubeventLen = 0x000100UL;
 
-  bool ok = vprHost.resetTransport(true);
-  ok = ok && vprHost.loadDefaultTransportImage();
-  ok = ok && vprHost.bootTransport();
-  ok = ok && vprHost.beginHost(kDemoConnHandle, hostConfig);
-
   uint8_t pumpCount = 0U;
-  while (ok && !vprHost.ready() && !vprHost.failed() && pumpCount < 48U) {
-    ok = vprHost.loopOnce();
-    ++pumpCount;
-  }
+  bool ok = vprHost.beginFreshHost(kDemoConnHandle, hostConfig, 48U, &pumpCount);
+
   ok = ok && vprHost.ready();
 
   auto sendDirectCreate = [&](const BleCsControllerCreateConfig& config,
@@ -5058,16 +4974,9 @@ void printHciVprActiveRemoveDemo() {
   hostConfig.session.workflow.procedureParameters.minSubeventLen = 0x000100UL;
   hostConfig.session.workflow.procedureParameters.maxSubeventLen = 0x000100UL;
 
-  bool ok = vprHost.resetTransport(true);
-  ok = ok && vprHost.loadDefaultTransportImage();
-  ok = ok && vprHost.bootTransport();
-  ok = ok && vprHost.beginHost(kDemoConnHandle, hostConfig);
-
   uint8_t pumpCount = 0U;
-  while (ok && !vprHost.ready() && !vprHost.failed() && pumpCount < 48U) {
-    ok = vprHost.loopOnce();
-    ++pumpCount;
-  }
+  bool ok = vprHost.beginFreshHost(kDemoConnHandle, hostConfig, 48U, &pumpCount);
+
   ok = ok && vprHost.ready();
 
   auto sendDirectCreate = [&](const BleCsControllerCreateConfig& config,
@@ -5276,16 +5185,9 @@ void printHciVprInventoryDemo() {
   hostConfig.session.workflow.procedureParameters.minSubeventLen = 0x000100UL;
   hostConfig.session.workflow.procedureParameters.maxSubeventLen = 0x000100UL;
 
-  bool ok = vprHost.resetTransport(true);
-  ok = ok && vprHost.loadDefaultTransportImage();
-  ok = ok && vprHost.bootTransport();
-  ok = ok && vprHost.beginHost(kDemoConnHandle, hostConfig);
-
   uint8_t pumpCount = 0U;
-  while (ok && !vprHost.ready() && !vprHost.failed() && pumpCount < 48U) {
-    ok = vprHost.loopOnce();
-    ++pumpCount;
-  }
+  bool ok = vprHost.beginFreshHost(kDemoConnHandle, hostConfig, 48U, &pumpCount);
+
   ok = ok && vprHost.ready();
 
   auto sendDirectCreate = [&](const BleCsControllerCreateConfig& config,
@@ -5501,16 +5403,9 @@ void printHciVprSlotDemo() {
   BleCsControllerVprHostConfig hostConfig{};
   BleCsControllerVprHost::fillDemoConfig(&hostConfig);
 
-  bool ok = vprHost.resetTransport(true);
-  ok = ok && vprHost.loadDefaultTransportImage();
-  ok = ok && vprHost.bootTransport();
-  ok = ok && vprHost.beginHost(kDemoConnHandle, hostConfig);
-
   uint8_t pumpCount = 0U;
-  while (ok && !vprHost.ready() && !vprHost.failed() && pumpCount < 48U) {
-    ok = vprHost.loopOnce();
-    ++pumpCount;
-  }
+  bool ok = vprHost.beginFreshHost(kDemoConnHandle, hostConfig, 48U, &pumpCount);
+
   ok = ok && vprHost.ready();
 
   auto sendDirectCreate = [&](const BleCsControllerCreateConfig& config,
@@ -5782,16 +5677,9 @@ void printHciVprSelectDemo() {
   gVprSelectDemoSummary.stage = kSelectStageBooting;
 #endif
 
-  bool ok = vprHost.resetTransport(true);
-  ok = ok && vprHost.loadDefaultTransportImage();
-  ok = ok && vprHost.bootTransport();
-  ok = ok && vprHost.beginHost(kDemoConnHandle, hostConfig);
-
   uint8_t pumpCount = 0U;
-  while (ok && !vprHost.ready() && !vprHost.failed() && pumpCount < 48U) {
-    ok = vprHost.loopOnce();
-    ++pumpCount;
-  }
+  bool ok = vprHost.beginFreshHost(kDemoConnHandle, hostConfig, 48U, &pumpCount);
+
   ok = ok && vprHost.ready();
 
   auto sendDirectCreate = [&](const BleCsControllerCreateConfig& config,
@@ -6402,16 +6290,9 @@ void printHciVprThirdConfigDemo() {
   hostConfig.session.workflow.procedureParameters.minSubeventLen = 0x000100UL;
   hostConfig.session.workflow.procedureParameters.maxSubeventLen = 0x000100UL;
 
-  bool ok = vprHost.resetTransport(true);
-  ok = ok && vprHost.loadDefaultTransportImage();
-  ok = ok && vprHost.bootTransport();
-  ok = ok && vprHost.beginHost(kDemoConnHandle, hostConfig);
-
   uint8_t pumpCount = 0U;
-  while (ok && !vprHost.ready() && !vprHost.failed() && pumpCount < 48U) {
-    ok = vprHost.loopOnce();
-    ++pumpCount;
-  }
+  bool ok = vprHost.beginFreshHost(kDemoConnHandle, hostConfig, 48U, &pumpCount);
+
   ok = ok && vprHost.ready() && !vprHost.failed();
 
   auto sendDirectCreate = [&](const BleCsControllerCreateConfig& config,
@@ -6802,16 +6683,9 @@ void printHciVprEvictDemo() {
   hostConfig.session.workflow.procedureParameters.minSubeventLen = 0x000100UL;
   hostConfig.session.workflow.procedureParameters.maxSubeventLen = 0x000100UL;
 
-  bool ok = vprHost.resetTransport(true);
-  ok = ok && vprHost.loadDefaultTransportImage();
-  ok = ok && vprHost.bootTransport();
-  ok = ok && vprHost.beginHost(kDemoConnHandle, hostConfig);
-
   uint8_t pumpCount = 0U;
-  while (ok && !vprHost.ready() && !vprHost.failed() && pumpCount < 48U) {
-    ok = vprHost.loopOnce();
-    ++pumpCount;
-  }
+  bool ok = vprHost.beginFreshHost(kDemoConnHandle, hostConfig, 48U, &pumpCount);
+
   ok = ok && vprHost.ready() && !vprHost.failed();
 
   auto sendDirectCreate = [&](const BleCsControllerCreateConfig& config,
@@ -7224,16 +7098,9 @@ void printHciVprPromoteDemo() {
   hostConfig.session.workflow.procedureParameters.minSubeventLen = 0x000100UL;
   hostConfig.session.workflow.procedureParameters.maxSubeventLen = 0x000100UL;
 
-  bool ok = vprHost.resetTransport(true);
-  ok = ok && vprHost.loadDefaultTransportImage();
-  ok = ok && vprHost.bootTransport();
-  ok = ok && vprHost.beginHost(kDemoConnHandle, hostConfig);
-
   uint8_t pumpCount = 0U;
-  while (ok && !vprHost.ready() && !vprHost.failed() && pumpCount < 48U) {
-    ok = vprHost.loopOnce();
-    ++pumpCount;
-  }
+  bool ok = vprHost.beginFreshHost(kDemoConnHandle, hostConfig, 48U, &pumpCount);
+
   ok = ok && vprHost.ready() && !vprHost.failed();
 
   auto sendDirectCreate = [&](const BleCsControllerCreateConfig& config,
@@ -7489,16 +7356,9 @@ void printHciVprLinkDemo() {
   BleCsControllerVprHost::fillDemoConfig(&hostConfig);
   hostConfig.session.workflow.procedureEnable.enable = 0U;
 
-  bool ok = vprHost.resetTransport(true);
-  ok = ok && vprHost.loadDefaultTransportImage();
-  ok = ok && vprHost.bootTransport();
-  ok = ok && vprHost.beginHost(kDemoConnHandle, hostConfig);
-
   uint8_t pumpCount = 0U;
-  while (ok && !vprHost.ready() && !vprHost.failed() && pumpCount < 48U) {
-    ok = vprHost.loopOnce();
-    ++pumpCount;
-  }
+  bool ok = vprHost.beginFreshHost(kDemoConnHandle, hostConfig, 48U, &pumpCount);
+
 
   ok = ok && vprHost.ready();
 

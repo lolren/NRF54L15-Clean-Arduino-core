@@ -528,6 +528,19 @@ The next cleanup slice after that is also in:
 - repo-local compile proof for this checkpoint is:
   `/home/lolren/Desktop/Nrf54L15/.build/cs_vpr_lifecyclewait_compile`
 
+The next cleanup slice after that is also in:
+
+- reusable host bring-up now also lives on the VPR host boundary
+- `BleCsControllerVprHost::beginFreshHost(...)` now owns the common
+  `reset transport -> load default image -> boot -> begin host -> pump until
+  ready` sequence
+- most VPR demos in `BleChannelSoundingInitiator.ino` now use that helper
+  instead of each carrying their own startup-loop boilerplate
+- the remaining manual startup paths are the intentionally special ones that
+  still need extra transport diagnostics around bring-up
+- repo-local compile proof for this checkpoint is:
+  `/home/lolren/Desktop/Nrf54L15/.build/cs_vpr_starthost_compile`
+
 The next slice after this checkpoint is broader than retained-config policy:
 
 - start moving from the strong CS-specific VPR path toward a more general
