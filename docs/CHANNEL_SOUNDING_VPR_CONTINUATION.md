@@ -863,6 +863,18 @@ When resuming this work:
       link-boundary, and trace demos
     - repo-local compile proof for this boundary cleanup is:
       `/home/lolren/Desktop/Nrf54L15/.build/cs_vpr_boundary_compile`
+  - retained-config state-heavy demos now reason through host-state helpers
+    instead of open-coding raw `vprState()` field matrices in the sketch:
+    - `BleCsControllerVprHostState` now exposes retained-config helpers for:
+      slot matching, runnable matching, readiness matching, and authority
+      matching/packing
+    - demos like `hcivprslotdemo`, `hcivprselectdemo`,
+      `hcivprthirdcfgdemo`, and `hcivprevictdemo` now use those helpers
+      instead of duplicating the same field-by-field inference in local lambdas
+    - that keeps retained-config policy interpretation anchored to the host
+      state object rather than being rederived separately in each sketch path
+    - repo-local compile proof for this state-view cleanup is:
+      `/home/lolren/Desktop/Nrf54L15/.build/cs_vpr_stateview_compile`
 - The two attached boards were restored to `VprSharedTransportProbe` after the
   resume/restart experiments and both were left healthy on the known-good
   `svc=1.7` / `opmask=0x3FF` path.

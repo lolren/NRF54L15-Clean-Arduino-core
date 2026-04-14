@@ -459,6 +459,20 @@ The next cleanup slice after that is also in:
 - repo-local compile proof for this checkpoint is:
   `/home/lolren/Desktop/Nrf54L15/.build/cs_vpr_boundary_compile`
 
+The next cleanup slice after that is also in:
+
+- retained-config state-heavy demos now use helper methods on
+  `BleCsControllerVprHostState` instead of duplicating raw `vprState()` field
+  comparisons in local sketch lambdas
+- that helper surface now covers:
+  slot matching, runnable matching, readiness matching, and retained-authority
+  matching/packing
+- demos like `hcivprslotdemo`, `hcivprselectdemo`, `hcivprthirdcfgdemo`, and
+  `hcivprevictdemo` now rely on those host-state helpers instead of each
+  rederiving the same policy view
+- repo-local compile proof for this checkpoint is:
+  `/home/lolren/Desktop/Nrf54L15/.build/cs_vpr_stateview_compile`
+
 The next slice after this checkpoint is broader than retained-config policy:
 
 - start moving from the strong CS-specific VPR path toward a more general

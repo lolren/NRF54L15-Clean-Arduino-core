@@ -1000,6 +1000,69 @@ struct BleCsControllerVprHostState {
   bool linkSlot0ProcedureParamsApplied = false;
   bool linkSlot1ProcedureParamsApplied = false;
   bool linkPreviousSlotProcedureParamsApplied = false;
+
+  bool retainedConfigMatchesSlots(uint8_t activeConfigId,
+                                  uint8_t slot0ConfigId,
+                                  uint8_t slot1ConfigId,
+                                  uint8_t previousConfigId,
+                                  uint8_t activePrimarySlotIndex,
+                                  uint8_t freePrimarySlotCount,
+                                  uint8_t storedConfigCount) const {
+    return linkConfigId == activeConfigId &&
+           linkSlot0ConfigId == slot0ConfigId &&
+           linkSlot1ConfigId == slot1ConfigId &&
+           linkPreviousConfigId == previousConfigId &&
+           linkSlot0InUse == (slot0ConfigId != 0U) &&
+           linkSlot1InUse == (slot1ConfigId != 0U) &&
+           linkPreviousSlotInUse == (previousConfigId != 0U) &&
+           linkActivePrimarySlotIndex == activePrimarySlotIndex &&
+           linkFreePrimarySlotCount == freePrimarySlotCount &&
+           linkStoredConfigCount == storedConfigCount;
+  }
+
+  bool retainedConfigMatchesRunnability(bool selectedRunnable,
+                                        bool slot0Runnable,
+                                        bool slot1Runnable,
+                                        bool previousRunnable) const {
+    return linkSelectedConfigRunnable == selectedRunnable &&
+           linkSlot0Runnable == slot0Runnable &&
+           linkSlot1Runnable == slot1Runnable &&
+           linkPreviousSlotRunnable == previousRunnable;
+  }
+
+  bool retainedConfigMatchesReadiness(bool selectedSecurityEnabled,
+                                      bool slot0SecurityEnabled,
+                                      bool slot1SecurityEnabled,
+                                      bool previousSecurityEnabled,
+                                      bool selectedProcedureParamsApplied,
+                                      bool slot0ProcedureParamsApplied,
+                                      bool slot1ProcedureParamsApplied,
+                                      bool previousProcedureParamsApplied) const {
+    return linkSelectedConfigSecurityEnabled == selectedSecurityEnabled &&
+           linkSlot0SecurityEnabled == slot0SecurityEnabled &&
+           linkSlot1SecurityEnabled == slot1SecurityEnabled &&
+           linkPreviousSlotSecurityEnabled == previousSecurityEnabled &&
+           linkSelectedConfigProcedureParamsApplied ==
+               selectedProcedureParamsApplied &&
+           linkSlot0ProcedureParamsApplied == slot0ProcedureParamsApplied &&
+           linkSlot1ProcedureParamsApplied == slot1ProcedureParamsApplied &&
+           linkPreviousSlotProcedureParamsApplied ==
+               previousProcedureParamsApplied;
+  }
+
+  bool retainedConfigMatchesAuthority(uint8_t authority0ConfigId,
+                                      uint8_t authority1ConfigId,
+                                      uint8_t authority2ConfigId) const {
+    return linkAuthority0ConfigId == authority0ConfigId &&
+           linkAuthority1ConfigId == authority1ConfigId &&
+           linkAuthority2ConfigId == authority2ConfigId;
+  }
+
+  uint32_t retainedConfigAuthorityWord() const {
+    return static_cast<uint32_t>(linkAuthority0ConfigId) |
+           (static_cast<uint32_t>(linkAuthority1ConfigId) << 8U) |
+           (static_cast<uint32_t>(linkAuthority2ConfigId) << 16U);
+  }
 };
 
 class BleCsControllerVprHost {

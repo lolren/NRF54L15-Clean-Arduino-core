@@ -5895,16 +5895,11 @@ void printHciVprSlotDemo() {
                               uint8_t freePrimarySlotCount,
                               uint8_t storedConfigCount) -> bool {
     const BleCsControllerVprHostState& state = vprHost.vprState();
-    return state.linkConfigId == activeConfigId &&
-           state.linkSlot0ConfigId == slot0ConfigId &&
-           state.linkSlot1ConfigId == slot1ConfigId &&
-           state.linkPreviousConfigId == previousConfigId &&
-           state.linkSlot0InUse == (slot0ConfigId != 0U) &&
-           state.linkSlot1InUse == (slot1ConfigId != 0U) &&
-           state.linkPreviousSlotInUse == (previousConfigId != 0U) &&
-           state.linkActivePrimarySlotIndex == activePrimarySlotIndex &&
-           state.linkFreePrimarySlotCount == freePrimarySlotCount &&
-           state.linkStoredConfigCount == storedConfigCount;
+    return state.retainedConfigMatchesSlots(activeConfigId, slot0ConfigId,
+                                            slot1ConfigId, previousConfigId,
+                                            activePrimarySlotIndex,
+                                            freePrimarySlotCount,
+                                            storedConfigCount);
   };
 
   auto pollUntilSlotState = [&](uint8_t activeConfigId, uint8_t slot0ConfigId,
@@ -6178,16 +6173,11 @@ void printHciVprSelectDemo() {
                               uint8_t freePrimarySlotCount,
                               uint8_t storedConfigCount) -> bool {
     const BleCsControllerVprHostState& state = vprHost.vprState();
-    return state.linkConfigId == activeConfigId &&
-           state.linkSlot0ConfigId == slot0ConfigId &&
-           state.linkSlot1ConfigId == slot1ConfigId &&
-           state.linkPreviousConfigId == previousConfigId &&
-           state.linkSlot0InUse == (slot0ConfigId != 0U) &&
-           state.linkSlot1InUse == (slot1ConfigId != 0U) &&
-           state.linkPreviousSlotInUse == (previousConfigId != 0U) &&
-           state.linkActivePrimarySlotIndex == activePrimarySlotIndex &&
-           state.linkFreePrimarySlotCount == freePrimarySlotCount &&
-           state.linkStoredConfigCount == storedConfigCount;
+    return state.retainedConfigMatchesSlots(activeConfigId, slot0ConfigId,
+                                            slot1ConfigId, previousConfigId,
+                                            activePrimarySlotIndex,
+                                            freePrimarySlotCount,
+                                            storedConfigCount);
   };
 
   auto pollUntilSlotState = [&](uint8_t activeConfigId, uint8_t slot0ConfigId,
@@ -6255,10 +6245,10 @@ void printHciVprSelectDemo() {
   auto runnableStateMatches = [&](bool selectedRunnable, bool slot0Runnable,
                                   bool slot1Runnable, bool previousRunnable) -> bool {
     const BleCsControllerVprHostState& state = vprHost.vprState();
-    return state.linkSelectedConfigRunnable == selectedRunnable &&
-           state.linkSlot0Runnable == slot0Runnable &&
-           state.linkSlot1Runnable == slot1Runnable &&
-           state.linkPreviousSlotRunnable == previousRunnable;
+    return state.retainedConfigMatchesRunnability(selectedRunnable,
+                                                  slot0Runnable,
+                                                  slot1Runnable,
+                                                  previousRunnable);
   };
 
   auto readinessStateMatches = [&](bool selectedSecurityEnabled,
@@ -6270,16 +6260,14 @@ void printHciVprSelectDemo() {
                                    bool slot1ProcedureParamsApplied,
                                    bool previousProcedureParamsApplied) -> bool {
     const BleCsControllerVprHostState& state = vprHost.vprState();
-    return state.linkSelectedConfigSecurityEnabled == selectedSecurityEnabled &&
-           state.linkSlot0SecurityEnabled == slot0SecurityEnabled &&
-           state.linkSlot1SecurityEnabled == slot1SecurityEnabled &&
-           state.linkPreviousSlotSecurityEnabled == previousSecurityEnabled &&
-           state.linkSelectedConfigProcedureParamsApplied ==
-               selectedProcedureParamsApplied &&
-           state.linkSlot0ProcedureParamsApplied == slot0ProcedureParamsApplied &&
-           state.linkSlot1ProcedureParamsApplied == slot1ProcedureParamsApplied &&
-           state.linkPreviousSlotProcedureParamsApplied ==
-               previousProcedureParamsApplied;
+    return state.retainedConfigMatchesReadiness(selectedSecurityEnabled,
+                                                slot0SecurityEnabled,
+                                                slot1SecurityEnabled,
+                                                previousSecurityEnabled,
+                                                selectedProcedureParamsApplied,
+                                                slot0ProcedureParamsApplied,
+                                                slot1ProcedureParamsApplied,
+                                                previousProcedureParamsApplied);
   };
 
   auto pollUntilState = [&](uint8_t activeConfigId, uint8_t slot0ConfigId,
@@ -6329,9 +6317,7 @@ void printHciVprSelectDemo() {
   };
 
   auto packAuthority = [&](const BleCsControllerVprHostState& state) -> uint32_t {
-    return (uint32_t)state.linkAuthority0ConfigId |
-           ((uint32_t)state.linkAuthority1ConfigId << 8U) |
-           ((uint32_t)state.linkAuthority2ConfigId << 16U);
+    return state.retainedConfigAuthorityWord();
   };
 
 #ifdef NRF54L15_CS_VPR_SELECT_SUMMARY
@@ -6462,24 +6448,18 @@ void printHciVprSelectDemo() {
        setBaseStatus == 0U && setAltAgainStatus == 0U &&
        !vprHost.vprState().linkProcedureEnabled &&
        vprHost.vprState().linkProcedureParamsApplied &&
-       initialState.linkAuthority0ConfigId == baseConfigId &&
-       initialState.linkAuthority1ConfigId == 0U &&
-       initialState.linkAuthority2ConfigId == 0U &&
-       createdState.linkAuthority0ConfigId == altConfig.configId &&
-       createdState.linkAuthority1ConfigId == baseConfigId &&
-       createdState.linkAuthority2ConfigId == 0U &&
-       securedState.linkAuthority0ConfigId == altConfig.configId &&
-       securedState.linkAuthority1ConfigId == baseConfigId &&
-       securedState.linkAuthority2ConfigId == 0U &&
-       armedState.linkAuthority0ConfigId == altConfig.configId &&
-       armedState.linkAuthority1ConfigId == baseConfigId &&
-       armedState.linkAuthority2ConfigId == 0U &&
-       baseSelectedState.linkAuthority0ConfigId == baseConfigId &&
-       baseSelectedState.linkAuthority1ConfigId == altConfig.configId &&
-       baseSelectedState.linkAuthority2ConfigId == 0U &&
-       altSelectedState.linkAuthority0ConfigId == altConfig.configId &&
-       altSelectedState.linkAuthority1ConfigId == baseConfigId &&
-       altSelectedState.linkAuthority2ConfigId == 0U;
+       initialState.retainedConfigMatchesAuthority(baseConfigId, 0U, 0U) &&
+       createdState.retainedConfigMatchesAuthority(altConfig.configId,
+                                                   baseConfigId, 0U) &&
+       securedState.retainedConfigMatchesAuthority(altConfig.configId,
+                                                   baseConfigId, 0U) &&
+       armedState.retainedConfigMatchesAuthority(altConfig.configId,
+                                                 baseConfigId, 0U) &&
+       baseSelectedState.retainedConfigMatchesAuthority(baseConfigId,
+                                                        altConfig.configId,
+                                                        0U) &&
+       altSelectedState.retainedConfigMatchesAuthority(altConfig.configId,
+                                                       baseConfigId, 0U);
 
 #ifdef NRF54L15_CS_VPR_SELECT_SUMMARY
   gVprSelectDemoSummary.magic = kSelectSummaryMagic;
@@ -6834,16 +6814,15 @@ void printHciVprThirdConfigDemo() {
     (void)activePrimarySlotIndex;
     (void)freePrimarySlotCount;
     const BleCsControllerVprHostState& state = vprHost.vprState();
-    return state.linkConfigId == activeConfigId &&
-           state.linkSlot0ConfigId == slot0ConfigId &&
-           state.linkSlot1ConfigId == slot1ConfigId &&
-           state.linkPreviousConfigId == previousConfigId &&
-           state.linkSlot0InUse == (slot0ConfigId != 0U) &&
-           state.linkSlot1InUse == (slot1ConfigId != 0U) &&
-           state.linkPreviousSlotInUse == (previousConfigId != 0U) &&
-           state.linkStoredConfigCount == storedConfigCount &&
-           state.linkSelectedConfigRunnable == selectedRunnable &&
-           state.linkPreviousSlotRunnable == previousRunnable;
+    return state.retainedConfigMatchesSlots(activeConfigId, slot0ConfigId,
+                                            slot1ConfigId, previousConfigId,
+                                            state.linkActivePrimarySlotIndex,
+                                            state.linkFreePrimarySlotCount,
+                                            storedConfigCount) &&
+           state.retainedConfigMatchesRunnability(selectedRunnable,
+                                                  state.linkSlot0Runnable,
+                                                  state.linkSlot1Runnable,
+                                                  previousRunnable);
   };
 
   auto pollUntilState = [&](uint8_t activeConfigId, uint8_t slot0ConfigId,
@@ -7260,16 +7239,15 @@ void printHciVprEvictDemo() {
                           bool selectedRunnable, bool previousRunnable,
                           uint8_t lastEvictedConfigId) -> bool {
     const BleCsControllerVprHostState& state = vprHost.vprState();
-    return state.linkConfigId == activeConfigId &&
-           state.linkSlot0ConfigId == slot0ConfigId &&
-           state.linkSlot1ConfigId == slot1ConfigId &&
-           state.linkPreviousConfigId == previousConfigId &&
-           state.linkSlot0InUse == (slot0ConfigId != 0U) &&
-           state.linkSlot1InUse == (slot1ConfigId != 0U) &&
-           state.linkPreviousSlotInUse == (previousConfigId != 0U) &&
-           state.linkStoredConfigCount == storedConfigCount &&
-           state.linkSelectedConfigRunnable == selectedRunnable &&
-           state.linkPreviousSlotRunnable == previousRunnable &&
+    return state.retainedConfigMatchesSlots(activeConfigId, slot0ConfigId,
+                                            slot1ConfigId, previousConfigId,
+                                            state.linkActivePrimarySlotIndex,
+                                            state.linkFreePrimarySlotCount,
+                                            storedConfigCount) &&
+           state.retainedConfigMatchesRunnability(selectedRunnable,
+                                                  state.linkSlot0Runnable,
+                                                  state.linkSlot1Runnable,
+                                                  previousRunnable) &&
            state.linkLastEvictedConfigId == lastEvictedConfigId;
   };
 
