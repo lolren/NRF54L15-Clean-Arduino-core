@@ -2,6 +2,10 @@
 
 This note is the resume point for the current Channel Sounding and VPR transport work.
 
+Master completion checklist:
+
+- `docs/BLE_CS_COMPLETION_CHECKLIST.md`
+
 ## Current State
 
 The clean core now has a real VPR-backed transport path for controller-style Channel Sounding bring-up.
@@ -109,6 +113,12 @@ Current validated generic service state on hardware:
     - `BleCsControllerVprHost::pollUntilCompletedProcedureResult(...)` now
       owns the imported-link completion seam based on completed procedure
       state/result counts instead of the stronger `stopped` bit
+  - the same imported-link path is now also exercised on the real two-board
+    initiator regression surface through `hcivprhandoffdemo`
+  - current live log:
+    `/home/lolren/Desktop/Nrf54L15/.build/cs_vpr_handoffdemo_runtime/hcivprhandoffdemo.log`
+  - current key proof line:
+    - `hcivprhandoffdemo ok=1 svc=1.10 opmask=0x3FFFF src=1@0x41#1 import=1@0x41#1 pumped=12 polled=0 status=0/0/0/0/0/0 cfg=1 proc=1 local_evt=2 peer_evt=1 dist_m=0.7537`
 - VPR hibernate now writes a nonzero saved-context image into the documented
   `0x2003FE00` / `512 B` window when the required MEMCONF retention bits are enabled
 - loaded-image restart is now validated on both attached boards through
@@ -553,8 +563,10 @@ That work should now do these things in order:
    - the initial imported-handle handoff now exists through
      `VprBleConnectionCsHandoffProbe`
    - the common startup sequence is now reusable host-boundary code
-   - the next step is reducing the remaining probe-only validation surface
-     around that path
+   - the imported-link path is now on the normal initiator regression surface
+     through `hcivprhandoffdemo`
+   - the next step is moving more of the imported-link lifetime itself onto
+     the dedicated CS image, not adding more startup helpers
 2. Make the dedicated CS image own more of procedure/session lifetime on top of
    that imported link state.
    - no new synthetic sketch-side assumptions
@@ -563,6 +575,7 @@ That work should now do these things in order:
    real connected path is stable.
 4. Use the existing regressions after each step:
    - `hcivprtransportdemo`
+   - `hcivprhandoffdemo`
    - `hcivprstatedemo`
    - `hcivprmultidemo`
    - `hcivprcontinuedemo`

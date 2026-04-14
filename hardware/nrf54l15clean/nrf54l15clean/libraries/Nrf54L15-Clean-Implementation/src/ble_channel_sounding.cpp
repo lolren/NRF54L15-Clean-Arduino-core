@@ -3962,7 +3962,24 @@ bool BleCsControllerVprHost::directStartConfiguredWorkflow(
 
   if (enableProcedure) {
     status = 0xFFU;
-    if (!directProcedureEnable(workflowConfig.procedureEnable, &status)) {
+    bool started = directProcedureEnable(workflowConfig.procedureEnable, &status);
+    if (!started || status != 0U) {
+      for (uint8_t i = 0U; i < 8U && !failed(); ++i) {
+        if (!poll()) {
+          started = false;
+          break;
+        }
+        if (vprState_.linkProcedureEnabled ||
+            sessionState().completedProcedureCounter > 0U ||
+            hostState().localSubeventResults > 0U ||
+            hostState().peerSubeventResults > 0U) {
+          status = 0U;
+          started = true;
+          break;
+        }
+      }
+    }
+    if (!started) {
       if (outWorkflowStatus != nullptr) {
         outWorkflowStatus->procedureEnable = status;
       }

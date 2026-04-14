@@ -2,6 +2,10 @@
 
 This document is the concrete follow-on plan after the `0.5.0` release.
 
+Master completion checklist:
+
+- `docs/BLE_CS_COMPLETION_CHECKLIST.md`
+
 `0.5.0` is the point where the repo has:
 
 - the reusable VPR shared-transport/controller-service layer
