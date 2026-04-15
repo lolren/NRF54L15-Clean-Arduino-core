@@ -573,6 +573,11 @@ Latency characterization note:
 
 - `docs/ble-cs-latency-characterization.md`
 
+Calibration and error-model notes:
+
+- `docs/channel-sounding-calibration.md`
+- `docs/channel-sounding-error-model.md`
+
 Zigbee examples:
 
 - `examples/Zigbee/ZigbeeCoordinator/ZigbeeCoordinator.ino`

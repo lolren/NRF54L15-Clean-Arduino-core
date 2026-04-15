@@ -676,6 +676,11 @@ Current measured latency note:
 
 - [`docs/ble-cs-latency-characterization.md`](docs/ble-cs-latency-characterization.md)
 
+Calibration and trust-model notes:
+
+- [`docs/channel-sounding-calibration.md`](docs/channel-sounding-calibration.md)
+- [`docs/channel-sounding-error-model.md`](docs/channel-sounding-error-model.md)
+
 What has been added beyond the original phase demo:
 
 - controller-style CS command/completion builders and parsers

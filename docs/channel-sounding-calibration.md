@@ -7,6 +7,14 @@ This does **not** make the raw estimate physically perfect by itself. It gives y
 way to remove the obvious board/link bias that shows up even when the underlying phase fit
 is stable.
 
+Read together with:
+
+- [`channel-sounding-error-model.md`](/home/lolren/Desktop/Nrf54L15/NRF54L15-Clean-Arduino-core/docs/channel-sounding-error-model.md)
+
+That note explains which outputs are real physical ranging surfaces, which
+ones are only controller/runtime regression summaries, and how to interpret the
+quality/rejection fields before you try to recalibrate anything.
+
 ## Runtime Commands
 
 Use the initiator example:

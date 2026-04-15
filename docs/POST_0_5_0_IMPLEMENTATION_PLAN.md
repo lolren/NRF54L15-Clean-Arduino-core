@@ -107,6 +107,10 @@ Current checkpoint inside Phase 2:
   - two-board imported-link dedicated path currently characterizes at
     `~16/2/9/15/0/55 ms` for
     `source_boot/source_connect/handoff_boot/start/complete/total`
+- calibration/error-model documentation is now explicit instead of being only
+  implied by serial field names:
+  - `docs/channel-sounding-calibration.md`
+  - `docs/channel-sounding-error-model.md`
 
 ## Phase 3: Full Channel Sounding Completion
 

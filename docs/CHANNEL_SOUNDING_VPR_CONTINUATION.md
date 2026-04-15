@@ -7,6 +7,9 @@ Master completion checklist:
 - `docs/BLE_CS_COMPLETION_CHECKLIST.md`
 - latency note:
   - `docs/ble-cs-latency-characterization.md`
+- calibration/error notes:
+  - `docs/channel-sounding-calibration.md`
+  - `docs/channel-sounding-error-model.md`
 
 ## Current State
 

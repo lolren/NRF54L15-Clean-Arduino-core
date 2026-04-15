@@ -66,7 +66,7 @@ Scope note:
 - [x] Stable nominal synthetic regression output around `~0.75 m`
 - [ ] Real controller-owned CS result production instead of the current nominal synthetic result shaping
 - [ ] Real physically defensible ranging output
-- [ ] Clear calibration and error-model documentation
+- [x] Clear calibration and error-model documentation
 
 ## BLE Link To CS Handoff
 
@@ -94,5 +94,5 @@ Scope note:
 ## Current Next Work
 
 1. Real controller-owned CS result production on top of the landed persistent generic-service BLE-to-CS runtime.
-2. Physical calibration, error model, and measured power characterization.
+2. Physical calibration and measured power characterization.
 3. Real RF calibration and board-specific antenna-delay characterization.
