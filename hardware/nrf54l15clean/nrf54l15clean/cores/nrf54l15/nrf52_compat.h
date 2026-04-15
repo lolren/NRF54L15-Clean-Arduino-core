@@ -71,12 +71,22 @@ static inline uint32_t SysTick_Config(uint32_t ticks) {
   return 0UL;
 }
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 void sd_power_system_off(void);
 void NVIC_SystemReset(void);
 void enterOTADfu(void);
 void enterSerialDfu(void);
 void dbgPrintVersion(void);
 void dbgMemInfo(void);
+int dbgHeapTotal(void);
+int dbgHeapUsed(void);
+
+#ifdef __cplusplus
+}
+#endif
 
 class SchedulerClass {
  public:

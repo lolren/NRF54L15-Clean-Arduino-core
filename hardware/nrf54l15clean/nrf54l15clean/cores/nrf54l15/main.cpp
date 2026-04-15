@@ -3,6 +3,8 @@
 
 extern "C" void nrf54l15_clean_idle_service(void);
 extern "C" void nrf54l15_software_timer_service(void);
+extern "C" size_t nrf54l15_heap_total_bytes(void);
+extern "C" size_t nrf54l15_heap_used_bytes(void);
 extern "C" size_t nrf54l15_heap_free_bytes(void);
 #if defined(NRF54L15_CLEAN_POWER_LOW)
 extern "C" void nrf54l15_core_bootstrap_low_power_timebase(void);
@@ -74,6 +76,18 @@ extern "C" void __attribute__((weak)) resumeLoop(void) {
 
 extern "C" uint32_t __attribute__((weak)) getFreeHeap(void) {
     return static_cast<uint32_t>(nrf54l15_heap_free_bytes());
+}
+
+extern "C" uint32_t __attribute__((weak)) getFreeHeapSize(void) {
+    return getFreeHeap();
+}
+
+extern "C" int __attribute__((weak)) dbgHeapTotal(void) {
+    return static_cast<int>(nrf54l15_heap_total_bytes());
+}
+
+extern "C" int __attribute__((weak)) dbgHeapUsed(void) {
+    return static_cast<int>(nrf54l15_heap_used_bytes());
 }
 
 extern "C" void setup(void) __attribute__((weak));

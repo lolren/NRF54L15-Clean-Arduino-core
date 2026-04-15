@@ -7,30 +7,34 @@ SchedulerClass Scheduler;
 HwPWMCompat HwPWM0;
 HwPWMCompat HwPWM1;
 
-void sd_power_system_off(void) {
+extern "C" void sd_power_system_off(void) {
   delaySystemOff(0UL);
 }
 
-void NVIC_SystemReset(void) {
+extern "C" void NVIC_SystemReset(void) {
   softReset();
 }
 
-void enterOTADfu(void) {
+extern "C" void enterOTADfu(void) {
   softReset();
 }
 
-void enterSerialDfu(void) {
+extern "C" void enterSerialDfu(void) {
   softReset();
 }
 
-void dbgPrintVersion(void) {
+extern "C" void dbgPrintVersion(void) {
   Serial.print("nRF54L15 clean core ");
   Serial.println(NRF54L15_CLEAN_CORE_VERSION_STRING);
 }
 
-void dbgMemInfo(void) {
+extern "C" void dbgMemInfo(void) {
+  Serial.print("Heap total: ");
+  Serial.println(dbgHeapTotal());
+  Serial.print("Heap used: ");
+  Serial.println(dbgHeapUsed());
   Serial.print("Free heap: ");
-  Serial.println(getFreeHeap());
+  Serial.println(getFreeHeapSize());
 }
 
 void SchedulerClass::startLoop(void (*fn)(void)) {

@@ -7,6 +7,7 @@
 
 #include <errno.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -35,27 +36,83 @@ int _kill(pid_t pid, int sig)
 }
 
 extern char __heap_start__;
-extern char __heap_end__;
-static char *heap_end = &__heap_start__;
+static char *heap_end = NULL;
+
+/*
+ * CPUAPP heap is intentionally capped below the first shared VPR window.
+ * Keep the runtime view in sync with the linker script's fixed ceiling.
+ */
+#define NRF54L15_HEAP_LIMIT_ADDR ((uintptr_t)0x20018000UL)
+
+static char *nrf54l15_heap_start_ptr(void)
+{
+    return &__heap_start__;
+}
+
+static char *nrf54l15_heap_limit_ptr(void)
+{
+    return (char *)NRF54L15_HEAP_LIMIT_ADDR;
+}
+
+static char *nrf54l15_heap_current_end(void)
+{
+    if (heap_end == NULL) {
+        heap_end = nrf54l15_heap_start_ptr();
+    }
+    return heap_end;
+}
 
 caddr_t _sbrk(int incr)
 {
-    if ((heap_end + incr) > &__heap_end__) {
+    char *current_end = nrf54l15_heap_current_end();
+    char *heap_start = nrf54l15_heap_start_ptr();
+    char *heap_limit = nrf54l15_heap_limit_ptr();
+
+    if (incr > 0 && (current_end + incr) > heap_limit) {
         errno = ENOMEM;
         return (caddr_t)-1;
     }
+    if (incr < 0 && (current_end + incr) < heap_start) {
+        errno = EINVAL;
+        return (caddr_t)-1;
+    }
 
-    char *prev_heap_end = heap_end;
-    heap_end += incr;
+    char *prev_heap_end = current_end;
+    heap_end = current_end + incr;
     return (caddr_t)prev_heap_end;
+}
+
+size_t nrf54l15_heap_total_bytes(void)
+{
+    char *heap_start = nrf54l15_heap_start_ptr();
+    char *heap_limit = nrf54l15_heap_limit_ptr();
+
+    if (heap_limit <= heap_start) {
+        return 0U;
+    }
+    return (size_t)(heap_limit - heap_start);
+}
+
+size_t nrf54l15_heap_used_bytes(void)
+{
+    char *current_end = nrf54l15_heap_current_end();
+    char *heap_start = nrf54l15_heap_start_ptr();
+
+    if (current_end <= heap_start) {
+        return 0U;
+    }
+    return (size_t)(current_end - heap_start);
 }
 
 size_t nrf54l15_heap_free_bytes(void)
 {
-    if (heap_end >= &__heap_end__) {
+    char *current_end = nrf54l15_heap_current_end();
+    char *heap_limit = nrf54l15_heap_limit_ptr();
+
+    if (current_end >= heap_limit) {
         return 0U;
     }
-    return (size_t)(&__heap_end__ - heap_end);
+    return (size_t)(heap_limit - current_end);
 }
 
 int _write(int file, const char *ptr, int len)
