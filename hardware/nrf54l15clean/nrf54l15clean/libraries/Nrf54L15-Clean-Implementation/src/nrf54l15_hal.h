@@ -2108,6 +2108,7 @@ class BleRadio {
   void setTraceCallback(BleTraceCallback callback, void* context = nullptr);
   bool getLastDisconnectReason(uint8_t* outReason,
                                bool* outRemote = nullptr) const;
+  bool getLatestConnectionRssiDbm(int8_t* outRssiDbm) const;
   bool disconnect(uint32_t spinLimit = 300000UL);
   bool pollConnectionEvent(BleConnectionEvent* event = nullptr,
                            uint32_t spinLimit = 400000UL);
@@ -2401,6 +2402,7 @@ class BleRadio {
   bool enqueueConnectionEvent(const BleConnectionEvent& event);
   bool dequeueConnectionEvent(BleConnectionEvent* event);
   static bool shouldQueueConnectionEvent(const BleConnectionEvent& event);
+  void rememberLatestConnectionRssi(const BleConnectionEvent& event);
   bool enqueueCustomGattNotification(uint8_t characteristicIndex, bool indicate,
                                      const uint8_t* value,
                                      uint8_t valueLength);
@@ -2700,6 +2702,8 @@ class BleRadio {
   uint8_t queuedConnectionEventHead_;
   uint8_t queuedConnectionEventTail_;
   uint8_t queuedConnectionEventCount_;
+  int8_t latestConnectionRssiDbm_;
+  bool latestConnectionRssiValid_;
   bool connectionServiceBusy_;
   BleDisconnectDebug disconnectDebug_;
   uint8_t lastObservedRxLlid_;

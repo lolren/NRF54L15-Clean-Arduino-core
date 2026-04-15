@@ -375,11 +375,8 @@ class BLEConnection {
   bool requestDataLengthUpdate();
   bool requestMtuExchange(uint16_t mtu);
   bool requestPairing() const;
-  bool monitorRssi(uint8_t threshold = 0xFFU) const {
-    (void)threshold;
-    return connected();
-  }
-  int8_t getRssi() const { return 0; }
+  bool monitorRssi(uint8_t threshold = 0xFFU) const;
+  int8_t getRssi() const;
   uint16_t getConnectionInterval() const;
   uint16_t getSlaveLatency() const;
   uint16_t getSupervisionTimeout() const;
@@ -1044,6 +1041,7 @@ class AdafruitBluefruit {
   uint16_t central_requested_mtu_;
   bool central_request_data_length_;
   bool central_request_mtu_;
+  void (*rssi_callback_)(uint16_t conn_hdl, int8_t rssi);
 
   friend class BluefruitCompatManager;
 };

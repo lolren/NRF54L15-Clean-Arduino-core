@@ -82,7 +82,7 @@ Scope note:
 - [x] VPR proof examples for advertising, connection state, and CS handoff
 - [x] Hardened release/install pipeline for Boards Manager assets
 - [x] Normal sketch-facing API/example for `start BLE link, then run CS` without probe-style validation plumbing
-- [ ] Release checkpoint after the persistent runtime path lands
+- [x] Release checkpoint after the persistent runtime path lands
 
 ## Outside Current Practical Scope
 
@@ -93,6 +93,6 @@ Scope note:
 
 ## Current Next Work
 
-1. Release checkpoint for the landed persistent generic-service BLE-to-CS runtime path.
-2. Real controller-owned CS result production on top of that runtime.
-3. Physical calibration, error model, and measured power/latency characterization.
+1. Real controller-owned CS result production on top of the landed persistent generic-service BLE-to-CS runtime.
+2. Physical calibration, error model, and measured power/latency characterization.
+3. Real RF calibration and board-specific antenna-delay characterization.

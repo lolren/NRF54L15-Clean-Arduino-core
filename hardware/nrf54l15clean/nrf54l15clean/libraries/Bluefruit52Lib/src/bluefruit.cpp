@@ -438,6 +438,10 @@ class BluefruitCompatManager {
         central_mtu_request_pending_(false),
         central_link_config_not_before_ms_(0UL),
         last_connect_attempt_ms_(0UL),
+        rssi_monitor_enabled_(false),
+        rssi_monitor_threshold_(0xFFU),
+        last_reported_rssi_dbm_(0),
+        last_reported_rssi_valid_(false),
         scan_report_data_{0},
         scan_report_len_(0U) {
     memset(characteristics_, 0, sizeof(characteristics_));
@@ -532,6 +536,24 @@ class BluefruitCompatManager {
 
   BLEConnection* connection() { return &connection_; }
 
+  bool startRssiMonitor(uint8_t threshold) {
+    if (!radio_.isConnected()) {
+      return false;
+    }
+    rssi_monitor_enabled_ = true;
+    rssi_monitor_threshold_ = threshold;
+    last_reported_rssi_valid_ = radio_.getLatestConnectionRssiDbm(&last_reported_rssi_dbm_);
+    return true;
+  }
+
+  int8_t currentConnectionRssi() const {
+    int8_t rssiDbm = 0;
+    if (!radio_.getLatestConnectionRssiDbm(&rssiDbm)) {
+      return 0;
+    }
+    return rssiDbm;
+  }
+
   bool queueCentralConnect(const ble_gap_evt_adv_report_t* report) {
     if (report == nullptr) {
       return false;
@@ -587,6 +609,7 @@ class BluefruitCompatManager {
     }
 
     if (connected) {
+      maybeDispatchRssiUpdate();
       if (radio_.connectionRole() == BleConnectionRole::kPeripheral) {
         for (uint8_t i = 0U; i < characteristic_count_; ++i) {
           if (characteristics_[i] != nullptr) {
@@ -626,6 +649,10 @@ class BluefruitCompatManager {
   bool central_mtu_request_pending_;
   unsigned long central_link_config_not_before_ms_;
   unsigned long last_connect_attempt_ms_;
+  bool rssi_monitor_enabled_;
+  uint8_t rssi_monitor_threshold_;
+  int8_t last_reported_rssi_dbm_;
+  bool last_reported_rssi_valid_;
 
   static void gattWriteThunk(uint16_t valueHandle, const uint8_t* value,
                              uint8_t valueLength, bool withResponse, void* context) {
@@ -949,11 +976,46 @@ class BluefruitCompatManager {
     next_adv_due_us_ = nowUs + (static_cast<uint32_t>(intervalUnits) * 625UL);
   }
 
+  void maybeDispatchRssiUpdate() {
+    if (!rssi_monitor_enabled_ || Bluefruit.rssi_callback_ == nullptr) {
+      return;
+    }
+
+    int8_t currentRssiDbm = 0;
+    if (!radio_.getLatestConnectionRssiDbm(&currentRssiDbm)) {
+      return;
+    }
+    if (!last_reported_rssi_valid_) {
+      last_reported_rssi_dbm_ = currentRssiDbm;
+      last_reported_rssi_valid_ = true;
+      return;
+    }
+
+    if (currentRssiDbm == last_reported_rssi_dbm_) {
+      return;
+    }
+
+    const uint8_t threshold = rssi_monitor_threshold_;
+    const int deltaDbm = abs(static_cast<int>(currentRssiDbm) -
+                             static_cast<int>(last_reported_rssi_dbm_));
+    if (threshold != 0xFFU && threshold != 0U &&
+        deltaDbm < static_cast<int>(threshold)) {
+      return;
+    }
+
+    last_reported_rssi_dbm_ = currentRssiDbm;
+    invokeBluefruitUserCallback(Bluefruit.rssi_callback_, 0U, currentRssiDbm);
+  }
+
   void handleConnectionEdge(bool connected) {
     if (connected) {
       connection_.handle_ = 0U;
       last_connection_role_ = radio_.connectionRole();
       pending_connect_valid_ = false;
+      rssi_monitor_enabled_ = false;
+      rssi_monitor_threshold_ = 0xFFU;
+      last_reported_rssi_dbm_ = 0;
+      last_reported_rssi_valid_ = false;
       if (Bluefruit.auto_conn_led_) {
         digitalWrite(LED_BUILTIN, kLedOnState);
       }
@@ -987,6 +1049,10 @@ class BluefruitCompatManager {
     if (radio_.getDisconnectDebug(&debug)) {
       reason = disconnectReasonToHci(debug);
     }
+    rssi_monitor_enabled_ = false;
+    rssi_monitor_threshold_ = 0xFFU;
+    last_reported_rssi_dbm_ = 0;
+    last_reported_rssi_valid_ = false;
     connection_.handle_ = INVALID_CONNECTION_HANDLE;
     if (last_connection_role_ == BleConnectionRole::kPeripheral) {
       for (uint8_t i = 0U; i < characteristic_count_; ++i) {
@@ -2542,6 +2608,20 @@ bool BLEConnection::requestPairing() const {
   return false;
 }
 
+bool BLEConnection::monitorRssi(uint8_t threshold) const {
+  if (!connected()) {
+    return false;
+  }
+  return manager().startRssiMonitor(threshold);
+}
+
+int8_t BLEConnection::getRssi() const {
+  if (!connected()) {
+    return 0;
+  }
+  return manager().currentConnectionRssi();
+}
+
 BLECentral::BLECentral() : connect_callback_(nullptr), disconnect_callback_(nullptr) {}
 
 void BLECentral::setConnectCallback(ble_connect_callback_t fp) { connect_callback_ = fp; }
@@ -3888,7 +3968,8 @@ AdafruitBluefruit::AdafruitBluefruit()
       central_supervision_timeout_(200U),
       central_requested_mtu_(23U),
       central_request_data_length_(false),
-      central_request_mtu_(false) {
+      central_request_mtu_(false),
+      rssi_callback_(nullptr) {
   strncpy(device_name_, "XIAO nRF54L15", sizeof(device_name_) - 1U);
 }
 
@@ -4125,7 +4206,7 @@ uint16_t AdafruitBluefruit::getMaxMtu(uint8_t role) {
 }
 
 void AdafruitBluefruit::setRssiCallback(void (*fp)(uint16_t conn_hdl, int8_t rssi)) {
-  (void)fp;
+  rssi_callback_ = fp;
 }
 
 BLEConnection* AdafruitBluefruit::Connection(uint16_t conn_hdl) {

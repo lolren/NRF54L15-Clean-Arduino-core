@@ -8960,6 +8960,8 @@ BleRadio::BleRadio(uint32_t radioBase, uint32_t ficrBase)
       queuedConnectionEventHead_(0U),
       queuedConnectionEventTail_(0U),
       queuedConnectionEventCount_(0U),
+      latestConnectionRssiDbm_(0),
+      latestConnectionRssiValid_(false),
       connectionServiceBusy_(false),
       disconnectDebug_{},
       lastObservedRxLlid_(0U),
@@ -9128,6 +9130,8 @@ bool BleRadio::begin(int8_t txPowerDbm) {
   advCycleStartIndex_ = 0U;
   scanCycleStartIndex_ = 0U;
   connectionServiceBusy_ = false;
+  latestConnectionRssiDbm_ = 0;
+  latestConnectionRssiValid_ = false;
   clearQueuedConnectionEvents();
   clearCustomGattConnectionState();
 
@@ -9212,6 +9216,8 @@ void BleRadio::end() {
     stopBackgroundAdvertising();
     stopBackgroundConnectionService();
     initialized_ = false;
+    latestConnectionRssiDbm_ = 0;
+    latestConnectionRssiValid_ = false;
     connectionServiceBusy_ = false;
     clearQueuedConnectionEvents();
     clearCustomGattConnectionState();
@@ -9229,6 +9235,8 @@ void BleRadio::end() {
   stopBackgroundAdvertising();
   stopBackgroundConnectionService();
   initialized_ = false;
+  latestConnectionRssiDbm_ = 0;
+  latestConnectionRssiValid_ = false;
   connectionServiceBusy_ = false;
   clearQueuedConnectionEvents();
   clearCustomGattConnectionState();
@@ -13225,6 +13233,14 @@ bool BleRadio::getLastDisconnectReason(uint8_t* outReason, bool* outRemote) cons
   return true;
 }
 
+bool BleRadio::getLatestConnectionRssiDbm(int8_t* outRssiDbm) const {
+  if (outRssiDbm == nullptr || !connected_ || !latestConnectionRssiValid_) {
+    return false;
+  }
+  *outRssiDbm = latestConnectionRssiDbm_;
+  return true;
+}
+
 void BleRadio::rememberDisconnectReason(uint8_t reason, bool remote) {
   lastDisconnectReason_ = reason;
   lastDisconnectReasonValid_ = true;
@@ -13309,6 +13325,14 @@ void BleRadio::clearQueuedConnectionEvents() {
   queuedConnectionEventHead_ = 0U;
   queuedConnectionEventTail_ = 0U;
   queuedConnectionEventCount_ = 0U;
+}
+
+void BleRadio::rememberLatestConnectionRssi(const BleConnectionEvent& event) {
+  if (!connected_ || !event.packetReceived) {
+    return;
+  }
+  latestConnectionRssiDbm_ = event.rssiDbm;
+  latestConnectionRssiValid_ = true;
 }
 
 bool BleRadio::shouldQueueConnectionEvent(const BleConnectionEvent& event) {
@@ -13397,6 +13421,9 @@ void BleRadio::serviceBackgroundConnection() {
   BleConnectionEvent event{};
   resetConnectionEventStruct(&event);
   const bool ran = pollConnectionEventInternal(&event, 120000UL);
+  if (ran) {
+    rememberLatestConnectionRssi(event);
+  }
   if (ran && shouldQueueConnectionEvent(event)) {
     enqueueConnectionEvent(event);
   }
@@ -13453,6 +13480,8 @@ bool BleRadio::disconnectWithReason(BleDisconnectReason reason, uint8_t errorCod
   connectionServiceChangedIndicationAwaitingConfirm_ = false;
   connectionBatteryNotificationsEnabled_ = false;
   connectionBatteryNotificationPending_ = false;
+  latestConnectionRssiDbm_ = 0;
+  latestConnectionRssiValid_ = false;
   connectionPreparedWriteActive_ = false;
   connectionPreparedWriteHandle_ = 0U;
   connectionPreparedWriteValue_[0] = 0U;
@@ -17183,11 +17212,16 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event,
   if (event != nullptr) {
     resetConnectionEventStruct(event);
     if (dequeueConnectionEvent(event)) {
+      rememberLatestConnectionRssi(*event);
       return true;
     }
   }
 
-  return pollConnectionEventInternal(event, spinLimit);
+  const bool ran = pollConnectionEventInternal(event, spinLimit);
+  if (ran && event != nullptr) {
+    rememberLatestConnectionRssi(*event);
+  }
+  return ran;
 }
 
 bool BleRadio::scanOnce(BleAdvertisingChannel channel, BleScanPacket* packet,
