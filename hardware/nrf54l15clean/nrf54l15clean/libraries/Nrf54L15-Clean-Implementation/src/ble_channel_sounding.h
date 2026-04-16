@@ -162,6 +162,15 @@ struct BleCsEstimate {
   float fitDeltaMeters = 0.0f;
 };
 
+struct BleCsCalibrationProfile {
+  float scale = 1.0f;
+  float offsetMeters = 0.0f;
+  float referenceDistanceMeters = 0.0f;
+  float measuredMedianMeters = 0.0f;
+  float measuredMadMeters = 0.0f;
+  uint16_t sampleCount = 0U;
+};
+
 struct BleCsSubeventResultHeader {
   uint16_t connHandle = 0U;
   uint8_t configId = 0U;
@@ -445,6 +454,8 @@ class BleChannelSoundingRadio {
   static bool estimateDistancePhaseSlope(const BleCsChannelMeasurement* measurements,
                                          size_t count,
                                          BleCsEstimate* outEstimate);
+  static float applyCalibrationProfile(float meters,
+                                       const BleCsCalibrationProfile& profile);
   static BleCsIqSample parsePctSample(const uint8_t pct[3]);
   static void fillValidChannelMap(uint8_t channelMap[kBleCsChannelMapBytes]);
   static bool getAntennaPathPermutation(uint8_t antennaPathCount,

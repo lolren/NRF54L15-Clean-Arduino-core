@@ -41,8 +41,7 @@ Meaning:
 If host-to-target serial RX is unavailable on your ACM port, set these defaults directly in the
 initiator sketch instead:
 
-- `kCalibrationScaleDefault`
-- `kCalibrationOffsetMetersDefault`
+- the `scale` and `offsetMeters` fields in `kCalibrationProfileDefault`
 
 The initiator log now keeps the raw and calibrated values separate:
 
@@ -96,8 +95,34 @@ It prints:
 - `recommended_scale`
 - `recommended_offset_m`
 - the matching serial commands to apply in the live initiator example
-- the matching `kCalibrationScaleDefault` / `kCalibrationOffsetMetersDefault` constants if you
-  prefer compile-time calibration
+- the matching `BleCsCalibrationProfile` values if you prefer compile-time calibration through
+  `kCalibrationProfileDefault`
+
+You can also emit reusable profile artifacts directly from either a single-point
+analysis or a multi-point fit.
+
+Single-point example:
+
+```bash
+python3 scripts/channel_sounding_calibration.py analyze capture.txt \
+  --metric distance \
+  --reference-distance 0.200 \
+  --profile-name xiao_nrf54l15_pair_20cm \
+  --board-pair "XIAO nRF54L15 + XIAO nRF54L15" \
+  --notes "20 cm bench capture" \
+  --emit-profile-json docs/channel-sounding-profiles/xiao_nrf54l15_pair_20cm.json \
+  --emit-profile-header docs/channel-sounding-profiles/xiao_nrf54l15_pair_20cm.h
+```
+
+That writes:
+
+- a JSON profile for docs/tooling
+- a small C++ header containing a `BleCsCalibrationProfile` initializer
+
+Measured example profile:
+
+- [`channel-sounding-20cm-validation.md`](/home/lolren/Desktop/Nrf54L15/NRF54L15-Clean-Arduino-core/docs/channel-sounding-20cm-validation.md)
+- [`channel-sounding-profiles/README.md`](/home/lolren/Desktop/Nrf54L15/NRF54L15-Clean-Arduino-core/docs/channel-sounding-profiles/README.md)
 
 ## Notes
 

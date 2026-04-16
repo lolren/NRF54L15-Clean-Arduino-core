@@ -1662,6 +1662,16 @@ bool BleChannelSoundingRadio::estimateDistanceFromSubeventResults(
                                          localRoleIsInitiator, outEstimate);
 }
 
+float BleChannelSoundingRadio::applyCalibrationProfile(
+    float meters, const BleCsCalibrationProfile& profile) {
+  if (!isfinite(meters)) {
+    return NAN;
+  }
+
+  const float calibrated = (meters * profile.scale) + profile.offsetMeters;
+  return (calibrated >= 0.0f) ? calibrated : 0.0f;
+}
+
 bool BleChannelSoundingRadio::buildHciReadRemoteSupportedCapabilitiesCommand(
     uint16_t connHandle, BleCsHciCommand* outCommand) {
   if (outCommand == nullptr) {

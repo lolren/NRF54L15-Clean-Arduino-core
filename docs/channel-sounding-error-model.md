@@ -98,6 +98,8 @@ Symptoms:
 Action:
 
 - use the calibration flow in `docs/channel-sounding-calibration.md`
+- if you need a concrete measured example, start with
+  `docs/channel-sounding-20cm-validation.md`
 
 ### Multipath and placement
 

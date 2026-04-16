@@ -1,0 +1,23 @@
+{
+  "profile_version": 1,
+  "profile_name": "xiao_nrf54l15_pair_20cm",
+  "metric": "distance",
+  "scale": 1.0,
+  "offset_m": -0.19439999999999996,
+  "reference_distance_m": 0.2,
+  "measured_median_m": 0.3944,
+  "measured_mad_m": 0.13470000000000004,
+  "sample_count": 9,
+  "board_pair": "XIAO nRF54L15 + XIAO nRF54L15",
+  "notes": "20 cm bench capture on 2026-04-16",
+  "source_logs": [
+    "/home/lolren/Desktop/Nrf54L15/.build/cs_20cm_baseline.log"
+  ],
+  "source_points": [
+    {
+      "actual_m": 0.2,
+      "measured_median_m": 0.3944,
+      "log_path": "/home/lolren/Desktop/Nrf54L15/.build/cs_20cm_baseline.log"
+    }
+  ]
+}

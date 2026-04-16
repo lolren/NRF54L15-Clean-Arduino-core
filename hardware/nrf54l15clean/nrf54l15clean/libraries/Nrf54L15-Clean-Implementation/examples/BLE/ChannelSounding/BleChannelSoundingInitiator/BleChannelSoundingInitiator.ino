@@ -55,9 +55,9 @@ static constexpr BoardAntennaPath kAntennaPath = BoardAntennaPath::kCeramic;
 static constexpr uint8_t kSweepChannelCount = 37U;
 // Number of recent distance estimates kept in the sliding median filter.
 static constexpr uint8_t kMedianWindow = 5U;
-// Default calibration: scale=1.0 means no scaling, offset=0.0 means no shift.
-static constexpr float kCalibrationScaleDefault = 1.0f;
-static constexpr float kCalibrationOffsetMetersDefault = 0.0f;
+// Default calibration profile: identity scale/offset with no anchored reference.
+static constexpr BleCsCalibrationProfile kCalibrationProfileDefault{
+    1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0U};
 
 static BleChannelSoundingRadio gCs;
 static BleCsChannelMeasurement gMeasurements[kSweepChannelCount];
@@ -73,8 +73,7 @@ static uint32_t gValidSweepCount = 0U;
 static uint32_t gAcceptedSweepCount = 0U;
 static uint32_t gLastLogMs = 0U;
 static uint8_t gLastValidChannels = 0U;
-static float gCalibrationScale = kCalibrationScaleDefault;
-static float gCalibrationOffsetMeters = kCalibrationOffsetMetersDefault;
+static BleCsCalibrationProfile gCalibrationProfile = kCalibrationProfileDefault;
 static char gCommandBuffer[48] = {0};
 static uint8_t gCommandLength = 0U;
 
@@ -298,12 +297,14 @@ bool estimateAcceptableForDisplay(const BleCsEstimate& estimate) {
 }
 
 float applyCalibration(float meters) {
-  if (!isfinite(meters)) {
-    return NAN;
-  }
+  return BleChannelSoundingRadio::applyCalibrationProfile(meters, gCalibrationProfile);
+}
 
-  const float calibrated = (meters * gCalibrationScale) + gCalibrationOffsetMeters;
-  return (calibrated >= 0.0f) ? calibrated : 0.0f;
+void updateCalibrationReference(float referenceMeters, float measuredMeters, uint16_t sampleCount) {
+  gCalibrationProfile.referenceDistanceMeters = referenceMeters;
+  gCalibrationProfile.measuredMedianMeters = measuredMeters;
+  gCalibrationProfile.measuredMadMeters = 0.0f;
+  gCalibrationProfile.sampleCount = sampleCount;
 }
 
 void printDistanceField(const __FlashStringHelper* label, float meters) {
@@ -354,9 +355,17 @@ bool parseCommandFloat(const char* text, float* outValue) {
 
 void printCalibrationStatus() {
   Serial.print(F("calibration scale="));
-  Serial.print(gCalibrationScale, 6);
+  Serial.print(gCalibrationProfile.scale, 6);
   Serial.print(F(" offset_m="));
-  Serial.print(gCalibrationOffsetMeters, 4);
+  Serial.print(gCalibrationProfile.offsetMeters, 4);
+  if (gCalibrationProfile.sampleCount != 0U) {
+    Serial.print(F(" reference_m="));
+    Serial.print(gCalibrationProfile.referenceDistanceMeters, 4);
+    Serial.print(F(" measured_m="));
+    Serial.print(gCalibrationProfile.measuredMedianMeters, 4);
+    Serial.print(F(" samples="));
+    Serial.print(gCalibrationProfile.sampleCount);
+  }
   if (gLastEstimateValid && isfinite(gLastEstimate.phaseSlopeDistanceMeters)) {
     Serial.print(F(" raw_phase_m="));
     Serial.print(gLastEstimate.phaseSlopeDistanceMeters, 4);
@@ -7960,8 +7969,7 @@ void handleCalibrationCommand(const char* command) {
   }
 
   if (strcmp(command, "clear") == 0) {
-    gCalibrationScale = 1.0f;
-    gCalibrationOffsetMeters = 0.0f;
+    gCalibrationProfile = kCalibrationProfileDefault;
     Serial.println(F("calibration=cleared"));
     printCalibrationStatus();
     return;
@@ -7973,7 +7981,9 @@ void handleCalibrationCommand(const char* command) {
       return;
     }
 
-    gCalibrationOffsetMeters = -(gLastEstimate.phaseSlopeDistanceMeters * gCalibrationScale);
+    gCalibrationProfile.offsetMeters =
+        -(gLastEstimate.phaseSlopeDistanceMeters * gCalibrationProfile.scale);
+    updateCalibrationReference(0.0f, gLastEstimate.phaseSlopeDistanceMeters, 1U);
     Serial.println(F("calibration=zeroed"));
     printCalibrationStatus();
     return;
@@ -7986,7 +7996,7 @@ void handleCalibrationCommand(const char* command) {
       return;
     }
 
-    gCalibrationOffsetMeters = offsetMeters;
+    gCalibrationProfile.offsetMeters = offsetMeters;
     printCalibrationStatus();
     return;
   }
@@ -7998,7 +8008,7 @@ void handleCalibrationCommand(const char* command) {
       return;
     }
 
-    gCalibrationScale = scale;
+    gCalibrationProfile.scale = scale;
     printCalibrationStatus();
     return;
   }
@@ -8014,8 +8024,9 @@ void handleCalibrationCommand(const char* command) {
       return;
     }
 
-    gCalibrationOffsetMeters =
-        referenceMeters - (gLastEstimate.phaseSlopeDistanceMeters * gCalibrationScale);
+    gCalibrationProfile.offsetMeters =
+        referenceMeters - (gLastEstimate.phaseSlopeDistanceMeters * gCalibrationProfile.scale);
+    updateCalibrationReference(referenceMeters, gLastEstimate.phaseSlopeDistanceMeters, 1U);
     Serial.print(F("calibration=referenced reference_m="));
     Serial.println(referenceMeters, 4);
     printCalibrationStatus();
@@ -8247,9 +8258,9 @@ void loop() {
       Serial.print(F(" display_ok="));
       Serial.print(displayAccepted ? 1 : 0);
       Serial.print(F(" cal_offset_m="));
-      Serial.print(gCalibrationOffsetMeters, 4);
+      Serial.print(gCalibrationProfile.offsetMeters, 4);
       Serial.print(F(" cal_scale="));
-      Serial.print(gCalibrationScale, 6);
+      Serial.print(gCalibrationProfile.scale, 6);
       Serial.print(F(" rtt_channels="));
       Serial.print(0U);
       Serial.print(F(" rtt_var="));

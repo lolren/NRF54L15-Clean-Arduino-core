@@ -25,7 +25,7 @@ Scope note:
 - [ ] Real RF calibration and board-specific antenna-delay characterization
 - [ ] Measured BLE / CS power characterization on real hardware
 - [x] Measured BLE / CS latency characterization on real hardware
-- [ ] Real physical-distance calibration model for CS results
+- [x] Real physical-distance calibration model for CS results
 
 ## CPUAPP BLE Base
 
@@ -94,5 +94,5 @@ Scope note:
 ## Current Next Work
 
 1. Real physically defensible ranging output on top of the landed controller-produced CS payload path.
-2. Physical calibration and measured power characterization.
+2. Measured BLE / CS power characterization on real hardware.
 3. Real RF calibration and board-specific antenna-delay characterization.
