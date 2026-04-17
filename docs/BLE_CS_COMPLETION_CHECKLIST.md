@@ -94,3 +94,7 @@ Scope note:
 ## Current Next Work
 
 1. Measured BLE / CS power characterization on real hardware.
+   Current blocker removed: dedicated `BleChannelSoundingVprServicePowerProbe`
+   harness and parser are implemented and validated on attached hardware; one
+   instrumented bench run is still required before this box can be ticked
+   honestly.

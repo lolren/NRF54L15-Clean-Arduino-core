@@ -569,10 +569,14 @@ BLE examples:
   - Prints controller-owned completed-result summary fields as `summary=`, `steps=`, `modes=`, `ch=`, and `hash=`.
   - Also reads back controller-produced completed local/peer result payload bytes and validates them as `raw=`, `raw_steps=`, and `raw_hash=`.
   - Also prints in-place runtime timing fields as `lat_ms=begin/complete/disconnect/total`.
+- `examples/BLE/ChannelSounding/BleChannelSoundingVprServicePowerProbe/BleChannelSoundingVprServicePowerProbe.ino`
+  - Quiet single-board power-measurement harness for the generic VPR BLE -> CS runtime.
+  - Splits service-idle, BLE-connected, and BLE+CS phases, then prints a repeated summary line after the measured window.
 
 Latency characterization note:
 
 - `docs/ble-cs-latency-characterization.md`
+- `docs/ble-cs-power-characterization.md`
 
 Calibration and error-model notes:
 

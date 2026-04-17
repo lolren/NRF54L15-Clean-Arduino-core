@@ -641,6 +641,7 @@ Relevant docs:
 - [Low-power BLE patterns](docs/low-power-ble-patterns.md)
 - [BLE advertising validation](docs/ble-advertising-validation.md)
 - [Power profile measurements](POWER_PROFILE_MEASUREMENTS.md)
+- [BLE / CS power characterization path](docs/ble-cs-power-characterization.md)
 
 ## Channel Sounding
 
@@ -677,10 +678,14 @@ Use these library examples together:
 - [`BleChannelSoundingVprServiceNominal`](hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples/BLE/ChannelSounding/BleChannelSoundingVprServiceNominal)
   - validates controller-produced completed local/peer result payloads against
     the workflow summary and controller hashes
+- [`BleChannelSoundingVprServicePowerProbe`](hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples/BLE/ChannelSounding/BleChannelSoundingVprServicePowerProbe)
+  - quiet current-measurement harness for generic-service BLE -> CS bench work
+  - splits `service idle`, `BLE connected`, and `BLE + CS` phases in one run
 
 Current measured latency note:
 
 - [`docs/ble-cs-latency-characterization.md`](docs/ble-cs-latency-characterization.md)
+- [`docs/ble-cs-power-characterization.md`](docs/ble-cs-power-characterization.md)
 
 Calibration and trust-model notes:
 
@@ -828,6 +833,7 @@ sudo udevadm trigger --attr-match=idVendor=2886 --attr-match=idProduct=0066
 - [Low-power BLE patterns](docs/low-power-ble-patterns.md)
 - [BLE advertising validation](docs/ble-advertising-validation.md)
 - [Power profile measurements](POWER_PROFILE_MEASUREMENTS.md)
+- [BLE / CS power characterization path](docs/ble-cs-power-characterization.md)
 - [Development Notes](docs/development.md)
 - [Post-0.5.0 Implementation Plan](docs/POST_0_5_0_IMPLEMENTATION_PLAN.md)
 - [Bundled HAL / BLE library README](hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/README.md)

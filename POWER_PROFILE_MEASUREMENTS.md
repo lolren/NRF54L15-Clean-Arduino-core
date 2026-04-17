@@ -14,6 +14,7 @@ Compare average and peak current across Arduino Tools profiles and key sketches:
 - Peripheral auto-gating (`clean_autogate`)
 - BLE enable (`clean_ble`)
 - BLE timing profile (`clean_ble_timing`)
+- generic VPR BLE -> CS phase breakdown (`service idle`, `BLE connected`, `BLE + CS`)
 
 ## 2. Required Equipment
 
@@ -109,6 +110,14 @@ Outputs are written to `measurements/ble_timing_sweep_<timestamp>/`:
 If no windows are captured, verify serial path and keep Tools serial routing at
 `USB bridge on Serial` (`clean_serial=bridge`).
 
+For BLE / CS current work, use the dedicated quiet harness:
+
+- `hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples/BLE/ChannelSounding/BleChannelSoundingVprServicePowerProbe/BleChannelSoundingVprServicePowerProbe.ino`
+- parser:
+  `python3 scripts/parse_cs_power_probe.py --log cs_power_probe.log`
+- measurement note:
+  `docs/ble-cs-power-characterization.md`
+
 ## 7. Measurement Matrix
 
 Use this matrix and fill measured values from your instrument.
@@ -123,6 +132,9 @@ You can also fill `docs/power_profiles_template.csv` directly.
 | P5 | `BleConnectionPeripheral` | `clean_cpu=cpu64,clean_power=low,clean_ble=on,clean_ble_timing=interop` | Connected | TBD | TBD | TBD | TBD | Interop profile |
 | P6 | `BleConnectionPeripheral` | `clean_cpu=cpu64,clean_power=low,clean_ble=on,clean_ble_timing=aggressive` | Connected | TBD | TBD | TBD | TBD | Aggressive BLE timing |
 | P7 | `BleConnectionPeripheral` | `clean_cpu=cpu64,clean_power=low,clean_ble=on,clean_ble_timing=balanced` | Connected | TBD | TBD | TBD | TBD | TX power reduction impact; set sketch `kTxPowerDbm` explicitly for this row |
+| P8 | `BleChannelSoundingVprServicePowerProbe` | `clean_cpu=cpu64,clean_power=low,clean_autogate=balanced,clean_ble=on,clean_ble_timing=balanced,clean_vpr=on` | Service idle | TBD | TBD | TBD | TBD | Use first `phase_ms` slice and quiet harness |
+| P9 | `BleChannelSoundingVprServicePowerProbe` | `clean_cpu=cpu64,clean_power=low,clean_autogate=balanced,clean_ble=on,clean_ble_timing=balanced,clean_vpr=on` | Connected, no CS | TBD | TBD | TBD | TBD | Use second `phase_ms` slice |
+| P10 | `BleChannelSoundingVprServicePowerProbe` | `clean_cpu=cpu64,clean_power=low,clean_autogate=balanced,clean_ble=on,clean_ble_timing=balanced,clean_vpr=on` | Connected + CS | TBD | TBD | TBD | TBD | Use third `phase_ms` slice; the harness repeats CS runs at fixed `cs_gap_ms` |
 
 ## 8. Interpretation Rules
 
@@ -135,4 +147,4 @@ You can also fill `docs/power_profiles_template.csv` directly.
 
 - Measurement workflow: implemented.
 - Tools-menu profile knobs for power tuning: implemented.
-- Bench current captures with dedicated current instrument: pending user lab runs.
+- Bench current captures with dedicated current instrument: power probe harness implemented; instrumented run still pending.
