@@ -61,8 +61,9 @@ private:
 
     static constexpr uint16_t kRxRingSize = 1024U;
     // Keep enough hardware-backed RX slack to survive short BLE timing-critical
-    // sections without dropping bridge UART bytes.
-    static constexpr uint8_t kRxDmaChunkSize = 128U;
+    // sections without dropping bridge UART bytes from slower upstream devices
+    // such as GNSS receivers feeding the BLE NUS bridge.
+    static constexpr uint16_t kRxDmaChunkSize = 512U;
     static constexpr uint8_t kTxDmaChunkSize = 64U;
 
     NRF_UARTE_Type* _uart;
