@@ -269,8 +269,8 @@ Thread example organization:
 - the PAL now includes repo-backed RNG/AES/key-ref crypto seams; SHA/HMAC/HKDF/
   ECDSA/PBKDF2 still return explicit `OT_ERROR_NOT_CAPABLE`.
 - the first radio slice now wraps `ZigbeeRadio` directly for Thread first pass,
-  with real channel/TX-power hooks and a single-board MAC-frame TX proof in
-  `OpenThreadPlatformSkeletonProbe`.
+  with real channel/TX-power hooks, real ED/energy-scan reporting, and a
+  single-board MAC-frame TX proof in `OpenThreadPlatformSkeletonProbe`.
 - `EndDevices`: generic end-device commissioning baselines.
 - `Lights`: Home Automation on/off and dimmable light examples.
 - `Sensors`: always-on temperature + battery sensor examples.

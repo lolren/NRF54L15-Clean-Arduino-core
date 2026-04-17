@@ -19,9 +19,11 @@ namespace {
 uint32_t gRadioTxStartedCount = 0;
 uint32_t gRadioTxDoneCount = 0;
 uint32_t gRadioRxDoneCount = 0;
+uint32_t gRadioEnergyScanDoneCount = 0;
 otError gRadioLastTxError = OT_ERROR_NONE;
 uint16_t gRadioLastTxLength = 0;
 uint8_t gRadioLastTxChannel = 0;
+int8_t gRadioLastEnergyScanDbm = OT_RADIO_RSSI_INVALID;
 
 void printHexByte(uint8_t value) {
   if (value < 16) {
@@ -74,6 +76,11 @@ extern "C" void otPlatRadioTxDone(otInstance*, otRadioFrame*, otRadioFrame*,
 
 extern "C" void otPlatRadioReceiveDone(otInstance*, otRadioFrame*, otError) {
   ++gRadioRxDoneCount;
+}
+
+extern "C" void otPlatRadioEnergyScanDone(otInstance*, int8_t maxRssi) {
+  ++gRadioEnergyScanDoneCount;
+  gRadioLastEnergyScanDbm = maxRssi;
 }
 
 void setup() {
@@ -174,6 +181,7 @@ void setup() {
   otPlatRadioSetAlternateShortAddress(nullptr, 0x3456);
   otPlatRadioSetTransmitPower(nullptr, 8);
   otPlatRadioReceive(nullptr, 15);
+  const otError energyScanError = otPlatRadioEnergyScan(nullptr, 15, 1);
   otRadioFrame* txFrame = otPlatRadioGetTransmitBuffer(nullptr);
   if (txFrame != nullptr && txFrame->mPsdu != nullptr) {
     txFrame->mLength = 3U;
@@ -291,12 +299,26 @@ void setup() {
   Serial.print(snapshot.radioLastTxLength);
   Serial.print("/");
   Serial.print(static_cast<int>(snapshot.radioLastError));
+  Serial.print(" escan=");
+  Serial.print(static_cast<int>(energyScanError));
+  Serial.print("/");
+  Serial.print(snapshot.radioEnergyScanCount);
+  Serial.print("/");
+  Serial.print(snapshot.radioLastEdLevel);
+  Serial.print("/");
+  Serial.print(snapshot.lastRssiDbm);
+  Serial.print("/");
+  Serial.print(gRadioEnergyScanDoneCount);
+  Serial.print("/");
+  Serial.print(gRadioLastEnergyScanDbm);
   Serial.print(" cb=");
   Serial.print(gRadioTxStartedCount);
   Serial.print("/");
   Serial.print(gRadioTxDoneCount);
   Serial.print("/");
   Serial.print(gRadioRxDoneCount);
+  Serial.print("/");
+  Serial.print(gRadioEnergyScanDoneCount);
   Serial.print("/");
   Serial.print(gRadioLastTxLength);
   Serial.print("@");

@@ -66,7 +66,8 @@ Current gap:
   skeleton (`alarm`, `entropy`, `settings`, `logging`, `diag`, `radio`) plus
   repo-backed RNG/AES/key-ref crypto shims, plus the first direct
   `ZigbeeRadio`-wrapped radio slice with real channel/TX-power hooks and
-  single-board MAC-frame TX proof in `OpenThreadPlatformSkeletonProbe`
+  single-board MAC-frame TX proof plus real energy-scan proof in
+  `OpenThreadPlatformSkeletonProbe`
 
 ## Validation Artifacts
 

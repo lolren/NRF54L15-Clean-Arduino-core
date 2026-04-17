@@ -28,6 +28,8 @@ constexpr uint32_t kCryptoSupportAesEcb = 1UL << 1U;
 constexpr uint32_t kCryptoSupportKeyRefs = 1UL << 2U;
 constexpr uint32_t kThreadRadioPollWindowUs = 1500U;
 constexpr uint32_t kThreadRadioPollSpinLimit = 200000UL;
+constexpr int8_t kThreadEdRssiOffsetDbm = -92;
+constexpr int8_t kThreadEdRssiMaxDbm = 20;
 constexpr size_t kCryptoMaxKeyBytes = OT_CRYPTO_ECDSA_MAX_DER_SIZE;
 constexpr size_t kCryptoKeySlotCount = 8U;
 
@@ -74,6 +76,8 @@ struct OpenThreadPlatformState {
   otInstance* radioCallbackInstance = nullptr;
   bool radioTxDonePending = false;
   otError radioTxDoneError = OT_ERROR_NONE;
+  bool radioEnergyScanDonePending = false;
+  int8_t radioEnergyScanDoneDbm = OT_RADIO_RSSI_INVALID;
 
   otPlatDiagOutputCallback diagCallback = nullptr;
   void* diagCallbackContext = nullptr;
@@ -470,6 +474,32 @@ void pollThreadRadioReceive(otInstance* instance) {
   otPlatRadioReceiveDone(instance, &state.rxFrame, OT_ERROR_NONE);
 }
 
+int8_t convertThreadEnergyScanToDbm(uint8_t edLevel) {
+  int16_t dbm = static_cast<int16_t>(kThreadEdRssiOffsetDbm) +
+                static_cast<int16_t>(edLevel);
+  if (dbm > kThreadEdRssiMaxDbm) {
+    dbm = kThreadEdRssiMaxDbm;
+  }
+  if (dbm < INT8_MIN) {
+    dbm = INT8_MIN;
+  }
+  return static_cast<int8_t>(dbm);
+}
+
+void finishThreadRadioEnergyScan(otInstance* instance) {
+  OpenThreadPlatformState& state = gOpenThreadPlatformState;
+  if (!state.radioEnergyScanDonePending) {
+    return;
+  }
+
+  state.radioEnergyScanDonePending = false;
+  state.snapshot.radioEnergyScanPending = false;
+  state.snapshot.radioEnergyScanCount++;
+  state.snapshot.lastRssiDbm = state.radioEnergyScanDoneDbm;
+  state.snapshot.radioLastError = OT_ERROR_NONE;
+  otPlatRadioEnergyScanDone(instance, state.radioEnergyScanDoneDbm);
+}
+
 }  // namespace
 
 void OpenThreadPlatformSkeleton::begin() { otSysInit(0, nullptr); }
@@ -536,6 +566,8 @@ void otSysInit(int, char**) {
   state.radioCallbackInstance = nullptr;
   state.radioTxDonePending = false;
   state.radioTxDoneError = OT_ERROR_NONE;
+  state.radioEnergyScanDonePending = false;
+  state.radioEnergyScanDoneDbm = OT_RADIO_RSSI_INVALID;
 
   state.snapshot.initialized = true;
   state.snapshot.settingsInitialized = true;
@@ -543,6 +575,8 @@ void otSysInit(int, char**) {
   state.snapshot.radioState = OT_RADIO_STATE_DISABLED;
   state.snapshot.radioBackendWrappedDirect = true;
   state.snapshot.radioBackendReady = false;
+  state.snapshot.radioEnergyScanPending = false;
+  state.snapshot.radioLastEdLevel = 0U;
   state.snapshot.receiveSensitivityDbm = -100;
   state.snapshot.txPowerDbm = 0;
   state.snapshot.ccaThresholdDbm = -75;
@@ -587,6 +621,8 @@ void otSysDeinit(void) {
   gOpenThreadPlatformState.radioCallbackInstance = nullptr;
   gOpenThreadPlatformState.radioTxDonePending = false;
   gOpenThreadPlatformState.radioTxDoneError = OT_ERROR_NONE;
+  gOpenThreadPlatformState.radioEnergyScanDonePending = false;
+  gOpenThreadPlatformState.radioEnergyScanDoneDbm = OT_RADIO_RSSI_INVALID;
   gOpenThreadPlatformState.diagCallback = nullptr;
   gOpenThreadPlatformState.diagCallbackContext = nullptr;
 }
@@ -620,6 +656,7 @@ void otSysProcessDrivers(otInstance* instance) {
 
   updateRadioTime();
   finishThreadRadioTx(state.radioCallbackInstance);
+  finishThreadRadioEnergyScan(state.radioCallbackInstance);
   pollThreadRadioReceive(state.radioCallbackInstance);
 }
 
@@ -1496,7 +1533,39 @@ int8_t otPlatRadioGetRssi(otInstance*) {
   return xiao_nrf54l15::gOpenThreadPlatformState.snapshot.lastRssiDbm;
 }
 
-otError otPlatRadioEnergyScan(otInstance*, uint8_t, uint16_t) { return OT_ERROR_NOT_IMPLEMENTED; }
+otError otPlatRadioEnergyScan(otInstance*, uint8_t channel, uint16_t) {
+  using namespace xiao_nrf54l15;
+
+  OpenThreadPlatformState& state = gOpenThreadPlatformState;
+  if (!state.snapshot.radioEnabled) {
+    return OT_ERROR_INVALID_STATE;
+  }
+  if (channel < OT_RADIO_2P4GHZ_OQPSK_CHANNEL_MIN ||
+      channel > OT_RADIO_2P4GHZ_OQPSK_CHANNEL_MAX) {
+    return OT_ERROR_INVALID_ARGS;
+  }
+  if (!ensureThreadRadioReady()) {
+    return OT_ERROR_FAILED;
+  }
+  if (!state.radio.setChannel(channel)) {
+    state.snapshot.radioLastError = OT_ERROR_INVALID_ARGS;
+    return OT_ERROR_INVALID_ARGS;
+  }
+
+  uint8_t edLevel = 0U;
+  if (!state.radio.sampleEnergyDetect(&edLevel, kThreadRadioPollSpinLimit)) {
+    state.snapshot.radioLastError = OT_ERROR_FAILED;
+    state.snapshot.radioEnergyScanPending = false;
+    return OT_ERROR_FAILED;
+  }
+
+  state.snapshot.radioChannel = channel;
+  state.snapshot.radioLastEdLevel = edLevel;
+  state.snapshot.radioEnergyScanPending = true;
+  state.radioEnergyScanDoneDbm = convertThreadEnergyScanToDbm(edLevel);
+  state.radioEnergyScanDonePending = true;
+  return OT_ERROR_NONE;
+}
 
 void otPlatRadioEnableSrcMatch(otInstance*, bool) {}
 

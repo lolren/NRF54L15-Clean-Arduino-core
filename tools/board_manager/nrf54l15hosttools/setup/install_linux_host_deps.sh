@@ -2,51 +2,79 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+TOOLS_ROOT="${TOOLS_ROOT_OVERRIDE:-$(cd -- "${SCRIPT_DIR}/.." && pwd)}"
 RULE_SRC="${SCRIPT_DIR}/60-seeed-xiao-nrf54-cmsis-dap.rules"
 RULE_DST="${RULE_DST:-/etc/udev/rules.d/60-seeed-xiao-nrf54-cmsis-dap.rules}"
 UDEVADM_BIN="${UDEVADM_BIN:-udevadm}"
+PYTHON_BIN="${PYTHON_BIN:-python3}"
 
 usage() {
   cat <<'EOF'
 Usage:
-  install_linux_host_deps.sh           Install Python pyOCD host dependencies
-  install_linux_host_deps.sh --python  Install Python pyOCD host dependencies
+  install_linux_host_deps.sh           Install Python pyOCD into the tool-local runtime
+  install_linux_host_deps.sh --python  Install Python pyOCD into the tool-local runtime
   install_linux_host_deps.sh --udev    Install Linux udev rules only
   install_linux_host_deps.sh --all     Install both Python deps and udev rules
 EOF
 }
 
+ensure_python_pip() {
+  if "${PYTHON_BIN}" -m pip --version >/dev/null 2>&1; then
+    return 0
+  fi
+
+  if "${PYTHON_BIN}" -m ensurepip --upgrade >/dev/null 2>&1; then
+    return 0
+  fi
+
+  echo "python3 pip support is required. Install python3-pip and retry." >&2
+  exit 1
+}
+
 install_python_deps() {
   local py_tag
   local wheelhouse_dir
+  local runtime_dir
+  local site_dir
+  local requirements_file
   local install_args
 
-  if ! command -v python3 >/dev/null 2>&1; then
-    echo "python3 is required for pyOCD installation." >&2
+  if ! command -v "${PYTHON_BIN}" >/dev/null 2>&1; then
+    echo "${PYTHON_BIN} is required for pyOCD installation." >&2
     exit 1
   fi
 
-  py_tag="$(python3 - <<'PY'
+  ensure_python_pip
+
+  py_tag="$("${PYTHON_BIN}" - <<'PY'
 import sys
 print(f"cp{sys.version_info.major}{sys.version_info.minor}")
 PY
 )"
-  wheelhouse_dir="${SCRIPT_DIR}/../wheelhouse/${py_tag}"
-  install_args=(--user --upgrade)
+  wheelhouse_dir="${TOOLS_ROOT}/wheelhouse/${py_tag}"
+  runtime_dir="${TOOLS_ROOT}/runtime"
+  site_dir="${runtime_dir}/pyocd-site"
+  requirements_file="${TOOLS_ROOT}/requirements-pyocd.txt"
+  install_args=(install --upgrade --disable-pip-version-check --ignore-installed --target "${site_dir}")
+
+  rm -rf "${site_dir}"
+  mkdir -p "${site_dir}"
 
   if [[ -d "${wheelhouse_dir}" ]]; then
     echo "Using bundled offline wheelhouse: ${wheelhouse_dir}"
     install_args+=(--no-index --find-links "${wheelhouse_dir}")
   fi
 
-  if ! python3 -m pip install "${install_args[@]}" -r "${SCRIPT_DIR}/../requirements-pyocd.txt"; then
+  if ! "${PYTHON_BIN}" -m pip "${install_args[@]}" -r "${requirements_file}"; then
     if [[ -d "${wheelhouse_dir}" ]]; then
       echo "Bundled wheelhouse install failed; retrying with online indexes..."
-      python3 -m pip install --user --upgrade -r "${SCRIPT_DIR}/../requirements-pyocd.txt"
+      "${PYTHON_BIN}" -m pip install --upgrade --disable-pip-version-check --ignore-installed --target "${site_dir}" -r "${requirements_file}"
     else
       exit 1
     fi
   fi
+
+  "${PYTHON_BIN}" "${TOOLS_ROOT}/pyocd_shim.py" --version >/dev/null
 }
 
 install_udev_rules() {

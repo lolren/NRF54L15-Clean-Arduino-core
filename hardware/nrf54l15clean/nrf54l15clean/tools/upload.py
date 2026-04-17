@@ -44,23 +44,41 @@ def normalize_tools_path(path: str | None) -> Path | None:
     return candidate if candidate.exists() else None
 
 
-def bundled_pyocd_command(host_tools_path: Path | None) -> list[str] | None:
-    if host_tools_path is None:
+def pyocd_tool_root(host_tools_path: Path | None) -> Path:
+    if host_tools_path is not None:
+        return host_tools_path
+    return Path(__file__).resolve().parent
+
+
+def bundled_pyocd_site_path(tool_root: Path | None) -> Path | None:
+    if tool_root is None:
         return None
+    candidate = tool_root / "runtime" / "pyocd-site"
+    return candidate if candidate.is_dir() else None
+
+
+def bundled_pyocd_command(tool_root: Path | None) -> list[str] | None:
+    if tool_root is None:
+        return None
+
+    site_dir = bundled_pyocd_site_path(tool_root)
+    shim = tool_root / "pyocd_shim.py"
+    if site_dir is not None and shim.is_file():
+        return [sys.executable, str(shim)]
 
     candidates = []
     if sys.platform.startswith("win"):
         candidates.extend(
             [
-                host_tools_path / "runtime" / "pyocd-venv" / "Scripts" / "pyocd.exe",
-                host_tools_path / "runtime" / "pyocd-venv" / "Scripts" / "python.exe",
+                tool_root / "runtime" / "pyocd-venv" / "Scripts" / "pyocd.exe",
+                tool_root / "runtime" / "pyocd-venv" / "Scripts" / "python.exe",
             ]
         )
     else:
         candidates.extend(
             [
-                host_tools_path / "runtime" / "pyocd-venv" / "bin" / "pyocd",
-                host_tools_path / "runtime" / "pyocd-venv" / "bin" / "python",
+                tool_root / "runtime" / "pyocd-venv" / "bin" / "pyocd",
+                tool_root / "runtime" / "pyocd-venv" / "bin" / "python",
             ]
         )
 
@@ -73,10 +91,10 @@ def bundled_pyocd_command(host_tools_path: Path | None) -> list[str] | None:
     return None
 
 
-def bundled_wheelhouse_path(host_tools_path: Path | None) -> Path | None:
-    if host_tools_path is None:
+def bundled_wheelhouse_path(tool_root: Path | None) -> Path | None:
+    if tool_root is None:
         return None
-    wheelhouse_root = host_tools_path / "wheelhouse"
+    wheelhouse_root = tool_root / "wheelhouse"
     if not wheelhouse_root.is_dir():
         return None
     version_tag = f"cp{sys.version_info.major}{sys.version_info.minor}"
@@ -85,13 +103,15 @@ def bundled_wheelhouse_path(host_tools_path: Path | None) -> Path | None:
 
 
 def detect_pyocd_command(host_tools_path: Path | None = None) -> list[str] | None:
+    tool_root = pyocd_tool_root(host_tools_path)
+
+    bundled = bundled_pyocd_command(tool_root)
+    if bundled is not None:
+        return bundled
+
     pyocd_exe = shutil.which("pyocd")
     if pyocd_exe:
         return [pyocd_exe]
-
-    bundled = bundled_pyocd_command(host_tools_path)
-    if bundled is not None:
-        return bundled
 
     module_probe = run([sys.executable, "-m", "pyocd", "--version"])
     if module_probe.returncode == 0:
@@ -100,18 +120,16 @@ def detect_pyocd_command(host_tools_path: Path | None = None) -> list[str] | Non
     return None
 
 
-def host_setup_hint(host_tools_path: Path | None = None) -> str:
-    tools_dir = None
-    if host_tools_path is not None and (host_tools_path / "setup").is_dir():
-        tools_dir = host_tools_path / "setup"
-    else:
-        tools_dir = Path(__file__).resolve().parent / "setup"
+def host_setup_hint(host_tools_path: Path | None = None, purpose: str = "python") -> str:
+    tool_root = pyocd_tool_root(host_tools_path)
+    tools_dir = tool_root / "setup"
     if sys.platform.startswith("linux"):
-        return (
-            "Run "
-            + str(tools_dir / "install_linux_host_deps.sh")
-            + " --udev"
-        )
+        script = str(tools_dir / "install_linux_host_deps.sh")
+        if purpose == "udev":
+            return f"Run {script} --udev"
+        if purpose == "all":
+            return f"Run {script} --all"
+        return f"Run {script} --python (or --all on first-time setup)"
     if sys.platform.startswith("win"):
         return (
             "Run PowerShell -ExecutionPolicy Bypass -File "
@@ -122,62 +140,72 @@ def host_setup_hint(host_tools_path: Path | None = None) -> str:
 
 def install_pyocd(host_tools_path: Path | None = None) -> bool:
     print("Attempting to install pyocd for automatic target recovery...")
+    tool_root = pyocd_tool_root(host_tools_path)
+    runtime_dir = tool_root / "runtime"
+    site_dir = runtime_dir / "pyocd-site"
+    requirements = tool_root / "requirements-pyocd.txt"
+    wheelhouse = bundled_wheelhouse_path(tool_root)
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    if site_dir.exists():
+        shutil.rmtree(site_dir)
+    site_dir.mkdir(parents=True, exist_ok=True)
 
-    if host_tools_path is not None:
-        runtime_dir = host_tools_path / "runtime"
-        venv_dir = runtime_dir / "pyocd-venv"
-        requirements = host_tools_path / "requirements-pyocd.txt"
-        wheelhouse = bundled_wheelhouse_path(host_tools_path)
-        runtime_dir.mkdir(parents=True, exist_ok=True)
-
-        if not venv_dir.exists():
-            create = run([sys.executable, "-m", "venv", str(venv_dir)])
-            print_result(create)
-            if create.returncode != 0:
-                return False
-
-        if sys.platform.startswith("win"):
-            pip = venv_dir / "Scripts" / "python.exe"
-        else:
-            pip = venv_dir / "bin" / "python"
-        if not pip.is_file():
+    pip_check = run([sys.executable, "-m", "pip", "--version"])
+    if pip_check.returncode != 0:
+        ensurepip = run([sys.executable, "-m", "ensurepip", "--upgrade"])
+        print_result(ensurepip)
+        if ensurepip.returncode != 0:
             return False
 
-        install_cmd = [
-            str(pip),
+    install_cmd = [
+        sys.executable,
+        "-m",
+        "pip",
+        "install",
+        "--upgrade",
+        "--disable-pip-version-check",
+        "--ignore-installed",
+        "--target",
+        str(site_dir),
+    ]
+    if wheelhouse is not None:
+        print(f"Using bundled offline wheelhouse: {wheelhouse}")
+        install_cmd.extend(["--no-index", "--find-links", str(wheelhouse)])
+    if requirements.is_file():
+        install_cmd.extend(["-r", str(requirements)])
+    else:
+        install_cmd.append("pyocd")
+
+    install = run(install_cmd)
+    print_result(install)
+    if install.returncode != 0 and wheelhouse is not None:
+        print("Bundled wheelhouse install failed; retrying with online indexes...")
+        online_cmd = [
+            sys.executable,
             "-m",
             "pip",
             "install",
             "--upgrade",
             "--disable-pip-version-check",
+            "--ignore-installed",
+            "--target",
+            str(site_dir),
         ]
-        if wheelhouse is not None:
-            print(f"Using bundled offline wheelhouse: {wheelhouse}")
-            install_cmd.extend(["--no-index", "--find-links", str(wheelhouse)])
         if requirements.is_file():
-            install_cmd.extend(["-r", str(requirements)])
+            online_cmd.extend(["-r", str(requirements)])
         else:
-            install_cmd.append("pyocd")
-
-        install = run(install_cmd)
+            online_cmd.append("pyocd")
+        install = run(online_cmd)
         print_result(install)
-        if install.returncode != 0 and wheelhouse is not None:
-            print("Bundled wheelhouse install failed; retrying with online indexes...")
-            online_cmd = [
-                str(pip),
-                "-m",
-                "pip",
-                "install",
-                "--upgrade",
-                "--disable-pip-version-check",
-            ]
-            if requirements.is_file():
-                online_cmd.extend(["-r", str(requirements)])
-            else:
-                online_cmd.append("pyocd")
-            install = run(online_cmd)
-            print_result(install)
-        return install.returncode == 0
+    if install.returncode != 0:
+        return False
+
+    bundled = bundled_pyocd_command(tool_root)
+    if bundled is None:
+        return False
+    verify = run([*bundled, "--version"])
+    print_result(verify)
+    return verify.returncode == 0
 
 
 def resolve_tool(path_or_name: str) -> str | None:
@@ -376,7 +404,7 @@ def print_linux_probe_permission_hint(
         file=sys.stderr,
     )
     print(
-        f"HINT: {host_setup_hint(host_tools_path)}",
+        f"HINT: {host_setup_hint(host_tools_path, purpose='udev')}",
         file=sys.stderr,
     )
 
@@ -489,7 +517,7 @@ def upload_pyocd(
     pyocd_cmd = pyocd_cmd if pyocd_cmd is not None else detect_pyocd_command(host_tools_path)
     if pyocd_cmd is None:
         print("ERROR: pyocd is not installed or not available in PATH", file=sys.stderr)
-        print(f"HINT: {host_setup_hint(host_tools_path)}", file=sys.stderr)
+        print(f"HINT: {host_setup_hint(host_tools_path, purpose='python')}", file=sys.stderr)
         return 3
 
     uid = normalize_uid(requested_uid)
@@ -707,7 +735,7 @@ def main() -> int:
                 print("pyocd installation succeeded.")
             elif not install_host_pyocd_fallback():
                 print("pyocd installation failed.", file=sys.stderr)
-                print(f"HINT: {host_setup_hint(host_tools_path)}", file=sys.stderr)
+                print(f"HINT: {host_setup_hint(host_tools_path, purpose='python')}", file=sys.stderr)
         rc = upload_pyocd(
             args.hex,
             args.target,
@@ -764,7 +792,7 @@ def main() -> int:
                     "Install pyocd and retry (or select pyOCD upload method).",
                     file=sys.stderr,
                 )
-                print(f"HINT: {host_setup_hint(host_tools_path)}", file=sys.stderr)
+                print(f"HINT: {host_setup_hint(host_tools_path, purpose='python')}", file=sys.stderr)
         elif rc != 0 and detect_pyocd_command(host_tools_path) is not None:
             print("OpenOCD upload failed; falling back to pyocd...")
             rc = upload_pyocd(

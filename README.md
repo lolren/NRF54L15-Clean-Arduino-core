@@ -77,22 +77,26 @@ What is automatic now:
 - Boards Manager installs the compiler, OpenOCD, and the small `nrf54l15hosttools` helper package
 - normal compile no longer needs a build-time Python hook
 - normal compile now emits `.elf`, `.hex`, `.bin`, and `.uf2` build artifacts
-- the bundled host-tools package now carries offline `pyOCD` wheelhouses for
-  common host Python versions, so the recovery uploader no longer has to hit
-  the network on the normal `3.10` / `3.11` / `3.12` path
+- the bundled host-tools package now installs `pyOCD` into a tool-local
+  runtime instead of the system Python environment, so fresh Mint/Ubuntu
+  machines do not trip over PEP 668 managed-environment protection during the
+  normal recovery path
+- when a matching bundled wheelhouse is present in the host-tools package, the
+  local runtime install can stay offline; otherwise it falls back to the normal
+  online `pip` path inside that tool-local runtime
 
 What is still host-specific:
 
 - Linux `udev` access for the CMSIS-DAP probe
 - the recovery-capable default upload path still uses the Python helper so it can handle protected-target and unlock cases reliably
 - direct OpenOCD upload is exposed as an explicit experimental option, not the default, because the shipped OpenOCD target config still is not strong enough to replace the helper path completely
-- if the local Python is outside the bundled wheelhouse set, the helper falls
-  back to the normal online `pip` install path instead of failing outright
+- the helper still needs `python3` plus `pip` support on the host, but it no
+  longer needs write access to the system Python environment
 
 Fresh-machine recovery/setup helpers:
 
 - Linux `udev` only: run `tools/setup/install_linux_host_deps.sh --udev` from the installed `nrf54l15hosttools` package, or the matching script in the repo
-- Linux `pyOCD` only: run `tools/setup/install_linux_host_deps.sh` or `tools/setup/install_linux_host_deps.sh --python`
+- Linux `pyOCD` only: run `tools/setup/install_linux_host_deps.sh` or `tools/setup/install_linux_host_deps.sh --python` to install `pyOCD` into the tool-local runtime
 - Linux both: run `tools/setup/install_linux_host_deps.sh --all`
 - Windows: run `tools\\setup\\install_windows_host_deps.ps1` from the installed `nrf54l15hosttools` package, or the matching script in the repo
 
@@ -514,8 +518,8 @@ Current Thread/Matter status:
 - the PAL now includes repo-backed `CRACEN RNG` + `AES-ECB` + volatile key-ref
   crypto shims for the first honest OpenThread platform boundary
 - the first Phase 2 radio slice is also in now: direct `ZigbeeRadio` wrapping,
-  real channel / TX power hooks, and real single-board MAC-frame TX through the
-  `OpenThread` PAL probe
+  real channel / TX power hooks, real energy-scan reporting, and real
+  single-board MAC-frame TX through the `OpenThread` PAL probe
 - this is not yet a working Thread runtime, attach path, or Matter stack
 
 ## Examples
@@ -830,6 +834,9 @@ Python dependencies, run:
 ```bash
 hardware/nrf54l15clean/nrf54l15clean/tools/setup/install_linux_host_deps.sh --all
 ```
+
+That Python path now installs into the uploader's own runtime under the tool
+package. It no longer tries to write into the system Python environment.
 
 Windows PowerShell:
 

@@ -27,9 +27,11 @@ struct OpenThreadPlatformSkeletonSnapshot {
   bool radioEnabled = false;
   bool radioBackendWrappedDirect = false;
   bool radioBackendReady = false;
+  bool radioEnergyScanPending = false;
   bool radioPromiscuous = false;
   bool radioRxOnWhenIdle = false;
   uint8_t radioChannel = 0;
+  uint8_t radioLastEdLevel = 0;
   uint8_t radioLastTxLength = 0;
   uint8_t radioLastRxLength = 0;
   uint8_t radioLastError = OT_ERROR_NONE;
@@ -66,6 +68,7 @@ struct OpenThreadPlatformSkeletonSnapshot {
   uint32_t txRequestCount = 0;
   uint32_t radioTxDoneCount = 0;
   uint32_t radioRxDoneCount = 0;
+  uint32_t radioEnergyScanCount = 0;
   uint32_t radioReceivePollCount = 0;
 
   uint64_t radioNowUs = 0;

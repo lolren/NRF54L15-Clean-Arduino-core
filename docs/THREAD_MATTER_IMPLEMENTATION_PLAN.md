@@ -137,7 +137,7 @@ Checklist:
 - [x] implement TX path for Thread MAC frames
 - [ ] implement RX path with usable frame metadata
 - [x] implement channel and power control hooks
-- [ ] implement receive sensitivity / energy scan path if required
+- [x] implement receive sensitivity / energy scan path if required
 - [ ] implement source-match / ack / pending handling needed by Thread roles
 - [ ] implement timing-critical radio state transitions cleanly
 - [x] decide whether `ZigbeeRadio` is:
@@ -161,8 +161,12 @@ Current status note:
 - channel and TX power settings now flow into the real `IEEE 802.15.4` backend
 - `otPlatRadioTransmit()` now uses the real radio path and fires the normal
   `otPlatRadioTxStarted()` / `otPlatRadioTxDone()` boundary
+- `otPlatRadioEnergyScan()` now uses the real Nordic ED sampler, reports the
+  result through `otPlatRadioEnergyScanDone()`, and exposes raw ED plus mapped
+  dBm state in the PAL snapshot
 - single-board hardware proof now exists through
-  `/home/lolren/Desktop/Nrf54L15/.build/thread_radio_phase2_runtime.log`
+  `/home/lolren/Desktop/Nrf54L15/.build/thread_radio_phase2_runtime.log` and
+  `/home/lolren/Desktop/Nrf54L15/.build/thread_radio_energy_runtime.log`
 - RX polling path exists in the PAL, but it is not counted as validated yet
 - two-board Thread radio bring-up is still open
 
