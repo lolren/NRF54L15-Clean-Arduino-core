@@ -16,6 +16,9 @@ import sys
 import time
 from pathlib import Path
 
+CMSIS_DAP_VENDOR_ID = "2886"
+CMSIS_DAP_PRODUCT_ID = "0066"
+
 
 def run(cmd: list[str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(cmd, check=False, text=True, capture_output=True)
@@ -231,6 +234,40 @@ def infer_uid_from_port(port: str | None) -> str | None:
     return None
 
 
+def _sysfs_usb_identity_for_hidraw(node: Path) -> tuple[str | None, str | None]:
+    sys_device = Path("/sys/class/hidraw") / node.name / "device"
+    try:
+        resolved = sys_device.resolve(strict=True)
+    except OSError:
+        return None, None
+
+    for parent in (resolved, *resolved.parents):
+        vid_file = parent / "idVendor"
+        pid_file = parent / "idProduct"
+        if not vid_file.is_file() or not pid_file.is_file():
+            continue
+        try:
+            vendor = vid_file.read_text(encoding="utf-8").strip().lower()
+            product = pid_file.read_text(encoding="utf-8").strip().lower()
+        except OSError:
+            return None, None
+        return vendor, product
+
+    return None, None
+
+
+def matching_probe_hidraw_nodes() -> list[Path]:
+    if not sys.platform.startswith("linux"):
+        return []
+
+    matches: list[Path] = []
+    for node in sorted(Path("/dev").glob("hidraw*")):
+        vendor, product = _sysfs_usb_identity_for_hidraw(node)
+        if vendor == CMSIS_DAP_VENDOR_ID and product == CMSIS_DAP_PRODUCT_ID:
+            matches.append(node)
+    return matches
+
+
 def looks_like_locked_target(result: subprocess.CompletedProcess[str]) -> bool:
     details = ((result.stdout or "") + "\n" + (result.stderr or "")).lower()
     indicators = (
@@ -258,6 +295,7 @@ def looks_like_no_probe_error(result: subprocess.CompletedProcess[str]) -> bool:
     details = ((result.stdout or "") + "\n" + (result.stderr or "")).lower()
     indicators = (
         "no connected debug probes",
+        "no connected debug probe matches unique id",
         "no available debug probes",
         "unable to open cmsis-dap device",
         "unable to find a matching cmsis-dap device",
@@ -311,7 +349,9 @@ def force_nrf54l_unlock_workaround(
             pass
 
 
-def print_linux_probe_permission_hint(result: subprocess.CompletedProcess[str]) -> None:
+def print_linux_probe_permission_hint(
+    result: subprocess.CompletedProcess[str], host_tools_path: Path | None = None
+) -> None:
     if not looks_like_no_probe_error(result):
         return
     if not sys.platform.startswith("linux"):
@@ -320,18 +360,23 @@ def print_linux_probe_permission_hint(result: subprocess.CompletedProcess[str]) 
         return
 
     lsusb_result = run(["lsusb"])
-    if "2886:0066" not in (lsusb_result.stdout or "").lower():
+    probe_id = f"{CMSIS_DAP_VENDOR_ID}:{CMSIS_DAP_PRODUCT_ID}"
+    if probe_id not in (lsusb_result.stdout or "").lower():
         return
 
-    hidraw_nodes = sorted(Path("/dev").glob("hidraw*"))
+    hidraw_nodes = matching_probe_hidraw_nodes()
     if not hidraw_nodes:
         return
     if any(os.access(node, os.R_OK | os.W_OK) for node in hidraw_nodes):
         return
 
     print(
-        "HINT: Probe 2886:0066 is present but hidraw access is denied. "
-        "Install a udev rule for that VID/PID and reload udev rules.",
+        "HINT: CMSIS-DAP probe 2886:0066 is present but hidraw access is denied. "
+        "Access must be granted on /dev/hidraw*, not only on /dev/ttyACM*.",
+        file=sys.stderr,
+    )
+    print(
+        f"HINT: {host_setup_hint(host_tools_path)}",
         file=sys.stderr,
     )
 
@@ -437,6 +482,7 @@ def upload_pyocd(
     requested_uid: str | None,
     retries: int,
     retry_delay: float,
+    allow_uid_fallback: bool = False,
     pyocd_cmd: list[str] | None = None,
     host_tools_path: Path | None = None,
 ) -> int:
@@ -503,12 +549,33 @@ def upload_pyocd(
                         connect_mode=connect_mode,
                     )
 
+        if (
+            load_result.returncode != 0
+            and allow_uid_fallback
+            and uid is not None
+            and looks_like_no_probe_error(load_result)
+        ):
+            print(
+                f"Inferred probe UID '{uid}' did not match an accessible debug probe; "
+                "retrying with auto-select...",
+                file=sys.stderr,
+            )
+            uid = None
+            allow_uid_fallback = False
+            load_result = flash_hex(
+                pyocd_cmd,
+                target,
+                uid,
+                hex_path,
+                connect_mode=connect_mode,
+            )
+
         if load_result.returncode == 0:
             break
         maybe_wait_before_retry(attempt, retries, retry_delay)
 
     if load_result.returncode != 0:
-        print_linux_probe_permission_hint(load_result)
+        print_linux_probe_permission_hint(load_result, host_tools_path)
         return load_result.returncode
 
     reset_cmd = append_uid([*pyocd_cmd, "reset", "-W", "-t", target], uid)
@@ -527,6 +594,7 @@ def upload_openocd(
     openocd_bin: str,
     retries: int,
     retry_delay: float,
+    host_tools_path: Path | None = None,
 ) -> subprocess.CompletedProcess[str]:
     openocd_exe = resolve_tool(openocd_bin)
     if not openocd_exe:
@@ -561,7 +629,7 @@ def upload_openocd(
         maybe_wait_before_retry(attempt, retries, retry_delay)
 
     if result.returncode != 0:
-        print_linux_probe_permission_hint(result)
+        print_linux_probe_permission_hint(result, host_tools_path)
     return result
 
 
@@ -618,9 +686,10 @@ def main() -> int:
     args = parser.parse_args()
     requested_runner = args.runner.strip().lower()
     host_tools_path = normalize_tools_path(args.host_tools_path)
-    inferred_uid = infer_uid_from_port(args.port)
-    if normalize_uid(args.uid) is None and inferred_uid is not None:
-        args.uid = inferred_uid
+    explicit_uid = normalize_uid(args.uid)
+    inferred_uid = infer_uid_from_port(args.port) if explicit_uid is None else None
+    selected_uid = explicit_uid if explicit_uid is not None else inferred_uid
+    allow_inferred_uid_fallback = explicit_uid is None and inferred_uid is not None
 
     if not os.path.isfile(args.hex):
         print(f"ERROR: HEX file not found: {args.hex}", file=sys.stderr)
@@ -642,7 +711,8 @@ def main() -> int:
         rc = upload_pyocd(
             args.hex,
             args.target,
-            args.uid,
+            selected_uid,
+            allow_uid_fallback=allow_inferred_uid_fallback,
             retries=args.retries,
             retry_delay=args.retry_delay,
             host_tools_path=host_tools_path,
@@ -656,6 +726,7 @@ def main() -> int:
                 args.openocd_bin,
                 retries=args.retries,
                 retry_delay=args.retry_delay,
+                host_tools_path=host_tools_path,
             ).returncode
     elif runner == "openocd":
         openocd_result = upload_openocd(
@@ -665,6 +736,7 @@ def main() -> int:
             args.openocd_bin,
             retries=args.retries,
             retry_delay=args.retry_delay,
+            host_tools_path=host_tools_path,
         )
         rc = openocd_result.returncode
 
@@ -679,7 +751,8 @@ def main() -> int:
                 rc = upload_pyocd(
                     args.hex,
                     args.target,
-                    args.uid,
+                    selected_uid,
+                    allow_uid_fallback=allow_inferred_uid_fallback,
                     retries=args.retries,
                     retry_delay=args.retry_delay,
                     pyocd_cmd=pyocd_cmd,
@@ -697,7 +770,8 @@ def main() -> int:
             rc = upload_pyocd(
                 args.hex,
                 args.target,
-                args.uid,
+                selected_uid,
+                allow_uid_fallback=allow_inferred_uid_fallback,
                 retries=args.retries,
                 retry_delay=args.retry_delay,
                 host_tools_path=host_tools_path,

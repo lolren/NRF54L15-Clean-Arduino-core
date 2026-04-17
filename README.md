@@ -809,6 +809,9 @@ powershell -ExecutionPolicy Bypass -File hardware\nrf54l15clean\nrf54l15clean\to
 
 If Linux sees the CMSIS-DAP probe in `lsusb` but Arduino says there is no probe, add a udev rule:
 
+Important: a `/dev/ttyACM*` rule is not enough. The uploader needs access to the
+probe's `/dev/hidraw*` node.
+
 ```bash
 cat <<'RULE' | sudo tee /etc/udev/rules.d/60-seeed-xiao-nrf54-cmsis-dap.rules >/dev/null
 SUBSYSTEM=="hidraw", ATTRS{idVendor}=="2886", ATTRS{idProduct}=="0066", MODE="0660", GROUP="plugdev", TAG+="uaccess"
