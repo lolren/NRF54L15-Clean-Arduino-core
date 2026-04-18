@@ -857,6 +857,7 @@ constexpr uint16_t kL2capCmdRejectReasonCmdNotUnderstood = 0x0000U;
 constexpr uint16_t kL2capCmdRejectReasonSignalingMtuExceeded = 0x0001U;
 constexpr uint16_t kL2capCmdRejectReasonInvalidCid = 0x0002U;
 constexpr uint16_t kL2capConnParamResultRejected = 0x0001U;
+constexpr uint16_t kL2capConnParamResultAccepted = 0x0000U;
 constexpr uint16_t kL2capLeCreditConnResultPsmNotSupported = 0x0002U;
 constexpr uint16_t kBleL2capLeSignalingMtu = 23U;
 
@@ -8785,6 +8786,10 @@ BleRadio::BleRadio(uint32_t radioBase, uint32_t ficrBase)
       connectionConnParamUpdatePending_(false),
       connectionConnParamUpdateInFlight_(false),
       connectionConnParamUpdateIdentifier_(1U),
+      connectionCentralConnParamIndPending_(false),
+      connectionCentralConnParamIntervalUnits_(0U),
+      connectionCentralConnParamLatency_(0U),
+      connectionCentralConnParamTimeoutUnits_(0U),
       connectionRequestedAttMtu_(kBleDefaultAttMtu),
       connectionAttMtu_(kBleDefaultAttMtu),
       connectionCentralLinkSetupNotBeforeMs_(0UL),
@@ -10350,6 +10355,39 @@ bool BleRadio::queueCentralAttMtuRequest() {
   return true;
 }
 
+bool BleRadio::connParamsAreValid(uint16_t intervalMin, uint16_t intervalMax,
+                                  uint16_t latency, uint16_t timeout) const {
+  if (intervalMin < 6U || intervalMin > 3200U || intervalMax < 6U ||
+      intervalMax > 3200U || intervalMin > intervalMax) {
+    return false;
+  }
+  if (latency > 499U) {
+    return false;
+  }
+  if (timeout < 10U || timeout > 3200U) {
+    return false;
+  }
+  const uint32_t timeoutMs = static_cast<uint32_t>(timeout) * 10UL;
+  const uint32_t requiredMs =
+      ((1UL + static_cast<uint32_t>(latency)) *
+       static_cast<uint32_t>(intervalMax) * 5UL) /
+      2UL;
+  return timeoutMs > requiredMs;
+}
+
+uint16_t BleRadio::chooseAcceptedConnIntervalUnits(uint16_t intervalMin,
+                                                   uint16_t intervalMax) const {
+  if (intervalMax == 0U || intervalMax < intervalMin) {
+    return intervalMin;
+  }
+  if (intervalMin == intervalMax) {
+    return intervalMin;
+  }
+  // Prefer the slower edge of the requested range so an explicit peripheral
+  // preference like 6-12 actually moves away from the central's faster default.
+  return intervalMax;
+}
+
 bool BleRadio::queuePeripheralConnParamUpdateRequest() {
   if (!connected_ || connectionPendingTxValid_ ||
       !connectionConnParamUpdatePending_ ||
@@ -10407,6 +10445,49 @@ bool BleRadio::queuePeripheralConnParamUpdateRequest() {
   return true;
 }
 
+bool BleRadio::queueCentralConnParamUpdateInd() {
+  if (!connected_ || (connectionRole_ != BleConnectionRole::kCentral) ||
+      connectionPendingTxValid_ || !connectionCentralConnParamIndPending_) {
+    return false;
+  }
+
+  const uint16_t interval = connectionCentralConnParamIntervalUnits_;
+  const uint16_t latency = connectionCentralConnParamLatency_;
+  const uint16_t timeout = connectionCentralConnParamTimeoutUnits_;
+  if (!connParamsAreValid(interval, interval, latency, timeout)) {
+    connectionCentralConnParamIndPending_ = false;
+    return false;
+  }
+
+  static constexpr uint8_t kConnUpdateWinSize = 1U;
+  static constexpr uint16_t kConnUpdateWinOffset = 0U;
+  static constexpr uint16_t kConnUpdateInstantDeltaEvents = 6U;
+  const uint16_t instant =
+      static_cast<uint16_t>(connectionEventCounter_ + kConnUpdateInstantDeltaEvents);
+
+  connectionPendingTxPayload_[0] = kBleLlCtrlConnectionUpdateInd;
+  connectionPendingTxPayload_[1] = kConnUpdateWinSize;
+  writeLe16(&connectionPendingTxPayload_[2], kConnUpdateWinOffset);
+  writeLe16(&connectionPendingTxPayload_[4], interval);
+  writeLe16(&connectionPendingTxPayload_[6], latency);
+  writeLe16(&connectionPendingTxPayload_[8], timeout);
+  writeLe16(&connectionPendingTxPayload_[10], instant);
+  connectionPendingTxLlid_ = kBlePduLlControl;
+  connectionPendingTxLength_ = 12U;
+  connectionPendingTxValid_ = true;
+
+  connectionPendingWinSize_ = kConnUpdateWinSize;
+  connectionPendingWinOffset_ = kConnUpdateWinOffset;
+  connectionPendingIntervalUnits_ = interval;
+  connectionPendingLatency_ = latency;
+  connectionPendingTimeoutUnits_ = timeout;
+  connectionUpdateInstant_ = instant;
+  connectionUpdatePending_ = true;
+  connectionCentralConnParamIndPending_ = false;
+  emitBleTrace("CONN_PARAM_IND_TX");
+  return true;
+}
+
 void BleRadio::maybeQueueCentralLinkSetupRequest() {
   if (!connected_ || connectionPendingTxValid_) {
     return;
@@ -10427,6 +10508,61 @@ void BleRadio::maybeQueueCentralLinkSetupRequest() {
     }
     return;
   }
+
+  if (connectionCentralConnParamIndPending_) {
+    (void)queueCentralConnParamUpdateInd();
+  }
+}
+
+void BleRadio::applyPendingConnectionUpdateAtInstant(
+    uint16_t currentEventCounter, uint32_t currentEventAnchorUs) {
+  if (!connectionUpdatePending_ ||
+      !llEventInstantReached(currentEventCounter, connectionUpdateInstant_)) {
+    return;
+  }
+
+  if ((connectionPendingIntervalUnits_ >= 6U) &&
+      (connectionPendingIntervalUnits_ <= 3200U) &&
+      (connectionPendingTimeoutUnits_ >= 10U)) {
+    connectionIntervalUnits_ = connectionPendingIntervalUnits_;
+    connectionLatency_ = connectionPendingLatency_;
+    connectionTimeoutUnits_ = connectionPendingTimeoutUnits_;
+    const uint32_t newIntervalUs =
+        static_cast<uint32_t>(connectionIntervalUnits_) * 1250UL;
+    if (newIntervalUs > 0U) {
+      const uint32_t winOffsetUs =
+          static_cast<uint32_t>(connectionPendingWinOffset_) * 1250UL;
+      const uint32_t winSizeUs =
+          static_cast<uint32_t>((connectionPendingWinSize_ > 0U)
+                                    ? connectionPendingWinSize_
+                                    : 1U) * 1250UL;
+      connectionNextEventUs_ = currentEventAnchorUs + winOffsetUs;
+      if (connectionRole_ == BleConnectionRole::kPeripheral) {
+        // When the peer central updates the anchor, keep RX open across the full
+        // window so the peripheral can re-sync to the new cadence.
+        connectionFirstEventListenUs_ = winOffsetUs + winSizeUs;
+        connectionSyncAttemptsRemaining_ = 4U;
+      } else {
+        connectionFirstEventListenUs_ = 0U;
+        connectionSyncAttemptsRemaining_ = 0U;
+      }
+      uint32_t nowUsAfterUpdate = bleTimingUs();
+      uint8_t guard = 8U;
+      while (guard-- > 0U &&
+             timeReachedUs(nowUsAfterUpdate, connectionNextEventUs_)) {
+        connectionNextEventUs_ += newIntervalUs;
+        ++connectionEventCounter_;
+        nowUsAfterUpdate = bleTimingUs();
+      }
+    }
+  }
+  connectionUpdatePending_ = false;
+  connectionPendingWinSize_ = 0U;
+  connectionPendingWinOffset_ = 0U;
+  connectionPendingIntervalUnits_ = 0U;
+  connectionPendingLatency_ = 0U;
+  connectionPendingTimeoutUnits_ = 0U;
+  connectionUpdateInstant_ = 0U;
 }
 
 uint8_t BleRadio::maxNotificationValueLength() const {
@@ -13481,6 +13617,10 @@ bool BleRadio::disconnectWithReason(BleDisconnectReason reason, uint8_t errorCod
   connectionPendingIntervalUnits_ = 0U;
   connectionPendingLatency_ = 0U;
   connectionPendingTimeoutUnits_ = 0U;
+  connectionCentralConnParamIndPending_ = false;
+  connectionCentralConnParamIntervalUnits_ = 0U;
+  connectionCentralConnParamLatency_ = 0U;
+  connectionCentralConnParamTimeoutUnits_ = 0U;
   connectionChannelMapPending_ = false;
   connectionChannelMapInstant_ = 0U;
   memset(connectionPendingChannelMap_, 0, sizeof(connectionPendingChannelMap_));
@@ -13802,12 +13942,14 @@ bool BleRadio::pollCentralConnectionEvent(BleConnectionEvent* event,
     }
   }
 
+  const uint32_t currentEventAnchorUs = connectionNextEventUs_;
   updateNextConnectionEventTime();
 
   const uint16_t currentEventCounter =
       (connectionEventCounter_ > 0U)
           ? static_cast<uint16_t>(connectionEventCounter_ - 1U)
           : 0U;
+  applyPendingConnectionUpdateAtInstant(currentEventCounter, currentEventAnchorUs);
   const uint8_t dataChannel = selectNextDataChannel(false);
   if (!setDataChannel(dataChannel)) {
     return false;
@@ -14399,40 +14541,7 @@ bool BleRadio::pollConnectionEventInternal(BleConnectionEvent* event,
                  ? static_cast<uint16_t>(connectionEventCounter_ - 1U)
                  : 0U);
 
-  if (connectionUpdatePending_ &&
-      llEventInstantReached(currentEventCounter, connectionUpdateInstant_)) {
-    if ((connectionPendingIntervalUnits_ >= 6U) && (connectionPendingIntervalUnits_ <= 3200U) &&
-        (connectionPendingTimeoutUnits_ >= 10U)) {
-      connectionIntervalUnits_ = connectionPendingIntervalUnits_;
-      connectionLatency_ = connectionPendingLatency_;
-      connectionTimeoutUnits_ = connectionPendingTimeoutUnits_;
-      const uint32_t newIntervalUs =
-          static_cast<uint32_t>(connectionIntervalUnits_) * 1250UL;
-      if (newIntervalUs > 0U) {
-        const uint32_t winOffsetUs =
-            static_cast<uint32_t>(connectionPendingWinOffset_) * 1250UL;
-        const uint32_t winSizeUs =
-            static_cast<uint32_t>((connectionPendingWinSize_ > 0U)
-                                      ? connectionPendingWinSize_
-                                      : 1U) * 1250UL;
-        connectionNextEventUs_ = currentEventAnchorUs + winOffsetUs;
-        // At the instant event, the central may transmit anywhere inside the
-        // new transmit window that starts `winOffset` after the old anchor.
-        // Keep RX open across the full offset + window span for re-sync.
-        connectionFirstEventListenUs_ = winOffsetUs + winSizeUs;
-        connectionSyncAttemptsRemaining_ = 4U;
-        const uint32_t nowUsAfterUpdate = bleTimingUs();
-        uint8_t guard = 8U;
-        while (guard-- > 0U && timeReachedUs(nowUsAfterUpdate, connectionNextEventUs_)) {
-          connectionNextEventUs_ += newIntervalUs;
-          ++connectionEventCounter_;
-        }
-      }
-    }
-    connectionUpdatePending_ = false;
-    connectionPendingWinSize_ = 0U;
-    connectionPendingWinOffset_ = 0U;
-  }
+  applyPendingConnectionUpdateAtInstant(currentEventCounter, currentEventAnchorUs);
   bool channelMapAppliedThisEvent = false;
   if (connectionChannelMapPending_ &&
       llEventInstantReached(currentEventCounter, connectionChannelMapInstant_)) {
@@ -18543,6 +18652,10 @@ bool BleRadio::startConnectionFromConnectInd(const uint8_t* payload, uint8_t len
   connectionPendingIntervalUnits_ = 0U;
   connectionPendingLatency_ = 0U;
   connectionPendingTimeoutUnits_ = 0U;
+  connectionCentralConnParamIndPending_ = false;
+  connectionCentralConnParamIntervalUnits_ = 0U;
+  connectionCentralConnParamLatency_ = 0U;
+  connectionCentralConnParamTimeoutUnits_ = 0U;
   connectionChannelMapPending_ = false;
   connectionChannelMapInstant_ = 0U;
   memset(connectionPendingChannelMap_, 0, sizeof(connectionPendingChannelMap_));
@@ -18676,9 +18789,15 @@ bool BleRadio::startCentralConnection(const uint8_t peerAddress[6],
   memset(connectionPendingTxPayload_, 0, sizeof(connectionPendingTxPayload_));
   connectionUpdatePending_ = false;
   connectionUpdateInstant_ = 0U;
+  connectionPendingWinSize_ = 0U;
+  connectionPendingWinOffset_ = 0U;
   connectionPendingIntervalUnits_ = 0U;
   connectionPendingLatency_ = 0U;
   connectionPendingTimeoutUnits_ = 0U;
+  connectionCentralConnParamIndPending_ = false;
+  connectionCentralConnParamIntervalUnits_ = 0U;
+  connectionCentralConnParamLatency_ = 0U;
+  connectionCentralConnParamTimeoutUnits_ = 0U;
   connectionChannelMapPending_ = false;
   connectionChannelMapInstant_ = 0U;
   memset(connectionPendingChannelMap_, 0, sizeof(connectionPendingChannelMap_));
@@ -19918,18 +20037,24 @@ bool BleRadio::buildL2capSignalingResponse(const uint8_t* l2capPayload,
       const uint16_t intervalMax = readLe16(&req[2]);
       const uint16_t latency = readLe16(&req[4]);
       const uint16_t timeout = readLe16(&req[6]);
-      (void)intervalMin;
-      (void)intervalMax;
-      (void)latency;
-      (void)timeout;
-
-      // This device is currently operating in peripheral/slave role only, so
-      // it cannot drive the central-side LL update procedure required by this
-      // signaling request. Reply with "rejected" deterministically.
       outPayload[kBleL2capHeaderLen + 0U] = kL2capSigCodeConnParamUpdateRsp;
       outPayload[kBleL2capHeaderLen + 1U] = identifier;
       writeLe16(&outPayload[kBleL2capHeaderLen + 2U], 2U);
-      writeLe16(&outPayload[kBleL2capHeaderLen + 4U], kL2capConnParamResultRejected);
+      if ((connectionRole_ == BleConnectionRole::kCentral) &&
+          !connectionCentralConnParamIndPending_ &&
+          !connectionUpdatePending_ &&
+          connParamsAreValid(intervalMin, intervalMax, latency, timeout)) {
+        connectionCentralConnParamIntervalUnits_ =
+            chooseAcceptedConnIntervalUnits(intervalMin, intervalMax);
+        connectionCentralConnParamLatency_ = latency;
+        connectionCentralConnParamTimeoutUnits_ = timeout;
+        connectionCentralConnParamIndPending_ = true;
+        writeLe16(&outPayload[kBleL2capHeaderLen + 4U],
+                  kL2capConnParamResultAccepted);
+      } else {
+        writeLe16(&outPayload[kBleL2capHeaderLen + 4U],
+                  kL2capConnParamResultRejected);
+      }
       outSigLen = 6U;
     }
   } else if (code == kL2capSigCodeLeCreditConnReq) {
@@ -21323,9 +21448,15 @@ void BleRadio::restoreAdvertisingLinkDefaults() {
   memset(connectionPendingTxPayload_, 0, sizeof(connectionPendingTxPayload_));
   connectionUpdatePending_ = false;
   connectionUpdateInstant_ = 0U;
+  connectionPendingWinSize_ = 0U;
+  connectionPendingWinOffset_ = 0U;
   connectionPendingIntervalUnits_ = 0U;
   connectionPendingLatency_ = 0U;
   connectionPendingTimeoutUnits_ = 0U;
+  connectionCentralConnParamIndPending_ = false;
+  connectionCentralConnParamIntervalUnits_ = 0U;
+  connectionCentralConnParamLatency_ = 0U;
+  connectionCentralConnParamTimeoutUnits_ = 0U;
   connectionChannelMapPending_ = false;
   connectionChannelMapInstant_ = 0U;
   memset(connectionPendingChannelMap_, 0, sizeof(connectionPendingChannelMap_));

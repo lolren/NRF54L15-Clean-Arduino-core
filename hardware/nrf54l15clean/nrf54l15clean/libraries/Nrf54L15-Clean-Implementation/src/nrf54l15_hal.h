@@ -2315,10 +2315,17 @@ class BleRadio {
   uint16_t localPreferredAttMtu() const;
   void updateConnectionDataLengthFromPeer(uint16_t peerMaxRxOctets,
                                           uint16_t peerMaxTxOctets);
+  bool connParamsAreValid(uint16_t intervalMin, uint16_t intervalMax,
+                          uint16_t latency, uint16_t timeout) const;
+  uint16_t chooseAcceptedConnIntervalUnits(uint16_t intervalMin,
+                                           uint16_t intervalMax) const;
   bool queueCentralDataLengthRequest();
   bool queueCentralAttMtuRequest();
   bool queuePeripheralConnParamUpdateRequest();
+  bool queueCentralConnParamUpdateInd();
   void maybeQueueCentralLinkSetupRequest();
+  void applyPendingConnectionUpdateAtInstant(uint16_t currentEventCounter,
+                                             uint32_t currentEventAnchorUs);
   void clearPreparedWriteState();
   bool applyCccdState(uint16_t handle, uint16_t cccd);
   bool buildAttErrorResponse(uint8_t requestOpcode, uint16_t handle,
@@ -2516,6 +2523,10 @@ class BleRadio {
   bool connectionConnParamUpdatePending_;
   bool connectionConnParamUpdateInFlight_;
   uint8_t connectionConnParamUpdateIdentifier_;
+  bool connectionCentralConnParamIndPending_;
+  uint16_t connectionCentralConnParamIntervalUnits_;
+  uint16_t connectionCentralConnParamLatency_;
+  uint16_t connectionCentralConnParamTimeoutUnits_;
   uint16_t connectionRequestedAttMtu_;
   uint16_t connectionAttMtu_;
   uint32_t connectionCentralLinkSetupNotBeforeMs_;

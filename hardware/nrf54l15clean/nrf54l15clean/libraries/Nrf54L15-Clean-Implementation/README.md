@@ -707,7 +707,7 @@ Examples:
   - L2CAP LE signaling (`CID 0x0005`) fallback handling:
     - Command Reject for unsupported signaling opcodes
     - Command Reject reason granularity (`Cmd Not Understood`, `Signaling MTU exceeded`, `Invalid CID`)
-    - Connection Parameter Update Request -> rejected response (peripheral-role-only controller path)
+    - Connection Parameter Update Request -> accepted on the in-tree central path, which replies over L2CAP and then drives an LL `Connection Update Ind` using the requested range (currently choosing the upper bound when `min != max`)
     - LE Credit Based Connection Request -> response with `PSM not supported`
   - SMP legacy Just Works pairing subset:
     - Pairing Request/Response/Confirm/Random validation flow
