@@ -18,6 +18,16 @@ from pathlib import Path
 
 CMSIS_DAP_VENDOR_ID = "2886"
 CMSIS_DAP_PRODUCT_ID = "0066"
+DEFAULT_UF2_LABELS = (
+    "UF2BOOT",
+    "XIAO-NRF54L15",
+    "XIAO-NRF54",
+    "XIAO-SENSE",
+    "NRF54L15",
+    "NRF54BOOT",
+    "DAPLINK",
+)
+UF2_MARKER_FILES = ("INFO_UF2.TXT", "CURRENT.UF2", "INDEX.HTM")
 
 
 def run(cmd: list[str]) -> subprocess.CompletedProcess[str]:
@@ -42,6 +52,30 @@ def normalize_tools_path(path: str | None) -> Path | None:
         return None
     candidate = Path(path)
     return candidate if candidate.exists() else None
+
+
+def unresolved_property(value: str | None) -> bool:
+    if not value:
+        return True
+    if "{" in value and "}" in value:
+        return True
+    return value.strip().lower() in {"auto", "default", "none"}
+
+
+def split_csv(value: str | None) -> list[str]:
+    if unresolved_property(value):
+        return []
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def normalize_token(value: str) -> str:
+    return re.sub(r"[^A-Z0-9]+", "", value.upper())
+
+
+def derived_uf2_path(hex_path: str, requested_uf2: str | None) -> Path:
+    if not unresolved_property(requested_uf2):
+        return Path(requested_uf2)
+    return Path(hex_path).with_suffix(".uf2")
 
 
 def pyocd_tool_root(host_tools_path: Path | None) -> Path:
@@ -260,6 +294,204 @@ def infer_uid_from_port(port: str | None) -> str | None:
             return match.group(1)
 
     return None
+
+
+def explicit_uf2_drive(path: str | None) -> Path | None:
+    if unresolved_property(path):
+        env_path = os.environ.get("NRF54L15_UF2_DRIVE", "")
+        if unresolved_property(env_path):
+            return None
+        path = env_path
+    candidate = Path(path).expanduser()
+    return candidate if candidate.is_dir() else None
+
+
+def mounted_volume_candidates() -> list[Path]:
+    candidates: list[Path] = []
+
+    if sys.platform.startswith("win"):
+        for letter in "DEFGHIJKLMNOPQRSTUVWXYZ":
+            root = Path(f"{letter}:\\")
+            if root.is_dir():
+                candidates.append(root)
+        return candidates
+
+    if sys.platform == "darwin":
+        volumes = Path("/Volumes")
+        if volumes.is_dir():
+            candidates.extend(path for path in volumes.iterdir() if path.is_dir())
+        return candidates
+
+    user = os.environ.get("USER") or os.environ.get("USERNAME") or ""
+    roots = []
+    if user:
+        roots.extend([Path("/media") / user, Path("/run/media") / user])
+    roots.extend([Path("/media"), Path("/run/media"), Path("/mnt")])
+
+    seen: set[Path] = set()
+    for root in roots:
+        if not root.is_dir():
+            continue
+        for path in root.iterdir():
+            try:
+                resolved = path.resolve()
+            except OSError:
+                resolved = path
+            try:
+                is_dir = path.is_dir()
+            except OSError:
+                continue
+            if resolved in seen or not is_dir:
+                continue
+            seen.add(resolved)
+            candidates.append(path)
+    return candidates
+
+
+def safe_exists(path: Path) -> bool:
+    try:
+        return path.exists()
+    except OSError:
+        return False
+
+
+def uf2_marker_text(path: Path) -> str:
+    info_path = path / "INFO_UF2.TXT"
+    if not info_path.is_file():
+        return ""
+    try:
+        return info_path.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return ""
+
+
+def contains_uf2_marker(path: Path) -> bool:
+    return any(safe_exists(path / marker) for marker in UF2_MARKER_FILES)
+
+
+def looks_like_uf2_drive(path: Path, labels: list[str]) -> bool:
+    try:
+        if not path.is_dir():
+            return False
+    except OSError:
+        return False
+
+    label_tokens = [normalize_token(label) for label in (labels or list(DEFAULT_UF2_LABELS))]
+    volume_token = normalize_token(path.name)
+    strong_label_match = any(
+        token and (token == volume_token or token in volume_token or volume_token in token)
+        for token in label_tokens
+    )
+
+    if strong_label_match and os.access(path, os.W_OK):
+        return True
+
+    if not contains_uf2_marker(path):
+        return False
+
+    marker_text = normalize_token(uf2_marker_text(path))
+    marker_tokens = ("UF2", "BOOTLOADER", "DAPLINK", "NRF54", "XIAO")
+    if any(token in marker_text for token in marker_tokens):
+        return os.access(path, os.W_OK)
+
+    # A CURRENT.UF2 plus bootloader web page is a common UF2/DAPLink shape even
+    # when INFO_UF2.TXT is minimal.
+    if safe_exists(path / "CURRENT.UF2") and safe_exists(path / "INDEX.HTM"):
+        return os.access(path, os.W_OK)
+    return False
+
+
+def find_uf2_drives(drive: str | None, labels: list[str]) -> list[Path]:
+    if not unresolved_property(drive):
+        candidate = Path(drive).expanduser()
+        return [candidate] if candidate.is_dir() else []
+
+    explicit = explicit_uf2_drive(None)
+    if explicit is not None:
+        return [explicit]
+    return [path for path in mounted_volume_candidates() if looks_like_uf2_drive(path, labels)]
+
+
+def print_uf2_bootloader_hint(labels: list[str]) -> None:
+    label_text = ", ".join(labels or list(DEFAULT_UF2_LABELS))
+    print("ERROR: No writable UF2 bootloader drive was found.", file=sys.stderr)
+    print(
+        "HINT: Put the board into UF2 bootloader mode, wait for the USB mass-storage "
+        "drive to appear, then upload again.",
+        file=sys.stderr,
+    )
+    print(
+        "HINT: If auto reset does not work, double-tap RESET or use the board's "
+        "documented BOOT/RESET sequence.",
+        file=sys.stderr,
+    )
+    print(
+        f"HINT: Searched labels/markers: {label_text}. "
+        "You can set NRF54L15_UF2_DRIVE to the mounted drive path.",
+        file=sys.stderr,
+    )
+    print(
+        "HINT: Select pyOCD Recovery (CMSIS-DAP) for blank, locked, or non-bootloader targets.",
+        file=sys.stderr,
+    )
+
+
+def copy_uf2_to_drive(uf2_path: Path, drive: Path) -> int:
+    destination = drive / uf2_path.name.upper()
+    print(f"Copying {uf2_path} to {destination}")
+    try:
+        with uf2_path.open("rb") as src, destination.open("wb") as dst:
+            shutil.copyfileobj(src, dst, length=1024 * 1024)
+            dst.flush()
+            os.fsync(dst.fileno())
+    except OSError as exc:
+        if not drive.exists():
+            print(
+                "UF2 drive disappeared during copy; the bootloader may have accepted "
+                "the image and rebooted.",
+                file=sys.stderr,
+            )
+            return 0
+        print(f"ERROR: UF2 copy failed: {exc}", file=sys.stderr)
+        return 5
+    print("UF2 copy complete")
+    return 0
+
+
+def upload_uf2(
+    uf2_path: Path,
+    drive: str | None,
+    labels: list[str],
+    timeout: float,
+    *,
+    quiet_missing: bool = False,
+) -> int:
+    if not uf2_path.is_file():
+        print(f"ERROR: UF2 file not found: {uf2_path}", file=sys.stderr)
+        return 2
+
+    deadline = time.monotonic() + max(0.0, timeout)
+    drives: list[Path] = []
+    while True:
+        drives = find_uf2_drives(drive, labels)
+        if drives or time.monotonic() >= deadline:
+            break
+        time.sleep(0.25)
+
+    if not drives:
+        if not quiet_missing:
+            print_uf2_bootloader_hint(labels)
+        return 6
+    if len(drives) > 1:
+        print("ERROR: Multiple UF2 bootloader drives matched:", file=sys.stderr)
+        for candidate in drives:
+            print(f"  {candidate}", file=sys.stderr)
+        print("HINT: Set NRF54L15_UF2_DRIVE to the exact mount path.", file=sys.stderr)
+        return 6
+
+    print(f"Runner: uf2")
+    print(f"UF2 drive: {drives[0]}")
+    return copy_uf2_to_drive(uf2_path, drives[0])
 
 
 def _sysfs_usb_identity_for_hidraw(node: Path) -> tuple[str | None, str | None]:
@@ -496,6 +728,12 @@ def choose_runner(requested: str, openocd_bin: str, host_tools_path: Path | None
     if normalized != "auto":
         return normalized
 
+    # Auto is handled by main so it can try the no-hidraw UF2 path before
+    # falling back to CMSIS-DAP recovery.
+    return "auto"
+
+
+def choose_recovery_runner(openocd_bin: str, host_tools_path: Path | None) -> str:
     if detect_pyocd_command(host_tools_path) is not None or host_tools_path is not None:
         return "pyocd"
     if resolve_tool(openocd_bin):
@@ -664,7 +902,8 @@ def upload_openocd(
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--hex", required=True, help="Path to firmware hex file")
-    parser.add_argument("--port", default="", help="Arduino serial port (unused)")
+    parser.add_argument("--uf2", default="", help="Path to firmware UF2 file")
+    parser.add_argument("--port", default="", help="Arduino serial port")
     parser.add_argument("--target", default="nrf54l", help="pyOCD target name")
     parser.add_argument(
         "--uid",
@@ -676,7 +915,7 @@ def main() -> int:
     parser.add_argument(
         "--runner",
         default="auto",
-        help="Upload runner: auto, pyocd, openocd",
+        help="Upload runner: uf2, auto, pyocd, openocd",
     )
     parser.add_argument(
         "--openocd-script",
@@ -700,6 +939,22 @@ def main() -> int:
         help="Optional bundled host-tools package path",
     )
     parser.add_argument(
+        "--uf2-drive",
+        default="",
+        help="Optional mounted UF2 bootloader drive path",
+    )
+    parser.add_argument(
+        "--uf2-labels",
+        default=",".join(DEFAULT_UF2_LABELS),
+        help="Comma-separated UF2 bootloader volume labels to auto-detect",
+    )
+    parser.add_argument(
+        "--uf2-timeout",
+        type=float,
+        default=12.0,
+        help="Seconds to wait for a UF2 bootloader drive to appear",
+    )
+    parser.add_argument(
         "--retries",
         type=int,
         default=4,
@@ -718,6 +973,8 @@ def main() -> int:
     inferred_uid = infer_uid_from_port(args.port) if explicit_uid is None else None
     selected_uid = explicit_uid if explicit_uid is not None else inferred_uid
     allow_inferred_uid_fallback = explicit_uid is None and inferred_uid is not None
+    uf2_path = derived_uf2_path(args.hex, args.uf2)
+    uf2_labels = split_csv(args.uf2_labels) or list(DEFAULT_UF2_LABELS)
 
     if not os.path.isfile(args.hex):
         print(f"ERROR: HEX file not found: {args.hex}", file=sys.stderr)
@@ -728,6 +985,33 @@ def main() -> int:
     except Exception as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 4
+
+    rc = 1
+    if runner == "uf2":
+        rc = upload_uf2(
+            uf2_path,
+            args.uf2_drive,
+            uf2_labels,
+            args.uf2_timeout,
+        )
+    elif runner == "auto":
+        rc = upload_uf2(
+            uf2_path,
+            args.uf2_drive,
+            uf2_labels,
+            args.uf2_timeout,
+            quiet_missing=True,
+        )
+        if rc == 0:
+            runner = "uf2"
+        else:
+            print("UF2 bootloader upload was not available; trying CMSIS-DAP recovery...")
+            try:
+                runner = choose_recovery_runner(args.openocd_bin, host_tools_path)
+            except Exception as exc:
+                print(f"ERROR: {exc}", file=sys.stderr)
+                print_uf2_bootloader_hint(uf2_labels)
+                return 4
 
     if runner == "pyocd":
         if detect_pyocd_command(host_tools_path) is None:
@@ -804,7 +1088,7 @@ def main() -> int:
                 retry_delay=args.retry_delay,
                 host_tools_path=host_tools_path,
             )
-    else:
+    elif runner != "uf2":
         print(f"ERROR: Unsupported runner: {runner}", file=sys.stderr)
         return 4
 

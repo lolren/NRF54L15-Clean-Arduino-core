@@ -134,7 +134,7 @@ RF notes:
 
 ## Tools Menu Options
 
-- Upload method: Auto / pyOCD / OpenOCD
+- Upload method: UF2 Bootloader / Auto Recover / pyOCD / OpenOCD
 - CPU frequency: 64 MHz / 128 MHz
 - BLE support: On / Off
 - BLE timing profile: Interop / Balanced low-power / Aggressive low-power
