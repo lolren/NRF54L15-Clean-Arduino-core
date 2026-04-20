@@ -872,3 +872,26 @@ sudo udevadm trigger --attr-match=idVendor=2886 --attr-match=idProduct=0066
 - [Thread and Matter implementation plan](docs/THREAD_MATTER_IMPLEMENTATION_PLAN.md)
 - [Bundled HAL / BLE library README](hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/README.md)
 - [Releases](https://github.com/lolren/nrf54-arduino-core/releases)
+
+## Browser Fallback Flasher
+
+If Arduino upload still fails because the local `pyOCD` / OpenOCD path cannot
+open the CMSIS-DAP probe, FreeOCD Web can be used as a browser-based fallback
+to flash the generated `.hex` file.
+
+Use this as a recovery or diagnostic path. It does not replace the Linux
+`hidraw` / `udev` setup above for normal Arduino IDE uploads.
+
+Steps:
+
+- Build the sketch and keep the generated `.hex` file. In Arduino IDE, use
+  `Sketch -> Export Compiled Binary`; in `arduino-cli`, use the `.hex` emitted
+  in the build output directory.
+- Open <https://freeocd.org/tools/web/v0.0.2/> in Chrome or Edge.
+- Set `Connection Method` to `WebUSB`.
+- Set `Target MCU` to `nRF54L15 - Nordic nRF54L15 (Cortex-M33, RRAMC)`.
+- Choose the generated `.hex` firmware file.
+- Click `Flash`. If the board is protected or stuck, use `Recover` to erase and
+  recover the target before flashing.
+
+![FreeOCD Web flasher example](docs/freeocd_web_flasher_example.png)
