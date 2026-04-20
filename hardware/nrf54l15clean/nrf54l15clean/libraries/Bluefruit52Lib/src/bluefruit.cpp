@@ -440,6 +440,9 @@ class BluefruitCompatManager {
         central_sync_procedure_depth_(0U),
         central_data_length_request_pending_(false),
         central_mtu_request_pending_(false),
+        deferred_connection_data_length_request_pending_(false),
+        deferred_connection_mtu_request_pending_(false),
+        deferred_connection_requested_mtu_(23U),
         central_link_config_not_before_ms_(0UL),
         last_connect_attempt_ms_(0UL),
         rssi_monitor_enabled_(false),
@@ -513,6 +516,29 @@ class BluefruitCompatManager {
     Bluefruit.Scanner.timeout_s_ = 0U;
     pending_connect_valid_ = false;
     return wasActive;
+  }
+
+  bool deferConnectionDataLengthUpdate() {
+    if (!radio_.isConnected()) {
+      return false;
+    }
+    deferred_connection_data_length_request_pending_ = true;
+    return true;
+  }
+
+  bool deferConnectionMtuExchange(uint16_t mtu) {
+    if (!radio_.isConnected()) {
+      return false;
+    }
+    if (mtu < 23U) {
+      mtu = 23U;
+    }
+    if (!deferred_connection_mtu_request_pending_ ||
+        mtu > deferred_connection_requested_mtu_) {
+      deferred_connection_requested_mtu_ = mtu;
+    }
+    deferred_connection_mtu_request_pending_ = true;
+    return true;
   }
 
   bool registerCharacteristic(BLECharacteristic* characteristic) {
@@ -624,6 +650,7 @@ class BluefruitCompatManager {
     }
 
     if (connected) {
+      maybeApplyDeferredConnectionRequests();
       maybeDispatchRssiUpdate();
       if (radio_.connectionRole() == BleConnectionRole::kPeripheral) {
         for (uint8_t i = 0U; i < characteristic_count_; ++i) {
@@ -687,6 +714,9 @@ class BluefruitCompatManager {
   uint8_t central_sync_procedure_depth_;
   bool central_data_length_request_pending_;
   bool central_mtu_request_pending_;
+  bool deferred_connection_data_length_request_pending_;
+  bool deferred_connection_mtu_request_pending_;
+  uint16_t deferred_connection_requested_mtu_;
   unsigned long central_link_config_not_before_ms_;
   unsigned long last_connect_attempt_ms_;
   bool rssi_monitor_enabled_;
@@ -943,6 +973,29 @@ class BluefruitCompatManager {
     }
   }
 
+  void maybeApplyDeferredConnectionRequests() {
+    if (!radio_.isConnected() || centralSyncProcedureActive()) {
+      return;
+    }
+
+    if (deferred_connection_data_length_request_pending_) {
+      if ((radio_.currentDataLength() >=
+           static_cast<uint16_t>(BleRadio::kCustomGattMaxValueLength + 7U)) ||
+          radio_.requestDataLengthUpdate()) {
+        deferred_connection_data_length_request_pending_ = false;
+      }
+    }
+
+    if (deferred_connection_mtu_request_pending_) {
+      const uint16_t mtu = deferred_connection_requested_mtu_;
+      if ((mtu <= 23U) || (radio_.currentAttMtu() >= mtu) ||
+          radio_.requestAttMtuExchange(mtu)) {
+        deferred_connection_mtu_request_pending_ = false;
+        deferred_connection_requested_mtu_ = 23U;
+      }
+    }
+  }
+
   void processCentralBackgroundEvents(uint8_t maxEvents) {
     maybeApplyCentralLinkConfig();
     for (uint8_t i = 0U; i < maxEvents; ++i) {
@@ -1095,6 +1148,9 @@ class BluefruitCompatManager {
     rssi_monitor_threshold_ = 0xFFU;
     last_reported_rssi_dbm_ = 0;
     last_reported_rssi_valid_ = false;
+    deferred_connection_data_length_request_pending_ = false;
+    deferred_connection_mtu_request_pending_ = false;
+    deferred_connection_requested_mtu_ = 23U;
     connection_.handle_ = INVALID_CONNECTION_HANDLE;
     if (last_connection_role_ == BleConnectionRole::kPeripheral) {
       for (uint8_t i = 0U; i < characteristic_count_; ++i) {
@@ -2627,12 +2683,18 @@ bool BLEConnection::requestDataLengthUpdate() {
   if (!connected()) {
     return false;
   }
+  if (ScopedBluefruitUserCallback::active()) {
+    return manager().deferConnectionDataLengthUpdate();
+  }
   return manager().radio().requestDataLengthUpdate();
 }
 
 bool BLEConnection::requestMtuExchange(uint16_t mtu) {
   if (!connected()) {
     return false;
+  }
+  if (ScopedBluefruitUserCallback::active()) {
+    return manager().deferConnectionMtuExchange(mtu);
   }
   return manager().radio().requestAttMtuExchange(mtu);
 }
