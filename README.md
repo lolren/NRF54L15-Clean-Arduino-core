@@ -824,15 +824,20 @@ That keeps the normal XIAO path on the CMSIS-DAP recovery uploader and avoids
 the VM-unfriendly automatic UF2 reset/touch path.
 
 For Linux guests in VirtualBox or another VM, use `Upload Method = pyOCD VM Safe
-(VirtualBox/Linux)` if `Auto Recover` still makes the guest unstable. The core
-also auto-detects common VMs and switches pyOCD to a conservative CMSIS-DAP
-transport automatically.
+(v1 HID / VirtualBox)` if `Auto Recover` still makes the guest unstable. The
+core also auto-detects common VMs and switches pyOCD to a conservative
+CMSIS-DAP transport automatically. That mode forces CMSIS-DAP v1 HID, lowers
+SWD to 1 MHz, limits packets, and disables deferred transfers to avoid the
+CMSIS-DAP v2 bulk path that can lock up some VM USB passthrough stacks.
 
 `Upload Method = UF2 Bootloader` is still available as a manual optional mode.
 It now assumes the bootloader drive is already present and does not do an
-automatic `1200 bps` touch/reset. If you explicitly want that mode, put the
-board into bootloader first, wait for the UF2 drive to mount, and upload. If
-the drive is mounted at an unusual path, set `NRF54L15_UF2_DRIVE` to that path.
+automatic `1200 bps` touch/reset. On the normal XIAO nRF54L15 CMSIS-DAP
+firmware there is no target-programming mass-storage drive, so this mode can
+avoid the VM freeze without actually flashing the board. If you explicitly want
+UF2, put the board into a bootloader that exposes a UF2 drive first, wait for
+the drive to mount, and upload. If the drive is mounted at an unusual path, set
+`NRF54L15_UF2_DRIVE` to that path.
 
 On a clean Linux machine, install just the access rules first:
 

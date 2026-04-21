@@ -818,6 +818,8 @@ def append_pyocd_safe_options(cmd: list[str], safe_mode: bool) -> list[str]:
                 "-f",
                 "1000000",
                 "-O",
+                "cmsis_dap.prefer_v1=true",
+                "-O",
                 "cmsis_dap.limit_packets=true",
                 "-O",
                 "cmsis_dap.deferred_transfers=false",
@@ -940,7 +942,7 @@ def upload_pyocd(
     print(f"Probe UID: {uid or 'auto-select'}")
     print(f"Retries: {retries}")
     if safe_mode:
-        print("pyOCD safe transport: enabled")
+        print("pyOCD safe transport: enabled (CMSIS-DAP v1 HID, 1 MHz)")
 
     load_result = subprocess.CompletedProcess(args=[*pyocd_cmd, "load"], returncode=1)
     retries = max(1, retries)
