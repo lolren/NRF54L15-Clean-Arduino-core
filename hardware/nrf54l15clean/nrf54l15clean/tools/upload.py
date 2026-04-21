@@ -273,6 +273,15 @@ def infer_uid_from_port(port: str | None) -> str | None:
     if not sys.platform.startswith("linux"):
         return None
 
+    if tool_available("udevadm"):
+        info = run(["udevadm", "info", "-q", "property", "-n", port])
+        if info.returncode == 0:
+            for line in (info.stdout or "").splitlines():
+                if line.startswith("ID_SERIAL_SHORT="):
+                    value = line.split("=", 1)[1].strip()
+                    if value:
+                        return value
+
     try:
         target_path = Path(port).resolve(strict=True)
     except OSError:
@@ -494,8 +503,10 @@ def upload_uf2(
     return copy_uf2_to_drive(uf2_path, drives[0])
 
 
-def _sysfs_usb_identity_for_hidraw(node: Path) -> tuple[str | None, str | None]:
-    sys_device = Path("/sys/class/hidraw") / node.name / "device"
+def _sysfs_usb_identity_for_class_node(
+    class_name: str, node_name: str
+) -> tuple[str | None, str | None]:
+    sys_device = Path("/sys/class") / class_name / node_name / "device"
     try:
         resolved = sys_device.resolve(strict=True)
     except OSError:
@@ -516,6 +527,14 @@ def _sysfs_usb_identity_for_hidraw(node: Path) -> tuple[str | None, str | None]:
     return None, None
 
 
+def _sysfs_usb_identity_for_hidraw(node: Path) -> tuple[str | None, str | None]:
+    return _sysfs_usb_identity_for_class_node("hidraw", node.name)
+
+
+def _sysfs_usb_identity_for_tty(node: Path) -> tuple[str | None, str | None]:
+    return _sysfs_usb_identity_for_class_node("tty", node.name)
+
+
 def matching_probe_hidraw_nodes() -> list[Path]:
     if not sys.platform.startswith("linux"):
         return []
@@ -526,6 +545,22 @@ def matching_probe_hidraw_nodes() -> list[Path]:
         if vendor == CMSIS_DAP_VENDOR_ID and product == CMSIS_DAP_PRODUCT_ID:
             matches.append(node)
     return matches
+
+
+def probe_hidraw_nodes_accessible(nodes: list[Path]) -> bool:
+    return any(os.access(node, os.R_OK | os.W_OK) for node in nodes)
+
+
+def port_looks_like_probe_serial(port: str | None) -> bool:
+    if not sys.platform.startswith("linux") or not port:
+        return False
+
+    port_name = Path(port).name
+    if not port_name.startswith("tty"):
+        return False
+
+    vendor, product = _sysfs_usb_identity_for_tty(Path(port_name))
+    return vendor == CMSIS_DAP_VENDOR_ID and product == CMSIS_DAP_PRODUCT_ID
 
 
 def looks_like_locked_target(result: subprocess.CompletedProcess[str]) -> bool:
@@ -627,7 +662,7 @@ def print_linux_probe_permission_hint(
     hidraw_nodes = matching_probe_hidraw_nodes()
     if not hidraw_nodes:
         return
-    if any(os.access(node, os.R_OK | os.W_OK) for node in hidraw_nodes):
+    if probe_hidraw_nodes_accessible(hidraw_nodes):
         return
 
     print(
@@ -639,6 +674,45 @@ def print_linux_probe_permission_hint(
         f"HINT: {host_setup_hint(host_tools_path, purpose='udev')}",
         file=sys.stderr,
     )
+
+
+def preflight_linux_probe_access(
+    port: str | None, host_tools_path: Path | None = None
+) -> bool:
+    if not sys.platform.startswith("linux"):
+        return False
+
+    hidraw_nodes = matching_probe_hidraw_nodes()
+    if hidraw_nodes:
+        if probe_hidraw_nodes_accessible(hidraw_nodes):
+            return False
+        print(
+            "ERROR: CMSIS-DAP probe 2886:0066 is present but hidraw access is denied.",
+            file=sys.stderr,
+        )
+        print(
+            "HINT: Access must be granted on /dev/hidraw*, not only on /dev/ttyACM*.",
+            file=sys.stderr,
+        )
+        print(f"HINT: {host_setup_hint(host_tools_path, purpose='udev')}", file=sys.stderr)
+        print("HINT: Replug the board after installing the rule.", file=sys.stderr)
+        return True
+
+    if port_looks_like_probe_serial(port):
+        print(
+            "ERROR: The Arduino serial port is present, but the CMSIS-DAP hidraw "
+            "interface is missing.",
+            file=sys.stderr,
+        )
+        print(
+            "HINT: On Linux VMs, pass through the whole USB device, not only the "
+            "ttyACM interface.",
+            file=sys.stderr,
+        )
+        print("HINT: Replug the board after the VM USB filter is active.", file=sys.stderr)
+        return True
+
+    return False
 
 
 def append_uid(cmd: list[str], uid: str | None) -> list[str]:
@@ -696,31 +770,6 @@ def recover_target(
     result = run(cmd)
     print_result(result)
     return result
-
-
-def install_host_pyocd_fallback() -> bool:
-    pip_check = run([sys.executable, "-m", "pip", "--version"])
-    if pip_check.returncode != 0:
-        ensurepip = run([sys.executable, "-m", "ensurepip", "--upgrade"])
-        print_result(ensurepip)
-        if ensurepip.returncode != 0:
-            return False
-
-    in_virtualenv = getattr(sys, "base_prefix", sys.prefix) != sys.prefix
-    if in_virtualenv:
-        install_cmds = [[sys.executable, "-m", "pip", "install", "--upgrade", "--disable-pip-version-check", "pyocd"]]
-    else:
-        install_cmds = [
-            [sys.executable, "-m", "pip", "install", "--user", "--upgrade", "--disable-pip-version-check", "pyocd"],
-            [sys.executable, "-m", "pip", "install", "--upgrade", "--disable-pip-version-check", "pyocd"],
-        ]
-
-    for cmd in install_cmds:
-        install = run(cmd)
-        print_result(install)
-        if install.returncode == 0:
-            return True
-    return False
 
 
 def choose_runner(requested: str, openocd_bin: str, host_tools_path: Path | None) -> str:
@@ -993,10 +1042,12 @@ def main() -> int:
             args.uf2_timeout,
         )
     if runner == "pyocd":
+        if preflight_linux_probe_access(args.port, host_tools_path):
+            return 7
         if detect_pyocd_command(host_tools_path) is None:
             if install_pyocd(host_tools_path):
                 print("pyocd installation succeeded.")
-            elif not install_host_pyocd_fallback():
+            else:
                 print("pyocd installation failed.", file=sys.stderr)
                 print(f"HINT: {host_setup_hint(host_tools_path, purpose='python')}", file=sys.stderr)
         rc = upload_pyocd(
@@ -1020,6 +1071,8 @@ def main() -> int:
                 host_tools_path=host_tools_path,
             ).returncode
     elif runner == "openocd":
+        if preflight_linux_probe_access(args.port, host_tools_path):
+            return 7
         openocd_result = upload_openocd(
             args.hex,
             args.openocd_script,
@@ -1034,7 +1087,7 @@ def main() -> int:
         if rc != 0 and looks_like_locked_target(openocd_result):
             pyocd_cmd = detect_pyocd_command(host_tools_path)
             if pyocd_cmd is None and requested_runner == "auto":
-                if install_pyocd(host_tools_path) or (host_tools_path is None and install_host_pyocd_fallback()):
+                if install_pyocd(host_tools_path):
                     pyocd_cmd = detect_pyocd_command(host_tools_path)
 
             if pyocd_cmd is not None:
