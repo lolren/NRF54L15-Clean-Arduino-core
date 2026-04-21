@@ -1033,6 +1033,13 @@ def upload_pyocd(
         print_linux_probe_permission_hint(load_result, host_tools_path)
         return load_result.returncode
 
+    if safe_mode:
+        print(
+            "pyOCD safe transport: skipping post-upload reset to avoid VM USB re-enumeration."
+        )
+        print("If the sketch does not start, press RESET or power-cycle the board.")
+        return 0
+
     reset_cmd = append_uid([*pyocd_cmd, "reset", "-W", "-t", target], uid)
     reset_cmd = append_connect_mode(reset_cmd, last_connect_mode)
     reset_cmd = append_pyocd_safe_options(reset_cmd, safe_mode)

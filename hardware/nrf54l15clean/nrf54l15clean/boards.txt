@@ -166,7 +166,7 @@ xiao_nrf54l15.menu.clean_upload.pyocd.upload.use_1200bps_touch=false
 xiao_nrf54l15.menu.clean_upload.pyocd.upload.wait_for_upload_port=false
 xiao_nrf54l15.menu.clean_upload.pyocd.upload.pyocd_safe=auto
 
-xiao_nrf54l15.menu.clean_upload.pyocd_vm=pyOCD VM Safe (v1 HID / VirtualBox)
+xiao_nrf54l15.menu.clean_upload.pyocd_vm=pyOCD VM Safe (No Reset / VirtualBox)
 xiao_nrf54l15.menu.clean_upload.pyocd_vm.upload.tool=nrf54upload
 xiao_nrf54l15.menu.clean_upload.pyocd_vm.upload.tool.serial=nrf54upload
 xiao_nrf54l15.menu.clean_upload.pyocd_vm.upload.runner=pyocd
@@ -320,7 +320,7 @@ holyiot_25007_nrf54l15.menu.clean_upload.pyocd.upload.tool.serial=nrf54upload
 holyiot_25007_nrf54l15.menu.clean_upload.pyocd.upload.runner=pyocd
 holyiot_25007_nrf54l15.menu.clean_upload.pyocd.upload.use_1200bps_touch=false
 
-holyiot_25007_nrf54l15.menu.clean_upload.pyocd_vm=pyOCD VM Safe (v1 HID / VirtualBox)
+holyiot_25007_nrf54l15.menu.clean_upload.pyocd_vm=pyOCD VM Safe (No Reset / VirtualBox)
 holyiot_25007_nrf54l15.menu.clean_upload.pyocd_vm.upload.tool=nrf54upload
 holyiot_25007_nrf54l15.menu.clean_upload.pyocd_vm.upload.tool.serial=nrf54upload
 holyiot_25007_nrf54l15.menu.clean_upload.pyocd_vm.upload.runner=pyocd
@@ -479,7 +479,7 @@ holyiot_25008_nrf54l15.menu.clean_upload.pyocd.upload.tool.serial=nrf54upload
 holyiot_25008_nrf54l15.menu.clean_upload.pyocd.upload.runner=pyocd
 holyiot_25008_nrf54l15.menu.clean_upload.pyocd.upload.use_1200bps_touch=false
 
-holyiot_25008_nrf54l15.menu.clean_upload.pyocd_vm=pyOCD VM Safe (v1 HID / VirtualBox)
+holyiot_25008_nrf54l15.menu.clean_upload.pyocd_vm=pyOCD VM Safe (No Reset / VirtualBox)
 holyiot_25008_nrf54l15.menu.clean_upload.pyocd_vm.upload.tool=nrf54upload
 holyiot_25008_nrf54l15.menu.clean_upload.pyocd_vm.upload.tool.serial=nrf54upload
 holyiot_25008_nrf54l15.menu.clean_upload.pyocd_vm.upload.runner=pyocd
@@ -632,7 +632,7 @@ generic_nrf54l15_module_36pin.menu.clean_upload.pyocd.upload.tool.serial=nrf54up
 generic_nrf54l15_module_36pin.menu.clean_upload.pyocd.upload.runner=pyocd
 generic_nrf54l15_module_36pin.menu.clean_upload.pyocd.upload.use_1200bps_touch=false
 
-generic_nrf54l15_module_36pin.menu.clean_upload.pyocd_vm=pyOCD VM Safe (v1 HID / VirtualBox)
+generic_nrf54l15_module_36pin.menu.clean_upload.pyocd_vm=pyOCD VM Safe (No Reset / VirtualBox)
 generic_nrf54l15_module_36pin.menu.clean_upload.pyocd_vm.upload.tool=nrf54upload
 generic_nrf54l15_module_36pin.menu.clean_upload.pyocd_vm.upload.tool.serial=nrf54upload
 generic_nrf54l15_module_36pin.menu.clean_upload.pyocd_vm.upload.runner=pyocd

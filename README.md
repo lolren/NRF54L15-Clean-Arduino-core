@@ -824,11 +824,13 @@ That keeps the normal XIAO path on the CMSIS-DAP recovery uploader and avoids
 the VM-unfriendly automatic UF2 reset/touch path.
 
 For Linux guests in VirtualBox or another VM, use `Upload Method = pyOCD VM Safe
-(v1 HID / VirtualBox)` if `Auto Recover` still makes the guest unstable. The
+(No Reset / VirtualBox)` if `Auto Recover` still makes the guest unstable. The
 core also auto-detects common VMs and switches pyOCD to a conservative
 CMSIS-DAP transport automatically. That mode forces CMSIS-DAP v1 HID, lowers
-SWD to 1 MHz, limits packets, and disables deferred transfers to avoid the
-CMSIS-DAP v2 bulk path that can lock up some VM USB passthrough stacks.
+SWD to 1 MHz, limits packets, disables deferred transfers, and skips the
+post-upload reset. Skipping reset avoids the USB detach/re-enumeration step
+that can lock up some VM USB passthrough stacks. If the sketch does not start
+after upload, press RESET or power-cycle the board.
 
 `Upload Method = UF2 Bootloader` is still available as a manual optional mode.
 It now assumes the bootloader drive is already present and does not do an
