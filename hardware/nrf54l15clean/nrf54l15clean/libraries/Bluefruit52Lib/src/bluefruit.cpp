@@ -442,7 +442,11 @@ class BluefruitCompatManager {
         central_mtu_request_pending_(false),
         deferred_connection_data_length_request_pending_(false),
         deferred_connection_mtu_request_pending_(false),
-        deferred_connection_requested_mtu_(23U),
+        deferred_connection_requested_mtu_(kDefaultAttMtu),
+        deferred_connection_data_length_next_ms_(0UL),
+        deferred_connection_mtu_next_ms_(0UL),
+        deferred_connection_data_length_attempts_(0U),
+        deferred_connection_mtu_attempts_(0U),
         central_link_config_not_before_ms_(0UL),
         last_connect_attempt_ms_(0UL),
         rssi_monitor_enabled_(false),
@@ -523,6 +527,9 @@ class BluefruitCompatManager {
       return false;
     }
     deferred_connection_data_length_request_pending_ = true;
+    deferred_connection_data_length_attempts_ = 0U;
+    deferred_connection_data_length_next_ms_ =
+        millis() + kDeferredLinkRequestInitialDelayMs;
     return true;
   }
 
@@ -530,14 +537,17 @@ class BluefruitCompatManager {
     if (!radio_.isConnected()) {
       return false;
     }
-    if (mtu < 23U) {
-      mtu = 23U;
+    if (mtu < kDefaultAttMtu) {
+      mtu = kDefaultAttMtu;
     }
     if (!deferred_connection_mtu_request_pending_ ||
         mtu > deferred_connection_requested_mtu_) {
       deferred_connection_requested_mtu_ = mtu;
     }
     deferred_connection_mtu_request_pending_ = true;
+    deferred_connection_mtu_attempts_ = 0U;
+    deferred_connection_mtu_next_ms_ =
+        millis() + kDeferredLinkRequestInitialDelayMs;
     return true;
   }
 
@@ -691,6 +701,13 @@ class BluefruitCompatManager {
  private:
   static constexpr uint8_t kMaxCharacteristics = 24U;
   static constexpr uint8_t kMaxClientCharacteristics = 16U;
+  static constexpr uint16_t kDefaultDataLength = 27U;
+  static constexpr uint16_t kDefaultAttMtu = 23U;
+  static constexpr uint16_t kDeferredDataLengthTarget =
+      static_cast<uint16_t>(BleRadio::kCustomGattMaxValueLength + 7U);
+  static constexpr unsigned long kDeferredLinkRequestInitialDelayMs = 250UL;
+  static constexpr unsigned long kDeferredLinkRequestRetryMs = 500UL;
+  static constexpr uint8_t kDeferredLinkRequestMaxAttempts = 20U;
 
   BleRadio radio_;
   bool started_;
@@ -717,6 +734,10 @@ class BluefruitCompatManager {
   bool deferred_connection_data_length_request_pending_;
   bool deferred_connection_mtu_request_pending_;
   uint16_t deferred_connection_requested_mtu_;
+  unsigned long deferred_connection_data_length_next_ms_;
+  unsigned long deferred_connection_mtu_next_ms_;
+  uint8_t deferred_connection_data_length_attempts_;
+  uint8_t deferred_connection_mtu_attempts_;
   unsigned long central_link_config_not_before_ms_;
   unsigned long last_connect_attempt_ms_;
   bool rssi_monitor_enabled_;
@@ -978,20 +999,48 @@ class BluefruitCompatManager {
       return;
     }
 
+    const unsigned long now = millis();
+
     if (deferred_connection_data_length_request_pending_) {
-      if ((radio_.currentDataLength() >=
-           static_cast<uint16_t>(BleRadio::kCustomGattMaxValueLength + 7U)) ||
-          radio_.requestDataLengthUpdate()) {
+      const uint16_t dataLength = radio_.currentDataLength();
+      if (dataLength >= kDeferredDataLengthTarget ||
+          dataLength > kDefaultDataLength) {
         deferred_connection_data_length_request_pending_ = false;
+        deferred_connection_data_length_attempts_ = 0U;
+        deferred_connection_data_length_next_ms_ = 0UL;
+      } else if (deferred_connection_data_length_attempts_ >=
+                 kDeferredLinkRequestMaxAttempts) {
+        deferred_connection_data_length_request_pending_ = false;
+        deferred_connection_data_length_attempts_ = 0U;
+        deferred_connection_data_length_next_ms_ = 0UL;
+      } else if (static_cast<int32_t>(
+                     now - deferred_connection_data_length_next_ms_) >= 0) {
+        (void)radio_.requestDataLengthUpdate();
+        ++deferred_connection_data_length_attempts_;
+        deferred_connection_data_length_next_ms_ =
+            now + kDeferredLinkRequestRetryMs;
       }
     }
 
     if (deferred_connection_mtu_request_pending_) {
       const uint16_t mtu = deferred_connection_requested_mtu_;
-      if ((mtu <= 23U) || (radio_.currentAttMtu() >= mtu) ||
-          radio_.requestAttMtuExchange(mtu)) {
+      const uint16_t currentMtu = radio_.currentAttMtu();
+      if ((mtu <= kDefaultAttMtu) || (currentMtu >= mtu) ||
+          (currentMtu > kDefaultAttMtu)) {
         deferred_connection_mtu_request_pending_ = false;
-        deferred_connection_requested_mtu_ = 23U;
+        deferred_connection_requested_mtu_ = kDefaultAttMtu;
+        deferred_connection_mtu_attempts_ = 0U;
+        deferred_connection_mtu_next_ms_ = 0UL;
+      } else if (deferred_connection_mtu_attempts_ >=
+                 kDeferredLinkRequestMaxAttempts) {
+        deferred_connection_mtu_request_pending_ = false;
+        deferred_connection_requested_mtu_ = kDefaultAttMtu;
+        deferred_connection_mtu_attempts_ = 0U;
+        deferred_connection_mtu_next_ms_ = 0UL;
+      } else if (static_cast<int32_t>(now - deferred_connection_mtu_next_ms_) >= 0) {
+        (void)radio_.requestAttMtuExchange(mtu);
+        ++deferred_connection_mtu_attempts_;
+        deferred_connection_mtu_next_ms_ = now + kDeferredLinkRequestRetryMs;
       }
     }
   }
@@ -1150,7 +1199,11 @@ class BluefruitCompatManager {
     last_reported_rssi_valid_ = false;
     deferred_connection_data_length_request_pending_ = false;
     deferred_connection_mtu_request_pending_ = false;
-    deferred_connection_requested_mtu_ = 23U;
+    deferred_connection_requested_mtu_ = kDefaultAttMtu;
+    deferred_connection_data_length_next_ms_ = 0UL;
+    deferred_connection_mtu_next_ms_ = 0UL;
+    deferred_connection_data_length_attempts_ = 0U;
+    deferred_connection_mtu_attempts_ = 0U;
     connection_.handle_ = INVALID_CONNECTION_HANDLE;
     if (last_connection_role_ == BleConnectionRole::kPeripheral) {
       for (uint8_t i = 0U; i < characteristic_count_; ++i) {
