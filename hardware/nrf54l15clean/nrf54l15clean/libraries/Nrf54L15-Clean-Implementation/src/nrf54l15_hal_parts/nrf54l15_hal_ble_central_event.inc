@@ -495,8 +495,15 @@ bool BleRadio::pollCentralConnectionEvent(BleConnectionEvent* event,
   if (rxHasL2cap && (rxL2capCid == kBleL2capCidAtt) &&
       (rxL2capLen >= 3U) &&
       (rxAttOpcode == kAttOpExchangeMtuRsp)) {
-    const uint16_t serverRxMtu = readLe16(&rxPacket_[2 + kBleL2capHeaderLen + 1U]);
-    const uint16_t negotiatedMtu = minU16(serverRxMtu, localPreferredAttMtu());
+    const uint16_t serverRxMtu =
+        readLe16(&rxPacket_[2 + kBleL2capHeaderLen + 1U]);
+    uint16_t localRxMtu = connectionRequestedAttMtu_;
+    if (localRxMtu < kBleDefaultAttMtu) {
+      localRxMtu = kBleDefaultAttMtu;
+    } else if (localRxMtu > localPreferredAttMtu()) {
+      localRxMtu = localPreferredAttMtu();
+    }
+    const uint16_t negotiatedMtu = minU16(serverRxMtu, localRxMtu);
     connectionAttMtu_ = (negotiatedMtu >= kBleDefaultAttMtu)
                             ? negotiatedMtu
                             : kBleDefaultAttMtu;

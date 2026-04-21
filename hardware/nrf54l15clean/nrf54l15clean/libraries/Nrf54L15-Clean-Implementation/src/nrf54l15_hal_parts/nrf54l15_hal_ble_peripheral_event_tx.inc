@@ -157,8 +157,13 @@
         (rxAttOpcode == kAttOpExchangeMtuRsp)) {
       const uint16_t peerRxMtu =
           readLe16(&rxPacket_[2 + kBleL2capHeaderLen + 1U]);
-      const uint16_t negotiatedMtu =
-          minU16(peerRxMtu, localPreferredAttMtu());
+      uint16_t localRxMtu = connectionRequestedAttMtu_;
+      if (localRxMtu < kBleDefaultAttMtu) {
+        localRxMtu = kBleDefaultAttMtu;
+      } else if (localRxMtu > localPreferredAttMtu()) {
+        localRxMtu = localPreferredAttMtu();
+      }
+      const uint16_t negotiatedMtu = minU16(peerRxMtu, localRxMtu);
       connectionAttMtu_ =
           (negotiatedMtu >= kBleDefaultAttMtu) ? negotiatedMtu
                                                : kBleDefaultAttMtu;
