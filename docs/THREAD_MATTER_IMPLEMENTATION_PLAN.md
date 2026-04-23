@@ -243,7 +243,7 @@ Checklist:
 
 - [x] MLE attach path works
 - [x] child role works on the first target board
-- [ ] router role works if feasible in the first pass
+- [x] router role works if feasible in the first pass
 - [x] dataset handling exists for fixed test credentials
 - [x] CLI or probe path exposes attach state and role transitions
 - [x] repo docs explain exactly what Thread roles are actually supported
@@ -324,17 +324,18 @@ Current status note:
 
 - the staged Thread seam is no longer hidden-only for CLI experiments: the
   board package now exposes `Tools > Thread Core > Experimental Stage Core
-  (Leader/Child + UDP)` for all current boards
+  (Leader/Child/Router + UDP)` for all current boards
 - the new Arduino-facing staged wrapper now exists in
   `/home/lolren/Desktop/Nrf54L15/NRF54L15-Clean-Arduino-core/hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/src/nrf54_thread_experimental.h`
   and
   `/home/lolren/Desktop/Nrf54L15/NRF54L15-Clean-Arduino-core/hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/src/nrf54_thread_experimental.cpp`
 - that wrapper provides the first minimal Arduino-level staged surface for:
   `begin()`, fixed-dataset attach, role/state query, active dataset get/set,
-  UDP socket open, UDP send, and leader RLOC lookup
+  router promotion request, UDP socket open, UDP send, and leader RLOC lookup
 - the first normal staged examples now exist at:
   `/home/lolren/Desktop/Nrf54L15/NRF54L15-Clean-Arduino-core/hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples/Thread/ThreadExperimentalRoleReporter/ThreadExperimentalRoleReporter.ino`
   `/home/lolren/Desktop/Nrf54L15/NRF54L15-Clean-Arduino-core/hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples/Thread/ThreadExperimentalUdpHello/ThreadExperimentalUdpHello.ino`
+  `/home/lolren/Desktop/Nrf54L15/NRF54L15-Clean-Arduino-core/hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples/Thread/ThreadExperimentalRouterPromotion/ThreadExperimentalRouterPromotion.ino`
 - example compile validation now passes against the local `main` checkout with
   `clean_thread=stage`
 - real two-board staged API validation now exists through
@@ -344,13 +345,19 @@ Current status note:
 - repo-owned evidence for that wrapper-level proof now lives at:
   `/home/lolren/Desktop/Nrf54L15/NRF54L15-Clean-Arduino-core/measurements/thread_phase4_latest/thread_udp_hello_board_a.log`
   `/home/lolren/Desktop/Nrf54L15/NRF54L15-Clean-Arduino-core/measurements/thread_phase4_latest/thread_udp_hello_board_b.log`
+- real two-board staged router-promotion validation now also exists through
+  `ThreadExperimentalRouterPromotion`: one board settles as `leader`, the
+  second attaches as `child`, requests router promotion, becomes `router`, and
+  then completes a `router-ping` / `router-pong` UDP exchange with the leader
+- repo-owned evidence for that router-level proof now lives at:
+  `/home/lolren/Desktop/Nrf54L15/NRF54L15-Clean-Arduino-core/measurements/thread_phase4_latest/thread_router_promotion_board_a.log`
+  `/home/lolren/Desktop/Nrf54L15/NRF54L15-Clean-Arduino-core/measurements/thread_phase4_latest/thread_router_promotion_board_b.log`
 - supported scope is intentionally narrow and explicitly staged-only:
-  fixed-dataset leader/child attach, role observation, and UDP payload
-  exchange on the internal Thread interface
+  fixed-dataset leader/child attach, router promotion, role observation, and
+  UDP payload exchange on the internal Thread interface
 - unsupported follow-up work remains explicit:
-  router promotion as an Arduino example flow, joiner/commissioner,
-  border-router/reference-network attach, secure commissioning, and any Matter
-  runtime above this staged Thread surface
+  joiner/commissioner, border-router/reference-network attach, secure
+  commissioning, and any Matter runtime above this staged Thread surface
 
 ## Phase 5: Matter Foundation
 

@@ -337,14 +337,17 @@ Thread example organization:
     `measurements/thread_phase3_latest/udp_stage_probe_board_a.log`
     `measurements/thread_phase3_latest/udp_stage_probe_board_b.log`
 - the first Arduino-facing staged Thread surface now also exists:
-  - enable `Tools > Thread Core > Experimental Stage Core (Leader/Child + UDP)`
+  - enable `Tools > Thread Core > Experimental Stage Core (Leader/Child/Router + UDP)`
   - include `nrf54_thread_experimental.h`
   - the current normal staged examples are:
     `ThreadExperimentalRoleReporter`
     `ThreadExperimentalUdpHello`
+    `ThreadExperimentalRouterPromotion`
   - the current wrapper-level hardware logs live at:
     `measurements/thread_phase4_latest/thread_udp_hello_board_a.log`
     `measurements/thread_phase4_latest/thread_udp_hello_board_b.log`
+    `measurements/thread_phase4_latest/thread_router_promotion_board_a.log`
+    `measurements/thread_phase4_latest/thread_router_promotion_board_b.log`
 - the PAL now includes repo-backed RNG/AES/key-ref/SHA/HMAC/HKDF seams;
   ECDSA/PBKDF2 still return explicit `OT_ERROR_NOT_CAPABLE`.
 - the first radio slice now wraps `ZigbeeRadio` directly for Thread first pass,
@@ -369,14 +372,15 @@ Thread example organization:
 - the staged Thread boundary is now:
   `OpenThreadRoleStageProbe` is a real hidden-seam leader/child bring-up tool,
   not just a single-board init check. The current supported staged role proof
-  is `leader + child` on a fixed dataset, and the current supported staged
-  payload proof is a two-board UDP `stage-ping` / `stage-pong` exchange over
-  that attached link. On top of that, the first Arduino-facing staged wrapper
-  now exists for `begin()`, dataset set/get, role query, and UDP send/receive,
-  with the normal `ThreadExperimentalUdpHello` example proving a wrapper-level
-  `hello-ping` / `hello-pong` exchange on two boards. Router promotion,
-  reference-network attach, joiner/commissioner flows, and Matter are still
-  follow-up work.
+  is `leader + child` attach plus `child -> router` promotion on a fixed
+  dataset, and the current supported staged payload proof includes both the
+  two-board UDP `stage-ping` / `stage-pong` bring-up path and the normal
+  Arduino-facing wrapper examples. That wrapper now exists for `begin()`,
+  dataset set/get, role query, `requestRouterRole()`, and UDP send/receive,
+  with `ThreadExperimentalUdpHello` proving wrapper-level `hello-ping` /
+  `hello-pong` on two boards and `ThreadExperimentalRouterPromotion` proving
+  `router-ping` / `router-pong` after a real role promotion. Reference-network
+  attach, joiner/commissioner flows, and Matter are still follow-up work.
 - the staged settings fix that unblocked attach is also in-tree:
   `Preferences` now expands from `28` to `35` entries, which is the largest
   size that still fits beside EEPROM emulation and BLE bond retention in the

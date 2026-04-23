@@ -8,6 +8,7 @@
 #include <openthread/error.h>
 #include <openthread/ip6.h>
 #include <openthread/thread.h>
+#include <openthread/thread_ftd.h>
 #include <openthread/udp.h>
 
 namespace xiao_nrf54l15 {
@@ -35,6 +36,7 @@ class Nrf54ThreadExperimental {
 
   bool setActiveDataset(const otOperationalDataset& dataset);
   bool getActiveDataset(otOperationalDataset* outDataset) const;
+  bool requestRouterRole();
 
   bool openUdp(uint16_t port,
                UdpReceiveCallback callback,

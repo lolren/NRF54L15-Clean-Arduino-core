@@ -38,7 +38,7 @@ void setup() {
   Serial.println("thread_role boot");
 #else
   Serial.println(
-      "Enable Tools > Thread Core > Experimental Stage Core (Leader/Child + UDP).");
+      "Enable Tools > Thread Core > Experimental Stage Core (Leader/Child/Router + UDP).");
 #endif
 }
 

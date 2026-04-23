@@ -135,6 +135,28 @@ bool Nrf54ThreadExperimental::getActiveDataset(
 #endif
 }
 
+bool Nrf54ThreadExperimental::requestRouterRole() {
+#if !defined(NRF54L15_CLEAN_OPENTHREAD_CORE_ENABLE) || \
+    (NRF54L15_CLEAN_OPENTHREAD_CORE_ENABLE == 0)
+  lastError_ = OT_ERROR_INVALID_STATE;
+  return false;
+#else
+  if (instance_ == nullptr || !threadEnabled_) {
+    lastError_ = OT_ERROR_INVALID_STATE;
+    return false;
+  }
+
+  const Role currentRole = role();
+  if (currentRole == Role::kRouter || currentRole == Role::kLeader) {
+    lastError_ = OT_ERROR_NONE;
+    return true;
+  }
+
+  lastError_ = otThreadBecomeRouter(instance_);
+  return lastError_ == OT_ERROR_NONE;
+#endif
+}
+
 bool Nrf54ThreadExperimental::openUdp(uint16_t port,
                                       UdpReceiveCallback callback,
                                       void* callbackContext) {

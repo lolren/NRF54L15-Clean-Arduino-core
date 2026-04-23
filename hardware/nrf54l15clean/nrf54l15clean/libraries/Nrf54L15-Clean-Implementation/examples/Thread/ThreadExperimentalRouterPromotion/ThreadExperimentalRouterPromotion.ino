@@ -6,23 +6,30 @@ using xiao_nrf54l15::Nrf54ThreadExperimental;
 
 namespace {
 
-constexpr uint16_t kUdpPort = 61631U;
+constexpr uint16_t kUdpPort = 61632U;
+constexpr uint32_t kRouterRequestDelayMs = 5000UL;
+constexpr uint32_t kRouterRetryMs = 4000UL;
 constexpr uint32_t kPingRetryMs = 4000UL;
-constexpr char kPingText[] = "hello-ping";
-constexpr char kPongText[] = "hello-pong";
+constexpr char kPingText[] = "router-ping";
+constexpr char kPongText[] = "router-pong";
 
 Nrf54ThreadExperimental gThread;
 Nrf54ThreadExperimental::Role gLastRole =
     Nrf54ThreadExperimental::Role::kUnknown;
 otIp6Address gReplyAddr = {};
 uint16_t gReplyPort = 0U;
+uint32_t gAttachMs = 0;
 uint32_t gLastReportMs = 0;
+uint32_t gLastRouterAttemptMs = 0;
 uint32_t gLastPingMs = 0;
+uint32_t gRouterRequestCount = 0;
+uint32_t gRouterRequestAcceptedCount = 0;
 uint32_t gPingTxCount = 0;
 uint32_t gPingRxCount = 0;
 uint32_t gPongTxCount = 0;
 uint32_t gPongRxCount = 0;
 bool gReplyPending = false;
+bool gRouterSeen = false;
 bool gPongSeen = false;
 char gLastRxText[24] = {0};
 
@@ -58,10 +65,16 @@ void onUdp(void*, const uint8_t* payload, uint16_t length,
 }
 
 void printStatus() {
-  Serial.print("thread_udp role=");
+  Serial.print("thread_router role=");
   Serial.print(gThread.roleName());
   Serial.print(" rloc16=0x");
   Serial.print(gThread.rloc16(), HEX);
+  Serial.print(" req=");
+  Serial.print(gRouterRequestCount);
+  Serial.print("/");
+  Serial.print(gRouterRequestAcceptedCount);
+  Serial.print(" router=");
+  Serial.print(gRouterSeen ? 1 : 0);
   Serial.print(" ping=");
   Serial.print(gPingTxCount);
   Serial.print("/");
@@ -96,7 +109,7 @@ void setup() {
   gThread.setActiveDataset(dataset);
   gThread.begin();
   gThread.openUdp(kUdpPort, onUdp, nullptr);
-  Serial.println("thread_udp boot");
+  Serial.println("thread_router boot");
 #else
   Serial.println(
       "Enable Tools > Thread Core > Experimental Stage Core (Leader/Child/Router + UDP).");
@@ -109,9 +122,28 @@ void loop() {
 #if defined(NRF54L15_CLEAN_OPENTHREAD_CORE_ENABLE) && \
     (NRF54L15_CLEAN_OPENTHREAD_CORE_ENABLE != 0)
   const Nrf54ThreadExperimental::Role currentRole = gThread.role();
+  if (gThread.attached() && gAttachMs == 0U) {
+    gAttachMs = millis();
+  }
+
+  if (currentRole == Nrf54ThreadExperimental::Role::kRouter) {
+    gRouterSeen = true;
+  }
+
   if (currentRole != gLastRole) {
     gLastRole = currentRole;
     printStatus();
+  }
+
+  if (currentRole == Nrf54ThreadExperimental::Role::kChild &&
+      gAttachMs != 0U &&
+      (millis() - gAttachMs) >= kRouterRequestDelayMs &&
+      (millis() - gLastRouterAttemptMs) >= kRouterRetryMs) {
+    gLastRouterAttemptMs = millis();
+    ++gRouterRequestCount;
+    if (gThread.requestRouterRole()) {
+      ++gRouterRequestAcceptedCount;
+    }
   }
 
   if (currentRole == Nrf54ThreadExperimental::Role::kLeader && gReplyPending) {
@@ -124,7 +156,7 @@ void loop() {
     }
   }
 
-  if (currentRole == Nrf54ThreadExperimental::Role::kChild && !gPongSeen &&
+  if (currentRole == Nrf54ThreadExperimental::Role::kRouter && !gPongSeen &&
       (millis() - gLastPingMs) >= kPingRetryMs) {
     otIp6Address leaderAddr = {};
     gLastPingMs = millis();
