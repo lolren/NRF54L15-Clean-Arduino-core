@@ -24,11 +24,16 @@ repo after the staged Thread bring-up.
   - `src/lib/core/GroupId.h`
   - `src/lib/core/PasscodeId.h`
   - `src/lib/core/NodeId.h`
+  - `src/lib/core/Unchecked.h`
   - `src/lib/support/Base64.h`
   - `src/lib/support/Base64.cpp`
   - `src/lib/support/Base85.h`
   - `src/lib/support/Base85.cpp`
+  - `src/lib/support/BitFlags.h`
+  - `src/lib/support/BytesToHex.h`
+  - `src/lib/support/BytesToHex.cpp`
   - `src/lib/support/SafeInt.h`
+  - `src/lib/support/Span.h`
   - `src/lib/support/TimeUtils.h`
   - `src/lib/support/TimeUtils.cpp`
   - `src/lib/support/DLLUtil.h`
@@ -36,7 +41,9 @@ repo after the staged Thread bring-up.
   - repo-owned shim:
     `src/matter_core_stage/lib/core/CHIPConfig.h`
     `src/matter_core_stage/lib/core/CHIPCore.h`
+    `src/matter_core_stage/lib/core/CHIPEncoding.h`
     `src/matter_core_stage/lib/support/CodeUtils.h`
+    `src/matter_core_stage/lib/support/logging/CHIPLogging.h`
 
 The intake script is intentionally separate from build integration. It creates
 the upstream staging area without pretending that the Arduino build already
@@ -105,6 +112,10 @@ What this slice claims:
   (`src/lib/support/TimeUtils.cpp`) through a repo-owned minimal
   `CHIPCore.h` shim, and the probe exercises CHIP-epoch/unix/calendar
   conversion paths plus date adjustment on hardware
+- the hidden seam now also links staged upstream `BytesToHex` support
+  (`src/lib/support/BytesToHex.cpp`) through repo-owned minimal
+  `CHIPEncoding.h` and `CHIPLogging.h` shims, and the probe exercises
+  uppercase hex encode/decode plus integer round-trip paths on hardware
 
 What this slice does not claim:
 

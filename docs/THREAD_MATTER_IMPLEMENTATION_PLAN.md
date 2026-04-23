@@ -448,6 +448,10 @@ Current status note:
   (`src/lib/support/TimeUtils.cpp`) through a repo-owned minimal
   `CHIPCore.h` shim, and the probe now prints live CHIP-epoch, unix,
   and calendar conversion checks plus a date-adjustment proof
+- the hidden seam now also links staged upstream `BytesToHex` support
+  (`src/lib/support/BytesToHex.cpp`) through repo-owned minimal
+  `CHIPEncoding.h` and `CHIPLogging.h` shims, and the probe now prints live
+  uppercase hex encode/decode plus integer round-trip checks
 - compile-only CHIP validation is still not claimed at this stage
 
 ## Phase 6: Matter Commissioning And First Device

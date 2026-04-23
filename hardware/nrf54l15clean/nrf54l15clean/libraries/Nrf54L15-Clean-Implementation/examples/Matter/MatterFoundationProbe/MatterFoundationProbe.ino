@@ -1,4 +1,5 @@
 #include <inttypes.h>
+#include <string.h>
 #include <matter_platform_nrf54l15.h>
 
 #if defined(NRF54L15_CLEAN_MATTER_CORE_ENABLE) && \
@@ -10,6 +11,7 @@
 #include <lib/core/NodeId.h>
 #include <lib/support/Base64.h>
 #include <lib/support/Base85.h>
+#include <lib/support/BytesToHex.h>
 #include <lib/support/TimeUtils.h>
 #endif
 
@@ -100,6 +102,7 @@ void setup() {
   printFlag("error_seed", MatterRuntimeOwnership::kConnectedHomeIpCoreErrorSeedImported);
   printFlag("key_seed", MatterRuntimeOwnership::kConnectedHomeIpCoreKeySeedImported);
   printFlag("time_seed", MatterRuntimeOwnership::kConnectedHomeIpSupportTimeSeedImported);
+  printFlag("hex_seed", MatterRuntimeOwnership::kConnectedHomeIpSupportHexSeedImported);
   printFlag("full_scaffold", MatterRuntimeOwnership::kConnectedHomeIpFullScaffoldImported);
   printFlag("matter_target", MatterRuntimeOwnership::kCompileOnlyMatterTargetClaimed);
 
@@ -148,6 +151,34 @@ void setup() {
   }
   Serial.print("matter_foundation chip_group_node_b85_roundtrip=");
   Serial.println(groupNodeBase85RoundTripOk ? 1 : 0);
+  char groupNodeHex[HEX_ENCODED_LENGTH(sizeof(groupNodeBytes)) + 1] = {0};
+  const CHIP_ERROR groupNodeHexError = chip::Encoding::BytesToUppercaseHexString(
+      groupNodeBytes, sizeof(groupNodeBytes), groupNodeHex, sizeof(groupNodeHex));
+  Serial.print("matter_foundation chip_group_node_hex=");
+  Serial.println(groupNodeHex);
+  const bool groupNodeHexOk =
+      groupNodeHexError == CHIP_NO_ERROR &&
+      strcmp(groupNodeHex, "FFFFFFFFFFFF1234") == 0;
+  Serial.print("matter_foundation chip_group_node_hex_ok=");
+  Serial.println(groupNodeHexOk ? 1 : 0);
+  uint8_t groupNodeFromHex[8] = {0};
+  const size_t groupNodeFromHexLen = chip::Encoding::HexToBytes(
+      groupNodeHex, HEX_ENCODED_LENGTH(sizeof(groupNodeBytes)),
+      groupNodeFromHex, sizeof(groupNodeFromHex));
+  const bool groupNodeHexRoundTripOk =
+      groupNodeFromHexLen == sizeof(groupNodeBytes) &&
+      memcmp(groupNodeFromHex, groupNodeBytes, sizeof(groupNodeBytes)) == 0;
+  Serial.print("matter_foundation chip_group_node_hex_roundtrip=");
+  Serial.println(groupNodeHexRoundTripOk ? 1 : 0);
+  uint64_t groupNodeFromUpperHex = 0;
+  const size_t groupNodeUpperHexLen = chip::Encoding::UppercaseHexToUint64(
+      groupNodeHex, HEX_ENCODED_LENGTH(sizeof(groupNodeBytes)),
+      groupNodeFromUpperHex);
+  const bool groupNodeUpperHexOk =
+      groupNodeUpperHexLen == sizeof(groupNodeBytes) &&
+      groupNodeFromUpperHex == groupNode;
+  Serial.print("matter_foundation chip_group_node_hex_uint64_ok=");
+  Serial.println(groupNodeUpperHexOk ? 1 : 0);
   const CHIP_ERROR invalidArgument = CHIP_ERROR_INVALID_ARGUMENT;
   Serial.print("matter_foundation chip_error_invalid_argument=0x");
   printHex32(invalidArgument.AsInteger());
@@ -163,12 +194,23 @@ void setup() {
                                         chip::ChipKeyId::MakeEpochKeyId(4));
   const uint32_t staticKeyId =
       chip::ChipKeyId::ConvertToStaticAppKeyId(rotatingKeyId);
+  char staticKeyHex[HEX_ENCODED_LENGTH(sizeof(staticKeyId)) + 1] = {0};
+  const CHIP_ERROR staticKeyHexError = chip::Encoding::Uint32ToHex(
+      staticKeyId, staticKeyHex, sizeof(staticKeyHex),
+      chip::Encoding::HexFlags::kUppercaseAndNullTerminate);
   Serial.print("matter_foundation chip_key_rotating=0x");
   printHex32(rotatingKeyId);
   Serial.println();
   Serial.print("matter_foundation chip_key_static=0x");
   printHex32(staticKeyId);
   Serial.println();
+  Serial.print("matter_foundation chip_key_static_hex=");
+  Serial.println(staticKeyHex);
+  Serial.print("matter_foundation chip_key_static_hex_ok=");
+  Serial.println((staticKeyHexError == CHIP_NO_ERROR &&
+                  strcmp(staticKeyHex, "00004022") == 0)
+                     ? 1
+                     : 0);
   Serial.print("matter_foundation chip_key_desc=");
   Serial.println(chip::ChipKeyId::DescribeKey(staticKeyId));
   Serial.print("matter_foundation chip_key_valid=");

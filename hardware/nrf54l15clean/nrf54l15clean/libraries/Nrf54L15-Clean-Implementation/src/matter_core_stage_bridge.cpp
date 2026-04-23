@@ -17,8 +17,14 @@
 #error "Enable the staged Matter seam with build.matter_seam_flags so the bridge gets the staged TimeUtils seed include path."
 #endif
 
+#if !defined(NRF54L15_CLEAN_MATTER_HEX_SEED_AVAILABLE)
+#error "Enable the staged Matter seam with build.matter_seam_flags so the bridge gets the staged BytesToHex seed include path."
+#endif
+
+#include <lib/support/logging/CHIPLogging.h>
 #include "../third_party/connectedhomeip/src/lib/support/Base64.cpp"
 #include "../third_party/connectedhomeip/src/lib/support/Base85.cpp"
+#include "../third_party/connectedhomeip/src/lib/support/BytesToHex.cpp"
 #include "../third_party/connectedhomeip/src/lib/support/TimeUtils.cpp"
 #include "../third_party/connectedhomeip/src/lib/core/ErrorStr.cpp"
 #include "../third_party/connectedhomeip/src/lib/core/CHIPError.cpp"

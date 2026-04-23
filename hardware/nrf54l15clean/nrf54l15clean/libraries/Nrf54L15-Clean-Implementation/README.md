@@ -427,6 +427,10 @@ Thread example organization:
     (`src/lib/support/TimeUtils.cpp`) through a repo-owned minimal
     `CHIPCore.h` shim, and the same probe now prints live CHIP-epoch, unix,
     and calendar conversion checks plus a date-adjustment proof
+  - the hidden seam now also links staged upstream `BytesToHex` support
+    (`src/lib/support/BytesToHex.cpp`) through repo-owned minimal
+    `CHIPEncoding.h` and `CHIPLogging.h` shims, and the same probe now prints
+    live uppercase hex encode/decode plus integer round-trip checks
   - the first frozen target is `on-network-only` commissioning for an
     `on-off-light` over the staged Thread path
   - no compileable or claimable `Matter` core target is shipped yet

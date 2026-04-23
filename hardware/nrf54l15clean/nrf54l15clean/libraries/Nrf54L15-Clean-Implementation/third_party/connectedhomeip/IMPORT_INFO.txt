@@ -1,4 +1,4 @@
-connectedhomeip minimal header/support/error/key/time seed staged for hidden-seam Arduino compile smoke.
+connectedhomeip minimal header/support/error/key/time/hex seed staged for hidden-seam Arduino compile smoke.
 
 Source repository:
 - https://github.com/project-chip/connectedhomeip
@@ -22,11 +22,16 @@ Imported scope:
 - src/lib/core/GroupId.h
 - src/lib/core/PasscodeId.h
 - src/lib/core/NodeId.h
+- src/lib/core/Unchecked.h
 - src/lib/support/Base64.h
 - src/lib/support/Base64.cpp
 - src/lib/support/Base85.h
 - src/lib/support/Base85.cpp
+- src/lib/support/BitFlags.h
+- src/lib/support/BytesToHex.h
+- src/lib/support/BytesToHex.cpp
 - src/lib/support/SafeInt.h
+- src/lib/support/Span.h
 - src/lib/support/TimeUtils.h
 - src/lib/support/TimeUtils.cpp
 - src/lib/support/DLLUtil.h
@@ -34,14 +39,16 @@ Imported scope:
 - repo-owned shim:
   src/matter_core_stage/lib/core/CHIPConfig.h
   src/matter_core_stage/lib/core/CHIPCore.h
+  src/matter_core_stage/lib/core/CHIPEncoding.h
   src/matter_core_stage/lib/support/CodeUtils.h
+  src/matter_core_stage/lib/support/logging/CHIPLogging.h
 
 Scope note:
-- this is a minimal staged header/support/error/key/time seed, not a full
+- this is a minimal staged header/support/error/key/time/hex seed, not a full
   connectedhomeip scaffold
 - the hidden Matter seam can use these files for compile smoke, one linked
   upstream support surface (`Base64` / `Base85`), one linked upstream core
   error unit, one linked upstream core key-id unit, one linked upstream time
-  utility unit, and probe validation
+  utility unit, one linked upstream hex utility unit, and probe validation
 - current repo runtime still does not claim a compileable or linkable Matter
   target
