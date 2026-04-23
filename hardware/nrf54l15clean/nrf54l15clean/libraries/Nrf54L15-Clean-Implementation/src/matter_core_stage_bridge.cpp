@@ -9,8 +9,13 @@
 #error "Enable the staged Matter seam with build.matter_seam_flags so the bridge gets the staged core-error seed include path."
 #endif
 
+#if !defined(NRF54L15_CLEAN_MATTER_CORE_KEY_SEED_AVAILABLE)
+#error "Enable the staged Matter seam with build.matter_seam_flags so the bridge gets the staged core-key seed include path."
+#endif
+
 #include "../third_party/connectedhomeip/src/lib/support/Base64.cpp"
 #include "../third_party/connectedhomeip/src/lib/core/ErrorStr.cpp"
 #include "../third_party/connectedhomeip/src/lib/core/CHIPError.cpp"
+#include "../third_party/connectedhomeip/src/lib/core/CHIPKeyIds.cpp"
 
 #endif

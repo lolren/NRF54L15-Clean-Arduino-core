@@ -5,6 +5,7 @@
     (NRF54L15_CLEAN_MATTER_CORE_ENABLE != 0)
 #include <lib/core/CHIPVendorIdentifiers.hpp>
 #include <lib/core/CHIPError.h>
+#include <lib/core/CHIPKeyIds.h>
 #include <lib/core/ErrorStr.h>
 #include <lib/core/NodeId.h>
 #include <lib/support/Base64.h>
@@ -77,6 +78,7 @@ void setup() {
   printFlag("header_seed", MatterRuntimeOwnership::kConnectedHomeIpHeaderSeedImported);
   printFlag("support_seed", MatterRuntimeOwnership::kConnectedHomeIpSupportSeedImported);
   printFlag("error_seed", MatterRuntimeOwnership::kConnectedHomeIpCoreErrorSeedImported);
+  printFlag("key_seed", MatterRuntimeOwnership::kConnectedHomeIpCoreKeySeedImported);
   printFlag("full_scaffold", MatterRuntimeOwnership::kConnectedHomeIpFullScaffoldImported);
   printFlag("matter_target", MatterRuntimeOwnership::kCompileOnlyMatterTargetClaimed);
 
@@ -112,6 +114,34 @@ void setup() {
   Serial.println();
   Serial.print("matter_foundation chip_error_invalid_argument_str=");
   Serial.println(chip::ErrorStr(invalidArgument, false));
+  const uint32_t masterKeyId = chip::ChipKeyId::MakeAppGroupMasterKeyId(0x22);
+  const uint32_t rotatingKeyId = chip::ChipKeyId::MakeAppRotatingKeyId(
+      chip::ChipKeyId::kFabricRootKey, chip::ChipKeyId::MakeEpochKeyId(3),
+      masterKeyId, false);
+  const uint32_t nextRotatingKeyId =
+      chip::ChipKeyId::UpdateEpochKeyId(rotatingKeyId,
+                                        chip::ChipKeyId::MakeEpochKeyId(4));
+  const uint32_t staticKeyId =
+      chip::ChipKeyId::ConvertToStaticAppKeyId(rotatingKeyId);
+  Serial.print("matter_foundation chip_key_rotating=0x");
+  printHex32(rotatingKeyId);
+  Serial.println();
+  Serial.print("matter_foundation chip_key_static=0x");
+  printHex32(staticKeyId);
+  Serial.println();
+  Serial.print("matter_foundation chip_key_desc=");
+  Serial.println(chip::ChipKeyId::DescribeKey(staticKeyId));
+  Serial.print("matter_foundation chip_key_valid=");
+  Serial.println(chip::ChipKeyId::IsValidKeyId(staticKeyId) ? 1 : 0);
+  Serial.print("matter_foundation chip_key_group=");
+  Serial.println(chip::ChipKeyId::IsAppGroupKey(staticKeyId) ? 1 : 0);
+  Serial.print("matter_foundation chip_key_same_group=");
+  Serial.println(chip::ChipKeyId::IsSameKeyOrGroup(rotatingKeyId, nextRotatingKeyId)
+                     ? 1
+                     : 0);
+  Serial.print("matter_foundation chip_key_message_ok=");
+  Serial.println(chip::ChipKeyId::IsMessageSessionId(rotatingKeyId, false) ? 1
+                                                                            : 0);
 #else
   Serial.println("matter_foundation chip_headers=disabled");
 #endif

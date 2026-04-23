@@ -397,8 +397,8 @@ Thread example organization:
   - the upstream intake path now exists at:
     `scripts/import_connectedhomeip_scaffold.sh`
     targeting `third_party/connectedhomeip`
-  - a minimal staged upstream CHIP header/support/error seed is now imported
-    there from
+  - a minimal staged upstream CHIP header/support/error/key seed is now
+    imported there from
     commit `337f8f54b4f0813681664e5b179dc3e16fdd14a0`
   - the current repo-owned probe is:
     `examples/Matter/MatterFoundationProbe`
@@ -415,6 +415,11 @@ Thread example organization:
     (`src/lib/core/CHIPError.cpp` / `src/lib/core/ErrorStr.cpp`) through a
     repo-owned minimal `CHIPConfig.h` shim, and the same probe prints the
     formatted string for `CHIP_ERROR_INVALID_ARGUMENT`
+  - the hidden seam now also links staged upstream key-id logic
+    (`src/lib/core/CHIPKeyIds.cpp`) through a repo-owned minimal
+    `CodeUtils.h` shim, and the same probe prints live results for
+    rotating/static key derivation, key description, validation, and
+    same-group checks
   - the first frozen target is `on-network-only` commissioning for an
     `on-off-light` over the staged Thread path
   - no compileable or claimable `Matter` core target is shipped yet

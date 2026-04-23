@@ -17,6 +17,8 @@ repo after the staged Thread bring-up.
   - `src/lib/core/CHIPVendorIdentifiers.hpp`
   - `src/lib/core/CHIPError.h`
   - `src/lib/core/CHIPError.cpp`
+  - `src/lib/core/CHIPKeyIds.h`
+  - `src/lib/core/CHIPKeyIds.cpp`
   - `src/lib/core/ErrorStr.h`
   - `src/lib/core/ErrorStr.cpp`
   - `src/lib/core/GroupId.h`
@@ -28,6 +30,7 @@ repo after the staged Thread bring-up.
   - `src/lib/support/TypeTraits.h`
   - repo-owned shim:
     `src/matter_core_stage/lib/core/CHIPConfig.h`
+    `src/matter_core_stage/lib/support/CodeUtils.h`
 
 The intake script is intentionally separate from build integration. It creates
 the upstream staging area without pretending that the Arduino build already
@@ -87,6 +90,9 @@ What this slice claims:
   (`src/lib/core/CHIPError.cpp` / `src/lib/core/ErrorStr.cpp`) through a
   repo-owned minimal config shim, and the probe exercises that formatter at
   runtime
+- the hidden seam now also links staged upstream key-id logic
+  (`src/lib/core/CHIPKeyIds.cpp`) through a repo-owned minimal `CodeUtils`
+  shim, and the probe exercises that logic at runtime
 
 What this slice does not claim:
 
