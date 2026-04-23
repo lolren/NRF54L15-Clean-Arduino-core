@@ -5,7 +5,7 @@ Current state:
 - a minimal upstream header seed is imported from connectedhomeip commit
   337f8f54b4f0813681664e5b179dc3e16fdd14a0
 - that seed is only large enough for hidden-seam compile smoke against a few
-  upstream core headers
+  upstream core headers plus one staged upstream support implementation unit
 - it is not a full upstream scaffold
 
 To replace this with a broader staged upstream tree, use:

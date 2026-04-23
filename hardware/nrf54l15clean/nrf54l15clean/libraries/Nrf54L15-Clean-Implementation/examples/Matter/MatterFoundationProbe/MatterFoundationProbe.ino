@@ -5,6 +5,7 @@
     (NRF54L15_CLEAN_MATTER_CORE_ENABLE != 0)
 #include <lib/core/CHIPVendorIdentifiers.hpp>
 #include <lib/core/NodeId.h>
+#include <lib/support/Base64.h>
 #endif
 
 using xiao_nrf54l15::MatterRuntimeOwnership;
@@ -24,6 +25,16 @@ void printHex64(uint64_t value) {
   snprintf(buffer, sizeof(buffer), "%08" PRIX32 "%08" PRIX32, high, low);
   Serial.print(buffer);
 }
+
+#if defined(NRF54L15_CLEAN_MATTER_CORE_ENABLE) && \
+    (NRF54L15_CLEAN_MATTER_CORE_ENABLE != 0)
+void encodeBigEndian64(uint64_t value, uint8_t (&bytes)[8]) {
+  for (size_t i = 0; i < sizeof(bytes); ++i) {
+    const uint8_t shift = static_cast<uint8_t>((sizeof(bytes) - 1U - i) * 8U);
+    bytes[i] = static_cast<uint8_t>(value >> shift);
+  }
+}
+#endif
 
 }  // namespace
 
@@ -56,6 +67,7 @@ void setup() {
   printFlag("import", MatterRuntimeOwnership::kConnectedHomeIpImportPathDefined);
   printFlag("imported", MatterRuntimeOwnership::kConnectedHomeIpCurrentlyImported);
   printFlag("header_seed", MatterRuntimeOwnership::kConnectedHomeIpHeaderSeedImported);
+  printFlag("support_seed", MatterRuntimeOwnership::kConnectedHomeIpSupportSeedImported);
   printFlag("full_scaffold", MatterRuntimeOwnership::kConnectedHomeIpFullScaffoldImported);
   printFlag("matter_target", MatterRuntimeOwnership::kCompileOnlyMatterTargetClaimed);
 
@@ -73,8 +85,17 @@ void setup() {
   Serial.print("matter_foundation chip_vendor_google=0x");
   Serial.println(static_cast<uint16_t>(chip::VendorId::Google), HEX);
   Serial.print("matter_foundation chip_group_node=0x");
-  printHex64(chip::NodeIdFromGroupId(0x1234));
+  const uint64_t groupNode = chip::NodeIdFromGroupId(0x1234);
+  printHex64(groupNode);
   Serial.println();
+  uint8_t groupNodeBytes[8] = {0};
+  encodeBigEndian64(groupNode, groupNodeBytes);
+  char groupNodeBase64[BASE64_ENCODED_LEN(sizeof(groupNodeBytes)) + 1] = {0};
+  const uint16_t groupNodeBase64Len =
+      chip::Base64Encode(groupNodeBytes, sizeof(groupNodeBytes), groupNodeBase64);
+  groupNodeBase64[groupNodeBase64Len] = '\0';
+  Serial.print("matter_foundation chip_group_node_b64=");
+  Serial.println(groupNodeBase64);
 #else
   Serial.println("matter_foundation chip_headers=disabled");
 #endif

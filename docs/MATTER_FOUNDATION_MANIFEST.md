@@ -18,6 +18,8 @@ repo after the staged Thread bring-up.
   - `src/lib/core/GroupId.h`
   - `src/lib/core/PasscodeId.h`
   - `src/lib/core/NodeId.h`
+  - `src/lib/support/Base64.h`
+  - `src/lib/support/Base64.cpp`
 
 The intake script is intentionally separate from build integration. It creates
 the upstream staging area without pretending that the Arduino build already
@@ -71,6 +73,8 @@ What this slice claims:
 - the hidden Arduino build seam now has explicit Matter flags
 - the repo-owned `MatterFoundationProbe` can now compile against real staged
   upstream CHIP headers when the hidden seam is enabled
+- the hidden seam now also links one real staged upstream support `.cpp`
+  (`src/lib/support/Base64.cpp`) and the probe exercises it at runtime
 
 What this slice does not claim:
 

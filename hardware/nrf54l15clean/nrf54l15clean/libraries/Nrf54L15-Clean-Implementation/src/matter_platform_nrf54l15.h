@@ -16,6 +16,7 @@ struct MatterRuntimeOwnership {
   static constexpr bool kConnectedHomeIpImportPathDefined = true;
   static constexpr bool kConnectedHomeIpCurrentlyImported = true;
   static constexpr bool kConnectedHomeIpHeaderSeedImported = true;
+  static constexpr bool kConnectedHomeIpSupportSeedImported = true;
   static constexpr bool kConnectedHomeIpFullScaffoldImported = false;
   static constexpr bool kCompileOnlyMatterTargetClaimed = false;
   static constexpr bool kFirstDeviceTypeOnOffLight = true;
@@ -61,7 +62,9 @@ inline const char* matterFoundationCommissioningName() {
 }
 
 inline const char* matterFoundationImportMode() {
-  return MatterRuntimeOwnership::kConnectedHomeIpHeaderSeedImported
+  return MatterRuntimeOwnership::kConnectedHomeIpSupportSeedImported
+             ? "header+support-seed"
+         : MatterRuntimeOwnership::kConnectedHomeIpHeaderSeedImported
              ? "header-seed"
              : "path-only";
 }
