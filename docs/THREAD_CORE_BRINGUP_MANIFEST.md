@@ -99,14 +99,14 @@ The staged seam has now crossed from link-only work into real hardware init:
 
 The next real implementation step should be:
 
-1. keep `OpenThreadRoleStageProbe` as the repo-owned checkpoint and extend it
-   from `leader + child` attach into actual Thread payload validation:
-   - add a real ping / UDP smoke path over the attached link
+1. keep the staged attach and UDP checkpoints in-tree:
+   - `OpenThreadRoleStageProbe`
+   - `OpenThreadUdpStageProbe`
    - keep the proof on two attached boards
 2. decide whether the repo should keep the PAL-owned software SHA/HMAC/HKDF path
    for staged core bring-up, or later replace it with a compiled upstream
    crypto fallback slice once the mbedTLS/PSA intake is ready
-3. once attached-node traffic is alive:
+3. now that attached-node traffic is alive:
    - revisit `otPlatCryptoEcdsa*`
    - revisit `otPlatCryptoPbkdf2GenerateKey`
    - start the first real reference-network / border-router validation

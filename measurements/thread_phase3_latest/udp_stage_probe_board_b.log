@@ -1,0 +1,42 @@
+ot_udp role=leader rloc16=0x400 dataset=1/0/0 ip6=0 thread=0 socket=1/0/0 ping=0/1/0 pong=1/0/0 ok=1/0 lasttx=stage-pong lastrx=stage-ping
+ot_udp role=leader rloc16=0x400 dataset=1/0/0 ip6=0 thread=0 socket=1/0/0 ping=0/1/0 pong=1/0/0 ok=1/0 lasttx=stage-pong lastrx=stage-ping
+ot_udp boot
+ot_udp platform-ready
+ot_udp role=disabled rloc16=0xFFFE dataset=0/0/0 ip6=0 thread=0 socket=0/0/0 ping=0/0/0 pong=0/0/0 ok=0/0 lasttx= lastrx=
+ot_udp init
+ot_udp role=disabled rloc16=0xFFFE dataset=0/0/0 ip6=0 thread=0 socket=0/0/0 ping=0/0/0 pong=0/0/0 ok=0/0 lasttx= lastrx=
+ot_udp dataset-generated
+ot_udp role=disabled rloc16=0xFFFE dataset=0/0/0 ip6=0 thread=0 socket=0/0/0 ping=0/0/0 pong=0/0/0 ok=0/0 lasttx= lastrx=
+ot_udp dataset-applied
+ot_udp role=disabled rloc16=0xFFFE dataset=1/0/0 ip6=0 thread=0 socket=0/0/0 ping=0/0/0 pong=0/0/0 ok=0/0 lasttx= lastrx=
+ot_udp ip6-enabled
+ot_udp socket
+ot_udp role=disabled rloc16=0xFFFE dataset=1/0/0 ip6=0 thread=0 socket=1/0/0 ping=0/0/0 pong=0/0/0 ok=0/0 lasttx= lastrx=
+ot_udp thread-enabled
+ot_udp role-change
+ot_udp role=detached rloc16=0xFFFE dataset=1/0/0 ip6=0 thread=0 socket=1/0/0 ping=0/0/0 pong=0/0/0 ok=0/0 lasttx= lastrx=
+ot_udp role=detached rloc16=0xFFFE dataset=1/0/0 ip6=0 thread=0 socket=1/0/0 ping=0/0/0 pong=0/0/0 ok=0/0 lasttx= lastrx=
+ot_udp role=detached rloc16=0xFFFE dataset=1/0/0 ip6=0 thread=0 socket=1/0/0 ping=0/0/0 pong=0/0/0 ok=0/0 lasttx= lastrx=
+ot_udp role=detached rloc16=0xFFFE dataset=1/0/0 ip6=0 thread=0 socket=1/0/0 ping=0/0/0 pong=0/0/0 ok=0/0 lasttx= lastrx=
+ot_udp role=detached rloc16=0xFFFE dataset=1/0/0 ip6=0 thread=0 socket=1/0/0 ping=0/0/0 pong=0/0/0 ok=0/0 lasttx= lastrx=
+ot_udp role=detached rloc16=0xFFFE dataset=1/0/0 ip6=0 thread=0 socket=1/0/0 ping=0/0/0 pong=0/0/0 ok=0/0 lasttx= lastrx=
+ot_udp role=detached rloc16=0xFFFE dataset=1/0/0 ip6=0 thread=0 socket=1/0/0 ping=0/0/0 pong=0/0/0 ok=0/0 lasttx= lastrx=
+ot_udp role-change
+ot_udp role=leader rloc16=0x4C00 dataset=1/0/0 ip6=0 thread=0 socket=1/0/0 ping=0/0/0 pong=0/0/0 ok=0/0 lasttx= lastrx=
+ot_udp role=leader rloc16=0x4C00 dataset=1/0/0 ip6=0 thread=0 socket=1/0/0 ping=0/0/0 pong=0/0/0 ok=0/0 lasttx= lastrx=
+ot_udp role=leader rloc16=0x4C00 dataset=1/0/0 ip6=0 thread=0 socket=1/0/0 ping=0/1/0 pong=1/0/0 ok=1/0 lasttx=stage-pong lastrx=stage-ping
+ot_udp role=leader rloc16=0x4C00 dataset=1/0/0 ip6=0 thread=0 socket=1/0/0 ping=0/1/0 pong=1/0/0 ok=1/0 lasttx=stage-pong lastrx=stage-ping
+ot_udp role=leader rloc16=0x4C00 dataset=1/0/0 ip6=0 thread=0 socket=1/0/0 ping=0/1/0 pong=1/0/0 ok=1/0 lasttx=stage-pong lastrx=stage-ping
+ot_udp role=leader rloc16=0x4C00 dataset=1/0/0 ip6=0 thread=0 socket=1/0/0 ping=0/1/0 pong=1/0/0 ok=1/0 lasttx=stage-pong lastrx=stage-ping
+ot_udp role=leader rloc16=0x4C00 dataset=1/0/0 ip6=0 thread=0 socket=1/0/0 ping=0/1/0 pong=1/0/0 ok=1/0 lasttx=stage-pong lastrx=stage-ping
+ot_udp role=leader rloc16=0x4C00 dataset=1/0/0 ip6=0 thread=0 socket=1/0/0 ping=0/1/0 pong=1/0/0 ok=1/0 lasttx=stage-pong lastrx=stage-ping
+ot_udp role=leader rloc16=0x4C00 dataset=1/0/0 ip6=0 thread=0 socket=1/0/0 ping=0/1/0 pong=1/0/0 ok=1/0 lasttx=stage-pong lastrx=stage-ping
+ot_udp role=leader rloc16=0x4C00 dataset=1/0/0 ip6=0 thread=0 socket=1/0/0 ping=0/1/0 pong=1/0/0 ok=1/0 lasttx=stage-pong lastrx=stage-ping
+ot_udp role=leader rloc16=0x4C00 dataset=1/0/0 ip6=0 thread=0 socket=1/0/0 ping=0/1/0 pong=1/0/0 ok=1/0 lasttx=stage-pong lastrx=stage-ping
+ot_udp role=leader rloc16=0x4C00 dataset=1/0/0 ip6=0 thread=0 socket=1/0/0 ping=0/1/0 pong=1/0/0 ok=1/0 lasttx=stage-pong lastrx=stage-ping
+ot_udp role=leader rloc16=0x4C00 dataset=1/0/0 ip6=0 thread=0 socket=1/0/0 ping=0/1/0 pong=1/0/0 ok=1/0 lasttx=stage-pong lastrx=stage-ping
+ot_udp role=leader rloc16=0x4C00 dataset=1/0/0 ip6=0 thread=0 socket=1/0/0 ping=0/1/0 pong=1/0/0 ok=1/0 lasttx=stage-pong lastrx=stage-ping
+ot_udp role=leader rloc16=0x4C00 dataset=1/0/0 ip6=0 thread=0 socket=1/0/0 ping=0/1/0 pong=1/0/0 ok=1/0 lasttx=stage-pong lastrx=stage-ping
+ot_udp role=leader rloc16=0x4C00 dataset=1/0/0 ip6=0 thread=0 socket=1/0/0 ping=0/1/0 pong=1/0/0 ok=1/0 lasttx=stage-pong lastrx=stage-ping
+ot_udp role=leader rloc16=0x4C00 dataset=1/0/0 ip6=0 thread=0 socket=1/0/0 ping=0/1/0 pong=1/0/0 ok=1/0 lasttx=stage-pong lastrx=stage-ping
+ot_udp role=leader rloc16=0x4C00 dataset=1/0/0 ip6=0 thread=0 socket=1/0/0 ping=0/1/0 pong=1/0/0 ok=1/0 lasttx=stage-pong lastrx=stage-ping

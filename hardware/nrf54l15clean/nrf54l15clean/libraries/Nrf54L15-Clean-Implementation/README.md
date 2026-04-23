@@ -328,6 +328,14 @@ Thread example organization:
   - the current staged attach logs live at:
     `measurements/thread_phase3_latest/role_probe_board_a_legacy28_migrated.log`
     `measurements/thread_phase3_latest/role_probe_board_b_legacy28_migrated.log`
+  - the staged UDP payload probe now also exists:
+    `OpenThreadUdpStageProbe`
+  - with the same fixed dataset on two attached XIAO nRF54L15 boards, the
+    `child` sends `stage-ping` to the leader RLOC and the `leader` replies
+    with `stage-pong`
+  - the current staged UDP logs live at:
+    `measurements/thread_phase3_latest/udp_stage_probe_board_a.log`
+    `measurements/thread_phase3_latest/udp_stage_probe_board_b.log`
 - the PAL now includes repo-backed RNG/AES/key-ref/SHA/HMAC/HKDF seams;
   ECDSA/PBKDF2 still return explicit `OT_ERROR_NOT_CAPABLE`.
 - the first radio slice now wraps `ZigbeeRadio` directly for Thread first pass,
@@ -352,8 +360,10 @@ Thread example organization:
 - the staged Thread boundary is now:
   `OpenThreadRoleStageProbe` is a real hidden-seam leader/child bring-up tool,
   not just a single-board init check. The current supported staged role proof
-  is `leader + child` on a fixed dataset. Router promotion, reference-network
-  attach, and normal Arduino-facing Thread APIs are still follow-up work.
+  is `leader + child` on a fixed dataset, and the current supported staged
+  payload proof is a two-board UDP `stage-ping` / `stage-pong` exchange over
+  that attached link. Router promotion, reference-network attach, and normal
+  Arduino-facing Thread APIs are still follow-up work.
 - the staged settings fix that unblocked attach is also in-tree:
   `Preferences` now expands from `28` to `35` entries, which is the largest
   size that still fits beside EEPROM emulation and BLE bond retention in the

@@ -252,7 +252,7 @@ Validation:
 
 - [ ] attach to a reference Thread network
 - [x] two-board or external-border-router validation
-- [ ] real ping / UDP smoke path over Thread
+- [x] real ping / UDP smoke path over Thread
 
 Exit criteria:
 
@@ -283,9 +283,15 @@ Current status note:
   starting from the captured full `28`-entry legacy `Preferences` blob on both
   boards, the staged role probe migrates the store to `35` entries in place,
   one board settles as `leader`, and the second settles as `child`
+- two-board staged payload validation is now also hardware-proven with
+  `OpenThreadUdpStageProbe`: after the same fixed-dataset attach, the `child`
+  sends `stage-ping` to the leader RLOC over UDP and the `leader` replies with
+  `stage-pong`, with both directions confirmed in the repo-owned logs
 - repo-owned evidence for that path now lives at:
   `/home/lolren/Desktop/Nrf54L15/blephy-release/measurements/thread_phase3_latest/role_probe_board_a_legacy28_migrated.log`
   `/home/lolren/Desktop/Nrf54L15/blephy-release/measurements/thread_phase3_latest/role_probe_board_b_legacy28_migrated.log`
+  `/home/lolren/Desktop/Nrf54L15/blephy-release/measurements/thread_phase3_latest/udp_stage_probe_board_a.log`
+  `/home/lolren/Desktop/Nrf54L15/blephy-release/measurements/thread_phase3_latest/udp_stage_probe_board_b.log`
 
 ## Phase 4: Arduino Thread API Surface
 
