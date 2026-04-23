@@ -12,6 +12,7 @@
 #include <lib/support/Base64.h>
 #include <lib/support/Base85.h>
 #include <lib/support/BytesToHex.h>
+#include <lib/support/ThreadOperationalDataset.h>
 #include <lib/support/TimeUtils.h>
 #endif
 
@@ -39,6 +40,12 @@ void printHex32(uint32_t value) {
   Serial.print(buffer);
 }
 
+void printHex16(uint16_t value) {
+  char buffer[5] = {0};
+  snprintf(buffer, sizeof(buffer), "%04" PRIX16, value);
+  Serial.print(buffer);
+}
+
 void printDate(uint16_t year, uint8_t month, uint8_t day) {
   char buffer[16] = {0};
   snprintf(buffer, sizeof(buffer), "%04u-%02u-%02u",
@@ -63,6 +70,18 @@ void encodeBigEndian64(uint64_t value, uint8_t (&bytes)[8]) {
   for (size_t i = 0; i < sizeof(bytes); ++i) {
     const uint8_t shift = static_cast<uint8_t>((sizeof(bytes) - 1U - i) * 8U);
     bytes[i] = static_cast<uint8_t>(value >> shift);
+  }
+}
+
+void printByteSpanHex(chip::ByteSpan bytes) {
+  char buffer[(chip::Thread::kSizeOperationalDataset * 2U) + 1U] = {0};
+  const CHIP_ERROR error = chip::Encoding::BytesToUppercaseHexString(
+      bytes.data(), bytes.size(), buffer, sizeof(buffer));
+  if (error == CHIP_NO_ERROR) {
+    Serial.print(buffer);
+  } else {
+    Serial.print("hex-error-0x");
+    printHex32(error.AsInteger());
   }
 }
 #endif
@@ -103,6 +122,8 @@ void setup() {
   printFlag("key_seed", MatterRuntimeOwnership::kConnectedHomeIpCoreKeySeedImported);
   printFlag("time_seed", MatterRuntimeOwnership::kConnectedHomeIpSupportTimeSeedImported);
   printFlag("hex_seed", MatterRuntimeOwnership::kConnectedHomeIpSupportHexSeedImported);
+  printFlag("thread_dataset_seed",
+            MatterRuntimeOwnership::kConnectedHomeIpSupportThreadDatasetSeedImported);
   printFlag("full_scaffold", MatterRuntimeOwnership::kConnectedHomeIpFullScaffoldImported);
   printFlag("matter_target", MatterRuntimeOwnership::kCompileOnlyMatterTargetClaimed);
 
@@ -299,6 +320,177 @@ void setup() {
   Serial.println(adjustedOk ? 1 : 0);
   Serial.print("matter_foundation chip_time_leap_feb_days=");
   Serial.println(chip::DaysInMonth(2024, chip::kFebruary));
+  constexpr uint64_t kDatasetActiveTimestamp = 0x0001020304050607ULL;
+  constexpr uint16_t kDatasetChannel = 15;
+  constexpr uint16_t kDatasetPanId = 0x1234;
+  constexpr uint32_t kDatasetSecurityPolicy = 0x000000A5UL;
+  constexpr uint32_t kDatasetDelayMs = 120000UL;
+  constexpr char kDatasetNetworkName[] = "StageMatter";
+  const uint8_t datasetExtPanId[chip::Thread::kSizeExtendedPanId] = {
+      0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88};
+  const uint8_t datasetMasterKey[chip::Thread::kSizeMasterKey] = {
+      0x10, 0x32, 0x54, 0x76, 0x98, 0xBA, 0xDC, 0xFE,
+      0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF};
+  const uint8_t datasetMeshLocalPrefix[chip::Thread::kSizeMeshLocalPrefix] = {
+      0xFD, 0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE};
+  const uint8_t datasetPskc[chip::Thread::kSizePSKc] = {
+      0x88, 0xCA, 0xFC, 0x25, 0x81, 0x3A, 0xC6, 0x6B,
+      0x44, 0x5C, 0xCE, 0xC2, 0xED, 0x43, 0xD2, 0x98};
+  const uint8_t datasetChannelMask[] = {0x00, 0x04, 0x00, 0x1F, 0xFF, 0xE0};
+  chip::Thread::OperationalDataset dataset;
+  CHIP_ERROR datasetBuildError = dataset.SetActiveTimestamp(kDatasetActiveTimestamp);
+  if (datasetBuildError == CHIP_NO_ERROR) {
+    datasetBuildError = dataset.SetChannel(kDatasetChannel);
+  }
+  if (datasetBuildError == CHIP_NO_ERROR) {
+    datasetBuildError = dataset.SetPanId(kDatasetPanId);
+  }
+  if (datasetBuildError == CHIP_NO_ERROR) {
+    datasetBuildError = dataset.SetExtendedPanId(datasetExtPanId);
+  }
+  if (datasetBuildError == CHIP_NO_ERROR) {
+    datasetBuildError = dataset.SetMasterKey(datasetMasterKey);
+  }
+  if (datasetBuildError == CHIP_NO_ERROR) {
+    datasetBuildError = dataset.SetMeshLocalPrefix(datasetMeshLocalPrefix);
+  }
+  if (datasetBuildError == CHIP_NO_ERROR) {
+    datasetBuildError = dataset.SetNetworkName(kDatasetNetworkName);
+  }
+  if (datasetBuildError == CHIP_NO_ERROR) {
+    datasetBuildError = dataset.SetPSKc(datasetPskc);
+  }
+  if (datasetBuildError == CHIP_NO_ERROR) {
+    datasetBuildError = dataset.SetChannelMask(chip::ByteSpan(
+        datasetChannelMask, sizeof(datasetChannelMask)));
+  }
+  if (datasetBuildError == CHIP_NO_ERROR) {
+    datasetBuildError = dataset.SetSecurityPolicy(kDatasetSecurityPolicy);
+  }
+  if (datasetBuildError == CHIP_NO_ERROR) {
+    datasetBuildError = dataset.SetDelayTimer(kDatasetDelayMs);
+  }
+  Serial.print("matter_foundation chip_thread_dataset_build_ok=");
+  Serial.println(datasetBuildError == CHIP_NO_ERROR ? 1 : 0);
+  Serial.print("matter_foundation chip_thread_dataset_build_error=0x");
+  printHex32(datasetBuildError.AsInteger());
+  Serial.println();
+  if (datasetBuildError == CHIP_NO_ERROR) {
+    const chip::ByteSpan datasetBytes = dataset.AsByteSpan();
+    chip::Thread::OperationalDatasetView datasetView;
+    const CHIP_ERROR datasetViewError = datasetView.Init(datasetBytes);
+    Serial.print("matter_foundation chip_thread_dataset_view_ok=");
+    Serial.println(datasetViewError == CHIP_NO_ERROR ? 1 : 0);
+    Serial.print("matter_foundation chip_thread_dataset_len=");
+    Serial.println(static_cast<unsigned>(datasetBytes.size()));
+    Serial.print("matter_foundation chip_thread_dataset_hex=");
+    printByteSpanHex(datasetBytes);
+    Serial.println();
+    Serial.print("matter_foundation chip_thread_dataset_valid=");
+    Serial.println(chip::Thread::OperationalDatasetView::IsValid(datasetBytes)
+                       ? 1
+                       : 0);
+    Serial.print("matter_foundation chip_thread_dataset_commissioned=");
+    Serial.println(dataset.IsCommissioned() ? 1 : 0);
+    if (datasetViewError == CHIP_NO_ERROR) {
+      uint64_t roundActiveTimestamp = 0;
+      uint16_t roundChannel = 0;
+      uint16_t roundPanId = 0;
+      uint64_t roundExtPanId = 0;
+      char roundNetworkName[chip::Thread::kSizeNetworkName + 1] = {0};
+      uint8_t roundMasterKey[chip::Thread::kSizeMasterKey] = {0};
+      uint8_t roundMeshLocalPrefix[chip::Thread::kSizeMeshLocalPrefix] = {0};
+      uint8_t roundPskc[chip::Thread::kSizePSKc] = {0};
+      chip::ByteSpan roundChannelMask;
+      uint32_t roundSecurityPolicy = 0;
+      uint32_t roundDelayMs = 0;
+      CHIP_ERROR roundTripError =
+          datasetView.GetActiveTimestamp(roundActiveTimestamp);
+      if (roundTripError == CHIP_NO_ERROR) {
+        roundTripError = datasetView.GetChannel(roundChannel);
+      }
+      if (roundTripError == CHIP_NO_ERROR) {
+        roundTripError = datasetView.GetPanId(roundPanId);
+      }
+      if (roundTripError == CHIP_NO_ERROR) {
+        roundTripError = datasetView.GetExtendedPanId(roundExtPanId);
+      }
+      if (roundTripError == CHIP_NO_ERROR) {
+        roundTripError = datasetView.GetNetworkName(roundNetworkName);
+      }
+      if (roundTripError == CHIP_NO_ERROR) {
+        roundTripError = datasetView.GetMasterKey(roundMasterKey);
+      }
+      if (roundTripError == CHIP_NO_ERROR) {
+        roundTripError = datasetView.GetMeshLocalPrefix(roundMeshLocalPrefix);
+      }
+      if (roundTripError == CHIP_NO_ERROR) {
+        roundTripError = datasetView.GetPSKc(roundPskc);
+      }
+      if (roundTripError == CHIP_NO_ERROR) {
+        roundTripError = datasetView.GetChannelMask(roundChannelMask);
+      }
+      if (roundTripError == CHIP_NO_ERROR) {
+        roundTripError = datasetView.GetSecurityPolicy(roundSecurityPolicy);
+      }
+      if (roundTripError == CHIP_NO_ERROR) {
+        roundTripError = datasetView.GetDelayTimer(roundDelayMs);
+      }
+      Serial.print("matter_foundation chip_thread_dataset_roundtrip_ok=");
+      Serial.println(roundTripError == CHIP_NO_ERROR ? 1 : 0);
+      Serial.print("matter_foundation chip_thread_dataset_roundtrip_error=0x");
+      printHex32(roundTripError.AsInteger());
+      Serial.println();
+      if (roundTripError == CHIP_NO_ERROR) {
+        Serial.print("matter_foundation chip_thread_dataset_active=0x");
+        printHex64(roundActiveTimestamp);
+        Serial.println();
+        Serial.print("matter_foundation chip_thread_dataset_channel=");
+        Serial.println(roundChannel);
+        Serial.print("matter_foundation chip_thread_dataset_panid=0x");
+        printHex16(roundPanId);
+        Serial.println();
+        Serial.print("matter_foundation chip_thread_dataset_extpan=0x");
+        printHex64(roundExtPanId);
+        Serial.println();
+        Serial.print("matter_foundation chip_thread_dataset_name=");
+        Serial.println(roundNetworkName);
+        Serial.print("matter_foundation chip_thread_dataset_mask=");
+        printByteSpanHex(roundChannelMask);
+        Serial.println();
+        Serial.print("matter_foundation chip_thread_dataset_security=0x");
+        printHex32(roundSecurityPolicy);
+        Serial.println();
+        Serial.print("matter_foundation chip_thread_dataset_delay_ms=");
+        Serial.println(roundDelayMs);
+        const bool datasetFieldMatch =
+            roundActiveTimestamp == kDatasetActiveTimestamp &&
+            roundChannel == kDatasetChannel &&
+            roundPanId == kDatasetPanId &&
+            roundExtPanId == 0x1122334455667788ULL &&
+            strcmp(roundNetworkName, kDatasetNetworkName) == 0 &&
+            memcmp(roundMasterKey, datasetMasterKey, sizeof(datasetMasterKey)) == 0 &&
+            memcmp(roundMeshLocalPrefix, datasetMeshLocalPrefix,
+                   sizeof(datasetMeshLocalPrefix)) == 0 &&
+            memcmp(roundPskc, datasetPskc, sizeof(datasetPskc)) == 0 &&
+            roundChannelMask.size() == sizeof(datasetChannelMask) &&
+            memcmp(roundChannelMask.data(), datasetChannelMask,
+                   sizeof(datasetChannelMask)) == 0 &&
+            roundSecurityPolicy == kDatasetSecurityPolicy &&
+            roundDelayMs == kDatasetDelayMs;
+        Serial.print("matter_foundation chip_thread_dataset_fields_ok=");
+        Serial.println(datasetFieldMatch ? 1 : 0);
+        chip::Thread::OperationalDataset copiedDataset(datasetView);
+        const chip::ByteSpan copiedBytes = copiedDataset.AsByteSpan();
+        const bool datasetCopyOk =
+            copiedBytes.size() == datasetBytes.size() &&
+            memcmp(copiedBytes.data(), datasetBytes.data(),
+                   datasetBytes.size()) == 0;
+        Serial.print("matter_foundation chip_thread_dataset_copy_ok=");
+        Serial.println(datasetCopyOk ? 1 : 0);
+      }
+    }
+  }
 #else
   Serial.println("matter_foundation chip_headers=disabled");
 #endif

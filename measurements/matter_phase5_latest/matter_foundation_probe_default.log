@@ -1,7 +1,7 @@
 matter_foundation build=disabled
 matter_foundation transport=thread
 matter_foundation commissioning=on-network-only
-matter_foundation import_mode=header+support+error+key+time+hex-seed
+matter_foundation import_mode=header+support+error+key+time+hex+thread-dataset-seed
 matter_foundation device=on-off-light
 cpuapp=1
 thread=1
@@ -20,6 +20,7 @@ error_seed=1
 key_seed=1
 time_seed=1
 hex_seed=1
+thread_dataset_seed=1
 full_scaffold=0
 matter_target=0
 matter_foundation import=scripts/import_connectedhomeip_scaffold.sh

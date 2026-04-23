@@ -21,6 +21,7 @@ struct MatterRuntimeOwnership {
   static constexpr bool kConnectedHomeIpCoreKeySeedImported = true;
   static constexpr bool kConnectedHomeIpSupportTimeSeedImported = true;
   static constexpr bool kConnectedHomeIpSupportHexSeedImported = true;
+  static constexpr bool kConnectedHomeIpSupportThreadDatasetSeedImported = true;
   static constexpr bool kConnectedHomeIpFullScaffoldImported = false;
   static constexpr bool kCompileOnlyMatterTargetClaimed = false;
   static constexpr bool kFirstDeviceTypeOnOffLight = true;
@@ -66,7 +67,9 @@ inline const char* matterFoundationCommissioningName() {
 }
 
 inline const char* matterFoundationImportMode() {
-  return MatterRuntimeOwnership::kConnectedHomeIpSupportHexSeedImported
+  return MatterRuntimeOwnership::kConnectedHomeIpSupportThreadDatasetSeedImported
+             ? "header+support+error+key+time+hex+thread-dataset-seed"
+         : MatterRuntimeOwnership::kConnectedHomeIpSupportHexSeedImported
              ? "header+support+error+key+time+hex-seed"
          : MatterRuntimeOwnership::kConnectedHomeIpSupportTimeSeedImported
              ? "header+support+error+key+time-seed"

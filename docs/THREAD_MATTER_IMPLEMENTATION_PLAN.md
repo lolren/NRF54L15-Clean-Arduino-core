@@ -452,6 +452,11 @@ Current status note:
   (`src/lib/support/BytesToHex.cpp`) through repo-owned minimal
   `CHIPEncoding.h` and `CHIPLogging.h` shims, and the probe now prints live
   uppercase hex encode/decode plus integer round-trip checks
+- the hidden seam now also links staged upstream `ThreadOperationalDataset`
+  support (`src/lib/support/ThreadOperationalDataset.cpp`) through the
+  existing minimal `CHIPCore.h`, `CHIPEncoding.h`, and `CodeUtils.h` shims,
+  and the probe now prints live dataset build, validation, commissioned-state,
+  field readback, and copy round-trip checks
 - compile-only CHIP validation is still not claimed at this stage
 
 ## Phase 6: Matter Commissioning And First Device

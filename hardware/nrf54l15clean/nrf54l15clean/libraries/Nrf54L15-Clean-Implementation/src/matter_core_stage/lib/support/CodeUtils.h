@@ -20,3 +20,11 @@
 
 #define VerifyOrReturnError(expr, code, ...) \
   VerifyOrReturnValue(expr, code, ##__VA_ARGS__)
+
+#define ReturnErrorOnFailure(expr)          \
+  do {                                      \
+    const CHIP_ERROR __err = (expr);        \
+    if (__err != CHIP_NO_ERROR) {           \
+      return __err;                         \
+    }                                       \
+  } while (false)

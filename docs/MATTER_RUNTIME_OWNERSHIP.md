@@ -19,7 +19,8 @@ These same decisions are mirrored in
   `337f8f54b4f0813681664e5b179dc3e16fdd14a0`
   and it now includes staged support implementation units
   `src/lib/support/Base64.cpp` / `src/lib/support/Base85.cpp` /
-  `src/lib/support/TimeUtils.cpp` / `src/lib/support/BytesToHex.cpp` plus one staged core error unit
+  `src/lib/support/TimeUtils.cpp` / `src/lib/support/BytesToHex.cpp` /
+  `src/lib/support/ThreadOperationalDataset.cpp` plus one staged core error unit
   `src/lib/core/CHIPError.cpp` / `src/lib/core/ErrorStr.cpp` plus one staged
   core key-id unit `src/lib/core/CHIPKeyIds.cpp` through the hidden Arduino
   seam
@@ -68,6 +69,9 @@ These same decisions are mirrored in
 - the existing `Nrf54ThreadExperimental` wrapper is not the long-term Matter
   transport API; Matter should sit closer to the staged `OpenThread` instance
   and platform glue once that compile target exists
+- the current staged `ThreadOperationalDataset` helper is only a bounded
+  foundation seam for dataset TLV handling; it is not yet a claim that Matter
+  commissioning or a CHIP device runtime exists
 
 ## Current Non-Claims
 
@@ -75,6 +79,6 @@ These same decisions are mirrored in
 - no Matter commissioning flow is claimed yet
 - no BLE rendezvous path is claimed yet
 - no Matter device example is claimed yet
-- the staged import is still a minimal header/support/error/key/time/hex seed, not a
-  full
-  upstream tree
+- the staged import is still a minimal
+  header/support/error/key/time/hex/thread-dataset seed, not a full upstream
+  tree

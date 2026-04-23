@@ -32,6 +32,8 @@ repo after the staged Thread bring-up.
   - `src/lib/support/BitFlags.h`
   - `src/lib/support/BytesToHex.h`
   - `src/lib/support/BytesToHex.cpp`
+  - `src/lib/support/ThreadOperationalDataset.h`
+  - `src/lib/support/ThreadOperationalDataset.cpp`
   - `src/lib/support/SafeInt.h`
   - `src/lib/support/Span.h`
   - `src/lib/support/TimeUtils.h`
@@ -116,6 +118,12 @@ What this slice claims:
   (`src/lib/support/BytesToHex.cpp`) through repo-owned minimal
   `CHIPEncoding.h` and `CHIPLogging.h` shims, and the probe exercises
   uppercase hex encode/decode plus integer round-trip paths on hardware
+- the hidden seam now also links staged upstream
+  `ThreadOperationalDataset` support
+  (`src/lib/support/ThreadOperationalDataset.cpp`) through the existing
+  minimal `CHIPCore.h`, `CHIPEncoding.h`, and `CodeUtils.h` shims, and the
+  probe exercises dataset build, validation, commissioned-state checks,
+  field readback, and copy round-trip on hardware
 
 What this slice does not claim:
 
