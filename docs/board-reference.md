@@ -132,6 +132,18 @@ RF notes:
 - `BoardControl::setRfSwitchPowerEnabled(false)` or `digitalWrite(RF_SW, LOW)` powers the RF switch off
 - `kControlHighImpedance` releases `P2.05` drive; it does not power-gate the RF switch IC
 
+## Sense Examples
+
+In the Arduino IDE, the new Sense-specific sketches are under:
+
+- `File > Examples > Examples for XIAO nRF54L15 / Sense > XiaoSense`
+
+Current Sense examples:
+
+- `XiaoSenseImuWhoAmI`
+- `XiaoSenseImuAccelGyro`
+- `XiaoSenseMicLevel`
+
 ## Tools Menu Options
 
 - Upload method: Auto Recover / pyOCD / OpenOCD / UF2 Bootloader (manual optional)
