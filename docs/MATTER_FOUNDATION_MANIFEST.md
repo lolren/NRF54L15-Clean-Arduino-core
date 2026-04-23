@@ -15,11 +15,19 @@ repo after the staged Thread bring-up.
   `337f8f54b4f0813681664e5b179dc3e16fdd14a0`
 - current imported files:
   - `src/lib/core/CHIPVendorIdentifiers.hpp`
+  - `src/lib/core/CHIPError.h`
+  - `src/lib/core/CHIPError.cpp`
+  - `src/lib/core/ErrorStr.h`
+  - `src/lib/core/ErrorStr.cpp`
   - `src/lib/core/GroupId.h`
   - `src/lib/core/PasscodeId.h`
   - `src/lib/core/NodeId.h`
   - `src/lib/support/Base64.h`
   - `src/lib/support/Base64.cpp`
+  - `src/lib/support/DLLUtil.h`
+  - `src/lib/support/TypeTraits.h`
+  - repo-owned shim:
+    `src/matter_core_stage/lib/core/CHIPConfig.h`
 
 The intake script is intentionally separate from build integration. It creates
 the upstream staging area without pretending that the Arduino build already
@@ -75,6 +83,10 @@ What this slice claims:
   upstream CHIP headers when the hidden seam is enabled
 - the hidden seam now also links one real staged upstream support `.cpp`
   (`src/lib/support/Base64.cpp`) and the probe exercises it at runtime
+- the hidden seam now also links staged upstream core error formatting
+  (`src/lib/core/CHIPError.cpp` / `src/lib/core/ErrorStr.cpp`) through a
+  repo-owned minimal config shim, and the probe exercises that formatter at
+  runtime
 
 What this slice does not claim:
 

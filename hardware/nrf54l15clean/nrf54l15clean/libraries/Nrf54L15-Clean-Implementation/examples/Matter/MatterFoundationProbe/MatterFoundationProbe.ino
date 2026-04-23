@@ -4,6 +4,8 @@
 #if defined(NRF54L15_CLEAN_MATTER_CORE_ENABLE) && \
     (NRF54L15_CLEAN_MATTER_CORE_ENABLE != 0)
 #include <lib/core/CHIPVendorIdentifiers.hpp>
+#include <lib/core/CHIPError.h>
+#include <lib/core/ErrorStr.h>
 #include <lib/core/NodeId.h>
 #include <lib/support/Base64.h>
 #endif
@@ -23,6 +25,12 @@ void printHex64(uint64_t value) {
   const uint32_t low = static_cast<uint32_t>(value);
   char buffer[17] = {0};
   snprintf(buffer, sizeof(buffer), "%08" PRIX32 "%08" PRIX32, high, low);
+  Serial.print(buffer);
+}
+
+void printHex32(uint32_t value) {
+  char buffer[9] = {0};
+  snprintf(buffer, sizeof(buffer), "%08" PRIX32, value);
   Serial.print(buffer);
 }
 
@@ -68,6 +76,7 @@ void setup() {
   printFlag("imported", MatterRuntimeOwnership::kConnectedHomeIpCurrentlyImported);
   printFlag("header_seed", MatterRuntimeOwnership::kConnectedHomeIpHeaderSeedImported);
   printFlag("support_seed", MatterRuntimeOwnership::kConnectedHomeIpSupportSeedImported);
+  printFlag("error_seed", MatterRuntimeOwnership::kConnectedHomeIpCoreErrorSeedImported);
   printFlag("full_scaffold", MatterRuntimeOwnership::kConnectedHomeIpFullScaffoldImported);
   printFlag("matter_target", MatterRuntimeOwnership::kCompileOnlyMatterTargetClaimed);
 
@@ -82,6 +91,7 @@ void setup() {
 
 #if defined(NRF54L15_CLEAN_MATTER_CORE_ENABLE) && \
     (NRF54L15_CLEAN_MATTER_CORE_ENABLE != 0)
+  chip::RegisterCHIPLayerErrorFormatter();
   Serial.print("matter_foundation chip_vendor_google=0x");
   Serial.println(static_cast<uint16_t>(chip::VendorId::Google), HEX);
   Serial.print("matter_foundation chip_group_node=0x");
@@ -96,6 +106,12 @@ void setup() {
   groupNodeBase64[groupNodeBase64Len] = '\0';
   Serial.print("matter_foundation chip_group_node_b64=");
   Serial.println(groupNodeBase64);
+  const CHIP_ERROR invalidArgument = CHIP_ERROR_INVALID_ARGUMENT;
+  Serial.print("matter_foundation chip_error_invalid_argument=0x");
+  printHex32(invalidArgument.AsInteger());
+  Serial.println();
+  Serial.print("matter_foundation chip_error_invalid_argument_str=");
+  Serial.println(chip::ErrorStr(invalidArgument, false));
 #else
   Serial.println("matter_foundation chip_headers=disabled");
 #endif

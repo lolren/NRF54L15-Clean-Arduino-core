@@ -1,4 +1,4 @@
-connectedhomeip minimal header/support seed staged for hidden-seam Arduino compile smoke.
+connectedhomeip minimal header/support/error seed staged for hidden-seam Arduino compile smoke.
 
 Source repository:
 - https://github.com/project-chip/connectedhomeip
@@ -13,16 +13,25 @@ Imported scope:
 - LICENSE
 - README.md
 - src/lib/core/CHIPVendorIdentifiers.hpp
+- src/lib/core/CHIPError.h
+- src/lib/core/CHIPError.cpp
+- src/lib/core/ErrorStr.h
+- src/lib/core/ErrorStr.cpp
 - src/lib/core/GroupId.h
 - src/lib/core/PasscodeId.h
 - src/lib/core/NodeId.h
 - src/lib/support/Base64.h
 - src/lib/support/Base64.cpp
+- src/lib/support/DLLUtil.h
+- src/lib/support/TypeTraits.h
+- repo-owned shim:
+  src/matter_core_stage/lib/core/CHIPConfig.h
 
 Scope note:
-- this is a minimal staged header/support seed, not a full connectedhomeip
-  scaffold
+- this is a minimal staged header/support/error seed, not a full
+  connectedhomeip scaffold
 - the hidden Matter seam can use these files for compile smoke, one linked
-  upstream support unit, and probe validation
+  upstream support unit, one linked upstream core error unit, and probe
+  validation
 - current repo runtime still does not claim a compileable or linkable Matter
   target

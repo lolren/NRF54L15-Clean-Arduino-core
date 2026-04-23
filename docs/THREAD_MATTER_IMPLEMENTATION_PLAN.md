@@ -401,7 +401,8 @@ Current status note:
   `/home/lolren/Desktop/Nrf54L15/NRF54L15-Clean-Arduino-core/scripts/import_connectedhomeip_scaffold.sh`
 - the reserved staged upstream path is now:
   `/home/lolren/Desktop/Nrf54L15/NRF54L15-Clean-Arduino-core/hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/third_party/connectedhomeip`
-- a minimal upstream CHIP header/support seed is now also staged there from
+- a minimal upstream CHIP header/support/error seed is now also staged there
+  from
   commit:
   `337f8f54b4f0813681664e5b179dc3e16fdd14a0`
 - the hidden Arduino build seam is now encoded in `platform.txt` /
@@ -430,6 +431,10 @@ Current status note:
 - the hidden seam now also links one real staged upstream support
   implementation unit (`src/lib/support/Base64.cpp`), and the probe prints the
   base64 form of the staged group node value to prove the linked `.cpp` path
+- the hidden seam now also links staged upstream core error formatting
+  (`src/lib/core/CHIPError.cpp` / `src/lib/core/ErrorStr.cpp`) through a
+  repo-owned minimal `CHIPConfig.h` shim, and the probe prints the formatted
+  string for `CHIP_ERROR_INVALID_ARGUMENT`
 - compile-only CHIP validation is still not claimed at this stage
 
 ## Phase 6: Matter Commissioning And First Device
