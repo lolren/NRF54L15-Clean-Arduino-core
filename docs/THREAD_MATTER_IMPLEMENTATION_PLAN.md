@@ -32,7 +32,7 @@ Why this direction:
 - [x] Initial runtime direction selected: `CPUAPP-first Thread`, `Matter after Thread`
 - [x] Current `VPR` / `BLE` / `CS` dependency chain reviewed
 - [x] Thread runtime ownership frozen in code
-- [ ] Matter runtime ownership frozen in code
+- [x] Matter runtime ownership frozen in code
 
 ## Non-Goals For First Pass
 
@@ -75,9 +75,9 @@ Checklist:
   - detached
   - child
   - router
-- [ ] define allowed first-pass Matter feature set
+- [x] define allowed first-pass Matter feature set
 - [x] define where `OpenThread` platform glue lives in-tree
-- [ ] define where `Matter` glue lives in-tree
+- [x] define where `Matter` glue lives in-tree
 
 Exit criteria:
 
@@ -457,6 +457,12 @@ Current status note:
   existing minimal `CHIPCore.h`, `CHIPEncoding.h`, and `CodeUtils.h` shims,
   and the probe now prints live dataset build, validation, commissioned-state,
   field readback, and copy round-trip checks
+- the repo now also has a bounded Matter manual pairing-code helper in
+  `src/matter_manual_pairing.h` / `src/matter_manual_pairing.cpp`; it
+  generates short and long decimal manual codes with Verhoeff check digits,
+  and `MatterFoundationProbe` exercises deterministic vectors from the
+  upstream Matter setup-payload tests without importing the large QR/TLV setup
+  payload stack yet
 - compile-only CHIP validation is still not claimed at this stage
 
 ## Phase 6: Matter Commissioning And First Device

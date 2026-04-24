@@ -437,6 +437,10 @@ Thread example organization:
     minimal `CHIPCore.h`, `CHIPEncoding.h`, and `CodeUtils.h` shims, and the
     same probe now prints live dataset build, validation, commissioned-state,
     field readback, and copy round-trip checks
+  - the repo-owned Matter manual pairing-code helper now exists at
+    `src/matter_manual_pairing.h` / `src/matter_manual_pairing.cpp`, and the
+    same probe prints deterministic short and long manual code vectors with
+    Verhoeff check digits for the future on-network commissioning path
   - the first frozen target is `on-network-only` commissioning for an
     `on-off-light` over the staged Thread path
   - no compileable or claimable `Matter` core target is shipped yet

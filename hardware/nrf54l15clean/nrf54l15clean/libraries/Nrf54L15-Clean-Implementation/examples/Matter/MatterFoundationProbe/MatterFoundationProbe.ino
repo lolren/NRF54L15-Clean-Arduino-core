@@ -1,5 +1,6 @@
 #include <inttypes.h>
 #include <string.h>
+#include <matter_manual_pairing.h>
 #include <matter_platform_nrf54l15.h>
 
 #if defined(NRF54L15_CLEAN_MATTER_CORE_ENABLE) && \
@@ -64,6 +65,27 @@ void printDateTime(uint16_t year, uint8_t month, uint8_t day, uint8_t hour,
   Serial.print(buffer);
 }
 
+void printManualPairingCodeSample(
+    const char* label,
+    const xiao_nrf54l15::MatterManualPairingPayload& payload,
+    const char* expectedCode) {
+  char code[xiao_nrf54l15::kMatterManualPairingLongCodeLength + 1U] = {0};
+  const bool ok =
+      xiao_nrf54l15::matterManualPairingCode(payload, code, sizeof(code));
+  Serial.print("matter_foundation ");
+  Serial.print(label);
+  Serial.print("_ok=");
+  Serial.println(ok ? 1 : 0);
+  Serial.print("matter_foundation ");
+  Serial.print(label);
+  Serial.print("_code=");
+  Serial.println(ok ? code : "error");
+  Serial.print("matter_foundation ");
+  Serial.print(label);
+  Serial.print("_expected=");
+  Serial.println(ok && strcmp(code, expectedCode) == 0 ? 1 : 0);
+}
+
 #if defined(NRF54L15_CLEAN_MATTER_CORE_ENABLE) && \
     (NRF54L15_CLEAN_MATTER_CORE_ENABLE != 0)
 void encodeBigEndian64(uint64_t value, uint8_t (&bytes)[8]) {
@@ -124,6 +146,8 @@ void setup() {
   printFlag("hex_seed", MatterRuntimeOwnership::kConnectedHomeIpSupportHexSeedImported);
   printFlag("thread_dataset_seed",
             MatterRuntimeOwnership::kConnectedHomeIpSupportThreadDatasetSeedImported);
+  printFlag("manual_code_helper",
+            MatterRuntimeOwnership::kMatterManualPairingHelperAvailable);
   printFlag("full_scaffold", MatterRuntimeOwnership::kConnectedHomeIpFullScaffoldImported);
   printFlag("matter_target", MatterRuntimeOwnership::kCompileOnlyMatterTargetClaimed);
 
@@ -135,6 +159,22 @@ void setup() {
   Serial.println(MatterRuntimeOwnership::kMatterImportedRef);
   Serial.print("matter_foundation docs=");
   Serial.println(MatterRuntimeOwnership::kOwnershipDocPath);
+
+  xiao_nrf54l15::MatterManualPairingPayload shortManualCode;
+  shortManualCode.setupPinCode = 20202021UL;
+  shortManualCode.discriminator = 3840U;
+  printManualPairingCodeSample("manual_pairing_short", shortManualCode,
+                               "34970112332");
+
+  xiao_nrf54l15::MatterManualPairingPayload longManualCode;
+  longManualCode.setupPinCode = 12345679UL;
+  longManualCode.discriminator = 2560U;
+  longManualCode.vendorId = 45367U;
+  longManualCode.productId = 14526U;
+  longManualCode.commissioningFlow =
+      xiao_nrf54l15::MatterCommissioningFlow::kCustom;
+  printManualPairingCodeSample("manual_pairing_long", longManualCode,
+                               "641295075345367145262");
 
 #if defined(NRF54L15_CLEAN_MATTER_CORE_ENABLE) && \
     (NRF54L15_CLEAN_MATTER_CORE_ENABLE != 0)

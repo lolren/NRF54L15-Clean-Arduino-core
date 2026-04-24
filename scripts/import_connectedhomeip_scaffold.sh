@@ -25,39 +25,95 @@ git clone --no-checkout --filter=blob:none --sparse \
   git fetch --depth 1 origin "$CHIP_REF"
   git checkout --detach FETCH_HEAD
   git sparse-checkout set --no-cone \
-    /BUILD.gn \
     /LICENSE \
     /README.md \
-    /build \
-    /build_overrides \
-    /config \
-    /credentials \
-    /data_model \
-    /docs \
-    /examples \
-    /scripts \
-    /src \
-    /third_party \
-    /zzz_generated
+    /src/lib/core/CHIPError.cpp \
+    /src/lib/core/CHIPError.h \
+    /src/lib/core/CHIPKeyIds.cpp \
+    /src/lib/core/CHIPKeyIds.h \
+    /src/lib/core/CHIPVendorIdentifiers.hpp \
+    /src/lib/core/ErrorStr.cpp \
+    /src/lib/core/ErrorStr.h \
+    /src/lib/core/GroupId.h \
+    /src/lib/core/NodeId.h \
+    /src/lib/core/PasscodeId.h \
+    /src/lib/core/Unchecked.h \
+    /src/lib/support/Base64.cpp \
+    /src/lib/support/Base64.h \
+    /src/lib/support/Base85.cpp \
+    /src/lib/support/Base85.h \
+    /src/lib/support/BitFlags.h \
+    /src/lib/support/BytesToHex.cpp \
+    /src/lib/support/BytesToHex.h \
+    /src/lib/support/DLLUtil.h \
+    /src/lib/support/SafeInt.h \
+    /src/lib/support/Span.h \
+    /src/lib/support/ThreadOperationalDataset.cpp \
+    /src/lib/support/ThreadOperationalDataset.h \
+    /src/lib/support/TimeUtils.cpp \
+    /src/lib/support/TimeUtils.h \
+    /src/lib/support/TypeTraits.h
 )
 
 rm -rf "$DEST_BASE"
 mkdir -p "$DEST_BASE"
 
-cp "$TMP_DIR/connectedhomeip/BUILD.gn" "$DEST_BASE/"
 cp "$TMP_DIR/connectedhomeip/LICENSE" "$DEST_BASE/connectedhomeip-LICENSE.txt"
 cp "$TMP_DIR/connectedhomeip/README.md" "$DEST_BASE/connectedhomeip-README-upstream.md"
-cp -R "$TMP_DIR/connectedhomeip/build" "$DEST_BASE/"
-cp -R "$TMP_DIR/connectedhomeip/build_overrides" "$DEST_BASE/"
-cp -R "$TMP_DIR/connectedhomeip/config" "$DEST_BASE/"
-cp -R "$TMP_DIR/connectedhomeip/credentials" "$DEST_BASE/"
-cp -R "$TMP_DIR/connectedhomeip/data_model" "$DEST_BASE/"
-cp -R "$TMP_DIR/connectedhomeip/docs" "$DEST_BASE/"
-cp -R "$TMP_DIR/connectedhomeip/examples" "$DEST_BASE/"
-cp -R "$TMP_DIR/connectedhomeip/scripts" "$DEST_BASE/"
-cp -R "$TMP_DIR/connectedhomeip/src" "$DEST_BASE/"
-cp -R "$TMP_DIR/connectedhomeip/third_party" "$DEST_BASE/"
-cp -R "$TMP_DIR/connectedhomeip/zzz_generated" "$DEST_BASE/"
+
+copy_file() {
+  local rel="$1"
+  mkdir -p "$(dirname "$DEST_BASE/$rel")"
+  cp "$TMP_DIR/connectedhomeip/$rel" "$DEST_BASE/$rel"
+}
+
+copy_file "src/lib/core/CHIPError.cpp"
+copy_file "src/lib/core/CHIPError.h"
+copy_file "src/lib/core/CHIPKeyIds.cpp"
+copy_file "src/lib/core/CHIPKeyIds.h"
+copy_file "src/lib/core/CHIPVendorIdentifiers.hpp"
+copy_file "src/lib/core/ErrorStr.cpp"
+copy_file "src/lib/core/ErrorStr.h"
+copy_file "src/lib/core/GroupId.h"
+copy_file "src/lib/core/NodeId.h"
+copy_file "src/lib/core/PasscodeId.h"
+copy_file "src/lib/core/Unchecked.h"
+copy_file "src/lib/support/Base64.cpp"
+copy_file "src/lib/support/Base64.h"
+copy_file "src/lib/support/Base85.cpp"
+copy_file "src/lib/support/Base85.h"
+copy_file "src/lib/support/BitFlags.h"
+copy_file "src/lib/support/BytesToHex.cpp"
+copy_file "src/lib/support/BytesToHex.h"
+copy_file "src/lib/support/DLLUtil.h"
+copy_file "src/lib/support/SafeInt.h"
+copy_file "src/lib/support/Span.h"
+copy_file "src/lib/support/ThreadOperationalDataset.cpp"
+copy_file "src/lib/support/ThreadOperationalDataset.h"
+copy_file "src/lib/support/TimeUtils.cpp"
+copy_file "src/lib/support/TimeUtils.h"
+copy_file "src/lib/support/TypeTraits.h"
+
+cat > "$DEST_BASE/README.intake.txt" <<EOF
+This directory is the staged connectedhomeip path for future Matter work.
+
+Current state:
+
+- a minimal upstream header/support/error/key/time/hex/thread-dataset seed is
+  imported from connectedhomeip commit $(cd "$TMP_DIR/connectedhomeip" && git rev-parse HEAD)
+- that seed is only large enough for hidden-seam compile smoke against a few
+  upstream core headers, staged upstream support implementation units, and
+  staged upstream core error / key-id implementation units through repo-owned
+  config / CodeUtils shims
+- it is not a full upstream scaffold
+
+To refresh this minimal seed, use:
+
+  scripts/import_connectedhomeip_scaffold.sh <connectedhomeip-ref>
+
+The presence of this directory still does not mean a compileable Matter target
+exists.
+EOF
 
 (
   cd "$TMP_DIR/connectedhomeip"
@@ -74,8 +130,8 @@ Resolved commit:
 - $(git rev-parse HEAD)
 
 Scope note:
-- this stages upstream Matter sources and support directories under
-  third_party/connectedhomeip
+- this stages only the minimal upstream Matter header/support/error/key/time/
+  hex/thread-dataset seed currently exercised by the hidden Arduino seam
 - build integration is still a separate step
 - current repo runtime still does not claim a compileable Matter target
 EOF
