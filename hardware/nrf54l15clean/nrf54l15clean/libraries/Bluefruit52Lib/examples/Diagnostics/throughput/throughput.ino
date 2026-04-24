@@ -26,6 +26,7 @@ char test_data[256] = { 0 };
 // Number of packet to sent
 // actualy number of bytes depends on the MTU of the connection
 #define PACKET_NUM    1000
+#define REQUESTED_PHY BLE_GAP_PHY_2MBPS  // 1: 1M, 2: 2M, 4: coded
 
 BLEDis bledis;
 BLEUart bleuart;
@@ -33,6 +34,7 @@ BLEUart bleuart;
 uint32_t rxCount = 0;
 uint32_t rxStartTime = 0;
 uint32_t rxLastTime = 0;
+uint32_t lastPhyPrintMs = 0;
 
 /**************************************************************************/
 /*!
@@ -111,9 +113,9 @@ void connect_callback(uint16_t conn_handle)
   BLEConnection* conn = Bluefruit.Connection(conn_handle);
   Serial.println("Connected");
 
-  // request PHY changed to 2MB
+  // request PHY change: 1 = 1M, 2 = 2M, 4 = coded
   Serial.println("Request to change PHY");
-  conn->requestPHY();
+  conn->requestPHY(REQUESTED_PHY);
 
   // request to update data length
   Serial.println("Request to change Data Length");
@@ -126,8 +128,8 @@ void connect_callback(uint16_t conn_handle)
   // request connection interval of 7.5 ms
   //conn->requestConnectionParameter(6); // in unit of 1.25
 
-  // delay a bit for all the request to complete
-  delay(1000);
+  Serial.print("Current PHY: ");
+  Serial.println(conn->getPHY());
 }
 
 /**
@@ -217,6 +219,13 @@ void loop(void)
 {  
   if (Bluefruit.connected() && bleuart.notifyEnabled())
   {
+    if (millis() - lastPhyPrintMs > 1000)
+    {
+      lastPhyPrintMs = millis();
+      Serial.print("Current PHY: ");
+      Serial.println(Bluefruit.Connection(0)->getPHY());
+    }
+
     // Wait for user input before trying again
     if ( Serial.available() )
     {

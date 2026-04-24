@@ -48,6 +48,17 @@ constexpr uint8_t kAttOpWriteRsp = 0x13U;
 constexpr uint8_t kAttOpHandleValueNtf = 0x1BU;
 constexpr uint8_t kAttErrAttributeNotFound = 0x0AU;
 
+static uint8_t normalizeBluefruitPhy(uint8_t phy) {
+  switch (phy) {
+    case BLE_GAP_PHY_1MBPS:
+    case BLE_GAP_PHY_2MBPS:
+    case BLE_GAP_PHY_CODED:
+      return phy;
+    default:
+      return BLE_GAP_PHY_AUTO;
+  }
+}
+
 uint8_t hid_ascii_to_keycode[128][2] = {};
 uint8_t hid_keycode_to_ascii[128][2] = {};
 
@@ -440,11 +451,15 @@ class BluefruitCompatManager {
         central_sync_procedure_depth_(0U),
         central_data_length_request_pending_(false),
         central_mtu_request_pending_(false),
+        deferred_connection_phy_request_pending_(false),
         deferred_connection_data_length_request_pending_(false),
         deferred_connection_mtu_request_pending_(false),
+        deferred_connection_requested_phy_(BLE_GAP_PHY_AUTO),
         deferred_connection_requested_mtu_(kDefaultAttMtu),
+        deferred_connection_phy_next_ms_(0UL),
         deferred_connection_data_length_next_ms_(0UL),
         deferred_connection_mtu_next_ms_(0UL),
+        deferred_connection_phy_attempts_(0U),
         deferred_connection_data_length_attempts_(0U),
         deferred_connection_mtu_attempts_(0U),
         central_link_config_not_before_ms_(0UL),
@@ -520,6 +535,22 @@ class BluefruitCompatManager {
     Bluefruit.Scanner.timeout_s_ = 0U;
     pending_connect_valid_ = false;
     return wasActive;
+  }
+
+  bool deferConnectionPhyRequest(uint8_t phy) {
+    if (!radio_.isConnected()) {
+      return false;
+    }
+    const uint8_t normalized = normalizeBluefruitPhy(phy);
+    if (normalized == BLE_GAP_PHY_AUTO) {
+      return false;
+    }
+    deferred_connection_requested_phy_ = normalized;
+    deferred_connection_phy_request_pending_ = true;
+    deferred_connection_phy_attempts_ = 0U;
+    deferred_connection_phy_next_ms_ =
+        millis() + kDeferredLinkRequestInitialDelayMs;
+    return true;
   }
 
   bool deferConnectionDataLengthUpdate() {
@@ -731,11 +762,15 @@ class BluefruitCompatManager {
   uint8_t central_sync_procedure_depth_;
   bool central_data_length_request_pending_;
   bool central_mtu_request_pending_;
+  bool deferred_connection_phy_request_pending_;
   bool deferred_connection_data_length_request_pending_;
   bool deferred_connection_mtu_request_pending_;
+  uint8_t deferred_connection_requested_phy_;
   uint16_t deferred_connection_requested_mtu_;
+  unsigned long deferred_connection_phy_next_ms_;
   unsigned long deferred_connection_data_length_next_ms_;
   unsigned long deferred_connection_mtu_next_ms_;
+  uint8_t deferred_connection_phy_attempts_;
   uint8_t deferred_connection_data_length_attempts_;
   uint8_t deferred_connection_mtu_attempts_;
   unsigned long central_link_config_not_before_ms_;
@@ -1001,6 +1036,27 @@ class BluefruitCompatManager {
 
     const unsigned long now = millis();
 
+    if (deferred_connection_phy_request_pending_) {
+      const uint8_t phy = deferred_connection_requested_phy_;
+      const uint8_t currentPhy = radio_.getPHY();
+      if (currentPhy == phy) {
+        deferred_connection_phy_request_pending_ = false;
+        deferred_connection_requested_phy_ = BLE_GAP_PHY_AUTO;
+        deferred_connection_phy_attempts_ = 0U;
+        deferred_connection_phy_next_ms_ = 0UL;
+      } else if (deferred_connection_phy_attempts_ >=
+                 kDeferredLinkRequestMaxAttempts) {
+        deferred_connection_phy_request_pending_ = false;
+        deferred_connection_requested_phy_ = BLE_GAP_PHY_AUTO;
+        deferred_connection_phy_attempts_ = 0U;
+        deferred_connection_phy_next_ms_ = 0UL;
+      } else if (static_cast<int32_t>(now - deferred_connection_phy_next_ms_) >= 0) {
+        (void)radio_.requestPHY(phy);
+        ++deferred_connection_phy_attempts_;
+        deferred_connection_phy_next_ms_ = now + kDeferredLinkRequestRetryMs;
+      }
+    }
+
     if (deferred_connection_data_length_request_pending_) {
       const uint16_t dataLength = radio_.currentDataLength();
       if (dataLength >= kDeferredDataLengthTarget ||
@@ -1197,11 +1253,15 @@ class BluefruitCompatManager {
     rssi_monitor_threshold_ = 0xFFU;
     last_reported_rssi_dbm_ = 0;
     last_reported_rssi_valid_ = false;
+    deferred_connection_phy_request_pending_ = false;
     deferred_connection_data_length_request_pending_ = false;
     deferred_connection_mtu_request_pending_ = false;
+    deferred_connection_requested_phy_ = BLE_GAP_PHY_AUTO;
     deferred_connection_requested_mtu_ = kDefaultAttMtu;
+    deferred_connection_phy_next_ms_ = 0UL;
     deferred_connection_data_length_next_ms_ = 0UL;
     deferred_connection_mtu_next_ms_ = 0UL;
+    deferred_connection_phy_attempts_ = 0U;
     deferred_connection_data_length_attempts_ = 0U;
     deferred_connection_mtu_attempts_ = 0U;
     connection_.handle_ = INVALID_CONNECTION_HANDLE;
@@ -2703,6 +2763,24 @@ bool BLEConnection::getPeerName(char* name, uint16_t bufsize) const {
 }
 
 bool BLEConnection::disconnect() const { return Bluefruit.disconnect(handle_); }
+
+bool BLEConnection::requestPHY(uint8_t phy) {
+  if (!connected()) {
+    return false;
+  }
+  const uint8_t normalized = normalizeBluefruitPhy(phy);
+  if (normalized == BLE_GAP_PHY_AUTO) {
+    return false;
+  }
+  if (ScopedBluefruitUserCallback::active()) {
+    return manager().deferConnectionPhyRequest(normalized);
+  }
+  return manager().radio().requestPHY(normalized);
+}
+
+uint8_t BLEConnection::getPHY() const {
+  return connected() ? manager().radio().getPHY() : BLE_GAP_PHY_AUTO;
+}
 
 uint16_t BLEConnection::getConnectionInterval() const {
   if (!connected()) {

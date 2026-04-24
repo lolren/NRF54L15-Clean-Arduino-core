@@ -483,6 +483,9 @@ Runtime that is known to work on real hardware includes:
 - central service discovery and notification flows covered by the compatibility
   examples
 - mixed nRF54 <-> nRF54 and nRF54 <-> nRF52840 pairings on the validated paths
+- nRF52840-style `BLEConnection::requestPHY(1/2/4)` and `getPHY()` calls from
+  Bluefruit connect callbacks; `File -> Examples -> Bluefruit52Lib ->
+  Diagnostics -> throughput` shows the pattern
 
 Still outside the intended scope:
 

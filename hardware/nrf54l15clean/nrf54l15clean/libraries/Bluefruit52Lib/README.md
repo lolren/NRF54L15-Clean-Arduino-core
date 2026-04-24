@@ -38,6 +38,19 @@ starting points.
 For the simplest custom notification flow, use `notify_peripheral` together
 with `central_notify`.
 
+BLE PHY requests are available through the nRF52840-style connection object:
+
+```cpp
+void connect_callback(uint16_t conn_handle) {
+  BLEConnection* conn = Bluefruit.Connection(conn_handle);
+  conn->requestPHY(BLE_GAP_PHY_2MBPS);  // 1: 1M, 2: 2M, 4: coded
+  uint8_t phy = conn->getPHY();
+}
+```
+
+`requestPHY()` can be called directly from the connect callback. The
+compatibility layer queues it safely after the callback returns.
+
 The broader Bluefruit menus now ship the practical wrapper examples by role:
 
 - `Advertising`: `adv_advanced`, `beacon`, `eddystone_url`

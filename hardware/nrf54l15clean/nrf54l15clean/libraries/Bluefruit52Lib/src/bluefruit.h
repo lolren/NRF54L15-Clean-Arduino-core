@@ -371,7 +371,8 @@ class BLEConnection {
   bool secured() const;
   bool getPeerName(char* name, uint16_t bufsize) const;
   bool disconnect() const;
-  bool requestPHY() { return false; }
+  bool requestPHY(uint8_t phy = BLE_GAP_PHY_2MBPS);
+  uint8_t getPHY() const;
   bool requestDataLengthUpdate();
   bool requestMtuExchange(uint16_t mtu);
   bool requestPairing() const;
