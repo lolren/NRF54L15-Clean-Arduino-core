@@ -1395,6 +1395,61 @@ bool Saadc::configureSingleEnded(uint8_t channel, const Pin& pin, AdcGain gain,
   return true;
 }
 
+bool Saadc::configureSingleEnded(uint8_t channel, AdcInternalInput input,
+                                 AdcGain gain, uint16_t tacq, uint8_t tconv,
+                                 bool burst) {
+  if (channel > 7U) {
+    return false;
+  }
+
+  if (tacq < 1U) {
+    tacq = 1U;
+  }
+  if (tacq > 319U) {
+    tacq = 319U;
+  }
+  if (tconv < 1U) {
+    tconv = 1U;
+  }
+  if (tconv > 7U) {
+    tconv = 7U;
+  }
+
+  // Keep this HAL simple and deterministic: one active channel at a time.
+  for (uint8_t i = 0; i < 8U; ++i) {
+    reg32(base_ + saadc::CH_PSELP +
+          (static_cast<uint32_t>(i) * saadc::CH_STRIDE)) = 0;
+    reg32(base_ + saadc::CH_PSELN +
+          (static_cast<uint32_t>(i) * saadc::CH_STRIDE)) = 0;
+  }
+
+  reg32(base_ + saadc::CH_PSELP +
+        (static_cast<uint32_t>(channel) * saadc::CH_STRIDE)) =
+      (static_cast<uint32_t>(input) << saadc::CH_PSEL_INTERNAL_Pos) |
+      (saadc::CH_PSEL_CONNECT_INTERNAL << saadc::CH_PSEL_CONNECT_Pos);
+  reg32(base_ + saadc::CH_PSELN +
+        (static_cast<uint32_t>(channel) * saadc::CH_STRIDE)) =
+      (saadc::CH_PSEL_CONNECT_NC << saadc::CH_PSEL_CONNECT_Pos);
+
+  uint32_t config = 0;
+  config |= (static_cast<uint32_t>(gain) << saadc::CH_CONFIG_GAIN_Pos);
+  config |= ((burst ? saadc::CH_CONFIG_BURST_ENABLED
+                    : saadc::CH_CONFIG_BURST_DISABLED)
+             << saadc::CH_CONFIG_BURST_Pos);
+  config |= (saadc::REFSEL_INTERNAL << saadc::CH_CONFIG_REFSEL_Pos);
+  config |= (saadc::MODE_SINGLE_ENDED << saadc::CH_CONFIG_MODE_Pos);
+  config |= (static_cast<uint32_t>(tacq) << saadc::CH_CONFIG_TACQ_Pos);
+  config |= (static_cast<uint32_t>(tconv) << saadc::CH_CONFIG_TCONV_Pos);
+
+  reg32(base_ + saadc::CH_CONFIG +
+        (static_cast<uint32_t>(channel) * saadc::CH_STRIDE)) = config;
+
+  gain_ = gain;
+  differential_ = false;
+  configured_ = true;
+  return true;
+}
+
 bool Saadc::configureDifferential(uint8_t channel, const Pin& positivePin,
                                   const Pin& negativePin, AdcGain gain,
                                   uint16_t tacq, uint8_t tconv, bool burst) {

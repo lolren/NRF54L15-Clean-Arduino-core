@@ -134,6 +134,25 @@ bool BoardControl::sampleBatteryMilliVolts(int32_t* outMilliVolts,
   return true;
 }
 
+bool BoardControl::sampleVddMilliVolts(int32_t* outMilliVolts,
+                                       uint32_t spinLimit) {
+  if (outMilliVolts == nullptr) {
+    return false;
+  }
+
+  Saadc adc(nrf54l15::SAADC_BASE);
+  if (!adc.begin(AdcResolution::k12bit, spinLimit)) {
+    return false;
+  }
+
+  const bool ok =
+      adc.configureSingleEnded(0U, AdcInternalInput::kVdd, AdcGain::k2over8,
+                               159U, 4U, true) &&
+      adc.sampleMilliVolts(outMilliVolts, spinLimit);
+  adc.end();
+  return ok;
+}
+
 bool BoardControl::sampleBatteryPercent(uint8_t* outPercent,
                                         int32_t emptyMilliVolts,
                                         int32_t fullMilliVolts,

@@ -130,6 +130,8 @@ Board note:
 - `POF` is a supply warning comparator inside the power block, exposed through `PowerManager`.
 - It monitors `VDD`, not the raw battery pin. On a regulated board, that means it is best for brownout or supply-sag warning, not direct battery gauging.
 - If you want raw cell voltage, use `BoardControl::sampleBatteryMilliVolts(...)`. If you want "warn me before the rail collapses", use `POF`.
+- If you want a direct ADC reading of the chip supply rail, `Saadc` now exposes the internal rail inputs through `AdcInternalInput::kAvdd`, `AdcInternalInput::kDvdd`, and `AdcInternalInput::kVdd`.
+- For the common case, use `BoardControl::sampleVddMilliVolts(...)` to read the MCU supply rail without consuming an external analog pin.
 
 ## Board pin map
 
@@ -634,6 +636,11 @@ new non-BLE parity blocks:
 - `PowerManager` power-fail warning threshold configuration from `1.7 V` to `3.2 V`.
 - Polling `POFWARN` and reading the current comparator state without needing an IRQ handler.
 - The practical distinction between `VDD` supply warning and raw VBAT measurement on the XIAO board.
+
+`examples/Peripherals/VddReadViaInternalSaadc/VddReadViaInternalSaadc.ino` demonstrates:
+
+- Sampling the internal `VDD` rail through `BoardControl::sampleVddMilliVolts(...)`, which uses the SAADC internal input path under the hood.
+- The practical distinction between MCU `VDD`, raw battery sensing, and `POF` threshold warning.
 
 Peripheral examples:
 

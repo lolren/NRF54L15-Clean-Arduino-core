@@ -829,6 +829,12 @@ enum class AdcGain : uint8_t {
   k2over8 = 7,
 };
 
+enum class AdcInternalInput : uint8_t {
+  kAvdd = SAADC_CH_PSELP_INTERNAL_Avdd,
+  kDvdd = SAADC_CH_PSELP_INTERNAL_Dvdd,
+  kVdd = SAADC_CH_PSELP_INTERNAL_Vdd,
+};
+
 enum class AdcOversample : uint8_t {
   kBypass = nrf54l15::saadc::OVERSAMPLE_BYPASS,
   k2x = nrf54l15::saadc::OVERSAMPLE_2X,
@@ -854,6 +860,11 @@ class Saadc {
 
   // Configures one active single-ended channel and disables the others.
   bool configureSingleEnded(uint8_t channel, const Pin& pin,
+                            AdcGain gain = AdcGain::k2over8,
+                            uint16_t tacq = 159,
+                            uint8_t tconv = 4,
+                            bool burst = false);
+  bool configureSingleEnded(uint8_t channel, AdcInternalInput input,
                             AdcGain gain = AdcGain::k2over8,
                             uint16_t tacq = 159,
                             uint8_t tconv = 4,
@@ -927,6 +938,11 @@ class BoardControl {
   static bool sampleBatteryMilliVolts(int32_t* outMilliVolts,
                                       uint32_t settleDelayUs = 5000U,
                                       uint32_t spinLimit = 500000UL);
+
+  // Reads the chip VDD rail through the SAADC internal VDD input.
+  // This does not consume an external analog pin and is not raw VBAT.
+  static bool sampleVddMilliVolts(int32_t* outMilliVolts,
+                                  uint32_t spinLimit = 500000UL);
 
   // Approximate Li-ion state-of-charge from measured VBAT.
   // Defaults are intentionally conservative for 1-cell chemistry.
