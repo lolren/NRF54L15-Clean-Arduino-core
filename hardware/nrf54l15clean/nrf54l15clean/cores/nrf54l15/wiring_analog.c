@@ -527,6 +527,9 @@ static uint8_t timer_pwm_find_sync_leader(uint8_t slot,
         if (g_timer_pwm_slot_owner[candidate] == ANALOG_PWM_NO_PIN) {
             continue;
         }
+        if (g_timer_pwm_slot_active[candidate] == 0U) {
+            continue;
+        }
         if (g_timer_pwm_slot_prescaler[candidate] != prescaler ||
             g_timer_pwm_slot_period_ticks[candidate] != period_ticks) {
             continue;
