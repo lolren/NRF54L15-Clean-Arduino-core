@@ -32,11 +32,16 @@ Example:
 | Peripheral | Default pins |
 |---|---|
 | `Serial` | `TX=D6/P2.08/pad 25`, `RX=D7/P2.07/pad 24` |
-| `Serial1` | same default pins as `Serial` |
+| `Serial1` | `TX=P1.09/pad 2`, `RX=P1.08/pad 16` |
 | `Wire` | `SDA=D4/P1.10/pad 3`, `SCL=D5/P1.11/pad 5` |
 | `Wire1` | `SDA=D12/P0.04/pad 34`, `SCL=D11/P0.03/pad 33` |
 | `SPI` | `SS=D2/P1.06/pad 14`, `SCK=D8/P2.01/pad 18`, `MISO=D9/P2.04/pad 21`, `MOSI=D10/P2.02/pad 19` |
 | `LED_BUILTIN` | `P2.00/pad 17` as a separate compatibility LED pin |
+
+Notes:
+
+- `Serial` is intentionally bound to `UARTE20` on the `P2.08/P2.07` module route
+- `Serial1` is intentionally bound to `UARTE21` on the `P1.09/P1.08` compatibility route
 
 ## Arduino Pin Map
 

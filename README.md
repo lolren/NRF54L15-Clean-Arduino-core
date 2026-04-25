@@ -217,7 +217,7 @@ Pin naming rule for the module boards:
 Default module routes:
 
 - `Serial`: `TX=D6/P2.08/pad 25`, `RX=D7/P2.07/pad 24`
-- `Serial1`: same default pins as `Serial`
+- `Serial1`: `TX=P1.09/pad 2`, `RX=P1.08/pad 16`
 - `Wire`: `SDA=D4/P1.10/pad 3`, `SCL=D5/P1.11/pad 5`
 - `Wire1`: `SDA=D12/P0.04/pad 34`, `SCL=D11/P0.03/pad 33`
 - `SPI`: `SS=D2/P1.06/pad 14`, `SCK=D8/P2.01/pad 18`,
