@@ -378,9 +378,14 @@ static uint32_t dppi_config_value(uint8_t channel)
     return ((uint32_t)channel & 0xFFUL) | (1UL << 31U);
 }
 
-static uint8_t timer_pwm_slot_dppi_channel(uint8_t slot)
+static uint8_t timer_pwm_slot_set_dppi_channel(uint8_t slot)
 {
-    return slot;
+    return (uint8_t)(slot * 2U);
+}
+
+static uint8_t timer_pwm_slot_clr_dppi_channel(uint8_t slot)
+{
+    return (uint8_t)((slot * 2U) + 1U);
 }
 
 static uint8_t pwm_pin_supports_timer_output(uint8_t index)
@@ -553,7 +558,7 @@ static void timer_pwm_force_live_phase(uint8_t slot,
 
     const uint32_t phase_ticks = timer_pwm_capture_phase_ticks(timer_base, period_ticks);
     const uintptr_t gpiote_task =
-        ((phase_ticks + 1UL) < high_ticks) ? GPIOTE_TASKS_SET0 : GPIOTE_TASKS_CLR0;
+        (phase_ticks < high_ticks) ? GPIOTE_TASKS_SET0 : GPIOTE_TASKS_CLR0;
     *regptr(k_timer_pwm_gpiote_base,
             gpiote_task + ((uintptr_t)gpiote_channel * GPIOTE_CONFIG_STRIDE)) = 1U;
 }
@@ -565,7 +570,8 @@ static void timer_pwm_stop_slot(uint8_t slot)
         return;
     }
 
-    const uint8_t dppi_channel = timer_pwm_slot_dppi_channel(slot);
+    const uint8_t set_dppi_channel = timer_pwm_slot_set_dppi_channel(slot);
+    const uint8_t clr_dppi_channel = timer_pwm_slot_clr_dppi_channel(slot);
     const uintptr_t timer_base = k_timer_pwm_base[slot];
     const uint8_t gpiote_channel = g_timer_pwm_slot_gpiote_channel[slot];
 
@@ -579,11 +585,10 @@ static void timer_pwm_stop_slot(uint8_t slot)
     *regptr(timer_base, TIMER_EVENTS_COMPARE0) = 0U;
     *regptr(timer_base, TIMER_EVENTS_COMPARE0 + TIMER_EVENTS_COMPARE_STRIDE) = 0U;
     *regptr(timer_base, TIMER_EVENTS_COMPARE0 + (2UL * TIMER_EVENTS_COMPARE_STRIDE)) = 0U;
-    *regptr(k_timer_pwm_dppic_base, DPPIC_CHENCLR) = (1UL << dppi_channel);
+    *regptr(k_timer_pwm_dppic_base, DPPIC_CHENCLR) =
+        (1UL << set_dppi_channel) | (1UL << clr_dppi_channel);
 
     if (gpiote_channel != ANALOG_PWM_NO_CHANNEL) {
-        *regptr(k_timer_pwm_gpiote_base,
-                GPIOTE_SUBSCRIBE_OUT0 + ((uintptr_t)gpiote_channel * GPIOTE_CONFIG_STRIDE)) = 0U;
         *regptr(k_timer_pwm_gpiote_base,
                 GPIOTE_SUBSCRIBE_SET0 + ((uintptr_t)gpiote_channel * GPIOTE_CONFIG_STRIDE)) = 0U;
         *regptr(k_timer_pwm_gpiote_base,
@@ -758,32 +763,39 @@ static uint8_t timer_pwm_apply_pin(uint8_t index)
         high_ticks = period_ticks - 1UL;
     }
 
-    const uint8_t dppi_channel = timer_pwm_slot_dppi_channel(slot);
+    const uint8_t set_dppi_channel = timer_pwm_slot_set_dppi_channel(slot);
+    const uint8_t clr_dppi_channel = timer_pwm_slot_clr_dppi_channel(slot);
     const uintptr_t timer_base = k_timer_pwm_base[slot];
     const uintptr_t gpiote_cfg =
         GPIOTE_CONFIG0 + ((uintptr_t)gpiote_channel * GPIOTE_CONFIG_STRIDE);
-    const uintptr_t gpiote_sub_out =
-        GPIOTE_SUBSCRIBE_OUT0 + ((uintptr_t)gpiote_channel * GPIOTE_CONFIG_STRIDE);
+    const uintptr_t gpiote_set =
+        GPIOTE_TASKS_SET0 + ((uintptr_t)gpiote_channel * GPIOTE_CONFIG_STRIDE);
+    const uintptr_t gpiote_sub_set =
+        GPIOTE_SUBSCRIBE_SET0 + ((uintptr_t)gpiote_channel * GPIOTE_CONFIG_STRIDE);
+    const uintptr_t gpiote_sub_clr =
+        GPIOTE_SUBSCRIBE_CLR0 + ((uintptr_t)gpiote_channel * GPIOTE_CONFIG_STRIDE);
 
     if (timer_pwm_update_pin_live(slot, index, prescaler, period_ticks, high_ticks) != 0U) {
         return 1U;
     }
 
     *regptr(timer_base, TIMER_TASKS_STOP) = 1U;
-    *regptr(k_timer_pwm_dppic_base, DPPIC_CHENCLR) = (1UL << dppi_channel);
+    *regptr(k_timer_pwm_dppic_base, DPPIC_CHENCLR) =
+        (1UL << set_dppi_channel) | (1UL << clr_dppi_channel);
     *regptr(timer_base, TIMER_SUBSCRIBE_START) = 0U;
     *regptr(timer_base, TIMER_SUBSCRIBE_CLEAR) = 0U;
     *regptr(timer_base, TIMER_PUBLISH_COMPARE0) = 0U;
     *regptr(timer_base, TIMER_PUBLISH_COMPARE0 + TIMER_PUBLISH_COMPARE_STRIDE) = 0U;
     *regptr(timer_base, TIMER_PUBLISH_COMPARE0 + (2UL * TIMER_PUBLISH_COMPARE_STRIDE)) = 0U;
-    *regptr(k_timer_pwm_gpiote_base, gpiote_sub_out) = 0U;
+    *regptr(k_timer_pwm_gpiote_base, gpiote_sub_set) = 0U;
+    *regptr(k_timer_pwm_gpiote_base, gpiote_sub_clr) = 0U;
 
     uint32_t gpiote_config = 0U;
     gpiote_config |= (GPIOTE_CONFIG_MODE_TASK << GPIOTE_CONFIG_MODE_Pos);
     gpiote_config |= ((uint32_t)(pin & 0x1FU) << GPIOTE_CONFIG_PSEL_Pos);
     gpiote_config |= ((uint32_t)(port & 0x7U) << GPIOTE_CONFIG_PORT_Pos);
-    gpiote_config |= (GPIOTE_CONFIG_POLARITY_TOGGLE << GPIOTE_CONFIG_POLARITY_Pos);
-    gpiote_config |= (1UL << GPIOTE_CONFIG_OUTINIT_Pos);
+    gpiote_config |= (GPIOTE_CONFIG_POLARITY_NONE << GPIOTE_CONFIG_POLARITY_Pos);
+    gpiote_config |= (0UL << GPIOTE_CONFIG_OUTINIT_Pos);
     *regptr(k_timer_pwm_gpiote_base, gpiote_cfg) = gpiote_config;
 
     *regptr(timer_base, TIMER_TASKS_CLEAR) = 1U;
@@ -798,12 +810,16 @@ static uint8_t timer_pwm_apply_pin(uint8_t index)
     *regptr(timer_base, TIMER_EVENTS_COMPARE0 + TIMER_EVENTS_COMPARE_STRIDE) = 0U;
     *regptr(timer_base, TIMER_EVENTS_COMPARE0 + (2UL * TIMER_EVENTS_COMPARE_STRIDE)) = 0U;
 
-    *regptr(timer_base, TIMER_PUBLISH_COMPARE0) = dppi_config_value(dppi_channel);
+    // Use explicit SET at period wrap and CLR at duty compare so live
+    // duty corrections cannot desynchronize a toggle-based waveform.
+    *regptr(timer_base, TIMER_PUBLISH_COMPARE0) = dppi_config_value(set_dppi_channel);
     *regptr(timer_base, TIMER_PUBLISH_COMPARE0 + TIMER_PUBLISH_COMPARE_STRIDE) =
-        dppi_config_value(dppi_channel);
+        dppi_config_value(clr_dppi_channel);
     *regptr(timer_base, TIMER_PUBLISH_COMPARE0 + (2UL * TIMER_PUBLISH_COMPARE_STRIDE)) = 0U;
-    *regptr(k_timer_pwm_gpiote_base, gpiote_sub_out) = dppi_config_value(dppi_channel);
-    *regptr(k_timer_pwm_dppic_base, DPPIC_CHENSET) = (1UL << dppi_channel);
+    *regptr(k_timer_pwm_gpiote_base, gpiote_sub_set) = dppi_config_value(set_dppi_channel);
+    *regptr(k_timer_pwm_gpiote_base, gpiote_sub_clr) = dppi_config_value(clr_dppi_channel);
+    *regptr(k_timer_pwm_dppic_base, DPPIC_CHENSET) =
+        (1UL << set_dppi_channel) | (1UL << clr_dppi_channel);
 
     g_timer_pwm_slot_prescaler[slot] = prescaler;
     g_timer_pwm_slot_period_ticks[slot] = period_ticks;
@@ -813,6 +829,7 @@ static uint8_t timer_pwm_apply_pin(uint8_t index)
     g_soft_pwm_on_time_us[index] = 0UL;
     g_soft_pwm_output_high[index] = 1U;
 
+    *regptr(k_timer_pwm_gpiote_base, gpiote_set) = 1U;
     *regptr(timer_base, TIMER_TASKS_START) = 1U;
     g_timer_pwm_slot_active[slot] = 1U;
 
