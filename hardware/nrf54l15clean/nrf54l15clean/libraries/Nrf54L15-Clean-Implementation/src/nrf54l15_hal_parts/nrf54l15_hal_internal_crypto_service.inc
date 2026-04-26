@@ -718,7 +718,9 @@ uint32_t bleConnectionTxEndBudgetUs(uint8_t payloadLength) {
 
 uint32_t bleDataPduAirTimeUsOnPhy(uint8_t payloadLength, uint8_t phy) {
   if ((phy & kBlePhyCoded) != 0U) {
-    return 976U + static_cast<uint32_t>(payloadLength) * 64U;
+    // Bluetooth Core, Vol 6, Part A, Table 3.3:
+    // coded S=8 LL data PDU airtime is 720 us plus 64 us per payload byte.
+    return 720U + static_cast<uint32_t>(payloadLength) * 64U;
   }
   if ((phy & kBlePhy2M) != 0U) {
     return 44U + static_cast<uint32_t>(payloadLength) * 4U;
@@ -1102,6 +1104,8 @@ void writeCharacteristicDeclarationValue(uint8_t* out,
 }
 
 extern "C" void nrf54l15_bluefruit_compat_idle_service(void)
+    __attribute__((weak));
+extern "C" void nrf54l15_bluefruit_compat_yield_service(void)
     __attribute__((weak));
 extern "C" uint32_t nrf54l15_bluefruit_compat_idle_sleep_cap_us(void)
     __attribute__((weak));

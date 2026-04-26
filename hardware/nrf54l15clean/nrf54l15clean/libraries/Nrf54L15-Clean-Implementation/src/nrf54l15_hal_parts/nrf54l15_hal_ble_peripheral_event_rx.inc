@@ -500,7 +500,7 @@ bool BleRadio::pollConnectionEventInternal(BleConnectionEvent* event,
     connectionMissedEventCount_ = 0U;
     encDebug_.connMissedEventCountLast = 0U;
     if (((connectionCurrentRxPhy_ & kBlePhyCoded) == 0U) ||
-        (rxLengthEarly <= kBleDefaultDataPduMaxPayload)) {
+        (rxLengthEarly < kBleDefaultDataPduMaxPayload)) {
       const uint32_t intervalUsFast =
           (connectionIntervalUnits_ > 0U)
               ? (static_cast<uint32_t>(connectionIntervalUnits_) * 1250UL)
@@ -748,7 +748,7 @@ bool BleRadio::pollConnectionEventInternal(BleConnectionEvent* event,
     connectionMissedEventCount_ = 0U;
     encDebug_.connMissedEventCountLast = 0U;
     if (((connectionCurrentRxPhy_ & kBlePhyCoded) == 0U) ||
-        (rxLengthEarly <= kBleDefaultDataPduMaxPayload)) {
+        (rxLengthEarly < kBleDefaultDataPduMaxPayload)) {
       const uint32_t intervalUsFast =
           (connectionIntervalUnits_ > 0U)
               ? (static_cast<uint32_t>(connectionIntervalUnits_) * 1250UL)
@@ -899,7 +899,7 @@ bool BleRadio::pollConnectionEventInternal(BleConnectionEvent* event,
   const uint8_t sn = (hdr0 >> 3U) & 0x01U;
   const uint8_t rxLengthRaw = rxPacket_[1];
   if (((connectionCurrentRxPhy_ & kBlePhyCoded) == 0U) ||
-      (rxLengthRaw <= kBleDefaultDataPduMaxPayload)) {
+      (rxLengthRaw < kBleDefaultDataPduMaxPayload)) {
     const uint32_t intervalUsRx =
         (connectionIntervalUnits_ > 0U)
             ? (static_cast<uint32_t>(connectionIntervalUnits_) * 1250UL)

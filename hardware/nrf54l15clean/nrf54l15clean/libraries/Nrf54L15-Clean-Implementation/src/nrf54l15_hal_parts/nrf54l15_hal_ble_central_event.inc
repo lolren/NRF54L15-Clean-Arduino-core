@@ -98,31 +98,12 @@ bool BleRadio::pollCentralConnectionEvent(BleConnectionEvent* event,
 
   const bool canSendNewPayloadThisEvent =
       !connectionTxHistoryValid_ || connectionFreshTxAllowed_;
-  const bool pendingTxIsRetryableL2capRequest =
-      connectionPendingTxValid_ &&
-      (connectionPendingTxLlid_ == kBlePduDataStartOrComplete) &&
-      (connectionPendingTxLength_ >= kBleL2capHeaderLen) &&
-      ((readLe16(&connectionPendingTxPayload_[2]) == kBleL2capCidAtt) ||
-       (readLe16(&connectionPendingTxPayload_[2]) == kBleL2capCidSmp) ||
-       (readLe16(&connectionPendingTxPayload_[2]) == kBleL2capCidLeSignaling));
-  const bool pendingTxIsAttWriteRequest =
-      connectionPendingTxValid_ &&
-      (connectionPendingTxLlid_ == kBlePduDataStartOrComplete) &&
-      (connectionPendingTxLength_ >= (kBleL2capHeaderLen + 3U)) &&
-      (readLe16(&connectionPendingTxPayload_[2]) == kBleL2capCidAtt) &&
-      ((connectionPendingTxPayload_[4] == kAttOpWriteReq) ||
-       (connectionPendingTxPayload_[4] == kAttOpWriteCmd) ||
-       (connectionPendingTxPayload_[4] == kAttOpPrepareWriteReq) ||
-       (connectionPendingTxPayload_[4] == kAttOpExecuteWriteReq));
-  // Replacing an earlier empty ACK with the same-SN ATT write request can make
-  // the peer treat it as a duplicate under heavy duplex notification traffic.
-  // Leave ATT writes pending until the link-layer state is fresh again.
-  const bool promotePendingTxAfterEmptyAck =
-      !canSendNewPayloadThisEvent &&
-      pendingTxIsRetryableL2capRequest &&
-      !pendingTxIsAttWriteRequest &&
-      (connectionLastTxLlid_ == 0x01U) &&
-      (connectionLastTxLength_ == 0U);
+  // Do not replace an earlier empty ACK with a fresh queued central request.
+  // Reusing the same SN with a different ATT/L2CAP payload is fragile during
+  // coded-PHY setup and under duplex traffic, and can make the peer treat the
+  // request as a duplicate or miss it entirely. Wait for a fresh TX state
+  // before promoting any queued central request.
+  const bool promotePendingTxAfterEmptyAck = false;
   uint8_t txLlid = 0x01U;
   uint8_t txLength = 0U;
   if (canSendNewPayloadThisEvent || promotePendingTxAfterEmptyAck) {

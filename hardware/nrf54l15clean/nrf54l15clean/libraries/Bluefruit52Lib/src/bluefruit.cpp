@@ -549,7 +549,7 @@ class BluefruitCompatManager {
     deferred_connection_phy_request_pending_ = true;
     deferred_connection_phy_attempts_ = 0U;
     deferred_connection_phy_next_ms_ =
-        millis() + kDeferredLinkRequestInitialDelayMs;
+        millis() + kDeferredPhyRequestInitialDelayMs;
     return true;
   }
 
@@ -560,7 +560,7 @@ class BluefruitCompatManager {
     deferred_connection_data_length_request_pending_ = true;
     deferred_connection_data_length_attempts_ = 0U;
     deferred_connection_data_length_next_ms_ =
-        millis() + kDeferredLinkRequestInitialDelayMs;
+        millis() + kDeferredPhyRequestInitialDelayMs;
     return true;
   }
 
@@ -578,7 +578,7 @@ class BluefruitCompatManager {
     deferred_connection_mtu_request_pending_ = true;
     deferred_connection_mtu_attempts_ = 0U;
     deferred_connection_mtu_next_ms_ =
-        millis() + kDeferredLinkRequestInitialDelayMs;
+        millis() + kDeferredPhyRequestInitialDelayMs;
     return true;
   }
 
@@ -674,6 +674,30 @@ class BluefruitCompatManager {
     }
   }
 
+  bool primeCentralConnectionBeforeUserCallback() {
+    if (!radio_.isConnected() || radio_.connectionRole() != BleConnectionRole::kCentral) {
+      return false;
+    }
+
+    const unsigned long startMs = millis();
+    while (radio_.isConnected() && (millis() - startMs) < 250UL) {
+      BleConnectionEvent event{};
+      if (radio_.consumeDeferredConnectionEvent(&event) ||
+          radio_.pollConnectionEvent(&event, 120000UL)) {
+        handleCentralConnectionEvent(event);
+        if (event.terminateInd) {
+          return false;
+        }
+        if (event.eventStarted) {
+          return true;
+        }
+      }
+      yield();
+    }
+
+    return radio_.isConnected();
+  }
+
   void idleService() {
     if (!started_) {
       return;
@@ -729,6 +753,18 @@ class BluefruitCompatManager {
     return 0U;
   }
 
+  void dispatchDeferredUserCallbacks() {
+    if (ScopedBluefruitUserCallback::active()) {
+      return;
+    }
+    for (uint8_t i = 0U; i < client_characteristic_count_; ++i) {
+      BLEClientCharacteristic* characteristic = client_characteristics_[i];
+      if (characteristic != nullptr) {
+        characteristic->dispatchPendingNotify();
+      }
+    }
+  }
+
  private:
   static constexpr uint8_t kMaxCharacteristics = 24U;
   static constexpr uint8_t kMaxClientCharacteristics = 16U;
@@ -736,6 +772,7 @@ class BluefruitCompatManager {
   static constexpr uint16_t kDefaultAttMtu = 23U;
   static constexpr uint16_t kDeferredDataLengthTarget =
       static_cast<uint16_t>(BleRadio::kCustomGattMaxValueLength + 7U);
+  static constexpr unsigned long kDeferredPhyRequestInitialDelayMs = 1500UL;
   static constexpr unsigned long kDeferredLinkRequestInitialDelayMs = 250UL;
   static constexpr unsigned long kDeferredLinkRequestRetryMs = 500UL;
   static constexpr uint8_t kDeferredLinkRequestMaxAttempts = 20U;
@@ -1044,6 +1081,19 @@ class BluefruitCompatManager {
         deferred_connection_requested_phy_ = BLE_GAP_PHY_AUTO;
         deferred_connection_phy_attempts_ = 0U;
         deferred_connection_phy_next_ms_ = 0UL;
+        if (radio_.currentDataLength() <= kDefaultDataLength) {
+          deferred_connection_data_length_request_pending_ = true;
+          deferred_connection_data_length_attempts_ = 0U;
+          deferred_connection_data_length_next_ms_ =
+              now + kDeferredLinkRequestRetryMs;
+        }
+        if ((deferred_connection_requested_mtu_ > kDefaultAttMtu) &&
+            (radio_.currentAttMtu() < deferred_connection_requested_mtu_)) {
+          deferred_connection_mtu_request_pending_ = true;
+          deferred_connection_mtu_attempts_ = 0U;
+          deferred_connection_mtu_next_ms_ =
+              now + kDeferredLinkRequestRetryMs;
+        }
       } else if (deferred_connection_phy_attempts_ >=
                  kDeferredLinkRequestMaxAttempts) {
         deferred_connection_phy_request_pending_ = false;
@@ -1236,7 +1286,8 @@ class BluefruitCompatManager {
         central_data_length_request_pending_ = Bluefruit.central_request_data_length_;
         central_mtu_request_pending_ = Bluefruit.central_request_mtu_;
         central_link_config_not_before_ms_ = millis() + 1000UL;
-        if (Bluefruit.Central.connect_callback_ != nullptr) {
+        if (Bluefruit.Central.connect_callback_ != nullptr &&
+            primeCentralConnectionBeforeUserCallback()) {
           invokeBluefruitUserCallback(Bluefruit.Central.connect_callback_, 0U);
         }
       }
@@ -1544,41 +1595,27 @@ bool discoverServiceRangeSync(const BLEUuid& uuid, uint16_t* startHandle,
   if (startHandle == nullptr || endHandle == nullptr) {
     return false;
   }
-  if (!queueServiceDiscoveryRequest(uuid, false)) {
-    return false;
-  }
-
-  const AttWaitResult wait =
-      waitForAttOpcode(kAttOpFindByTypeValueReq, kAttOpFindByTypeValueRsp);
-  if (wait.outcome != AttWaitOutcome::kResponse || wait.event.payloadLength < 9U) {
-    if (uuid.size() != 16U) {
+  if (uuid.size() != 16U) {
+    if (!queueServiceDiscoveryRequest(uuid, false)) {
       return false;
     }
-  } else {
+
+    const AttWaitResult wait =
+        waitForAttOpcode(kAttOpFindByTypeValueReq, kAttOpFindByTypeValueRsp);
+    if (wait.outcome != AttWaitOutcome::kResponse || wait.event.payloadLength < 9U) {
+      return false;
+    }
+
     *startHandle = readLe16(&wait.event.payload[5]);
     *endHandle = readLe16(&wait.event.payload[7]);
-    if ((*startHandle != 0U) && (*endHandle >= *startHandle)) {
-      return true;
-    }
+    return (*startHandle != 0U) && (*endHandle >= *startHandle);
   }
 
-  if (uuid.size() == 16U) {
-    if (!queueServiceDiscoveryRequest(uuid, true)) {
-      return false;
-    }
-
-    const AttWaitResult reversedWait =
-        waitForAttOpcode(kAttOpFindByTypeValueReq, kAttOpFindByTypeValueRsp);
-    if (reversedWait.outcome == AttWaitOutcome::kResponse &&
-        reversedWait.event.payloadLength >= 9U) {
-      *startHandle = readLe16(&reversedWait.event.payload[5]);
-      *endHandle = readLe16(&reversedWait.event.payload[7]);
-      if ((*startHandle != 0U) && (*endHandle >= *startHandle)) {
-        return true;
-      }
-    }
-  } else {
-    return false;
+  {
+    // A 128-bit Find By Type Value request is 23 ATT bytes, which becomes a
+    // full 27-byte default LL data PDU before MTU/Data Length negotiation.
+    // Walking primary services via Read By Group Type avoids that edge while
+    // still discovering the same service range.
   }
 
   uint16_t searchStart = 0x0001U;
@@ -1809,6 +1846,13 @@ extern "C" void nrf54l15_bluefruit_compat_idle_service(void) {
     return;
   }
   manager().idleService();
+}
+
+extern "C" void nrf54l15_bluefruit_compat_yield_service(void) {
+  if (ScopedBluefruitUserCallback::active()) {
+    return;
+  }
+  manager().dispatchDeferredUserCallbacks();
 }
 
 extern "C" uint32_t nrf54l15_bluefruit_compat_idle_sleep_cap_us(void) {
@@ -3053,7 +3097,8 @@ BLEClientCharacteristic::BLEClientCharacteristic()
       end_handle_(0U),
       cccd_handle_(0U),
       last_value_{0},
-      last_value_len_(0U) {}
+      last_value_len_(0U),
+      pending_notify_callback_(false) {}
 
 BLEClientCharacteristic::BLEClientCharacteristic(BLEUuid bleuuid)
     : BLEClientCharacteristic() {
@@ -3187,8 +3232,16 @@ void BLEClientCharacteristic::handleNotify(const uint8_t* data, uint16_t len) {
   }
   last_value_len_ = copyLen;
   if (notify_callback_ != nullptr) {
-    invokeBluefruitUserCallback(notify_callback_, this, last_value_, last_value_len_);
+    pending_notify_callback_ = true;
   }
+}
+
+void BLEClientCharacteristic::dispatchPendingNotify() {
+  if (!pending_notify_callback_ || notify_callback_ == nullptr) {
+    return;
+  }
+  pending_notify_callback_ = false;
+  invokeBluefruitUserCallback(notify_callback_, this, last_value_, last_value_len_);
 }
 
 BLEClientService::BLEClientService()

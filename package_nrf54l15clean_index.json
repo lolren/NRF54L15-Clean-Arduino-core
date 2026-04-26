@@ -12,12 +12,12 @@
         {
           "name": "nRF54L15 Boards",
           "architecture": "nrf54l15clean",
-          "version": "0.6.46",
+          "version": "0.6.47",
           "category": "Arduino",
-          "url": "https://github.com/lolren/nrf54-arduino-core/releases/download/v0.6.46/nrf54l15clean-0.6.46-d02c7553d825.tar.bz2",
-          "archiveFileName": "nrf54l15clean-0.6.46-d02c7553d825.tar.bz2",
-          "checksum": "SHA-256:d02c7553d825255584f286b2ca17f3adf8dd2eac64ba158f984a5fdbaaff59bd",
-          "size": "1256225",
+          "url": "https://github.com/lolren/nrf54-arduino-core/releases/download/v0.6.47/nrf54l15clean-0.6.47-4046000b1849.tar.bz2",
+          "archiveFileName": "nrf54l15clean-0.6.47-4046000b1849.tar.bz2",
+          "checksum": "SHA-256:4046000b1849f6bda6c54046906cfe562777669f659c58053442022950b084c6",
+          "size": "1256775",
           "boards": [
             {
               "name": "XIAO nRF54L15 / Sense"
@@ -722,35 +722,35 @@
           "systems": [
             {
               "host": "x86_64-pc-linux-gnu",
-              "url": "https://github.com/lolren/nrf54-arduino-core/releases/download/v0.6.46/nrf54l15hosttools-1.1.2-x86_64-pc-linux-gnu-efddce7bac30.tar.bz2",
+              "url": "https://github.com/lolren/nrf54-arduino-core/releases/download/v0.6.47/nrf54l15hosttools-1.1.2-x86_64-pc-linux-gnu-efddce7bac30.tar.bz2",
               "archiveFileName": "nrf54l15hosttools-1.1.2-x86_64-pc-linux-gnu-efddce7bac30.tar.bz2",
               "checksum": "SHA-256:efddce7bac30be38840a4f1453a51c8cb9a16f6befc601724c8844734e08f120",
               "size": "3190"
             },
             {
               "host": "aarch64-linux-gnu",
-              "url": "https://github.com/lolren/nrf54-arduino-core/releases/download/v0.6.46/nrf54l15hosttools-1.1.2-aarch64-linux-gnu-efddce7bac30.tar.bz2",
+              "url": "https://github.com/lolren/nrf54-arduino-core/releases/download/v0.6.47/nrf54l15hosttools-1.1.2-aarch64-linux-gnu-efddce7bac30.tar.bz2",
               "archiveFileName": "nrf54l15hosttools-1.1.2-aarch64-linux-gnu-efddce7bac30.tar.bz2",
               "checksum": "SHA-256:efddce7bac30be38840a4f1453a51c8cb9a16f6befc601724c8844734e08f120",
               "size": "3190"
             },
             {
               "host": "i686-mingw32",
-              "url": "https://github.com/lolren/nrf54-arduino-core/releases/download/v0.6.46/nrf54l15hosttools-1.1.2-i686-mingw32-876d4c95790f.zip",
+              "url": "https://github.com/lolren/nrf54-arduino-core/releases/download/v0.6.47/nrf54l15hosttools-1.1.2-i686-mingw32-876d4c95790f.zip",
               "archiveFileName": "nrf54l15hosttools-1.1.2-i686-mingw32-876d4c95790f.zip",
               "checksum": "SHA-256:876d4c95790ffa494fecc6291816d9990f4325a1b17d77ac92269bdb5688da9a",
               "size": "8822"
             },
             {
               "host": "x86_64-apple-darwin",
-              "url": "https://github.com/lolren/nrf54-arduino-core/releases/download/v0.6.46/nrf54l15hosttools-1.1.2-x86_64-apple-darwin-efddce7bac30.tar.bz2",
+              "url": "https://github.com/lolren/nrf54-arduino-core/releases/download/v0.6.47/nrf54l15hosttools-1.1.2-x86_64-apple-darwin-efddce7bac30.tar.bz2",
               "archiveFileName": "nrf54l15hosttools-1.1.2-x86_64-apple-darwin-efddce7bac30.tar.bz2",
               "checksum": "SHA-256:efddce7bac30be38840a4f1453a51c8cb9a16f6befc601724c8844734e08f120",
               "size": "3190"
             },
             {
               "host": "arm64-apple-darwin",
-              "url": "https://github.com/lolren/nrf54-arduino-core/releases/download/v0.6.46/nrf54l15hosttools-1.1.2-arm64-apple-darwin-efddce7bac30.tar.bz2",
+              "url": "https://github.com/lolren/nrf54-arduino-core/releases/download/v0.6.47/nrf54l15hosttools-1.1.2-arm64-apple-darwin-efddce7bac30.tar.bz2",
               "archiveFileName": "nrf54l15hosttools-1.1.2-arm64-apple-darwin-efddce7bac30.tar.bz2",
               "checksum": "SHA-256:efddce7bac30be38840a4f1453a51c8cb9a16f6befc601724c8844734e08f120",
               "size": "3190"

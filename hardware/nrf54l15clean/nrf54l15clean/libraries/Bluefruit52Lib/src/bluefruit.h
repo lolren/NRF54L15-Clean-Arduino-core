@@ -585,8 +585,10 @@ class BLEClientCharacteristic {
   uint16_t cccd_handle_;
   uint8_t last_value_[BLUEFRUIT_GATT_VALUE_MAX_LEN];
   uint8_t last_value_len_;
+  bool pending_notify_callback_;
 
   void handleNotify(const uint8_t* data, uint16_t len);
+  void dispatchPendingNotify();
   void resetDiscovery();
 
   friend class BluefruitCompatManager;
