@@ -536,33 +536,6 @@ static uint32_t timer_pwm_capture_phase_ticks(uintptr_t timer_base,
     return phase_ticks;
 }
 
-static void timer_pwm_force_live_phase(uint8_t slot,
-                                       uint32_t high_ticks)
-{
-    if (slot >= ANALOG_TIMER_PWM_SLOT_COUNT ||
-        g_timer_pwm_slot_owner[slot] == ANALOG_PWM_NO_PIN ||
-        g_timer_pwm_slot_active[slot] == 0U) {
-        return;
-    }
-
-    const uint8_t gpiote_channel = g_timer_pwm_slot_gpiote_channel[slot];
-    if (gpiote_channel == ANALOG_PWM_NO_CHANNEL) {
-        return;
-    }
-
-    const uintptr_t timer_base = k_timer_pwm_base[slot];
-    const uint32_t period_ticks = g_timer_pwm_slot_period_ticks[slot];
-    if (period_ticks == 0UL) {
-        return;
-    }
-
-    const uint32_t phase_ticks = timer_pwm_capture_phase_ticks(timer_base, period_ticks);
-    const uintptr_t gpiote_task =
-        (phase_ticks < high_ticks) ? GPIOTE_TASKS_SET0 : GPIOTE_TASKS_CLR0;
-    *regptr(k_timer_pwm_gpiote_base,
-            gpiote_task + ((uintptr_t)gpiote_channel * GPIOTE_CONFIG_STRIDE)) = 1U;
-}
-
 static void timer_pwm_stop_slot(uint8_t slot)
 {
     if (slot >= ANALOG_TIMER_PWM_SLOT_COUNT ||
@@ -641,13 +614,27 @@ static uint8_t timer_pwm_update_pin_live(uint8_t slot,
         return 0U;
     }
 
-    // Low duties can be only a few timer ticks wide. Apply the compare now
-    // and force the current phase so a late update cannot leave a full-high cycle.
-    *regptr(k_timer_pwm_base[slot], TIMER_CC0 + TIMER_CC_STRIDE) = high_ticks;
-    *regptr(k_timer_pwm_base[slot], TIMER_EVENTS_COMPARE0 + TIMER_EVENTS_COMPARE_STRIDE) = 0U;
+    const uintptr_t timer_base = k_timer_pwm_base[slot];
+    const uint8_t gpiote_channel = g_timer_pwm_slot_gpiote_channel[slot];
+    const uint32_t current_high_ticks = g_timer_pwm_slot_pending_high_ticks[slot];
+    const uint32_t phase_ticks = timer_pwm_capture_phase_ticks(timer_base, period_ticks);
+
+    // Apply the compare immediately so the next cycle already uses the new duty.
+    // When the pin is currently high and the new compare has already passed,
+    // force only the falling edge. Do not synthesize a new mid-cycle high phase
+    // for upward duty updates, as that is what produces the 1 ms / multi-pin glitch.
+    *regptr(timer_base, TIMER_CC0 + TIMER_CC_STRIDE) = high_ticks;
+    *regptr(timer_base, TIMER_EVENTS_COMPARE0 + TIMER_EVENTS_COMPARE_STRIDE) = 0U;
     g_timer_pwm_slot_pending_high_ticks[slot] = high_ticks;
     g_timer_pwm_slot_pending_update[slot] = 0U;
-    timer_pwm_force_live_phase(slot, high_ticks);
+
+    if (gpiote_channel != ANALOG_PWM_NO_CHANNEL &&
+        current_high_ticks != 0UL &&
+        phase_ticks < current_high_ticks &&
+        (phase_ticks + 1UL) >= high_ticks) {
+        *regptr(k_timer_pwm_gpiote_base,
+                GPIOTE_TASKS_CLR0 + ((uintptr_t)gpiote_channel * GPIOTE_CONFIG_STRIDE)) = 1U;
+    }
 
     g_pwm_pin_software[index] = 0U;
     g_soft_pwm_on_time_us[index] = 0UL;
