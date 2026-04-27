@@ -462,6 +462,8 @@ class BluefruitCompatManager {
         deferred_connection_phy_attempts_(0U),
         deferred_connection_data_length_attempts_(0U),
         deferred_connection_mtu_attempts_(0U),
+        central_connect_callback_pending_(false),
+        central_connect_callback_not_before_ms_(0UL),
         central_link_config_not_before_ms_(0UL),
         last_connect_attempt_ms_(0UL),
         rssi_monitor_enabled_(false),
@@ -724,6 +726,7 @@ class BluefruitCompatManager {
           }
         }
       } else if (radio_.connectionRole() == BleConnectionRole::kCentral) {
+        maybeDispatchCentralConnectCallback();
         processCentralBackgroundEvents(4U);
       }
     }
@@ -763,6 +766,22 @@ class BluefruitCompatManager {
         characteristic->dispatchPendingNotify();
       }
     }
+  }
+
+  void maybeDispatchCentralConnectCallback() {
+    if (!central_connect_callback_pending_ ||
+        Bluefruit.Central.connect_callback_ == nullptr ||
+        !radio_.isConnected() ||
+        radio_.connectionRole() != BleConnectionRole::kCentral) {
+      return;
+    }
+    if (static_cast<int32_t>(millis() - central_connect_callback_not_before_ms_) < 0) {
+      return;
+    }
+
+    central_connect_callback_pending_ = false;
+    central_connect_callback_not_before_ms_ = 0UL;
+    invokeBluefruitUserCallback(Bluefruit.Central.connect_callback_, 0U);
   }
 
  private:
@@ -810,6 +829,8 @@ class BluefruitCompatManager {
   uint8_t deferred_connection_phy_attempts_;
   uint8_t deferred_connection_data_length_attempts_;
   uint8_t deferred_connection_mtu_attempts_;
+  bool central_connect_callback_pending_;
+  unsigned long central_connect_callback_not_before_ms_;
   unsigned long central_link_config_not_before_ms_;
   unsigned long last_connect_attempt_ms_;
   bool rssi_monitor_enabled_;
@@ -1286,9 +1307,12 @@ class BluefruitCompatManager {
         central_data_length_request_pending_ = Bluefruit.central_request_data_length_;
         central_mtu_request_pending_ = Bluefruit.central_request_mtu_;
         central_link_config_not_before_ms_ = millis() + 1000UL;
+        central_connect_callback_pending_ = false;
+        central_connect_callback_not_before_ms_ = 0UL;
         if (Bluefruit.Central.connect_callback_ != nullptr &&
             primeCentralConnectionBeforeUserCallback()) {
-          invokeBluefruitUserCallback(Bluefruit.Central.connect_callback_, 0U);
+          central_connect_callback_pending_ = true;
+          central_connect_callback_not_before_ms_ = millis() + 2000UL;
         }
       }
       return;
@@ -1315,6 +1339,8 @@ class BluefruitCompatManager {
     deferred_connection_phy_attempts_ = 0U;
     deferred_connection_data_length_attempts_ = 0U;
     deferred_connection_mtu_attempts_ = 0U;
+    central_connect_callback_pending_ = false;
+    central_connect_callback_not_before_ms_ = 0UL;
     connection_.handle_ = INVALID_CONNECTION_HANDLE;
     if (last_connection_role_ == BleConnectionRole::kPeripheral) {
       for (uint8_t i = 0U; i < characteristic_count_; ++i) {
@@ -1454,6 +1480,43 @@ struct AttWaitResult {
 bool centralReady(uint16_t connHandle) {
   return connHandle == 0U && manager().radio().isConnected() &&
          manager().radio().connectionRole() == BleConnectionRole::kCentral;
+}
+
+template <typename Attempt>
+bool retryCentralProcedure(Attempt attempt, uint8_t maxAttempts = 10U,
+                           unsigned long retryDelayMs = 300UL) {
+  if (!manager().radio().isConnected() ||
+      manager().radio().connectionRole() != BleConnectionRole::kCentral) {
+    return false;
+  }
+
+  if (maxAttempts == 0U) {
+    maxAttempts = 1U;
+  }
+
+  for (uint8_t attemptIndex = 0U; attemptIndex < maxAttempts; ++attemptIndex) {
+    if (attempt()) {
+      return true;
+    }
+    if (!manager().radio().isConnected() ||
+        manager().radio().connectionRole() != BleConnectionRole::kCentral) {
+      return false;
+    }
+    if ((attemptIndex + 1U) >= maxAttempts || retryDelayMs == 0UL) {
+      continue;
+    }
+
+    const unsigned long delayStartMs = millis();
+    while ((millis() - delayStartMs) < retryDelayMs) {
+      if (!manager().radio().isConnected() ||
+          manager().radio().connectionRole() != BleConnectionRole::kCentral) {
+        return false;
+      }
+      yield();
+    }
+  }
+
+  return false;
 }
 
 bool nextCentralEvent(BleConnectionEvent* event, uint32_t timeoutMs = 800UL) {
@@ -3153,8 +3216,11 @@ bool BLEClientCharacteristic::discover() {
   }
 
   resetDiscovery();
-  if (!discoverCharacteristicSync(service_->start_handle_, service_->end_handle_, uuid,
-                                  &decl_handle_, &value_handle_, &end_handle_)) {
+  if (!retryCentralProcedure([&]() {
+        return discoverCharacteristicSync(service_->start_handle_, service_->end_handle_,
+                                          uuid, &decl_handle_, &value_handle_,
+                                          &end_handle_);
+      })) {
     return false;
   }
   conn_handle_ = service_->conn_handle_;
@@ -3206,11 +3272,15 @@ bool BLEClientCharacteristic::enableNotify() {
     return false;
   }
   if (cccd_handle_ == 0U &&
-      !discoverCccdHandleSync(value_handle_, end_handle_, &cccd_handle_)) {
+      !retryCentralProcedure([&]() {
+        return discoverCccdHandleSync(value_handle_, end_handle_, &cccd_handle_);
+      })) {
     return false;
   }
   const uint8_t cccdValue[2] = {0x01U, 0x00U};
-  return writeHandleSync(cccd_handle_, cccdValue, sizeof(cccdValue), true);
+  return retryCentralProcedure([&]() {
+    return writeHandleSync(cccd_handle_, cccdValue, sizeof(cccdValue), true);
+  });
 }
 
 bool BLEClientCharacteristic::disableNotify() {
@@ -3218,11 +3288,15 @@ bool BLEClientCharacteristic::disableNotify() {
     return false;
   }
   if (cccd_handle_ == 0U &&
-      !discoverCccdHandleSync(value_handle_, end_handle_, &cccd_handle_)) {
+      !retryCentralProcedure([&]() {
+        return discoverCccdHandleSync(value_handle_, end_handle_, &cccd_handle_);
+      })) {
     return false;
   }
   const uint8_t cccdValue[2] = {0x00U, 0x00U};
-  return writeHandleSync(cccd_handle_, cccdValue, sizeof(cccdValue), true);
+  return retryCentralProcedure([&]() {
+    return writeHandleSync(cccd_handle_, cccdValue, sizeof(cccdValue), true);
+  });
 }
 
 void BLEClientCharacteristic::handleNotify(const uint8_t* data, uint16_t len) {
@@ -3278,7 +3352,9 @@ bool BLEClientService::discover(uint16_t conn_hdl) {
   if ((!begun_ && !begin()) || !centralReady(conn_hdl)) {
     return false;
   }
-  if (!discoverServiceRangeSync(uuid, &start_handle_, &end_handle_)) {
+  if (!retryCentralProcedure([&]() {
+        return discoverServiceRangeSync(uuid, &start_handle_, &end_handle_);
+      })) {
     return false;
   }
   conn_handle_ = conn_hdl;

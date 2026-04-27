@@ -2,7 +2,7 @@
 
 Status baseline:
 
-- Repository release line: `0.6.47`
+- Repository release line: `0.6.48`
 - Audit date: `2026-04-26`
 - Silicon source: `Nordic_nRF54L15_Datasheet_v1.0.pdf`
 - Core source: `hardware/nrf54l15clean/nrf54l15clean`
