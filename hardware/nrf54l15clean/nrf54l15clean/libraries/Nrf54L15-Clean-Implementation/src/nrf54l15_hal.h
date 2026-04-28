@@ -220,6 +220,18 @@ class Timer {
 
 class Pwm {
  public:
+  enum class DecoderLoad : uint8_t {
+    kCommon = nrf54l15::pwm::DECODER_LOAD_COMMON,
+    kGrouped = nrf54l15::pwm::DECODER_LOAD_GROUPED,
+    kIndividual = nrf54l15::pwm::DECODER_LOAD_INDIVIDUAL,
+    kWaveForm = nrf54l15::pwm::DECODER_LOAD_WAVEFORM,
+  };
+
+  enum class DecoderMode : uint8_t {
+    kRefreshCount = nrf54l15::pwm::DECODER_MODE_REFRESHCOUNT,
+    kNextStep = nrf54l15::pwm::DECODER_MODE_NEXTSTEP,
+  };
+
   struct ChannelConfig {
     Pin outPin;
     uint16_t dutyPermille;
@@ -228,9 +240,19 @@ class Pwm {
 
   explicit Pwm(uint32_t base = nrf54l15::PWM20_BASE);
   static constexpr uint8_t maxChannelCount() { return 4U; }
+  static uint16_t encodeSequenceWordTicks(uint16_t pulseTicks,
+                                          bool activeHigh = true);
+  static uint16_t encodeSequenceWordPermille(uint16_t dutyPermille,
+                                             uint16_t countertop,
+                                             bool activeHigh = true);
 
   bool beginChannels(const ChannelConfig* channels, uint8_t channelCount,
                      uint32_t frequencyHz = 1000UL);
+  bool beginRaw(const Pin* outPins, uint8_t channelCount,
+                uint32_t frequencyHz = 1000UL,
+                DecoderLoad load = DecoderLoad::kIndividual,
+                DecoderMode mode = DecoderMode::kRefreshCount,
+                uint8_t idleOutMask = 0U);
 
   bool beginSingle(const Pin& outPin,
                    uint32_t frequencyHz = 1000UL,
@@ -239,17 +261,30 @@ class Pwm {
   bool setDutyPermille(uint16_t dutyPermille);
   bool setDutyPermille(uint8_t channel, uint16_t dutyPermille);
   bool setActiveHigh(uint8_t channel, bool activeHigh);
+  bool setSequence(uint8_t sequence, const uint16_t* words, uint16_t wordCount,
+                   uint32_t refreshCount = 0U, uint32_t endDelay = 0U);
+  bool setLoopCount(uint16_t loopCount);
   bool setFrequency(uint32_t frequencyHz);
+  bool triggerNextStep();
   bool channelConfigured(uint8_t channel) const;
   uint8_t configuredChannelMask() const;
+  uint16_t countertop() const;
+  uint8_t prescaler() const;
+  DecoderLoad decoderLoad() const;
+  DecoderMode decoderMode() const;
 
   bool start(uint8_t sequence = 0, uint32_t spinLimit = 2000000UL);
   bool stop(uint32_t spinLimit = 2000000UL);
   void end();
 
   bool pollPeriodEnd(bool clearEvent = true);
+  bool pollSequenceEnd(uint8_t sequence, bool clearEvent = true);
+  bool pollLoopsDone(bool clearEvent = true);
+  bool pollRamUnderflow(bool clearEvent = true);
 
  private:
+  bool applyOutputRouting(const Pin* outPins, uint8_t channelCount,
+                         uint8_t idleOutMask);
   bool configureClockAndTop(uint32_t frequencyHz);
   void disconnectAllOutputs();
   void updateSequenceWords();
@@ -261,6 +296,10 @@ class Pwm {
   uint8_t activeHighMask_;
   uint16_t countertop_;
   uint8_t prescaler_;
+  uint8_t sequenceConfiguredMask_;
+  DecoderLoad loadMode_;
+  DecoderMode mode_;
+  bool highLevelManaged_;
   bool configured_;
   alignas(4) uint16_t sequence_[4];
 };
