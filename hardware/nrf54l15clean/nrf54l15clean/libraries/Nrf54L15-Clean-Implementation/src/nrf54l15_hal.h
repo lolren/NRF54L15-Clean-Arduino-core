@@ -232,6 +232,11 @@ class Pwm {
     kNextStep = nrf54l15::pwm::DECODER_MODE_NEXTSTEP,
   };
 
+  enum class CounterMode : uint8_t {
+    kUp = nrf54l15::pwm::MODE_UP,
+    kUpDown = nrf54l15::pwm::MODE_UPDOWN,
+  };
+
   struct ChannelConfig {
     Pin outPin;
     uint16_t dutyPermille;
@@ -240,6 +245,7 @@ class Pwm {
 
   explicit Pwm(uint32_t base = nrf54l15::PWM20_BASE);
   static constexpr uint8_t maxChannelCount() { return 4U; }
+  static uint16_t clampCountertop(uint16_t countertop);
   static uint16_t encodeSequenceWordTicks(uint16_t pulseTicks,
                                           bool activeHigh = true);
   static uint16_t encodeSequenceWordPermille(uint16_t dutyPermille,
@@ -252,7 +258,8 @@ class Pwm {
                 uint32_t frequencyHz = 1000UL,
                 DecoderLoad load = DecoderLoad::kIndividual,
                 DecoderMode mode = DecoderMode::kRefreshCount,
-                uint8_t idleOutMask = 0U);
+                uint8_t idleOutMask = 0U,
+                CounterMode counterMode = CounterMode::kUp);
 
   bool beginSingle(const Pin& outPin,
                    uint32_t frequencyHz = 1000UL,
@@ -264,6 +271,7 @@ class Pwm {
   bool setSequence(uint8_t sequence, const uint16_t* words, uint16_t wordCount,
                    uint32_t refreshCount = 0U, uint32_t endDelay = 0U);
   bool setLoopCount(uint16_t loopCount);
+  bool setCounterMode(CounterMode mode);
   bool setFrequency(uint32_t frequencyHz);
   bool triggerNextStep();
   bool channelConfigured(uint8_t channel) const;
@@ -272,6 +280,7 @@ class Pwm {
   uint8_t prescaler() const;
   DecoderLoad decoderLoad() const;
   DecoderMode decoderMode() const;
+  CounterMode counterMode() const;
 
   bool start(uint8_t sequence = 0, uint32_t spinLimit = 2000000UL);
   bool stop(uint32_t spinLimit = 2000000UL);
@@ -299,6 +308,7 @@ class Pwm {
   uint8_t sequenceConfiguredMask_;
   DecoderLoad loadMode_;
   DecoderMode mode_;
+  CounterMode counterMode_;
   bool highLevelManaged_;
   bool configured_;
   alignas(4) uint16_t sequence_[4];

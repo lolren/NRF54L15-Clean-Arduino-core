@@ -970,6 +970,16 @@ void Timer::service() {
   }
 }
 
+uint16_t Pwm::clampCountertop(uint16_t countertop) {
+  if (countertop < 3U) {
+    return 3U;
+  }
+  if (countertop > 0x7FFFU) {
+    return 0x7FFFU;
+  }
+  return countertop;
+}
+
 uint16_t Pwm::encodeSequenceWordTicks(uint16_t pulseTicks, bool activeHigh) {
   if (pulseTicks > 0x7FFFU) {
     pulseTicks = 0x7FFFU;
@@ -985,9 +995,7 @@ uint16_t Pwm::encodeSequenceWordTicks(uint16_t pulseTicks, bool activeHigh) {
 uint16_t Pwm::encodeSequenceWordPermille(uint16_t dutyPermille,
                                          uint16_t countertop,
                                          bool activeHigh) {
-  if (countertop < 3U) {
-    countertop = 3U;
-  }
+  countertop = clampCountertop(countertop);
   if (dutyPermille > 1000U) {
     dutyPermille = 1000U;
   }
@@ -1012,12 +1020,14 @@ Pwm::Pwm(uint32_t base)
       sequenceConfiguredMask_(0U),
       loadMode_(DecoderLoad::kIndividual),
       mode_(DecoderMode::kRefreshCount),
+      counterMode_(CounterMode::kUp),
       highLevelManaged_(false),
       configured_(false),
       sequence_{0, 0, 0, 0} {}
 
 bool Pwm::beginRaw(const Pin* outPins, uint8_t channelCount, uint32_t frequencyHz,
-                   DecoderLoad load, DecoderMode mode, uint8_t idleOutMask) {
+                   DecoderLoad load, DecoderMode mode, uint8_t idleOutMask,
+                   CounterMode counterMode) {
   if (outPins == nullptr || channelCount == 0U || channelCount > maxChannelCount()) {
     return false;
   }
@@ -1033,7 +1043,8 @@ bool Pwm::beginRaw(const Pin* outPins, uint8_t channelCount, uint32_t frequencyH
 
   reg32(base_ + pwm::ENABLE) = pwm::ENABLE_DISABLED;
   reg32(base_ + pwm::SHORTS) = 0;
-  reg32(base_ + pwm::MODE) = pwm::MODE_UP;
+  counterMode_ = counterMode;
+  reg32(base_ + pwm::MODE) = static_cast<uint32_t>(counterMode);
 
   if (!applyOutputRouting(outPins, channelCount, idleOutMask)) {
     configuredMask_ = 0U;
@@ -1105,7 +1116,7 @@ bool Pwm::beginChannels(const ChannelConfig* channels, uint8_t channelCount,
   }
 
   if (!beginRaw(outPins, channelCount, frequencyHz, DecoderLoad::kIndividual,
-                DecoderMode::kRefreshCount, idleOutMask)) {
+                DecoderMode::kRefreshCount, idleOutMask, CounterMode::kUp)) {
     return false;
   }
 
@@ -1210,6 +1221,16 @@ bool Pwm::setLoopCount(uint16_t loopCount) {
   return true;
 }
 
+bool Pwm::setCounterMode(CounterMode mode) {
+  if (!configured_) {
+    return false;
+  }
+
+  reg32(base_ + pwm::MODE) = static_cast<uint32_t>(mode);
+  counterMode_ = mode;
+  return true;
+}
+
 bool Pwm::setFrequency(uint32_t frequencyHz) {
   if (!configured_) {
     return false;
@@ -1244,6 +1265,7 @@ uint16_t Pwm::countertop() const { return countertop_; }
 uint8_t Pwm::prescaler() const { return prescaler_; }
 Pwm::DecoderLoad Pwm::decoderLoad() const { return loadMode_; }
 Pwm::DecoderMode Pwm::decoderMode() const { return mode_; }
+Pwm::CounterMode Pwm::counterMode() const { return counterMode_; }
 
 bool Pwm::start(uint8_t sequence, uint32_t spinLimit) {
   if (!configured_ || sequence > 1U ||
@@ -1300,6 +1322,7 @@ void Pwm::end() {
   sequenceConfiguredMask_ = 0U;
   loadMode_ = DecoderLoad::kIndividual;
   mode_ = DecoderMode::kRefreshCount;
+  counterMode_ = CounterMode::kUp;
   highLevelManaged_ = false;
   for (uint8_t ch = 0U; ch < maxChannelCount(); ++ch) {
     outPins_[ch] = kPinDisconnected;
@@ -1395,8 +1418,16 @@ bool Pwm::applyOutputRouting(const Pin* outPins, uint8_t channelCount,
 }
 
 bool Pwm::configureClockAndTop(uint32_t frequencyHz) {
+  uint32_t effectiveFrequencyHz = frequencyHz;
+  if (counterMode_ == CounterMode::kUpDown) {
+    if (effectiveFrequencyHz > (0xFFFFFFFFUL / 2UL)) {
+      return false;
+    }
+    effectiveFrequencyHz *= 2UL;
+  }
+
   PwmTiming timing{};
-  if (!computePwmTiming(frequencyHz, &timing)) {
+  if (!computePwmTiming(effectiveFrequencyHz, &timing)) {
     return false;
   }
 
@@ -1420,9 +1451,7 @@ void Pwm::updateSequenceWords() {
     return;
   }
 
-  if (countertop_ < 3U) {
-    countertop_ = 3U;
-  }
+  countertop_ = clampCountertop(countertop_);
 
   for (uint8_t ch = 0U; ch < maxChannelCount(); ++ch) {
     if (!channelConfigured(ch)) {
