@@ -26,7 +26,7 @@ Implemented blocks:
 
 - `ClockControl`, `Gpio`, `Spim`, `Spis`, `Twim`, `Uarte`
 - `Saadc`, `Timer`, `Pwm`, `Gpiote`
-- `PowerManager`, `Grtc`, `TempSensor`, `Watchdog`, `Pdm`
+- `PowerManager`, `Grtc`, `GrtcPwm` (experimental fixed-pin wrapper), `TempSensor`, `Watchdog`, `Pdm`
 - `Dppic`, `Egu`
 - `Kmu`, `CracenIkg`, `Tampc`
 - `BleRadio` (custom peripheral LL + minimal central/initiate + ATT/GATT subset)

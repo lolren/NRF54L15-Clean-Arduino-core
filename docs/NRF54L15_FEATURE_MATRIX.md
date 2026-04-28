@@ -2,8 +2,8 @@
 
 Status baseline:
 
-- Repository release line: `0.6.48`
-- Audit date: `2026-04-26`
+- Repository release line: `0.6.52`
+- Audit date: `2026-04-28`
 - Silicon source: `Nordic_nRF54L15_Datasheet_v1.0.pdf`
 - Core source: `hardware/nrf54l15clean/nrf54l15clean`
 - Main library source: `hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation`
@@ -52,8 +52,9 @@ intentionally silicon-oriented, not just Arduino API oriented.
 | [x] | `GPIO` | GPIO ports | Done | Arduino digital IO plus HAL GPIO wrapper exist. |
 | [x] | `GPIOTE` | `GPIOTE20`, `GPIOTE30` | Mostly done | Interrupts and DPPI task/event paths exist; secondary-instance example coverage can be expanded. |
 | [x] | `GRTC` | `GRTC` | Mostly done | `millis`, `micros`, low-power delays, compare channels, System OFF wake, and HAL wrapper exist. |
-| [ ] | `GRTC PWM` | Single low-frequency PWM | Missing | Datasheet exposes one 8-bit non-inverted GRTC PWM that can run in System OFF; no Arduino/HAL wrapper yet. |
+| [ ] | `GRTC PWM` | Single low-frequency PWM | Experimental / partial | HAL wrapper and fixed-pin examples exist, but current validation on the attached XIAO Sense boards only confirms duty-write latch events after updates. Public continuous-waveform claim still needs exposed-pin scope/logic-analyzer validation on a board where `P0.03` is not shared with the IMU/Wire1 route. |
 | [x] | `I2S` | `I2S20` | Done | TX/RX/duplex wrappers and examples exist. |
+| [ ] | `I3C` | Not present on nRF54L15 | Not silicon | This SoC exposes `TWIM/TWIS` I2C controller/target blocks, not an I3C peripheral block. |
 | [x] | `LPCOMP` | `LPCOMP` | Done | Threshold, millivolt threshold, System ON/OFF wake, and meter-pulse examples exist. |
 | [ ] | `NFCT` | `NFCT` | Missing / low priority | Headers exist, but no NFC tag API. Current XIAO/HOLYIOT boards do not provide a useful antenna path. |
 | [x] | `PDM` | `PDM20`, `PDM21` | Partial | Wrapper and microphone examples exist; validate/expose `PDM21` explicitly before marking full. |
@@ -255,7 +256,6 @@ above are checked.
 - Full Zigbee stack / certification-level Zigbee.
 - Full Bluetooth controller / full BLE 6 conformance.
 - Production Bluetooth Channel Sounding interoperability.
-- Inverter-safe complementary PWM with dead time.
 - NFCT support.
 - sQSPI support.
 - CRACEN PKE / ECDSA support.

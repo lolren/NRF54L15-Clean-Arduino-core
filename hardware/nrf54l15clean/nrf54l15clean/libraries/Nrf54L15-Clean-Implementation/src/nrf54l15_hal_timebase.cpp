@@ -21,6 +21,7 @@ static constexpr uint8_t kSystemOffWakeLeadLfclk = 4U;
 static constexpr uint32_t kLfclkFrequencyHz = 32768UL;
 static constexpr uint32_t kMaxCcLatchWaitUs = 77UL;
 static constexpr uint32_t kSystemOffMinimumLatencyGuardUs = 1000UL;
+static constexpr Pin kGrtcPwmPin{0U, 3U};
 #if defined(ARDUINO_XIAO_NRF54L15)
 static constexpr uint32_t kZephyrAllowedCcMaskXiao = 0x67UL;
 static constexpr uint8_t kZephyrMainCcChannelXiao = 1U;
@@ -123,6 +124,67 @@ uint32_t clampSystemOffDelayUs(uint32_t delayUs) {
     return minimumLatencyUs;
   }
   return delayUs;
+}
+
+bool grtcPwmPinMatches(const Pin& pin) {
+  return isConnected(pin) && pin.port == kGrtcPwmPin.port &&
+         pin.pin == kGrtcPwmPin.pin;
+}
+
+bool resolveArduinoPin(uint8_t arduinoPin, Pin* outPin) {
+  if (outPin == nullptr) {
+    return false;
+  }
+
+  uint8_t port = 0U;
+  uint8_t pin = 0U;
+  if (!pinToPortPin(arduinoPin, &port, &pin)) {
+    return false;
+  }
+
+  outPin->port = port;
+  outPin->pin = pin;
+  return true;
+}
+
+bool grtcPwmReady(const NRF_GRTC_Type* grtc) {
+  if (grtc == nullptr) {
+    return false;
+  }
+
+  return ((grtc->STATUS.PWM & GRTC_STATUS_PWM_READY_Msk) >>
+          GRTC_STATUS_PWM_READY_Pos) == GRTC_STATUS_PWM_READY_Ready;
+}
+
+bool waitForGrtcPwmReady(const NRF_GRTC_Type* grtc, uint32_t spinLimit) {
+  while (spinLimit-- > 0U) {
+    if (grtcPwmReady(grtc)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void configureGrtcClockAndMode(NRF_GRTC_Type* grtc, GrtcClockSource clockSource) {
+  if (grtc == nullptr) {
+    return;
+  }
+
+  if (clockSource == GrtcClockSource::kLfxo) {
+    ensureLfxoRunning();
+  }
+
+  uint32_t clkcfg = grtc->CLKCFG;
+  clkcfg &= ~GRTC_CLKCFG_CLKSEL_Msk;
+  clkcfg |= (static_cast<uint32_t>(clockSource) << GRTC_CLKCFG_CLKSEL_Pos) &
+            GRTC_CLKCFG_CLKSEL_Msk;
+  grtc->CLKCFG = clkcfg;
+
+  uint32_t mode = grtc->MODE;
+  mode &= ~(GRTC_MODE_AUTOEN_Msk | GRTC_MODE_SYSCOUNTEREN_Msk);
+  mode |= (GRTC_MODE_AUTOEN_Default << GRTC_MODE_AUTOEN_Pos);
+  mode |= (GRTC_MODE_SYSCOUNTEREN_Enabled << GRTC_MODE_SYSCOUNTEREN_Pos);
+  grtc->MODE = mode;
 }
 
 void configureSystemOffWakeSleep(NRF_GRTC_Type* grtc) {
@@ -524,21 +586,7 @@ Grtc::Grtc(uint32_t base, uint8_t compareChannelCount)
 }
 
 bool Grtc::begin(GrtcClockSource clockSource) {
-  if (clockSource == GrtcClockSource::kLfxo) {
-    ensureLfxoRunning();
-  }
-
-  uint32_t clkcfg = grtc_->CLKCFG;
-  clkcfg &= ~GRTC_CLKCFG_CLKSEL_Msk;
-  clkcfg |= (static_cast<uint32_t>(clockSource) << GRTC_CLKCFG_CLKSEL_Pos) &
-            GRTC_CLKCFG_CLKSEL_Msk;
-  grtc_->CLKCFG = clkcfg;
-
-  uint32_t mode = grtc_->MODE;
-  mode &= ~(GRTC_MODE_AUTOEN_Msk | GRTC_MODE_SYSCOUNTEREN_Msk);
-  mode |= (GRTC_MODE_AUTOEN_Default << GRTC_MODE_AUTOEN_Pos);
-  mode |= (GRTC_MODE_SYSCOUNTEREN_Enabled << GRTC_MODE_SYSCOUNTEREN_Pos);
-  grtc_->MODE = mode;
+  configureGrtcClockAndMode(grtc_, clockSource);
 
   for (uint8_t ch = 0; ch < compareChannelCount_; ++ch) {
     grtc_->CC[ch].CCEN = (GRTC_CC_CCEN_ACTIVE_Disable << GRTC_CC_CCEN_ACTIVE_Pos);
@@ -665,6 +713,227 @@ bool Grtc::clearCompareEvent(uint8_t channel) {
   }
   grtc_->EVENTS_COMPARE[channel] = 0U;
   return true;
+}
+
+GrtcPwm::GrtcPwm(uint32_t base)
+    : grtc_(reinterpret_cast<NRF_GRTC_Type*>(static_cast<uintptr_t>(base))),
+      outPin_(kPinDisconnected),
+      savedPinCnf_(0U),
+      savedOutputHigh_(false),
+      pinOwned_(false),
+      running_(false),
+      duty8_(0U) {}
+
+bool GrtcPwm::supportsPin(const Pin& outPin) {
+  return grtcPwmPinMatches(outPin);
+}
+
+bool GrtcPwm::supportsArduinoPin(uint8_t arduinoPin) {
+  Pin pin = kPinDisconnected;
+  return resolveArduinoPin(arduinoPin, &pin) && supportsPin(pin);
+}
+
+bool GrtcPwm::takePin(const Pin& outPin) {
+  if (!supportsPin(outPin)) {
+    return false;
+  }
+
+  const uint32_t base = gpioBaseForPort(outPin.port);
+  if (base == 0U) {
+    return false;
+  }
+
+  if (pinOwned_) {
+    const bool samePin = outPin_.port == outPin.port && outPin_.pin == outPin.pin;
+    if (!samePin) {
+      restorePin();
+    } else {
+      return true;
+    }
+  }
+
+  const uint32_t pinBit = (1UL << outPin.pin);
+  const uint32_t cnfAddr =
+      base + gpio::PIN_CNF + (static_cast<uint32_t>(outPin.pin) * sizeof(uint32_t));
+  savedPinCnf_ = reg32(cnfAddr);
+  savedOutputHigh_ = (reg32(base + gpio::OUT) & pinBit) != 0U;
+
+  uint32_t cnf = savedPinCnf_;
+  cnf &= ~(GPIO_PIN_CNF_DIR_Msk | GPIO_PIN_CNF_INPUT_Msk |
+           GPIO_PIN_CNF_PULL_Msk | GPIO_PIN_CNF_CTRLSEL_Msk);
+  cnf |= (GPIO_PIN_CNF_DIR_Output << GPIO_PIN_CNF_DIR_Pos);
+  cnf |= GPIO_PIN_CNF_INPUT_Disconnect;
+  cnf |= GPIO_PIN_CNF_PULL_Disabled;
+  cnf |= ((GPIO_PIN_CNF_CTRLSEL_GRTC << GPIO_PIN_CNF_CTRLSEL_Pos) &
+          GPIO_PIN_CNF_CTRLSEL_Msk);
+
+  reg32(base + gpio::DIRSET) = pinBit;
+  reg32(cnfAddr) = cnf;
+
+  outPin_ = outPin;
+  pinOwned_ = true;
+  return true;
+}
+
+void GrtcPwm::restorePin() {
+  if (!pinOwned_) {
+    return;
+  }
+
+  const uint32_t base = gpioBaseForPort(outPin_.port);
+  if (base != 0U) {
+    const uint32_t pinBit = (1UL << outPin_.pin);
+    if (savedOutputHigh_) {
+      reg32(base + gpio::OUTSET) = pinBit;
+    } else {
+      reg32(base + gpio::OUTCLR) = pinBit;
+    }
+    const uint32_t cnfAddr = base + gpio::PIN_CNF +
+                             (static_cast<uint32_t>(outPin_.pin) *
+                              sizeof(uint32_t));
+    reg32(cnfAddr) = savedPinCnf_;
+  }
+
+  outPin_ = kPinDisconnected;
+  pinOwned_ = false;
+}
+
+bool GrtcPwm::waitReady(uint32_t spinLimit) const {
+  return waitForGrtcPwmReady(grtc_, spinLimit);
+}
+
+bool GrtcPwm::begin(const Pin& outPin, uint8_t duty8,
+                    GrtcClockSource clockSource, bool startNow,
+                    uint32_t spinLimit) {
+  end(spinLimit);
+
+  if (!takePin(outPin)) {
+    return false;
+  }
+
+  configureGrtcClockAndMode(grtc_, clockSource);
+  grtc_->TASKS_START = GRTC_TASKS_START_TASKS_START_Trigger;
+  __asm volatile("dsb 0xF" ::: "memory");
+  grtc_->EVENTS_PWMPERIODEND = 0U;
+  grtc_->EVENTS_PWMREADY = 0U;
+
+  duty8_ = duty8;
+  running_ = false;
+  if (!setDuty8(duty8)) {
+    restorePin();
+    return false;
+  }
+
+  if (!startNow) {
+    return true;
+  }
+
+  if (!start(spinLimit)) {
+    restorePin();
+    return false;
+  }
+  return true;
+}
+
+bool GrtcPwm::beginArduinoPin(uint8_t arduinoPin, uint8_t duty8,
+                              GrtcClockSource clockSource, bool startNow,
+                              uint32_t spinLimit) {
+  Pin pin = kPinDisconnected;
+  if (!resolveArduinoPin(arduinoPin, &pin)) {
+    return false;
+  }
+  return begin(pin, duty8, clockSource, startNow, spinLimit);
+}
+
+bool GrtcPwm::setDuty8(uint8_t duty8) {
+  if (!pinOwned_) {
+    return false;
+  }
+
+  grtc_->PWMCONFIG =
+      (static_cast<uint32_t>(duty8) << GRTC_PWMCONFIG_COMPAREVALUE_Pos) &
+      GRTC_PWMCONFIG_COMPAREVALUE_Msk;
+  duty8_ = duty8;
+  return true;
+}
+
+bool GrtcPwm::setDutyPermille(uint16_t dutyPermille) {
+  if (dutyPermille > 1000U) {
+    dutyPermille = 1000U;
+  }
+
+  const uint32_t scaled = static_cast<uint32_t>(dutyPermille) * 255UL + 500UL;
+  return setDuty8(static_cast<uint8_t>(scaled / 1000UL));
+}
+
+uint8_t GrtcPwm::duty8() const { return duty8_; }
+
+bool GrtcPwm::ready() const { return grtcPwmReady(grtc_); }
+
+void GrtcPwm::enablePeriodEndEvent(bool enable) {
+  if (enable) {
+    grtc_->EVTENSET = GRTC_EVTENSET_PWMPERIODEND_Msk;
+  } else {
+    grtc_->EVTENCLR = GRTC_EVTENCLR_PWMPERIODEND_Msk;
+  }
+  grtc_->EVENTS_PWMPERIODEND = 0U;
+}
+
+bool GrtcPwm::start(uint32_t spinLimit) {
+  if (!pinOwned_ || !waitReady(spinLimit)) {
+    return false;
+  }
+
+  grtc_->EVENTS_PWMREADY = 0U;
+  grtc_->TASKS_PWMSTART = GRTC_TASKS_PWMSTART_TASKS_PWMSTART_Trigger;
+  __asm volatile("dsb 0xF" ::: "memory");
+  if (!waitReady(spinLimit)) {
+    return false;
+  }
+
+  running_ = true;
+  return true;
+}
+
+bool GrtcPwm::stop(uint32_t spinLimit) {
+  if (!pinOwned_) {
+    return false;
+  }
+  if (!running_) {
+    return waitReady(spinLimit);
+  }
+  if (!waitReady(spinLimit)) {
+    return false;
+  }
+
+  grtc_->EVENTS_PWMREADY = 0U;
+  grtc_->TASKS_PWMSTOP = GRTC_TASKS_PWMSTOP_TASKS_PWMSTOP_Trigger;
+  __asm volatile("dsb 0xF" ::: "memory");
+  if (!waitReady(spinLimit)) {
+    return false;
+  }
+
+  running_ = false;
+  return true;
+}
+
+bool GrtcPwm::pollPeriodEnd(bool clearEventFlag) {
+  const bool fired = (grtc_->EVENTS_PWMPERIODEND != 0U);
+  if (fired && clearEventFlag) {
+    grtc_->EVENTS_PWMPERIODEND = 0U;
+  }
+  return fired;
+}
+
+void GrtcPwm::end(uint32_t spinLimit) {
+  if (!pinOwned_) {
+    return;
+  }
+
+  enablePeriodEndEvent(false);
+  (void)stop(spinLimit);
+  restorePin();
+  running_ = false;
 }
 
 }  // namespace xiao_nrf54l15

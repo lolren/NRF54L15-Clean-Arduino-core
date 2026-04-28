@@ -1054,6 +1054,48 @@ class Grtc {
   uint8_t compareChannelCount_;
 };
 
+class GrtcPwm {
+ public:
+  explicit GrtcPwm(uint32_t base = nrf54l15::GRTC_BASE);
+
+  static constexpr uint32_t frequencyHz() { return 32768UL / 256UL; }
+
+  static bool supportsPin(const Pin& outPin);
+  static bool supportsArduinoPin(uint8_t arduinoPin);
+
+  bool begin(const Pin& outPin, uint8_t duty8 = 128U,
+             GrtcClockSource clockSource = GrtcClockSource::kSystemLfclk,
+             bool startNow = true, uint32_t spinLimit = 600000UL);
+  bool beginArduinoPin(uint8_t arduinoPin, uint8_t duty8 = 128U,
+                       GrtcClockSource clockSource =
+                           GrtcClockSource::kSystemLfclk,
+                       bool startNow = true, uint32_t spinLimit = 600000UL);
+
+  bool setDuty8(uint8_t duty8);
+  bool setDutyPermille(uint16_t dutyPermille);
+  uint8_t duty8() const;
+
+  bool ready() const;
+  void enablePeriodEndEvent(bool enable = true);
+  bool start(uint32_t spinLimit = 600000UL);
+  bool stop(uint32_t spinLimit = 600000UL);
+  bool pollPeriodEnd(bool clearEvent = true);
+  void end(uint32_t spinLimit = 600000UL);
+
+ private:
+  bool takePin(const Pin& outPin);
+  void restorePin();
+  bool waitReady(uint32_t spinLimit) const;
+
+  NRF_GRTC_Type* grtc_;
+  Pin outPin_;
+  uint32_t savedPinCnf_;
+  bool savedOutputHigh_;
+  bool pinOwned_;
+  bool running_;
+  uint8_t duty8_;
+};
+
 class TempSensor {
  public:
   explicit TempSensor(uint32_t base = nrf54l15::TEMP_BASE);

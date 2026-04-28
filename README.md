@@ -56,6 +56,12 @@ This table is the GitHub-facing summary. The full tick-box checklist lives in
 | VPR | Partial | Boot/control, shared transport, controller-service host, ticker/CRC/FNV offloads, lifecycle probes, CS service scaffolding. | General softperipheral runtime, sQSPI, and production controller-service ownership. |
 | Security / tamper | Partial | CRACEN RNG, AAR, ECB, CCM, KMU wrapper, TAMPC wrapper, OpenThread symmetric crypto paths. | CRACEN PKE/ECDSA, production KMU provisioning flow, and external tamper reset characterization. |
 
+Two-wire note:
+
+- `I3C` is not an nRF54L15 silicon block.
+- The chip exposes `TWIM/TWIS` I2C controller/target peripherals instead.
+- Not all peripherals are fully implemented yet; the open items are tracked in the full matrix.
+
 ## Install
 
 Boards Manager URL for current releases:
@@ -595,6 +601,7 @@ Recommended library examples:
 - Visible timed system off check: `LowPowerDelaySystemOff`
 - Idle CPU scaling: `LowPowerIdleCpuScaling`
 - Continuous low-power BLE: `BleAdvertiserLowestPowerContinuous`, `BleAdvertiserRfSwitchDutyCycle`
+- Experimental GRTC fixed-pin PWM bring-up: `GrtcPwmFixedPin`, `LowPowerGrtcPwmSystemOff`
 - Burst/beacon BLE: `BleAdvertiserPhoneBeacon15s`, `BleAdvertiserHybridDutyCycle`, `BleAdvertiserBurstSystemOff`
 - Zigbee: `ZigbeeCoordinator`, `ZigbeeRouter`, `ZigbeeEndDevice`, `ZigbeePingInitiator`, `ZigbeePongResponder`, `ZigbeeStackCodecSelfTest`, `ZigbeeHaCoordinatorJoinDemo`, `ZigbeeHaOnOffLightStatic`, `ZigbeeHaOnOffLightJoinable`, `ZigbeeHaDimmableLightStatic`, `ZigbeeHaDimmableLightJoinable`, `ZigbeeHaTemperatureSensorStatic`, `ZigbeeHaTemperatureSensorJoinable`
 - BLE diagnostics: `BleAdvertiserProbe`, `BlePassiveScanner`, `BleActiveScanner`, `BleExtendedScanner`, `BleExtendedActiveScanner`, `BleLegacyAdv31Plus31`, `BleExtendedAdv251`, `BleExtendedScannableAdv251`, `BleExtendedAdv499`, `BleExtendedAdv995`, `BleConnectionPeripheral`, `BleGattBasicPeripheral`
