@@ -767,9 +767,10 @@ Default peripheral routes and board-control helpers are documented in [Board Ref
 - `analogWrite()` PWM is available on `D0-D15`.
 - `D0-D5` are the real hardware PWM pins. They are `P1` pins and use the shared `PWM20` path for normal `analogWrite()`.
 - `analogWriteFrequency(hz)` sets the shared/default PWM frequency. On `D0-D5` it changes the shared `PWM20` frequency, and on `D6-D15` it changes the default software-PWM period.
-- `analogWritePinFrequency(pin, hz)` is the per-pin API for `D0-D5`. It uses `TIMER20-24 + GPIOTE20 + DPPIC20`, so sketches can give individual `D0-D5` pins different PWM frequencies.
+- `analogWritePinFrequency(pin, hz)` is the per-pin API for `D0-D5`. It uses `TIMER20-24 + TIMER10 + GPIOTE20 + DPPIC20 + DPPIC10`, so sketches can give individual `D0-D5` pins different PWM frequencies.
 - The shared `PWM20` path can drive up to 4 hardware channels at once.
-- The per-pin timer-backed path groups pins by frequency. All six `D0-D5` pins stay on hardware when they share a frequency group, and the backend can keep up to 5 distinct custom-frequency groups active at once before any extra group falls back to software PWM.
+- The per-pin timer-backed path keeps all six `D0-D5` pins on hardware, even when all six use different frequencies.
+- When several `D0-D5` pins share one frequency, the backend packs them into timer groups. A single 16 MHz timer group can carry up to 5 pins at that frequency; the 6th same-frequency pin is placed on a second hardware group instead of falling back to software PWM.
 - `D6-D15` are software PWM only.
 - `LED_BUILTIN` is still not an `analogWrite()` PWM pin on this board.
 
@@ -779,6 +780,25 @@ Practical rule:
 - use `analogWritePinFrequency(pin, hz)` before `analogWrite(...)` when you want a different frequency on a specific `D0-D5` pin
 - use `D6-D15` only when software PWM is acceptable
 - start with `AnalogWriteHardwarePwmFade` for the shared `PWM20` path and `AnalogWritePerPinFrequency` for the timer-backed per-pin path
+
+Sizing rule for `analogWritePinFrequency()` on `D0-D5`:
+
+- Use `effective_duty_steps ~= min(2^writeResolution, timer_clock / pwm_hz)` as the planning rule.
+- For the guaranteed rule-of-thumb, use `timer_clock = 16 MHz`. One slot can be backed by `TIMER10` at `32 MHz`, but `16 MHz` is the safe baseline for sketches and docs.
+- If `timer_clock / pwm_hz` is smaller than your requested duty resolution, duty still works, but adjacent `analogWrite()` codes will collapse onto the same pulse width.
+
+Recommended combinations for the timer-backed `D0-D5` path:
+
+| `analogWriteResolution()` | Keep `analogWritePinFrequency()` at or below | Why |
+| --- | --- | --- |
+| `8` bits | `62.5 kHz` | full `0..255` duty-code coverage on the 16 MHz timer groups |
+| `10` bits | `15.6 kHz` | full `0..1023` duty-code coverage |
+| `12` bits | `3.9 kHz` | full `0..4095` duty-code coverage |
+| `14` bits | `976 Hz` | full `0..16383` duty-code coverage |
+
+Validated stress point:
+
+- `Examples -> Peripherals -> PwmDatasheetStress` was rechecked on two boards with `D0-D5`, `1 kHz`, `8-bit`, and `1 ms` monotonic duty sweeps.
 
 Useful board-control calls:
 
