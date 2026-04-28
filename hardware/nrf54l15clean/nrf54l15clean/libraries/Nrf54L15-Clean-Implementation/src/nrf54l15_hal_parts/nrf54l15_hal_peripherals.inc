@@ -1330,7 +1330,7 @@ volatile uint32_t* Pwm::subscribeSequenceStartConfigRegister(uint8_t sequence) c
   }
   return reinterpret_cast<volatile uint32_t*>(static_cast<uintptr_t>(
       base_ + pwm::SUBSCRIBE_DMA_SEQ_START +
-      (static_cast<uint32_t>(sequence) * pwm::REGISTER_STRIDE)));
+      (pwmTaskSeqStartOffset(sequence) - pwm::TASKS_DMA_SEQ_START)));
 }
 
 bool Pwm::start(uint8_t sequence, uint32_t spinLimit) {
