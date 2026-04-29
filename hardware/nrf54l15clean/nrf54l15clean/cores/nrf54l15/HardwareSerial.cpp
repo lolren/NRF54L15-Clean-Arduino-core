@@ -182,6 +182,10 @@ static uint32_t serial_byte_timeout_us(unsigned long baud, uint32_t bytes) {
     return (per_byte * bytes) + margin;
 }
 
+static uint32_t bridge_settle_delay_us(unsigned long baud) {
+    return serial_byte_timeout_us(baud, 3U);
+}
+
 static constexpr uint32_t kUarteRxInterruptMask =
     UARTE_INTENCLR_ERROR_Msk |
     UARTE_INTENCLR_RXTO_Msk |
@@ -771,7 +775,7 @@ size_t HardwareSerial::writeBlocking(const uint8_t* buffer, size_t size) {
     }
     if (usesPins(PIN_SAMD11_RX, PIN_SAMD11_TX)) {
         wait_event_timeout_us(base, U_EVENTS_TXSTOPPED, 2000UL);
-        delayMicroseconds(serial_byte_timeout_us(_baud, 3U));
+        delayMicroseconds(bridge_settle_delay_us(_baud));
     }
     return size;
 }
@@ -879,6 +883,9 @@ int HardwareSerial::available() {
 int HardwareSerial::availableForWrite() {
     serviceTxDma();
     if (usesBridgePins()) {
+        if (_baud <= 9600UL) {
+            return static_cast<int>(kTxDmaChunkSize);
+        }
         return static_cast<int>(kBridgePendingSize - _bridgePendingCount);
     }
     const uint32_t primask = __get_PRIMASK();
@@ -924,7 +931,9 @@ void HardwareSerial::flush() {
     }
 
     if (usesBridgePins()) {
-        flushBridgePending(true);
+        if (_baud > 9600UL) {
+            flushBridgePending(true);
+        }
         return;
     }
 
@@ -959,6 +968,44 @@ size_t HardwareSerial::write(const uint8_t* buffer, size_t size) {
     }
 
     if (usesBridgePins()) {
+        if (_baud <= 9600UL) {
+            // The XIAO SAMD11 bridge can stay visually garbled on repeated
+            // serial-monitor reopen at low baud when writes are coalesced too
+            // aggressively. Push each Print call as its own blocking burst and
+            // leave a short idle window between bursts so the bridge can
+            // recover cleanly.
+            size_t written = 0U;
+            while (written < size) {
+                size_t chunk = size - written;
+                if (chunk > kTxDmaChunkSize) {
+                    chunk = kTxDmaChunkSize;
+                }
+
+                if (_dataMask == 0xFFU) {
+                    memcpy(_txBuffer, buffer + written, chunk);
+                } else {
+                    for (size_t i = 0U; i < chunk; ++i) {
+                        _txBuffer[i] =
+                            static_cast<uint8_t>(buffer[written + i] & _dataMask);
+                    }
+                }
+
+                const size_t sent = writeBlocking(_txBuffer, chunk);
+                written += sent;
+                if (sent != chunk) {
+                    break;
+                }
+
+                delay(3);
+
+                if (written < size) {
+                    yield();
+                }
+            }
+
+            return written;
+        }
+
         size_t written = 0U;
         while (written < size) {
             flushBridgePending(false);
