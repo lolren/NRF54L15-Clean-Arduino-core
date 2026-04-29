@@ -708,6 +708,36 @@ void HardwareSerial::serviceTxDma() {
     __set_PRIMASK(primask);
 }
 
+size_t HardwareSerial::writeBlocking(const uint8_t* buffer, size_t size) {
+    if (!_configured || _uart == nullptr) {
+        return 0U;
+    }
+    if (buffer == nullptr || size == 0U) {
+        return 0U;
+    }
+    if (_constlatOwned) {
+        NRF_POWER->TASKS_CONSTLAT = POWER_TASKS_CONSTLAT_TASKS_CONSTLAT_Trigger;
+    }
+
+    const uintptr_t base = reinterpret_cast<uintptr_t>(_uart);
+    reg32(base + U_EVENTS_DMA_TX_END) = 0U;
+    reg32(base + U_EVENTS_DMA_TX_BUSERROR) = 0U;
+    reg32(base + U_EVENTS_TXSTOPPED) = 0U;
+    reg32(base + U_DMA_TX_PTR) = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(buffer));
+    reg32(base + U_DMA_TX_MAXCNT) = static_cast<uint32_t>(size);
+    reg32(base + U_TASKS_DMA_TX_START) = UARTE_TASKS_DMA_TX_START_START_Trigger;
+
+    const uint32_t timeoutUs =
+        serial_byte_timeout_us(_baud, static_cast<uint32_t>(size)) + 1000UL;
+    if (!wait_event_timeout_us(base, U_EVENTS_TXSTOPPED, timeoutUs)) {
+        reg32(base + U_TASKS_DMA_TX_STOP) = UARTE_TASKS_DMA_TX_STOP_STOP_Trigger;
+        wait_event_timeout_us(base, U_EVENTS_TXSTOPPED, 2000UL);
+        return 0U;
+    }
+
+    return size;
+}
+
 void HardwareSerial::handleIrq() {
     if (_uart != nullptr) {
         processTxDmaEvents(reinterpret_cast<uintptr_t>(_uart));
@@ -839,8 +869,38 @@ size_t HardwareSerial::write(const uint8_t* buffer, size_t size) {
         return 0U;
     }
 
-    size_t written = 0U;
+    if (usesPins(PIN_SAMD11_RX, PIN_SAMD11_TX)) {
+        size_t written = 0U;
+        while (written < size) {
+            size_t chunk = size - written;
+            if (chunk > kTxDmaChunkSize) {
+                chunk = kTxDmaChunkSize;
+            }
+
+            if (_dataMask == 0xFFU) {
+                memcpy(_txBuffer, buffer + written, chunk);
+            } else {
+                for (size_t i = 0U; i < chunk; ++i) {
+                    _txBuffer[i] = static_cast<uint8_t>(buffer[written + i] & _dataMask);
+                }
+            }
+
+            const size_t sent = writeBlocking(_txBuffer, chunk);
+            written += sent;
+            if (sent != chunk) {
+                break;
+            }
+
+            if (written < size) {
+                yield();
+            }
+        }
+
+        return written;
+    }
+
     const uintptr_t base = reinterpret_cast<uintptr_t>(_uart);
+    size_t written = 0U;
     while (written < size) {
         serviceTxDma();
 
