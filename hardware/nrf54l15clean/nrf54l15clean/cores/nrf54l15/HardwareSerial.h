@@ -59,6 +59,8 @@ private:
     void processTxDmaEvents(uintptr_t base);
     void startNextTxDmaLocked(uintptr_t base);
     size_t writeBlocking(const uint8_t* buffer, size_t size);
+    bool usesBridgePins() const;
+    void flushBridgePending(bool forceNow);
     void commitRxBytes(const uint8_t* data, uint32_t amount);
     void flushPartialRxDma(uintptr_t base);
     bool usesP2Pins() const;
@@ -72,6 +74,7 @@ private:
     static constexpr uint16_t kRxDmaChunkSize = 512U;
     static constexpr uint16_t kTxRingSize = 512U;
     static constexpr uint8_t kTxDmaChunkSize = 64U;
+    static constexpr uint8_t kBridgePendingSize = 8U;
 
     NRF_UARTE_Type* _uart;
     uint8_t _txPin;
@@ -100,6 +103,9 @@ private:
     volatile uint8_t _txDmaCount;
     volatile bool _txDmaRunning;
     alignas(4) uint8_t _txBuffer[kTxDmaChunkSize];
+    alignas(4) uint8_t _bridgePending[kBridgePendingSize];
+    volatile uint8_t _bridgePendingCount;
+    volatile uint32_t _bridgePendingLastWriteUs;
     uint8_t _dataMask;
 
     volatile uint8_t _txRing[kTxRingSize];

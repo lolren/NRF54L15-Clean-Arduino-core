@@ -8,6 +8,7 @@ namespace {
 
 static constexpr uint32_t kPselDisconnected = 0xFFFFFFFFUL;
 static constexpr uint32_t kRxFrameTimeoutBits = 32UL;
+static constexpr uint32_t kBridgeCoalesceUs = 1500UL;
 
 // UARTE register offsets.
 static constexpr uint32_t U_TASKS_FLUSHRX      = 0x01CUL;
@@ -192,6 +193,21 @@ static constexpr uint32_t kUarteTxInterruptMask =
     UARTE_INTENCLR_DMATXBUSERROR_Msk;
 static uint8_t g_ownedConstlatUsers = 0U;
 
+static bool buffer_has_line_boundary(const uint8_t* buffer, size_t size) {
+    if (buffer == nullptr) {
+        return false;
+    }
+
+    for (size_t i = 0U; i < size; ++i) {
+        if (buffer[i] == static_cast<uint8_t>('\n') ||
+            buffer[i] == static_cast<uint8_t>('\r')) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 extern "C" void nrf54l15_wire_handle_shared_irq(const NRF_TWIM_Type* twim);
 
 static bool uart_try_irqn_for_instance(const NRF_UARTE_Type* uart, IRQn_Type* irqn) {
@@ -308,6 +324,9 @@ HardwareSerial::HardwareSerial(NRF_UARTE_Type* uart, uint8_t txPin, uint8_t rxPi
       _txDmaCount(0U),
       _txDmaRunning(false),
       _txBuffer{0},
+      _bridgePending{0},
+      _bridgePendingCount(0U),
+      _bridgePendingLastWriteUs(0U),
       _dataMask(0xFFU),
       _txRing{0},
       _rxRing{0} {}
@@ -387,6 +406,8 @@ void HardwareSerial::begin(unsigned long baud, uint16_t config) {
     _txCount = 0U;
     _txDmaCount = 0U;
     _txDmaRunning = false;
+    _bridgePendingCount = 0U;
+    _bridgePendingLastWriteUs = 0U;
     _configured = true;
 
     IRQn_Type irqn = Reset_IRQn;
@@ -402,7 +423,7 @@ void HardwareSerial::begin(unsigned long baud, uint16_t config) {
     reg32(base + U_EVENTS_DMA_TX_BUSERROR) = 0U;
     reg32(base + U_EVENTS_TXSTOPPED) = 0U;
     reg32(base + U_INTENCLR) = kUarteTxInterruptMask;
-    if (!usesPins(PIN_SAMD11_RX, PIN_SAMD11_TX)) {
+    if (!usesBridgePins()) {
         reg32(base + U_INTENSET) = kUarteTxInterruptMask;
     }
     startRxDma();
@@ -413,6 +434,7 @@ void HardwareSerial::end() {
         return;
     }
 
+    flushBridgePending(true);
     stopRxDma();
 
     const uintptr_t base = reinterpret_cast<uintptr_t>(_uart);
@@ -445,6 +467,8 @@ void HardwareSerial::end() {
     _txCount = 0U;
     _txDmaCount = 0U;
     _txDmaRunning = false;
+    _bridgePendingCount = 0U;
+    _bridgePendingLastWriteUs = 0U;
     releaseConstlatIfNeeded();
 }
 
@@ -703,7 +727,8 @@ void HardwareSerial::serviceTxDma() {
         return;
     }
 
-    if (usesPins(PIN_SAMD11_RX, PIN_SAMD11_TX)) {
+    if (usesBridgePins()) {
+        flushBridgePending(false);
         return;
     }
 
@@ -744,11 +769,58 @@ size_t HardwareSerial::writeBlocking(const uint8_t* buffer, size_t size) {
         reg32(base + U_EVENTS_DMA_TX_BUSERROR) = 0U;
         return 0U;
     }
+    if (usesPins(PIN_SAMD11_RX, PIN_SAMD11_TX)) {
+        wait_event_timeout_us(base, U_EVENTS_TXSTOPPED, 2000UL);
+        delayMicroseconds(serial_byte_timeout_us(_baud, 3U));
+    }
     return size;
 }
 
+bool HardwareSerial::usesBridgePins() const {
+    return usesPins(PIN_SAMD11_RX, PIN_SAMD11_TX);
+}
+
+void HardwareSerial::flushBridgePending(bool forceNow) {
+    if (!_configured || _uart == nullptr || !usesBridgePins()) {
+        return;
+    }
+
+    while (_bridgePendingCount != 0U) {
+        const uint8_t pendingCount = _bridgePendingCount;
+        const bool timedOut =
+            static_cast<unsigned long>(micros() - _bridgePendingLastWriteUs) >= kBridgeCoalesceUs;
+        if (!forceNow && !timedOut && pendingCount < kBridgePendingSize) {
+            return;
+        }
+
+        size_t chunk = pendingCount;
+        if (chunk > kTxDmaChunkSize) {
+            chunk = kTxDmaChunkSize;
+        }
+        if (chunk == 0U) {
+            return;
+        }
+
+        const size_t sent = writeBlocking(_bridgePending, chunk);
+        if (sent == 0U) {
+            return;
+        }
+
+        const uint8_t remaining = static_cast<uint8_t>(pendingCount - sent);
+        if (remaining != 0U) {
+            memmove(_bridgePending, _bridgePending + sent, remaining);
+        }
+        _bridgePendingCount = remaining;
+
+        if (!forceNow) {
+            _bridgePendingLastWriteUs = micros();
+            return;
+        }
+    }
+}
+
 void HardwareSerial::handleIrq() {
-    if (_uart != nullptr && !usesPins(PIN_SAMD11_RX, PIN_SAMD11_TX)) {
+    if (_uart != nullptr && !usesBridgePins()) {
         processTxDmaEvents(reinterpret_cast<uintptr_t>(_uart));
     }
     processRxDmaEvents();
@@ -806,6 +878,9 @@ int HardwareSerial::available() {
 
 int HardwareSerial::availableForWrite() {
     serviceTxDma();
+    if (usesBridgePins()) {
+        return static_cast<int>(kBridgePendingSize - _bridgePendingCount);
+    }
     const uint32_t primask = __get_PRIMASK();
     __disable_irq();
     const int free = static_cast<int>(kTxRingSize - _txCount);
@@ -848,6 +923,11 @@ void HardwareSerial::flush() {
         return;
     }
 
+    if (usesBridgePins()) {
+        flushBridgePending(true);
+        return;
+    }
+
     while (true) {
         serviceTxDma();
 
@@ -878,30 +958,45 @@ size_t HardwareSerial::write(const uint8_t* buffer, size_t size) {
         return 0U;
     }
 
-    if (usesPins(PIN_SAMD11_RX, PIN_SAMD11_TX)) {
+    if (usesBridgePins()) {
         size_t written = 0U;
         while (written < size) {
-            size_t chunk = size - written;
-            if (chunk > kTxDmaChunkSize) {
-                chunk = kTxDmaChunkSize;
-            }
+            flushBridgePending(false);
 
-            if (_dataMask == 0xFFU) {
-                memcpy(_txBuffer, buffer + written, chunk);
-            } else {
-                for (size_t i = 0U; i < chunk; ++i) {
-                    _txBuffer[i] = static_cast<uint8_t>(buffer[written + i] & _dataMask);
+            if (_bridgePendingCount >= kBridgePendingSize) {
+                flushBridgePending(true);
+                if (_bridgePendingCount >= kBridgePendingSize) {
+                    break;
                 }
             }
 
-            const size_t sent = writeBlocking(_txBuffer, chunk);
-            written += sent;
-            if (sent != chunk) {
+            size_t chunk = size - written;
+            const size_t free =
+                static_cast<size_t>(kBridgePendingSize - _bridgePendingCount);
+            if (chunk > free) {
+                chunk = free;
+            }
+            if (chunk == 0U) {
                 break;
             }
 
-            if (written < size) {
-                yield();
+            const size_t pendingOffset = _bridgePendingCount;
+            if (_dataMask == 0xFFU) {
+                memcpy(_bridgePending + pendingOffset, buffer + written, chunk);
+            } else {
+                for (size_t i = 0U; i < chunk; ++i) {
+                    _bridgePending[pendingOffset + i] =
+                        static_cast<uint8_t>(buffer[written + i] & _dataMask);
+                }
+            }
+
+            _bridgePendingCount = static_cast<uint8_t>(pendingOffset + chunk);
+            _bridgePendingLastWriteUs = micros();
+            written += chunk;
+
+            if (buffer_has_line_boundary(buffer + written - chunk, chunk) ||
+                _bridgePendingCount >= kBridgePendingSize) {
+                flushBridgePending(true);
             }
         }
 

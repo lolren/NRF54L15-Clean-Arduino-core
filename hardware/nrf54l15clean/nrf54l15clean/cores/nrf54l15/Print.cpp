@@ -21,6 +21,22 @@ size_t printHexByte(Print &printer, uint8_t value)
     return printer.write(text, sizeof(text));
 }
 
+char *appendUnsignedDecimal(char *out, unsigned long value)
+{
+    char digits[11];
+    size_t count = 0U;
+    do {
+        digits[count++] = static_cast<char>('0' + (value % 10UL));
+        value /= 10UL;
+    } while (value != 0UL);
+
+    while (count > 0U) {
+        *out++ = digits[--count];
+    }
+
+    return out;
+}
+
 }  // namespace
 
 size_t Print::write(const uint8_t *buffer, size_t size)
@@ -306,9 +322,10 @@ size_t Print::printFloat(double value, uint8_t digits)
         digits = 9U;
     }
 
-    size_t count = 0;
+    char buffer[24];
+    char *out = buffer;
     if (value < 0.0) {
-        count += write('-');
+        *out++ = '-';
         value = -value;
     }
 
@@ -321,18 +338,19 @@ size_t Print::printFloat(double value, uint8_t digits)
     const unsigned long intPart = static_cast<unsigned long>(value);
     double remainder = value - static_cast<double>(intPart);
 
-    count += printNumber(intPart, 10);
+    out = appendUnsignedDecimal(out, intPart);
 
     if (digits > 0U) {
-        count += write('.');
+        *out++ = '.';
     }
 
     while (digits-- > 0U) {
         remainder *= 10.0;
         const uint8_t toPrint = static_cast<uint8_t>(remainder);
-        count += printNumber(toPrint, 10);
+        *out++ = static_cast<char>('0' + toPrint);
         remainder -= static_cast<double>(toPrint);
     }
 
-    return count;
+    return write(reinterpret_cast<const uint8_t *>(buffer),
+                 static_cast<size_t>(out - buffer));
 }
