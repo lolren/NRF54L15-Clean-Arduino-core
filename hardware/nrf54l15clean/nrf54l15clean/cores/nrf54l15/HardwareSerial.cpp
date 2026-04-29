@@ -183,7 +183,17 @@ static uint32_t serial_byte_timeout_us(unsigned long baud, uint32_t bytes) {
 }
 
 static uint32_t bridge_settle_delay_us(unsigned long baud) {
-    return serial_byte_timeout_us(baud, 3U);
+    if (baud <= 9600UL) {
+        return 500U;
+    }
+    return 0U;
+}
+
+static uint32_t bridge_txstopped_timeout_us(unsigned long baud) {
+    if (baud <= 9600UL) {
+        return 100U;
+    }
+    return 2000U;
 }
 
 static constexpr uint32_t kUarteRxInterruptMask =
@@ -774,7 +784,8 @@ size_t HardwareSerial::writeBlocking(const uint8_t* buffer, size_t size) {
         return 0U;
     }
     if (usesPins(PIN_SAMD11_RX, PIN_SAMD11_TX)) {
-        wait_event_timeout_us(base, U_EVENTS_TXSTOPPED, 2000UL);
+        wait_event_timeout_us(base, U_EVENTS_TXSTOPPED,
+                              bridge_txstopped_timeout_us(_baud));
         delayMicroseconds(bridge_settle_delay_us(_baud));
     }
     return size;
@@ -995,8 +1006,6 @@ size_t HardwareSerial::write(const uint8_t* buffer, size_t size) {
                 if (sent != chunk) {
                     break;
                 }
-
-                delay(3);
 
                 if (written < size) {
                     yield();
