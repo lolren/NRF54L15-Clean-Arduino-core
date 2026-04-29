@@ -87,8 +87,22 @@ g_pfnVectors:
     .word   SPIM22_IRQHandler
     /* IRQ 201: EGU20. */
     .word   EGU20_IRQHandler
-    /* IRQ 202..217 */
-    .rept 16
+    /* IRQ 202..206 */
+    .rept 5
+    .word   Default_Handler
+    .endr
+    /* IRQ 207 */
+    .word   Default_Handler
+    /* IRQ 208..209 */
+    .rept 2
+    .word   Default_Handler
+    .endr
+    /* IRQ 210..212: PWM20..PWM22 */
+    .word   PWM20_IRQHandler
+    .word   PWM21_IRQHandler
+    .word   PWM22_IRQHandler
+    /* IRQ 213..217 */
+    .rept 5
     .word   Default_Handler
     .endr
     /* IRQ 218..219: GPIOTE20 IRQ lines used by attachInterrupt(). */

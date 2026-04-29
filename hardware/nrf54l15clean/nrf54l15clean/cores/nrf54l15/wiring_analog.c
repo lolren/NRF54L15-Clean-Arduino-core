@@ -6,6 +6,10 @@
 #include "cmsis.h"
 #include <nrf54l15.h>
 
+extern void nrf54l15_pwm20_irq_service(void) __attribute__((weak));
+extern void nrf54l15_pwm21_irq_service(void) __attribute__((weak));
+extern void nrf54l15_pwm22_irq_service(void) __attribute__((weak));
+
 // SAADC register offsets and fields (single-channel helper for Arduino API).
 #define SAADC_TASKS_START          0x000UL
 #define SAADC_TASKS_SAMPLE         0x004UL
@@ -651,6 +655,27 @@ static uint32_t timer_pwm_dppi_channel_mask32(uint8_t channel)
         return 0UL;
     }
     return (1UL << channel);
+}
+
+void PWM20_IRQHandler(void)
+{
+    if (nrf54l15_pwm20_irq_service != 0) {
+        nrf54l15_pwm20_irq_service();
+    }
+}
+
+void PWM21_IRQHandler(void)
+{
+    if (nrf54l15_pwm21_irq_service != 0) {
+        nrf54l15_pwm21_irq_service();
+    }
+}
+
+void PWM22_IRQHandler(void)
+{
+    if (nrf54l15_pwm22_irq_service != 0) {
+        nrf54l15_pwm22_irq_service();
+    }
 }
 
 static void timer_pwm_ppib1121_disconnect(uint8_t channel)

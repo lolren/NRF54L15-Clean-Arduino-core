@@ -13,6 +13,39 @@ namespace xiao_nrf54l15 {
 class I2sTx;
 class I2sRx;
 class I2sDuplex;
+class Pwm;
+}
+
+namespace {
+xiao_nrf54l15::Pwm* g_activePwm20 = nullptr;
+xiao_nrf54l15::Pwm* g_activePwm21 = nullptr;
+xiao_nrf54l15::Pwm* g_activePwm22 = nullptr;
+
+xiao_nrf54l15::Pwm** pwmActiveSlotForBase(uint32_t base) {
+  switch (base) {
+    case nrf54l15::PWM20_BASE:
+      return &g_activePwm20;
+    case nrf54l15::PWM21_BASE:
+      return &g_activePwm21;
+    case nrf54l15::PWM22_BASE:
+      return &g_activePwm22;
+    default:
+      return nullptr;
+  }
+}
+
+int32_t pwmIrqNumberForBase(uint32_t base) {
+  switch (base) {
+    case nrf54l15::PWM20_BASE:
+      return static_cast<int32_t>(PWM20_IRQn);
+    case nrf54l15::PWM21_BASE:
+      return static_cast<int32_t>(PWM21_IRQn);
+    case nrf54l15::PWM22_BASE:
+      return static_cast<int32_t>(PWM22_IRQn);
+    default:
+      return -1;
+  }
+}
 }
 
 
@@ -38,3 +71,21 @@ class I2sDuplex;
 #include "nrf54l15_hal_parts/nrf54l15_hal_ble_att_l2cap.inc"
 #include "nrf54l15_hal_parts/nrf54l15_hal_ble_ll_security.inc"
 #include "nrf54l15_hal_parts/nrf54l15_hal_ble_radio_tail.inc"
+
+extern "C" void nrf54l15_pwm20_irq_service(void) {
+  if (g_activePwm20 != nullptr) {
+    g_activePwm20->onIrq();
+  }
+}
+
+extern "C" void nrf54l15_pwm21_irq_service(void) {
+  if (g_activePwm21 != nullptr) {
+    g_activePwm21->onIrq();
+  }
+}
+
+extern "C" void nrf54l15_pwm22_irq_service(void) {
+  if (g_activePwm22 != nullptr) {
+    g_activePwm22->onIrq();
+  }
+}

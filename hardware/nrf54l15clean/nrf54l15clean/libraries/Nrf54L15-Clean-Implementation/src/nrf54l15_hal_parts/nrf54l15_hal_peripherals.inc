@@ -1035,6 +1035,8 @@ Pwm::Pwm(uint32_t base)
       counterMode_(CounterMode::kUp),
       highLevelManaged_(false),
       configured_(false),
+      irqCallback_(nullptr),
+      irqContext_(nullptr),
       sequence_{0, 0, 0, 0} {}
 
 bool Pwm::beginRaw(const Pin* outPins, uint8_t channelCount, uint32_t frequencyHz,
@@ -1345,6 +1347,107 @@ volatile uint32_t* Pwm::subscribeSequenceStartConfigRegister(uint8_t sequence) c
       (pwmTaskSeqStartOffset(sequence) - pwm::TASKS_DMA_SEQ_START)));
 }
 
+uint32_t Pwm::pendingInterruptMask() const {
+  if (!configured_) {
+    return 0U;
+  }
+  return reg32(base_ + pwm::INTPEND) & irqSupportedMask();
+}
+
+void Pwm::clearInterruptEvents(uint32_t mask) {
+  if (!configured_) {
+    return;
+  }
+
+  mask &= irqSupportedMask();
+  if ((mask & kIrqStopped) != 0U) {
+    clearEvent(base_, pwm::EVENTS_STOPPED);
+  }
+  if ((mask & irqSequenceStartedMask(0U)) != 0U) {
+    clearEvent(base_, pwmEventSeqStartedOffset(0U));
+  }
+  if ((mask & irqSequenceStartedMask(1U)) != 0U) {
+    clearEvent(base_, pwmEventSeqStartedOffset(1U));
+  }
+  if ((mask & irqSequenceEndMask(0U)) != 0U) {
+    clearEvent(base_, pwmEventSeqEndOffset(0U));
+  }
+  if ((mask & irqSequenceEndMask(1U)) != 0U) {
+    clearEvent(base_, pwmEventSeqEndOffset(1U));
+  }
+  if ((mask & kIrqPeriodEnd) != 0U) {
+    clearEvent(base_, pwm::EVENTS_PWMPERIODEND);
+  }
+  if ((mask & kIrqLoopsDone) != 0U) {
+    clearEvent(base_, pwm::EVENTS_LOOPSDONE);
+  }
+  if ((mask & kIrqRamUnderflow) != 0U) {
+    clearEvent(base_, pwm::EVENTS_RAMUNDERFLOW);
+  }
+  for (uint8_t ch = 0U; ch < maxChannelCount(); ++ch) {
+    if ((mask & irqCompareMatchMask(ch)) == 0U) {
+      continue;
+    }
+    clearEvent(base_, pwm::EVENTS_COMPAREMATCH +
+                          (static_cast<uint32_t>(ch) * pwm::REGISTER_STRIDE));
+  }
+}
+
+void Pwm::enableInterruptMask(uint32_t mask, bool enable) {
+  if (!configured_) {
+    return;
+  }
+
+  mask &= irqSupportedMask();
+  if (mask == 0U) {
+    return;
+  }
+
+  if (enable) {
+    clearInterruptEvents(mask);
+  }
+  reg32(base_ + (enable ? pwm::INTENSET : pwm::INTENCLR)) = mask;
+}
+
+void Pwm::setIrqCallback(IrqCallback callback, void* context) {
+  irqCallback_ = callback;
+  irqContext_ = context;
+}
+
+bool Pwm::makeActive(uint8_t irqPriority) {
+  if (!configured_) {
+    return false;
+  }
+
+  Pwm** slot = pwmActiveSlotForBase(base_);
+  const int32_t irqNumber = pwmIrqNumberForBase(base_);
+  if (slot == nullptr || irqNumber < 0) {
+    return false;
+  }
+
+  *slot = this;
+  NVIC_ClearPendingIRQ(static_cast<IRQn_Type>(irqNumber));
+  NVIC_SetPriority(static_cast<IRQn_Type>(irqNumber), irqPriority);
+  NVIC_EnableIRQ(static_cast<IRQn_Type>(irqNumber));
+  return true;
+}
+
+void Pwm::onIrq() {
+  if (!configured_) {
+    return;
+  }
+
+  const uint32_t pending = pendingInterruptMask();
+  if (pending == 0U) {
+    return;
+  }
+
+  clearInterruptEvents(pending);
+  if (irqCallback_ != nullptr) {
+    irqCallback_(pending, irqContext_);
+  }
+}
+
 bool Pwm::start(uint8_t sequence, uint32_t spinLimit) {
   if (!configured_ || sequence > 1U ||
       (sequenceConfiguredMask_ & static_cast<uint8_t>(1U << sequence)) == 0U) {
@@ -1391,7 +1494,19 @@ bool Pwm::stop(uint32_t spinLimit) {
 
 void Pwm::end() {
   if (configured_) {
+    enableInterruptMask(irqSupportedMask(), false);
+    clearInterruptEvents(irqSupportedMask());
     stop(200000UL);
+  }
+
+  Pwm** slot = pwmActiveSlotForBase(base_);
+  const int32_t irqNumber = pwmIrqNumberForBase(base_);
+  if (slot != nullptr && *slot == this) {
+    *slot = nullptr;
+    if (irqNumber >= 0) {
+      NVIC_DisableIRQ(static_cast<IRQn_Type>(irqNumber));
+      NVIC_ClearPendingIRQ(static_cast<IRQn_Type>(irqNumber));
+    }
   }
 
   reg32(base_ + pwm::ENABLE) = pwm::ENABLE_DISABLED;

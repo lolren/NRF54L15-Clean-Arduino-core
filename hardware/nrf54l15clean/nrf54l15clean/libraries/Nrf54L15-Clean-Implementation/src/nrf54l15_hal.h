@@ -222,6 +222,21 @@ class Timer {
 
 class Pwm {
  public:
+  enum IrqEvent : uint32_t {
+    kIrqStopped = (1UL << 1U),
+    kIrqSequenceStarted0 = (1UL << 2U),
+    kIrqSequenceStarted1 = (1UL << 3U),
+    kIrqSequenceEnd0 = (1UL << 4U),
+    kIrqSequenceEnd1 = (1UL << 5U),
+    kIrqPeriodEnd = (1UL << 6U),
+    kIrqLoopsDone = (1UL << 7U),
+    kIrqRamUnderflow = (1UL << 8U),
+    kIrqCompareMatch0 = (1UL << 15U),
+    kIrqCompareMatch1 = (1UL << 16U),
+    kIrqCompareMatch2 = (1UL << 17U),
+    kIrqCompareMatch3 = (1UL << 18U),
+  };
+
   enum class DecoderLoad : uint8_t {
     kCommon = nrf54l15::pwm::DECODER_LOAD_COMMON,
     kGrouped = nrf54l15::pwm::DECODER_LOAD_GROUPED,
@@ -245,6 +260,8 @@ class Pwm {
     bool activeHigh;
   };
 
+  using IrqCallback = void (*)(uint32_t irqMask, void* context);
+
   explicit Pwm(uint32_t base = nrf54l15::PWM20_BASE);
   static constexpr uint8_t maxChannelCount() { return 4U; }
   static uint16_t clampCountertop(uint16_t countertop);
@@ -253,6 +270,21 @@ class Pwm {
   static uint16_t encodeSequenceWordPermille(uint16_t dutyPermille,
                                              uint16_t countertop,
                                              bool activeHigh = true);
+  static constexpr uint32_t irqSequenceStartedMask(uint8_t sequence) {
+    return (sequence < 2U) ? (1UL << (2U + sequence)) : 0U;
+  }
+  static constexpr uint32_t irqSequenceEndMask(uint8_t sequence) {
+    return (sequence < 2U) ? (1UL << (4U + sequence)) : 0U;
+  }
+  static constexpr uint32_t irqCompareMatchMask(uint8_t channel) {
+    return (channel < maxChannelCount()) ? (1UL << (15U + channel)) : 0U;
+  }
+  static constexpr uint32_t irqSupportedMask() {
+    return kIrqStopped | kIrqSequenceStarted0 | kIrqSequenceStarted1 |
+           kIrqSequenceEnd0 | kIrqSequenceEnd1 | kIrqPeriodEnd |
+           kIrqLoopsDone | kIrqRamUnderflow | kIrqCompareMatch0 |
+           kIrqCompareMatch1 | kIrqCompareMatch2 | kIrqCompareMatch3;
+  }
 
   bool beginChannels(const ChannelConfig* channels, uint8_t channelCount,
                      uint32_t frequencyHz = 1000UL);
@@ -293,6 +325,12 @@ class Pwm {
   volatile uint32_t* subscribeStopConfigRegister() const;
   volatile uint32_t* subscribeNextStepConfigRegister() const;
   volatile uint32_t* subscribeSequenceStartConfigRegister(uint8_t sequence) const;
+  uint32_t pendingInterruptMask() const;
+  void clearInterruptEvents(uint32_t mask);
+  void enableInterruptMask(uint32_t mask, bool enable = true);
+  void setIrqCallback(IrqCallback callback, void* context = nullptr);
+  bool makeActive(uint8_t irqPriority = 3U);
+  void onIrq();
 
   bool start(uint8_t sequence = 0, uint32_t spinLimit = 2000000UL);
   bool stop(uint32_t spinLimit = 2000000UL);
@@ -330,6 +368,8 @@ class Pwm {
   CounterMode counterMode_;
   bool highLevelManaged_;
   bool configured_;
+  IrqCallback irqCallback_;
+  void* irqContext_;
   alignas(4) uint16_t sequence_[4];
 };
 
