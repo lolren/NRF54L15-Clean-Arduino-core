@@ -773,6 +773,7 @@ Default peripheral routes and board-control helpers are documented in [Board Ref
 
 - `analogWrite()` PWM is available on `D0-D15`.
 - `D0-D5` are the real hardware PWM pins. They are `P1` pins and use the shared `PWM20` path for normal `analogWrite()`.
+- `D6-D9` are on `P2` on the XIAO header, so they do not route to the nRF54L15 `PWM20/21/22` peripheral outputs on this package. They use the fallback path instead of the direct PWM peripheral.
 - `analogWriteFrequency(hz)` sets the shared/default PWM frequency. On `D0-D5` it changes the shared `PWM20` frequency, and on `D6-D15` it changes the default software-PWM period.
 - `analogWritePinFrequency(pin, hz)` is the per-pin API for `D0-D5`. It uses `TIMER20-24 + TIMER10 + GPIOTE20 + DPPIC20 + DPPIC10`, so sketches can give individual `D0-D5` pins different PWM frequencies.
 - The shared `PWM20` path can drive up to 4 hardware channels at once.

@@ -363,10 +363,10 @@ static const pwm_pin_desc_t k_pwm_pin_desc[ANALOG_PWM_PIN_COUNT] = {
     {PIN_D3, 0U, ANALOG_PWM_NO_CHANNEL},
     {PIN_D4, 1U, ANALOG_PWM_NO_CHANNEL},
     {PIN_D5, 1U, ANALOG_PWM_NO_CHANNEL},
-    {PIN_D6, 1U, ANALOG_PWM_NO_CHANNEL},
-    {PIN_D7, 1U, ANALOG_PWM_NO_CHANNEL},
-    {PIN_D8, 2U, ANALOG_PWM_NO_CHANNEL},
-    {PIN_D9, 2U, ANALOG_PWM_NO_CHANNEL},
+    {PIN_D6, ANALOG_PWM_INSTANCE_NONE, ANALOG_PWM_NO_CHANNEL},
+    {PIN_D7, ANALOG_PWM_INSTANCE_NONE, ANALOG_PWM_NO_CHANNEL},
+    {PIN_D8, ANALOG_PWM_INSTANCE_NONE, ANALOG_PWM_NO_CHANNEL},
+    {PIN_D9, ANALOG_PWM_INSTANCE_NONE, ANALOG_PWM_NO_CHANNEL},
     {PIN_D10, ANALOG_PWM_INSTANCE_NONE, ANALOG_PWM_NO_CHANNEL},
     {PIN_D11, ANALOG_PWM_INSTANCE_NONE, ANALOG_PWM_NO_CHANNEL},
     {PIN_D12, ANALOG_PWM_INSTANCE_NONE, ANALOG_PWM_NO_CHANNEL},
@@ -1401,10 +1401,20 @@ static uint8_t pwm_pin_index_for_pin(uint8_t pin, uint8_t* index)
 
 static uint8_t pwm_pin_can_use_hardware(uint8_t index)
 {
+    uint8_t port = 0U;
+    uint8_t pin = 0U;
     if (index >= ANALOG_PWM_PIN_COUNT) {
         return 0U;
     }
-    return (k_pwm_pin_desc[index].pwm_instance < ANALOG_PWM_INSTANCES) ? 1U : 0U;
+    if (k_pwm_pin_desc[index].pwm_instance >= ANALOG_PWM_INSTANCES) {
+        return 0U;
+    }
+    if (resolve_pwm_gpio(index, &port, &pin) == 0U) {
+        return 0U;
+    }
+    (void)pin;
+    // nRF54L15 PWM20/21/22 route to GPIO port P1 on this package/board path.
+    return (port == 1U) ? 1U : 0U;
 }
 
 static uint8_t pwm_pin_uses_software(uint8_t index)
