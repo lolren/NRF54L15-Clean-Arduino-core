@@ -48,7 +48,10 @@ size_t Print::write(const uint8_t *buffer, size_t size)
 
     for (size_t i = 0; i < size; ++i) {
         written += write(buffer[i]);
-        yield();
+        // yield() removed: per-byte yielding breaks UARTE DMA timing on
+        // platforms with interrupt-driven serial + cooperative schedulers
+        // (e.g., nRF54L15 BLE).  The derived-class write() already handles
+        // necessary preemption (e.g., ring-buffer full in HardwareSerial).
     }
 
     return written;

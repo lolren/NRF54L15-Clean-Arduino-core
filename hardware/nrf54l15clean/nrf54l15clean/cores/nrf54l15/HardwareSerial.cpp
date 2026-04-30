@@ -102,23 +102,54 @@ static void configure_pin_input(uint8_t port, uint8_t pin, bool pullup) {
     gpio->PIN_CNF[pin] = cnf;
 }
 
+/* Convert baud rate to the nearest supported UARTE BAUDRATE preset.
+ * The nRF54L15 UARTE exposes fixed presets rather than a general divisor.
+ */
 static uint32_t baud_to_reg(unsigned long baud) {
-    if (baud >= 1000000UL) {
-        return UARTE_BAUDRATE_BAUDRATE_Baud1M;
+    if (baud <= 0U) {
+        return UARTE_BAUDRATE_BAUDRATE_Baud9600;
     }
-    if (baud >= 115200UL) {
-        return UARTE_BAUDRATE_BAUDRATE_Baud115200;
+
+    struct BaudPreset {
+        unsigned long baud;
+        uint32_t reg;
+    };
+
+    static constexpr BaudPreset kPresets[] = {
+        {1200UL, UARTE_BAUDRATE_BAUDRATE_Baud1200},
+        {2400UL, UARTE_BAUDRATE_BAUDRATE_Baud2400},
+        {4800UL, UARTE_BAUDRATE_BAUDRATE_Baud4800},
+        {9600UL, UARTE_BAUDRATE_BAUDRATE_Baud9600},
+        {14400UL, UARTE_BAUDRATE_BAUDRATE_Baud14400},
+        {19200UL, UARTE_BAUDRATE_BAUDRATE_Baud19200},
+        {28800UL, UARTE_BAUDRATE_BAUDRATE_Baud28800},
+        {31250UL, UARTE_BAUDRATE_BAUDRATE_Baud31250},
+        {38400UL, UARTE_BAUDRATE_BAUDRATE_Baud38400},
+        {56000UL, UARTE_BAUDRATE_BAUDRATE_Baud56000},
+        {57600UL, UARTE_BAUDRATE_BAUDRATE_Baud57600},
+        {76800UL, UARTE_BAUDRATE_BAUDRATE_Baud76800},
+        {115200UL, UARTE_BAUDRATE_BAUDRATE_Baud115200},
+        {230400UL, UARTE_BAUDRATE_BAUDRATE_Baud230400},
+        {250000UL, UARTE_BAUDRATE_BAUDRATE_Baud250000},
+        {460800UL, UARTE_BAUDRATE_BAUDRATE_Baud460800},
+        {921600UL, UARTE_BAUDRATE_BAUDRATE_Baud921600},
+        {1000000UL, UARTE_BAUDRATE_BAUDRATE_Baud1M},
+    };
+
+    uint32_t bestIndex = 0U;
+    unsigned long bestDistance =
+        (baud > kPresets[0].baud) ? (baud - kPresets[0].baud) : (kPresets[0].baud - baud);
+    for (uint32_t i = 1U; i < (sizeof(kPresets) / sizeof(kPresets[0])); ++i) {
+        const unsigned long presetBaud = kPresets[i].baud;
+        const unsigned long distance =
+            (baud > presetBaud) ? (baud - presetBaud) : (presetBaud - baud);
+        if (distance < bestDistance) {
+            bestDistance = distance;
+            bestIndex = i;
+        }
     }
-    if (baud >= 57600UL) {
-        return UARTE_BAUDRATE_BAUDRATE_Baud57600;
-    }
-    if (baud >= 38400UL) {
-        return UARTE_BAUDRATE_BAUDRATE_Baud38400;
-    }
-    if (baud >= 19200UL) {
-        return UARTE_BAUDRATE_BAUDRATE_Baud19200;
-    }
-    return UARTE_BAUDRATE_BAUDRATE_Baud9600;
+
+    return kPresets[bestIndex].reg;
 }
 
 struct UarteFormat {
@@ -734,29 +765,25 @@ size_t HardwareSerial::writeBlocking(const uint8_t* buffer, size_t size) {
     }
 
     const uintptr_t base = reinterpret_cast<uintptr_t>(_uart);
-    reg32(base + U_EVENTS_DMA_TX_READY) = 0U;
+
     reg32(base + U_EVENTS_DMA_TX_END) = 0U;
-    reg32(base + U_EVENTS_DMA_TX_BUSERROR) = 0U;
     reg32(base + U_EVENTS_TXSTOPPED) = 0U;
+    // Do NOT clear EVENTS_ERROR or ERRORSRC here: those registers are shared
+    // with the RX path (ERRORSRC holds only RX error bits on nRF54L15).
+    // Clearing them races with a pending RX OVERRUN IRQ and can hide the error
+    // from processRxDmaEvents, leaving DMA in an unrecovered state.
     reg32(base + U_DMA_TX_PTR) = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(buffer));
     reg32(base + U_DMA_TX_MAXCNT) = static_cast<uint32_t>(size);
-    reg32(base + U_TASKS_DMA_TX_START) = UARTE_TASKS_DMA_TX_START_START_Trigger;
 
-    if (!wait_event_timeout_us(base, U_EVENTS_TXSTOPPED,
+    reg32(base + U_TASKS_DMA_TX_START) = UARTE_TASKS_DMA_TX_START_START_Trigger;
+    if (!wait_event_timeout_us(base, U_EVENTS_DMA_TX_END,
                                serial_byte_timeout_us(_baud, static_cast<uint32_t>(size)))) {
+        // Recover on timeout to prevent partial-frame stream corruption.
         reg32(base + U_TASKS_DMA_TX_STOP) = UARTE_TASKS_DMA_TX_STOP_STOP_Trigger;
         wait_event_timeout_us(base, U_EVENTS_TXSTOPPED, 2000UL);
         return 0U;
     }
 
-    if (reg32(base + U_EVENTS_DMA_TX_BUSERROR) != 0U) {
-        reg32(base + U_EVENTS_DMA_TX_BUSERROR) = 0U;
-        return 0U;
-    }
-
-    reg32(base + U_EVENTS_DMA_TX_READY) = 0U;
-    reg32(base + U_EVENTS_DMA_TX_END) = 0U;
-    reg32(base + U_EVENTS_TXSTOPPED) = 0U;
     return size;
 }
 
@@ -876,9 +903,7 @@ void HardwareSerial::flush() {
             break;
         }
 
-        if (primask == 0U) {
-            yield();
-        }
+        // yield() removed: preempts UARTE DMA at low bauds
     }
 }
 
@@ -911,9 +936,7 @@ size_t HardwareSerial::write(const uint8_t* buffer, size_t size) {
                 sent = writeBlocking(_txBuffer, size);
             }
 
-            if (sent != 0U) {
-                delayMicroseconds(kBridgeDirectWriteGapUs);
-            }
+            // delayMicroseconds removed: the 1ms gap desyncs the SAMD11 receiver at 9600 baud
             return sent;
         }
     }
@@ -930,9 +953,7 @@ size_t HardwareSerial::write(const uint8_t* buffer, size_t size) {
         uint16_t free = static_cast<uint16_t>(kTxRingSize - _txCount);
         if (free == 0U) {
             __set_PRIMASK(primask);
-            if (primask == 0U) {
-                yield();
-            }
+            // yield() removed: preempts UARTE DMA at low bauds
             continue;
         }
 
@@ -960,9 +981,7 @@ size_t HardwareSerial::write(const uint8_t* buffer, size_t size) {
         startNextTxDmaLocked(base);
         __set_PRIMASK(primask);
 
-        if (written < size && primask == 0U && chunk == free) {
-            yield();
-        }
+        // yield() removed: preempts UARTE DMA at low bauds
     }
 
     return written;
