@@ -8,6 +8,8 @@ namespace {
 
 static constexpr uint32_t kPselDisconnected = 0xFFFFFFFFUL;
 static constexpr uint32_t kRxFrameTimeoutBits = 32UL;
+static constexpr uint32_t kBridgeDirectWriteMax = 16UL;
+static constexpr uint32_t kBridgeDirectWriteGapUs = 1000UL;
 
 // UARTE register offsets.
 static constexpr uint32_t U_TASKS_FLUSHRX      = 0x01CUL;
@@ -720,6 +722,48 @@ void HardwareSerial::serviceTxDma() {
     __set_PRIMASK(primask);
 }
 
+size_t HardwareSerial::writeBlocking(const uint8_t* buffer, size_t size) {
+    if (!_configured || _uart == nullptr) {
+        return 0U;
+    }
+    if (buffer == nullptr || size == 0U) {
+        return 0U;
+    }
+    if (_constlatOwned) {
+        NRF_POWER->TASKS_CONSTLAT = POWER_TASKS_CONSTLAT_TASKS_CONSTLAT_Trigger;
+    }
+
+    const uintptr_t base = reinterpret_cast<uintptr_t>(_uart);
+    reg32(base + U_EVENTS_DMA_TX_READY) = 0U;
+    reg32(base + U_EVENTS_DMA_TX_END) = 0U;
+    reg32(base + U_EVENTS_DMA_TX_BUSERROR) = 0U;
+    reg32(base + U_EVENTS_TXSTOPPED) = 0U;
+    reg32(base + U_DMA_TX_PTR) = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(buffer));
+    reg32(base + U_DMA_TX_MAXCNT) = static_cast<uint32_t>(size);
+    reg32(base + U_TASKS_DMA_TX_START) = UARTE_TASKS_DMA_TX_START_START_Trigger;
+
+    if (!wait_event_timeout_us(base, U_EVENTS_TXSTOPPED,
+                               serial_byte_timeout_us(_baud, static_cast<uint32_t>(size)))) {
+        reg32(base + U_TASKS_DMA_TX_STOP) = UARTE_TASKS_DMA_TX_STOP_STOP_Trigger;
+        wait_event_timeout_us(base, U_EVENTS_TXSTOPPED, 2000UL);
+        return 0U;
+    }
+
+    if (reg32(base + U_EVENTS_DMA_TX_BUSERROR) != 0U) {
+        reg32(base + U_EVENTS_DMA_TX_BUSERROR) = 0U;
+        return 0U;
+    }
+
+    reg32(base + U_EVENTS_DMA_TX_READY) = 0U;
+    reg32(base + U_EVENTS_DMA_TX_END) = 0U;
+    reg32(base + U_EVENTS_TXSTOPPED) = 0U;
+    return size;
+}
+
+bool HardwareSerial::usesBridgePins() const {
+    return usesPins(PIN_SAMD11_RX, PIN_SAMD11_TX);
+}
+
 void HardwareSerial::handleIrq() {
     if (_uart != nullptr) {
         processTxDmaEvents(reinterpret_cast<uintptr_t>(_uart));
@@ -849,6 +893,29 @@ size_t HardwareSerial::write(const uint8_t* buffer, size_t size) {
     }
     if (buffer == nullptr || size == 0U) {
         return 0U;
+    }
+
+    if (usesBridgePins() && _baud <= 9600UL && size <= kBridgeDirectWriteMax) {
+        const uint32_t primask = __get_PRIMASK();
+        __disable_irq();
+        const bool txIdle = (_txCount == 0U) && !_txDmaRunning;
+        __set_PRIMASK(primask);
+        if (txIdle) {
+            size_t sent = 0U;
+            if (_dataMask == 0xFFU) {
+                sent = writeBlocking(buffer, size);
+            } else {
+                for (size_t i = 0U; i < size; ++i) {
+                    _txBuffer[i] = static_cast<uint8_t>(buffer[i] & _dataMask);
+                }
+                sent = writeBlocking(_txBuffer, size);
+            }
+
+            if (sent != 0U) {
+                delayMicroseconds(kBridgeDirectWriteGapUs);
+            }
+            return sent;
+        }
     }
 
     const uintptr_t base = reinterpret_cast<uintptr_t>(_uart);

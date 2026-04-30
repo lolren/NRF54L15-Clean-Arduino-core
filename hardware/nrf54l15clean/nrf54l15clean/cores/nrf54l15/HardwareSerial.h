@@ -58,6 +58,8 @@ private:
     void processRxDmaEvents();
     void processTxDmaEvents(uintptr_t base);
     void startNextTxDmaLocked(uintptr_t base);
+    size_t writeBlocking(const uint8_t* buffer, size_t size);
+    bool usesBridgePins() const;
     void commitRxBytes(const uint8_t* data, uint32_t amount);
     void flushPartialRxDma(uintptr_t base);
     bool usesP2Pins() const;
