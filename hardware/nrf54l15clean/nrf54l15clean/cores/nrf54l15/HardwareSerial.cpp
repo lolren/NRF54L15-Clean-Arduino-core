@@ -9,7 +9,7 @@ namespace {
 static constexpr uint32_t kPselDisconnected = 0xFFFFFFFFUL;
 static constexpr uint32_t kRxFrameTimeoutBits = 32UL;
 static constexpr uint32_t kBridgeDirectWriteMax = 16UL;
-static constexpr uint32_t kBridgeDirectWriteGapUs = 1000UL;
+static constexpr uint32_t kLowBaudDirectWriteMax = 64UL;
 
 // UARTE register offsets.
 static constexpr uint32_t U_TASKS_FLUSHRX      = 0x01CUL;
@@ -753,7 +753,7 @@ void HardwareSerial::serviceTxDma() {
     __set_PRIMASK(primask);
 }
 
-size_t HardwareSerial::writeBlocking(const uint8_t* buffer, size_t size) {
+size_t HardwareSerial::writeBlocking(const uint8_t* buffer, size_t size, bool waitStopped) {
     if (!_configured || _uart == nullptr) {
         return 0U;
     }
@@ -782,6 +782,10 @@ size_t HardwareSerial::writeBlocking(const uint8_t* buffer, size_t size) {
         reg32(base + U_TASKS_DMA_TX_STOP) = UARTE_TASKS_DMA_TX_STOP_STOP_Trigger;
         wait_event_timeout_us(base, U_EVENTS_TXSTOPPED, 2000UL);
         return 0U;
+    }
+
+    if (waitStopped) {
+        wait_event_timeout_us(base, U_EVENTS_TXSTOPPED, 5000UL);
     }
 
     return size;
@@ -936,8 +940,26 @@ size_t HardwareSerial::write(const uint8_t* buffer, size_t size) {
                 sent = writeBlocking(_txBuffer, size);
             }
 
-            // delayMicroseconds removed: the 1ms gap desyncs the SAMD11 receiver at 9600 baud
             return sent;
+        }
+    }
+
+    // Small low-baud writes on header UARTs (for example GNSS command bursts)
+    // are latency-sensitive. Drain them synchronously when the port is idle so
+    // sketches do not need an explicit flush() to get the bytes onto the wire.
+    if (!usesBridgePins() && _baud <= 9600UL && size <= kLowBaudDirectWriteMax) {
+        const uint32_t primask = __get_PRIMASK();
+        __disable_irq();
+        const bool txIdle = (_txCount == 0U) && !_txDmaRunning;
+        __set_PRIMASK(primask);
+        if (txIdle) {
+            if (_dataMask == 0xFFU) {
+                return writeBlocking(buffer, size, true);
+            }
+            for (size_t i = 0U; i < size; ++i) {
+                _txBuffer[i] = static_cast<uint8_t>(buffer[i] & _dataMask);
+            }
+            return writeBlocking(_txBuffer, size, true);
         }
     }
 
