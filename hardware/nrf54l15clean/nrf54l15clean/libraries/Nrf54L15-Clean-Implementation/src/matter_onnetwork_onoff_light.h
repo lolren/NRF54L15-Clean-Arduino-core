@@ -74,6 +74,7 @@ struct MatterOnNetworkOnOffLightStatus {
   bool threadAttached = false;
   bool threadDatasetConfigured = false;
   bool threadDatasetExportable = false;
+  otChangedFlags threadLastChangedFlags = 0U;
   bool manualCodeReady = false;
   bool qrCodeReady = false;
   bool readyForOnNetworkCommissioning = false;
@@ -86,6 +87,7 @@ struct MatterOnNetworkOnOffLightStatus {
   uint16_t commissioningWindowSecondsRemaining = 0U;
   Nrf54ThreadExperimental::Role threadRole =
       Nrf54ThreadExperimental::Role::kUnknown;
+  Nrf54ThreadExperimental::AttachDiagnostics threadAttachDiagnostics = {};
   uint16_t rloc16 = 0xFFFFU;
   MatterOnNetworkIdentity identity = {};
   MatterOnOffLightDeviceState light = {};

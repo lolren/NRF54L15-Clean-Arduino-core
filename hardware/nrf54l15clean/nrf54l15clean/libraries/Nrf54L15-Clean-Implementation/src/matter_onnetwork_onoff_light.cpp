@@ -287,6 +287,8 @@ bool Nrf54MatterOnNetworkOnOffLightNode::snapshot(
   outStatus->threadAttached = thread_.attached();
   outStatus->threadDatasetConfigured = thread_.datasetConfigured();
   outStatus->threadDatasetExportable = threadDatasetExportable();
+  outStatus->threadLastChangedFlags = thread_.lastChangedFlags();
+  (void)thread_.getAttachDiagnostics(&outStatus->threadAttachDiagnostics);
   outStatus->buildSeamsAligned = foundation_.buildSeamsAligned();
   outStatus->datasetSource = datasetSource_;
   outStatus->threadRole = thread_.role();

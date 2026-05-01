@@ -88,6 +88,18 @@ void printStatus(const char* reason) {
   Serial.println(g_node.thread().roleName());
   Serial.print("matter_node_demo rloc16=0x");
   Serial.println(status.rloc16, HEX);
+  Serial.print("matter_node_demo thread_last_flags=0x");
+  Serial.println(static_cast<unsigned long>(status.threadLastChangedFlags), HEX);
+  Serial.print("matter_node_demo thread_attach_duration_ms=");
+  Serial.println(status.threadAttachDiagnostics.currentAttachDurationMs);
+  Serial.print("matter_node_demo thread_attach_attempts=");
+  Serial.println(status.threadAttachDiagnostics.attachAttempts);
+  Serial.print("matter_node_demo thread_better_partition_attach_attempts=");
+  Serial.println(status.threadAttachDiagnostics.betterPartitionAttachAttempts);
+  Serial.print("matter_node_demo thread_better_parent_attach_attempts=");
+  Serial.println(status.threadAttachDiagnostics.betterParentAttachAttempts);
+  Serial.print("matter_node_demo thread_parent_changes=");
+  Serial.println(status.threadAttachDiagnostics.parentChanges);
   Serial.print("matter_node_demo dataset_exportable=");
   Serial.println(status.threadDatasetExportable ? 1 : 0);
   Serial.print("matter_node_demo ready=");

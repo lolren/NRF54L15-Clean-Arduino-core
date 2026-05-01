@@ -494,7 +494,9 @@ Thread example organization:
     `examples/Matter/MatterOnNetworkOnOffLightNodeDemo`, showing the intended
     staged bring-up path: build a Thread dataset from passphrase inputs, start
     the internal Thread/light pair, print the onboarding codes, and report
-    when the node is mechanically ready for on-network commissioning
+    when the node is mechanically ready for on-network commissioning. That
+    public node snapshot now also carries Thread attach diagnostics and the
+    latest OpenThread state-change flags.
   - the new command-surface example lives at
     `examples/Matter/MatterOnNetworkOnOffLightCommandSurfaceDemo`, showing how
     to route `On`, `Off`, `Toggle`, and `Identify` plus attribute reads
