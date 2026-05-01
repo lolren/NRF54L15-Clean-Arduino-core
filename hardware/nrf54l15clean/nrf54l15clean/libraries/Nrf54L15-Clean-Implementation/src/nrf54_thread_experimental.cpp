@@ -528,6 +528,143 @@ bool Nrf54ThreadExperimental::getAttachDebugState(
   return true;
 }
 
+bool Nrf54ThreadExperimental::getAttachSummary(AttachSummary* outSummary) const {
+  if (outSummary == nullptr) {
+    return false;
+  }
+
+  *outSummary = {};
+  outSummary->valid = beginCalled_;
+  outSummary->attached = attached();
+  outSummary->configuredForAttach = datasetConfigured_ || datasetApplied_;
+  outSummary->role = role();
+
+  auto setText = [](char* destination, size_t length, const char* source) {
+    if (destination == nullptr || length == 0U) {
+      return;
+    }
+    destination[0] = '\0';
+    if (source == nullptr) {
+      return;
+    }
+    strncpy(destination, source, length - 1U);
+    destination[length - 1U] = '\0';
+  };
+
+  if (!beginCalled_) {
+    setText(outSummary->phaseName, sizeof(outSummary->phaseName), "not_started");
+    setText(outSummary->blockerName, sizeof(outSummary->blockerName),
+            "begin_not_called");
+    return true;
+  }
+
+  const uint32_t elapsedMs = millis() - beginMs_;
+  AttachDebugState debugState = {};
+  const bool haveDebugState = getAttachDebugState(&debugState);
+
+  if (instance_ == nullptr) {
+    setText(outSummary->phaseName, sizeof(outSummary->phaseName), "bootstrap");
+    setText(outSummary->blockerName, sizeof(outSummary->blockerName),
+            "waiting_instance_init");
+    return true;
+  }
+
+  if (!datasetConfigured_ && !datasetApplied_) {
+    outSummary->waitingForDataset = true;
+    setText(outSummary->phaseName, sizeof(outSummary->phaseName),
+            "dataset_pending");
+    if (!wipeSettings_ && !datasetRestoreAttempted_) {
+      setText(outSummary->blockerName, sizeof(outSummary->blockerName),
+              "waiting_restore_probe");
+    } else {
+      setText(outSummary->blockerName, sizeof(outSummary->blockerName),
+              "waiting_dataset");
+    }
+    return true;
+  }
+
+  if (!datasetApplied_) {
+    outSummary->waitingForDatasetApply = true;
+    setText(outSummary->phaseName, sizeof(outSummary->phaseName),
+            "dataset_apply");
+    if (elapsedMs < kStageDatasetApplyDelayMs) {
+      setText(outSummary->blockerName, sizeof(outSummary->blockerName),
+              "waiting_dataset_apply_delay");
+    } else {
+      setText(outSummary->blockerName, sizeof(outSummary->blockerName),
+              "waiting_dataset_apply");
+    }
+    return true;
+  }
+
+  if (!linkConfigured_ || !ip6Enabled_) {
+    outSummary->waitingForIp6Enable = true;
+    setText(outSummary->phaseName, sizeof(outSummary->phaseName), "ip6_enable");
+    if (elapsedMs < kStageIp6EnableDelayMs) {
+      setText(outSummary->blockerName, sizeof(outSummary->blockerName),
+              "waiting_ip6_enable_delay");
+    } else {
+      setText(outSummary->blockerName, sizeof(outSummary->blockerName),
+              "waiting_ip6_enable");
+    }
+    return true;
+  }
+
+  if (!threadEnabled_) {
+    outSummary->waitingForThreadEnable = true;
+    setText(outSummary->phaseName, sizeof(outSummary->phaseName),
+            "thread_enable");
+    if (elapsedMs < kStageThreadEnableDelayMs) {
+      setText(outSummary->blockerName, sizeof(outSummary->blockerName),
+              "waiting_thread_enable_delay");
+    } else {
+      setText(outSummary->blockerName, sizeof(outSummary->blockerName),
+              "waiting_thread_enable");
+    }
+    return true;
+  }
+
+  if (outSummary->attached) {
+    setText(outSummary->phaseName, sizeof(outSummary->phaseName), "attached");
+    setText(outSummary->blockerName, sizeof(outSummary->blockerName), "none");
+    return true;
+  }
+
+  setText(outSummary->phaseName, sizeof(outSummary->phaseName), "attach");
+  if (haveDebugState && debugState.valid) {
+    if (debugState.attachTimerRunning) {
+      outSummary->waitingForReattachTimer = true;
+    }
+    if (strcmp(debugState.attachStateName, "ParentReq") == 0 &&
+        !debugState.receivedResponseFromParent) {
+      outSummary->waitingForParentResponse = true;
+      setText(outSummary->blockerName, sizeof(outSummary->blockerName),
+              "waiting_parent_response");
+      return true;
+    }
+    if (strcmp(debugState.attachStateName, "ChildIdReq") == 0) {
+      outSummary->waitingForChildIdResponse = true;
+      setText(outSummary->blockerName, sizeof(outSummary->blockerName),
+              "waiting_child_id_response");
+      return true;
+    }
+    if (debugState.attachTimerRunning) {
+      setText(outSummary->blockerName, sizeof(outSummary->blockerName),
+              "waiting_reattach_timer");
+      return true;
+    }
+    if (debugState.attachStateName[0] != '\0') {
+      setText(outSummary->blockerName, sizeof(outSummary->blockerName),
+              debugState.attachStateName);
+      return true;
+    }
+  }
+
+  setText(outSummary->blockerName, sizeof(outSummary->blockerName),
+          "detached_idle");
+  return true;
+}
+
 bool Nrf54ThreadExperimental::started() const { return beginCalled_; }
 
 bool Nrf54ThreadExperimental::attached() const {

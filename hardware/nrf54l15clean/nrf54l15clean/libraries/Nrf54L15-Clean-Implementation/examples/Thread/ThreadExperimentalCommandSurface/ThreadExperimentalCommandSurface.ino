@@ -142,6 +142,31 @@ void printAttachDebugState() {
   Serial.println(debugState.parentCandidateRloc16, HEX);
 }
 
+void printAttachSummary() {
+  Nrf54ThreadExperimental::AttachSummary summary;
+  const bool ok = gThread.getAttachSummary(&summary);
+  Serial.print("thread_cmd attach_summary_ok=");
+  Serial.println(ok ? 1 : 0);
+  if (!ok) {
+    return;
+  }
+
+  Serial.print("thread_cmd attach_phase=");
+  Serial.println(summary.phaseName);
+  Serial.print("thread_cmd attach_blocker=");
+  Serial.println(summary.blockerName);
+  Serial.print("thread_cmd attach_summary_attached=");
+  Serial.println(summary.attached ? 1 : 0);
+  Serial.print("thread_cmd attach_summary_configured=");
+  Serial.println(summary.configuredForAttach ? 1 : 0);
+  Serial.print("thread_cmd attach_summary_waiting_parent=");
+  Serial.println(summary.waitingForParentResponse ? 1 : 0);
+  Serial.print("thread_cmd attach_summary_waiting_child_id=");
+  Serial.println(summary.waitingForChildIdResponse ? 1 : 0);
+  Serial.print("thread_cmd attach_summary_waiting_timer=");
+  Serial.println(summary.waitingForReattachTimer ? 1 : 0);
+}
+
 void printState(const char* reason) {
   Serial.print("thread_cmd reason=");
   Serial.println(reason);
@@ -161,6 +186,7 @@ void printState(const char* reason) {
   printChangedFlags("pending_flags", gThread.pendingChangedFlags());
   printAttachDiagnostics();
   printAttachDebugState();
+  printAttachSummary();
 }
 
 void printDataset() {
@@ -214,6 +240,7 @@ void handleLine(char* line) {
     Serial.println(Nrf54ThreadExperimental::roleName(
         static_cast<Nrf54ThreadExperimental::Role>(g_callbackRoleValue)));
     printAttachDebugState();
+    printAttachSummary();
     return;
   }
   if (strcmp(line, "demo-dataset") == 0) {

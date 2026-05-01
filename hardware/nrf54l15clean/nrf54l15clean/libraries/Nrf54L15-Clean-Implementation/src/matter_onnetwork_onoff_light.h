@@ -76,6 +76,7 @@ struct MatterOnNetworkOnOffLightStatus {
   bool threadDatasetExportable = false;
   otChangedFlags threadLastChangedFlags = 0U;
   Nrf54ThreadExperimental::AttachDebugState threadAttachDebugState = {};
+  Nrf54ThreadExperimental::AttachSummary threadAttachSummary = {};
   bool manualCodeReady = false;
   bool qrCodeReady = false;
   bool readyForOnNetworkCommissioning = false;

@@ -398,8 +398,9 @@ Thread example organization:
   (`attach duration`, `attach attempts`, `better parent/partition attempts`,
   `parent changes`) plus the hidden attach-state machine snapshot (`attach
   state`, `attach mode`, `reattach mode`, `parent candidate state`, timer
-  state/counters`) so external-network bring-up can be inspected from the
-  Arduino layer. A host-side driver now also exists at
+  state/counters`), and a derived attach summary (`phase` / `blocker`) so
+  external-network bring-up can be inspected from the Arduino layer. A
+  host-side driver now also exists at
   `scripts/thread_command_surface_attach_probe.py` so an external active
   dataset TLV hex string can be pushed into
   `ThreadExperimentalCommandSurface` and attach progress can be observed from a

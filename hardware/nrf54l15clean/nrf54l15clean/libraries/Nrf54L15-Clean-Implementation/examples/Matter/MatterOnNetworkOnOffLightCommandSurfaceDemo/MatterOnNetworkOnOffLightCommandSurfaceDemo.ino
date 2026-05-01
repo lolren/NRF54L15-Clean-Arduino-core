@@ -128,6 +128,18 @@ void printThreadAttachDebugState(
   Serial.println(debugState.parentCandidateRloc16, HEX);
 }
 
+void printThreadAttachSummary(
+    const xiao_nrf54l15::Nrf54ThreadExperimental::AttachSummary& summary) {
+  Serial.print("matter_cmd_demo thread_attach_phase=");
+  Serial.println(summary.phaseName);
+  Serial.print("matter_cmd_demo thread_attach_blocker=");
+  Serial.println(summary.blockerName);
+  Serial.print("matter_cmd_demo thread_attach_summary_attached=");
+  Serial.println(summary.attached ? 1 : 0);
+  Serial.print("matter_cmd_demo thread_attach_summary_configured=");
+  Serial.println(summary.configuredForAttach ? 1 : 0);
+}
+
 void applyIndicator() {
 #if defined(LED_BUILTIN)
   if (g_node.light().identifying()) {
@@ -256,6 +268,7 @@ void printState(const char* reason) {
                           g_node.thread().pendingChangedFlags());
   printThreadAttachDiagnostics();
   printThreadAttachDebugState(status.threadAttachDebugState);
+  printThreadAttachSummary(status.threadAttachSummary);
 
   xiao_nrf54l15::MatterAttributePath path;
   path.clusterId = xiao_nrf54l15::Nrf54MatterOnOffLightEndpoint::kOnOffClusterId;
@@ -383,6 +396,7 @@ void handleLine(char* line) {
                             g_node.thread().pendingChangedFlags());
     if (ok) {
       printThreadAttachDebugState(status.threadAttachDebugState);
+      printThreadAttachSummary(status.threadAttachSummary);
     }
     return;
   }

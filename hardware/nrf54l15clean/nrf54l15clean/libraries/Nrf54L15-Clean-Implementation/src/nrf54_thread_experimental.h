@@ -63,6 +63,22 @@ class Nrf54ThreadExperimental {
     char parentCandidateStateName[16] = {0};
   };
 
+  struct AttachSummary {
+    bool valid = false;
+    bool attached = false;
+    bool configuredForAttach = false;
+    bool waitingForDataset = false;
+    bool waitingForDatasetApply = false;
+    bool waitingForIp6Enable = false;
+    bool waitingForThreadEnable = false;
+    bool waitingForParentResponse = false;
+    bool waitingForChildIdResponse = false;
+    bool waitingForReattachTimer = false;
+    Role role = Role::kUnknown;
+    char phaseName[32] = {0};
+    char blockerName[40] = {0};
+  };
+
   Nrf54ThreadExperimental() = default;
 
   bool begin(bool wipeSettings = true);
@@ -95,6 +111,7 @@ class Nrf54ThreadExperimental {
   bool getLeaderRloc(otIp6Address* outLeaderAddr) const;
   bool getAttachDiagnostics(AttachDiagnostics* outDiagnostics) const;
   bool getAttachDebugState(AttachDebugState* outState) const;
+  bool getAttachSummary(AttachSummary* outSummary) const;
 
   bool started() const;
   bool attached() const;

@@ -112,6 +112,10 @@ void printStatus(const char* reason) {
   Serial.println(status.threadAttachDebugState.parentCandidateStateName);
   Serial.print("matter_node_demo thread_attach_timer_remaining_ms=");
   Serial.println(status.threadAttachDebugState.attachTimerRemainingMs);
+  Serial.print("matter_node_demo thread_attach_phase=");
+  Serial.println(status.threadAttachSummary.phaseName);
+  Serial.print("matter_node_demo thread_attach_blocker=");
+  Serial.println(status.threadAttachSummary.blockerName);
   Serial.print("matter_node_demo dataset_exportable=");
   Serial.println(status.threadDatasetExportable ? 1 : 0);
   Serial.print("matter_node_demo ready=");
