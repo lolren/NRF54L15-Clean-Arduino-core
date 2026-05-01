@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #include "matter_manual_pairing.h"
+#include "openthread-core-user-config.h"
 #include "matter_platform_nrf54l15.h"
 #include "nrf54_thread_experimental.h"
 #include "openthread_platform_nrf54l15.h"
@@ -49,6 +50,15 @@ struct MatterFoundationDescriptorSummary {
   const char* deviceTypeName = nullptr;
   size_t serverClusterCount = 0;
   size_t childEndpointCount = 0;
+};
+
+struct MatterFoundationDiscoveryCapabilities {
+  bool mdnsCoreEnabled = false;
+  bool mdnsPublicApiEnabled = false;
+  bool platformDnssdEnabled = false;
+  bool srpClientEnabled = false;
+  bool canRegisterCommissionableNode = false;
+  const char* blockerName = nullptr;
 };
 
 struct MatterFoundationThreadDependency {
@@ -125,6 +135,7 @@ class Nrf54MatterOnOffLightFoundation {
   static constexpr MatterClusterId kGroupsClusterId = 0x0004U;
   static constexpr MatterClusterId kScenesClusterId = 0x0005U;
   static constexpr MatterClusterId kOnOffClusterId = 0x0006U;
+  static constexpr uint16_t kMatterUdpPort = 5540U;
 
   static constexpr size_t kEndpointCount = 2U;
   static constexpr size_t kThreadDependencyCount = 12U;
@@ -148,6 +159,10 @@ class Nrf54MatterOnOffLightFoundation {
                            size_t outCapacity) const;
   const char* clusterName(MatterEndpointId endpointId,
                           MatterClusterId clusterId) const;
+  bool discoveryCapabilities(
+      MatterFoundationDiscoveryCapabilities* outCapabilities) const;
+  const char* commissionableServiceType() const;
+  const char* operationalServiceType() const;
   const MatterFoundationThreadDependency* threadDependencies(
       size_t* outCount = nullptr) const;
 

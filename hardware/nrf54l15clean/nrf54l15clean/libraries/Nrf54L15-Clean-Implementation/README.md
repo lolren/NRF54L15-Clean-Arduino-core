@@ -498,7 +498,11 @@ Thread example organization:
     window state, commissioning bundle generation, OpenThread dataset TLV hex
     export, staged CHIP Thread dataset hex export, and a readiness summary that
     reports the first blocked phase (`storage`, `light`, `foundation`,
-    `thread`, `onboarding`, `dataset`, or `ready`) with a short blocker string
+    `thread`, `onboarding`, `dataset`, or `ready`) with a short blocker string.
+    It also now emits a staged commissionable DNS-SD summary for `_matterc._udp`
+    (`D`, `VP`, `CM`, `DT`, `DN`) and reports the current discovery blocker;
+    today that blocker remains `openthread_mdns_srp_disabled` because the
+    staged OpenThread config still has mDNS/SRP registration disabled.
   - the new bootstrap example lives at
     `examples/Matter/MatterOnNetworkOnOffLightNodeDemo`, showing the intended
     staged bring-up path: build a Thread dataset from passphrase inputs, start
@@ -518,8 +522,8 @@ Thread example organization:
     `scripts/matter_command_surface_probe.py` so the staged Matter
     command-surface demo can be driven from a serial port, with dataset
     injection, readiness polling, Matter readiness phase/blocker parsing,
-    attach-phase parsing, commissioning bundle capture, and optional
-    commissioning-window open verification
+    staged discovery summary capture, attach-phase parsing, commissioning
+    bundle capture, and optional commissioning-window open verification
   - the first frozen target is `on-network-only` commissioning for an
     `on-off-light` over the staged Thread path
   - a compile-only first-device Matter target is now shipped, but no

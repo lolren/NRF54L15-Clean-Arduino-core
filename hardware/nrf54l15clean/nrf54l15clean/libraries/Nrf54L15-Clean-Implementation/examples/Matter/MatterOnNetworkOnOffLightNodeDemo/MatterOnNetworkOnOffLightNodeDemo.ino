@@ -89,6 +89,30 @@ void printReadinessSummary(
   Serial.println(summary.threadDatasetExportable ? 1 : 0);
 }
 
+void printDiscoverySummary(
+    const xiao_nrf54l15::MatterOnNetworkDiscoverySummary& summary) {
+  Serial.print("matter_node_demo discovery_ready=");
+  Serial.println(summary.readyToRegister ? 1 : 0);
+  Serial.print("matter_node_demo discovery_blocker=");
+  Serial.println(summary.blockerName);
+  Serial.print("matter_node_demo discovery_service=");
+  Serial.println(summary.serviceType != nullptr ? summary.serviceType : "n/a");
+  Serial.print("matter_node_demo discovery_instance=");
+  Serial.println(summary.instanceName);
+  Serial.print("matter_node_demo discovery_mode=");
+  Serial.println(static_cast<uint8_t>(summary.commissioningMode));
+  Serial.print("matter_node_demo discovery_register_capable=");
+  Serial.println(summary.capabilities.canRegisterCommissionableNode ? 1 : 0);
+  Serial.print("matter_node_demo discovery_txt_d=");
+  Serial.println(summary.txtDiscriminator);
+  Serial.print("matter_node_demo discovery_txt_vp=");
+  Serial.println(summary.txtVendorProduct);
+  Serial.print("matter_node_demo discovery_txt_cm=");
+  Serial.println(summary.txtCommissioningMode);
+  Serial.print("matter_node_demo discovery_txt_dt=");
+  Serial.println(summary.txtDeviceType);
+}
+
 void printStatus(const char* reason) {
   xiao_nrf54l15::MatterOnNetworkOnOffLightStatus status;
   if (!g_node.snapshot(&status)) {
@@ -145,6 +169,7 @@ void printStatus(const char* reason) {
   Serial.print("matter_node_demo ready=");
   Serial.println(status.readyForOnNetworkCommissioning ? 1 : 0);
   printReadinessSummary(status.readinessSummary);
+  printDiscoverySummary(status.discoverySummary);
   Serial.print("matter_node_demo on=");
   Serial.println(status.light.on ? 1 : 0);
   Serial.print("matter_node_demo identifying=");

@@ -107,6 +107,24 @@ void setup() {
                          kOnOffClusterId)
                      ? 1
                      : 0);
+  xiao_nrf54l15::MatterFoundationDiscoveryCapabilities discovery;
+  (void)g_foundation.discoveryCapabilities(&discovery);
+  Serial.print("matter_compile_target commissionable_service=");
+  Serial.println(g_foundation.commissionableServiceType());
+  Serial.print("matter_compile_target operational_service=");
+  Serial.println(g_foundation.operationalServiceType());
+  Serial.print("matter_compile_target mdns_core=");
+  Serial.println(discovery.mdnsCoreEnabled ? 1 : 0);
+  Serial.print("matter_compile_target mdns_api=");
+  Serial.println(discovery.mdnsPublicApiEnabled ? 1 : 0);
+  Serial.print("matter_compile_target platform_dnssd=");
+  Serial.println(discovery.platformDnssdEnabled ? 1 : 0);
+  Serial.print("matter_compile_target srp_client=");
+  Serial.println(discovery.srpClientEnabled ? 1 : 0);
+  Serial.print("matter_compile_target discovery_register_capable=");
+  Serial.println(discovery.canRegisterCommissionableNode ? 1 : 0);
+  Serial.print("matter_compile_target discovery_blocker=");
+  Serial.println(discovery.blockerName);
 
   size_t dependencyCount = 0;
   const auto* dependencies = g_foundation.threadDependencies(&dependencyCount);

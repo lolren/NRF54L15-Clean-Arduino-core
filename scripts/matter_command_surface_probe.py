@@ -101,6 +101,17 @@ class MatterCommandState:
             f"readiness_qr={self.get_str('readiness_qr') or 'n/a'}",
             f"readiness_dataset_exportable={self.get_str('readiness_dataset_exportable') or 'n/a'}",
             f"blocked_by={self.blocked_by()}",
+            f"discovery_ready={self.get_str('discovery_ready') or 'n/a'}",
+            f"discovery_blocker={self.get_str('discovery_blocker') or 'n/a'}",
+            f"discovery_service={self.get_str('discovery_service') or 'n/a'}",
+            f"discovery_instance={self.get_str('discovery_instance') or 'n/a'}",
+            f"discovery_mode={self.get_str('discovery_mode') or 'n/a'}",
+            f"discovery_register_capable={self.get_str('discovery_register_capable') or 'n/a'}",
+            f"discovery_txt_d={self.get_str('discovery_txt_d') or 'n/a'}",
+            f"discovery_txt_vp={self.get_str('discovery_txt_vp') or 'n/a'}",
+            f"discovery_txt_cm={self.get_str('discovery_txt_cm') or 'n/a'}",
+            f"discovery_txt_dt={self.get_str('discovery_txt_dt') or 'n/a'}",
+            f"discovery_txt_dn={self.get_str('discovery_txt_dn') or 'n/a'}",
             f"thread_attach_phase={self.get_str('thread_attach_phase') or 'n/a'}",
             f"thread_attach_blocker={self.get_str('thread_attach_blocker') or 'n/a'}",
             f"thread_attach_state={self.get_str('thread_attach_state') or 'n/a'}",
@@ -203,6 +214,7 @@ def main() -> int:
                 send_command(port, "state")
                 send_command(port, "thread-stats")
                 send_command(port, "bundle")
+                send_command(port, "discovery")
                 read_lines(port, state, args.status_interval_s, args.dump_lines)
 
                 if state.ready() and args.open_window > 0 and not opened_window:

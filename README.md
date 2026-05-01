@@ -536,7 +536,9 @@ Not finished yet:
 - Matter has staged foundation code and on/off-light demos, but not real
   commissioning, discovery, control, or Home Assistant validation yet. The
   staged on-network node now reports a readiness phase/blocker so the next
-  commissioning slices can show exactly which gate is still closed.
+  commissioning slices can show exactly which gate is still closed, and it now
+  emits staged `_matterc._udp` discovery fields while honestly reporting that
+  real mDNS/SRP registration is still disabled.
 - Zigbee covers practical HA-style examples, but not full Zigbee 3.0
   certification-level stack coverage
 - broader automated BLE phone/interoperability coverage

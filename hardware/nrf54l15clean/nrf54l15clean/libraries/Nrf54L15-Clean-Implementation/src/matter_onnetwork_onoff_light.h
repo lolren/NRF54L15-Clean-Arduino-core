@@ -25,6 +25,12 @@ enum class MatterCommissioningWindowState : uint8_t {
   kExpired = 3U,
 };
 
+enum class MatterDiscoveryCommissioningMode : uint8_t {
+  kNotCommissioning = 0U,
+  kBasicCommissioning = 1U,
+  kEnhancedCommissioning = 2U,
+};
+
 struct MatterOnNetworkIdentity {
   uint32_t setupPinCode = 20202021UL;
   uint16_t discriminator = 3840U;
@@ -67,6 +73,31 @@ struct MatterOnNetworkReadinessSummary {
   char blockerName[48] = {0};
 };
 
+struct MatterOnNetworkDiscoverySummary {
+  bool valid = false;
+  bool stagedOnly = true;
+  bool readyToRegister = false;
+  bool commissioningWindowOpen = false;
+  bool threadAttached = false;
+  MatterDiscoveryCommissioningMode commissioningMode =
+      MatterDiscoveryCommissioningMode::kNotCommissioning;
+  MatterFoundationDiscoveryCapabilities capabilities = {};
+  const char* serviceType = nullptr;
+  uint16_t port = 0U;
+  uint16_t discriminator = 0U;
+  uint16_t vendorId = 0U;
+  uint16_t productId = 0U;
+  MatterDeviceTypeId deviceTypeId = 0U;
+  char instanceName[17] = {0};
+  char deviceName[24] = {0};
+  char txtDiscriminator[8] = {0};
+  char txtVendorProduct[18] = {0};
+  char txtCommissioningMode[8] = {0};
+  char txtDeviceType[16] = {0};
+  char txtDeviceName[28] = {0};
+  char blockerName[48] = {0};
+};
+
 struct MatterOnNetworkOnOffLightConfig {
   const char* storageNamespace = "matter_node";
   const char* lightStorageNamespace = "matter_onoff";
@@ -93,6 +124,7 @@ struct MatterOnNetworkOnOffLightStatus {
   Nrf54ThreadExperimental::AttachDebugState threadAttachDebugState = {};
   Nrf54ThreadExperimental::AttachSummary threadAttachSummary = {};
   MatterOnNetworkReadinessSummary readinessSummary = {};
+  MatterOnNetworkDiscoverySummary discoverySummary = {};
   bool manualCodeReady = false;
   bool qrCodeReady = false;
   bool readyForOnNetworkCommissioning = false;
@@ -174,6 +206,7 @@ class Nrf54MatterOnNetworkOnOffLightNode {
   bool commissioningWindowOpen() const;
   uint16_t commissioningWindowSecondsRemaining() const;
   bool readinessSummary(MatterOnNetworkReadinessSummary* outSummary) const;
+  bool discoverySummary(MatterOnNetworkDiscoverySummary* outSummary) const;
   bool buildCommissioningBundle(
       MatterOnNetworkCommissioningBundle* outBundle) const;
   bool exportOpenThreadDatasetTlvs(otOperationalDatasetTlvs* outTlvs) const;

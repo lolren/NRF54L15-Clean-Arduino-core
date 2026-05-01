@@ -1,5 +1,6 @@
 #include "matter_onnetwork_onoff_light.h"
 
+#include <stdio.h>
 #include <string.h>
 
 #if defined(NRF54L15_CLEAN_MATTER_CORE_ENABLE) && \
@@ -304,6 +305,7 @@ bool Nrf54MatterOnNetworkOnOffLightNode::snapshot(
   (void)thread_.getAttachDebugState(&outStatus->threadAttachDebugState);
   (void)thread_.getAttachSummary(&outStatus->threadAttachSummary);
   (void)readinessSummary(&outStatus->readinessSummary);
+  (void)discoverySummary(&outStatus->discoverySummary);
   outStatus->buildSeamsAligned = foundation_.buildSeamsAligned();
   outStatus->datasetSource = datasetSource_;
   outStatus->threadRole = thread_.role();
@@ -570,6 +572,81 @@ bool Nrf54MatterOnNetworkOnOffLightNode::readinessSummary(
                  "thread_dataset_not_exportable");
   } else {
     setFixedText(outSummary->phaseName, sizeof(outSummary->phaseName), "ready");
+    setFixedText(outSummary->blockerName, sizeof(outSummary->blockerName),
+                 "none");
+  }
+
+  return true;
+}
+
+bool Nrf54MatterOnNetworkOnOffLightNode::discoverySummary(
+    MatterOnNetworkDiscoverySummary* outSummary) const {
+  if (outSummary == nullptr) {
+    return false;
+  }
+
+  memset(outSummary, 0, sizeof(*outSummary));
+  outSummary->valid = true;
+  outSummary->stagedOnly = true;
+  outSummary->serviceType = foundation_.commissionableServiceType();
+  outSummary->port = Nrf54MatterOnOffLightFoundation::kMatterUdpPort;
+  outSummary->discriminator = identity_.discriminator;
+  outSummary->vendorId = identity_.vendorId;
+  outSummary->productId = identity_.productId;
+  outSummary->deviceTypeId =
+      Nrf54MatterOnOffLightFoundation::kOnOffLightDeviceTypeId;
+  outSummary->commissioningWindowOpen = commissioningWindowOpen();
+  outSummary->threadAttached = thread_.attached();
+  outSummary->commissioningMode =
+      outSummary->commissioningWindowOpen
+          ? MatterDiscoveryCommissioningMode::kBasicCommissioning
+          : MatterDiscoveryCommissioningMode::kNotCommissioning;
+  (void)foundation_.discoveryCapabilities(&outSummary->capabilities);
+
+  const uint32_t instanceHigh =
+      0x4E35344CUL ^ identity_.setupPinCode ^
+      (static_cast<uint32_t>(identity_.discriminator) << 16U);
+  const uint32_t instanceLow =
+      (static_cast<uint32_t>(identity_.vendorId) << 16U) |
+      static_cast<uint32_t>(identity_.productId);
+  snprintf(outSummary->instanceName, sizeof(outSummary->instanceName),
+           "%08lX%08lX", static_cast<unsigned long>(instanceHigh),
+           static_cast<unsigned long>(instanceLow));
+  setFixedText(outSummary->deviceName, sizeof(outSummary->deviceName),
+               "Nrf54L15 Light");
+  snprintf(outSummary->txtDiscriminator, sizeof(outSummary->txtDiscriminator),
+           "D=%u", static_cast<unsigned>(outSummary->discriminator));
+  snprintf(outSummary->txtVendorProduct, sizeof(outSummary->txtVendorProduct),
+           "VP=%u+%u", static_cast<unsigned>(outSummary->vendorId),
+           static_cast<unsigned>(outSummary->productId));
+  snprintf(outSummary->txtCommissioningMode,
+           sizeof(outSummary->txtCommissioningMode), "CM=%u",
+           static_cast<unsigned>(outSummary->commissioningMode));
+  snprintf(outSummary->txtDeviceType, sizeof(outSummary->txtDeviceType),
+           "DT=%lu", static_cast<unsigned long>(outSummary->deviceTypeId));
+  snprintf(outSummary->txtDeviceName, sizeof(outSummary->txtDeviceName),
+           "DN=%s", outSummary->deviceName);
+
+  MatterOnNetworkReadinessSummary readiness = {};
+  const bool haveReadiness = readinessSummary(&readiness);
+  outSummary->readyToRegister =
+      haveReadiness && readiness.ready && outSummary->commissioningWindowOpen &&
+      outSummary->threadAttached &&
+      outSummary->capabilities.canRegisterCommissionableNode;
+
+  if (!outSummary->commissioningWindowOpen) {
+    setFixedText(outSummary->blockerName, sizeof(outSummary->blockerName),
+                 "commissioning_window_closed");
+  } else if (!outSummary->threadAttached) {
+    setFixedText(outSummary->blockerName, sizeof(outSummary->blockerName),
+                 "thread_not_attached");
+  } else if (!haveReadiness || !readiness.ready) {
+    setFixedText(outSummary->blockerName, sizeof(outSummary->blockerName),
+                 haveReadiness ? readiness.blockerName : "readiness_unknown");
+  } else if (!outSummary->capabilities.canRegisterCommissionableNode) {
+    setFixedText(outSummary->blockerName, sizeof(outSummary->blockerName),
+                 outSummary->capabilities.blockerName);
+  } else {
     setFixedText(outSummary->blockerName, sizeof(outSummary->blockerName),
                  "none");
   }

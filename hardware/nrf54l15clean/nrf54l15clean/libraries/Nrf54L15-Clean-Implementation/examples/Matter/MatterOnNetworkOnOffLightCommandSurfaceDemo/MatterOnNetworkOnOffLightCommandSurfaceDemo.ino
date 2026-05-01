@@ -164,6 +164,44 @@ void printReadinessSummary(
   Serial.println(summary.threadDatasetExportable ? 1 : 0);
 }
 
+void printDiscoverySummary(
+    const xiao_nrf54l15::MatterOnNetworkDiscoverySummary& summary) {
+  Serial.print("matter_cmd_demo discovery_ready=");
+  Serial.println(summary.readyToRegister ? 1 : 0);
+  Serial.print("matter_cmd_demo discovery_blocker=");
+  Serial.println(summary.blockerName);
+  Serial.print("matter_cmd_demo discovery_staged_only=");
+  Serial.println(summary.stagedOnly ? 1 : 0);
+  Serial.print("matter_cmd_demo discovery_service=");
+  Serial.println(summary.serviceType != nullptr ? summary.serviceType : "n/a");
+  Serial.print("matter_cmd_demo discovery_port=");
+  Serial.println(summary.port);
+  Serial.print("matter_cmd_demo discovery_instance=");
+  Serial.println(summary.instanceName);
+  Serial.print("matter_cmd_demo discovery_mode=");
+  Serial.println(static_cast<uint8_t>(summary.commissioningMode));
+  Serial.print("matter_cmd_demo discovery_mdns_core=");
+  Serial.println(summary.capabilities.mdnsCoreEnabled ? 1 : 0);
+  Serial.print("matter_cmd_demo discovery_mdns_api=");
+  Serial.println(summary.capabilities.mdnsPublicApiEnabled ? 1 : 0);
+  Serial.print("matter_cmd_demo discovery_platform_dnssd=");
+  Serial.println(summary.capabilities.platformDnssdEnabled ? 1 : 0);
+  Serial.print("matter_cmd_demo discovery_srp_client=");
+  Serial.println(summary.capabilities.srpClientEnabled ? 1 : 0);
+  Serial.print("matter_cmd_demo discovery_register_capable=");
+  Serial.println(summary.capabilities.canRegisterCommissionableNode ? 1 : 0);
+  Serial.print("matter_cmd_demo discovery_txt_d=");
+  Serial.println(summary.txtDiscriminator);
+  Serial.print("matter_cmd_demo discovery_txt_vp=");
+  Serial.println(summary.txtVendorProduct);
+  Serial.print("matter_cmd_demo discovery_txt_cm=");
+  Serial.println(summary.txtCommissioningMode);
+  Serial.print("matter_cmd_demo discovery_txt_dt=");
+  Serial.println(summary.txtDeviceType);
+  Serial.print("matter_cmd_demo discovery_txt_dn=");
+  Serial.println(summary.txtDeviceName);
+}
+
 void applyIndicator() {
 #if defined(LED_BUILTIN)
   if (g_node.light().identifying()) {
@@ -347,6 +385,7 @@ void printState(const char* reason) {
   printThreadAttachDebugState(status.threadAttachDebugState);
   printThreadAttachSummary(status.threadAttachSummary);
   printReadinessSummary(status.readinessSummary);
+  printDiscoverySummary(status.discoverySummary);
 
   xiao_nrf54l15::MatterAttributePath path;
   path.clusterId = xiao_nrf54l15::Nrf54MatterOnOffLightEndpoint::kOnOffClusterId;
@@ -408,6 +447,7 @@ void printHelp() {
   Serial.println("matter_cmd_demo   factory-reset");
   Serial.println("matter_cmd_demo   bundle");
   Serial.println("matter_cmd_demo   model");
+  Serial.println("matter_cmd_demo   discovery");
   Serial.println("matter_cmd_demo   manual");
   Serial.println("matter_cmd_demo   qr");
   Serial.println("matter_cmd_demo   help");
@@ -467,6 +507,13 @@ void handleLine(char* line) {
   }
   if (strcmp(line, "model") == 0) {
     printDataModel();
+    return;
+  }
+  if (strcmp(line, "discovery") == 0) {
+    xiao_nrf54l15::MatterOnNetworkDiscoverySummary summary;
+    if (g_node.discoverySummary(&summary)) {
+      printDiscoverySummary(summary);
+    }
     return;
   }
   if (strcmp(line, "thread-stats") == 0) {

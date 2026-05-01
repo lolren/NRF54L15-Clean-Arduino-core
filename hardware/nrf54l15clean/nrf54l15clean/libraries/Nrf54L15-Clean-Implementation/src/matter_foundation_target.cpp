@@ -40,6 +40,38 @@ constexpr bool resolved(bool required, bool available) {
   return !required || available;
 }
 
+constexpr bool kOpenThreadMdnsCoreEnabled =
+#if defined(OPENTHREAD_CONFIG_MULTICAST_DNS_ENABLE) && \
+    (OPENTHREAD_CONFIG_MULTICAST_DNS_ENABLE != 0)
+    true;
+#else
+    false;
+#endif
+
+constexpr bool kOpenThreadMdnsPublicApiEnabled =
+#if defined(OPENTHREAD_CONFIG_MULTICAST_DNS_PUBLIC_API_ENABLE) && \
+    (OPENTHREAD_CONFIG_MULTICAST_DNS_PUBLIC_API_ENABLE != 0)
+    true;
+#else
+    false;
+#endif
+
+constexpr bool kOpenThreadPlatformDnssdEnabled =
+#if defined(OPENTHREAD_CONFIG_PLATFORM_DNSSD_ENABLE) && \
+    (OPENTHREAD_CONFIG_PLATFORM_DNSSD_ENABLE != 0)
+    true;
+#else
+    false;
+#endif
+
+constexpr bool kOpenThreadSrpClientEnabled =
+#if defined(OPENTHREAD_CONFIG_SRP_CLIENT_ENABLE) && \
+    (OPENTHREAD_CONFIG_SRP_CLIENT_ENABLE != 0)
+    true;
+#else
+    false;
+#endif
+
 }  // namespace
 
 Nrf54MatterOnOffLightFoundation::Nrf54MatterOnOffLightFoundation() {
@@ -224,6 +256,37 @@ const char* Nrf54MatterOnOffLightFoundation::clusterName(
   return descriptor != nullptr && descriptor->name != nullptr
              ? descriptor->name
              : "UnknownCluster";
+}
+
+bool Nrf54MatterOnOffLightFoundation::discoveryCapabilities(
+    MatterFoundationDiscoveryCapabilities* outCapabilities) const {
+  if (outCapabilities == nullptr) {
+    return false;
+  }
+
+  memset(outCapabilities, 0, sizeof(*outCapabilities));
+  outCapabilities->mdnsCoreEnabled = kOpenThreadMdnsCoreEnabled;
+  outCapabilities->mdnsPublicApiEnabled = kOpenThreadMdnsPublicApiEnabled;
+  outCapabilities->platformDnssdEnabled = kOpenThreadPlatformDnssdEnabled;
+  outCapabilities->srpClientEnabled = kOpenThreadSrpClientEnabled;
+  outCapabilities->canRegisterCommissionableNode =
+      (outCapabilities->mdnsCoreEnabled &&
+       outCapabilities->mdnsPublicApiEnabled) ||
+      outCapabilities->platformDnssdEnabled ||
+      outCapabilities->srpClientEnabled;
+  outCapabilities->blockerName =
+      outCapabilities->canRegisterCommissionableNode
+          ? "none"
+          : "openthread_mdns_srp_disabled";
+  return true;
+}
+
+const char* Nrf54MatterOnOffLightFoundation::commissionableServiceType() const {
+  return "_matterc._udp";
+}
+
+const char* Nrf54MatterOnOffLightFoundation::operationalServiceType() const {
+  return "_matter._tcp";
 }
 
 const MatterFoundationThreadDependency*
