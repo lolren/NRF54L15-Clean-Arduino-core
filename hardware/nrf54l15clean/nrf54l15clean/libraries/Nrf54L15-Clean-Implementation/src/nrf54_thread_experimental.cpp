@@ -255,6 +255,24 @@ bool Nrf54ThreadExperimental::exportConfiguredOrActiveDatasetHex(
                          outBufferSize, outHexLength);
 }
 
+bool Nrf54ThreadExperimental::wipePersistentSettings() {
+#if !defined(NRF54L15_CLEAN_OPENTHREAD_CORE_ENABLE) || \
+    (NRF54L15_CLEAN_OPENTHREAD_CORE_ENABLE == 0)
+  lastError_ = OT_ERROR_INVALID_STATE;
+  return false;
+#else
+  OpenThreadPlatformSkeleton::wipeSettings();
+  settingsWiped_ = true;
+  dataset_ = {};
+  datasetConfigured_ = false;
+  datasetApplied_ = false;
+  datasetRestoreAttempted_ = false;
+  datasetRestoredFromSettings_ = false;
+  lastError_ = OT_ERROR_NONE;
+  return true;
+#endif
+}
+
 bool Nrf54ThreadExperimental::requestRouterRole() {
 #if !defined(NRF54L15_CLEAN_OPENTHREAD_CORE_ENABLE) || \
     (NRF54L15_CLEAN_OPENTHREAD_CORE_ENABLE == 0)

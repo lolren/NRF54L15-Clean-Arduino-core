@@ -346,6 +346,7 @@ Thread example organization:
     `ThreadExperimentalUdpHello`
     `ThreadExperimentalRouterPromotion`
     `ThreadExperimentalPskcUdpHello`
+    `ThreadExperimentalCommandSurface`
     `ThreadExperimentalReferenceDatasetAttach`
   - the current wrapper-level hardware logs live at:
     `measurements/thread_phase4_latest/thread_udp_hello_board_a.log`
@@ -391,6 +392,7 @@ Thread example organization:
   bring-up through the same staged Arduino wrapper. The wrapper now also has
   active-dataset TLV/hex import/export plus settings-backed dataset restore for
   reboot/reference-network bring-up work, exposed in
+  `ThreadExperimentalCommandSurface` and
   `ThreadExperimentalReferenceDatasetAttach`. Reference-network attach,
   joiner/commissioner flows, and Matter are still follow-up work.
 - the first Matter foundation slice now also exists:

@@ -46,6 +46,7 @@ class Nrf54ThreadExperimental {
       otOperationalDatasetTlvs* outDatasetTlvs) const;
   bool exportConfiguredOrActiveDatasetHex(char* outBuffer, size_t outBufferSize,
                                           size_t* outHexLength = nullptr) const;
+  bool wipePersistentSettings();
   bool requestRouterRole();
 
   bool openUdp(uint16_t port,
