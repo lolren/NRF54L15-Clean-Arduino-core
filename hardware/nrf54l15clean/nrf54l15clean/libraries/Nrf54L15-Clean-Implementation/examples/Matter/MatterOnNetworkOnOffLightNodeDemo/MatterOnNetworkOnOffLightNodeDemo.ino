@@ -100,6 +100,18 @@ void printStatus(const char* reason) {
   Serial.println(status.threadAttachDiagnostics.betterParentAttachAttempts);
   Serial.print("matter_node_demo thread_parent_changes=");
   Serial.println(status.threadAttachDiagnostics.parentChanges);
+  Serial.print("matter_node_demo thread_attach_in_progress=");
+  Serial.println(status.threadAttachDebugState.attachInProgress ? 1 : 0);
+  Serial.print("matter_node_demo thread_attach_state=");
+  Serial.println(status.threadAttachDebugState.attachStateName);
+  Serial.print("matter_node_demo thread_attach_mode=");
+  Serial.println(status.threadAttachDebugState.attachModeName);
+  Serial.print("matter_node_demo thread_reattach_mode=");
+  Serial.println(status.threadAttachDebugState.reattachModeName);
+  Serial.print("matter_node_demo thread_parent_candidate_state=");
+  Serial.println(status.threadAttachDebugState.parentCandidateStateName);
+  Serial.print("matter_node_demo thread_attach_timer_remaining_ms=");
+  Serial.println(status.threadAttachDebugState.attachTimerRemainingMs);
   Serial.print("matter_node_demo dataset_exportable=");
   Serial.println(status.threadDatasetExportable ? 1 : 0);
   Serial.print("matter_node_demo ready=");

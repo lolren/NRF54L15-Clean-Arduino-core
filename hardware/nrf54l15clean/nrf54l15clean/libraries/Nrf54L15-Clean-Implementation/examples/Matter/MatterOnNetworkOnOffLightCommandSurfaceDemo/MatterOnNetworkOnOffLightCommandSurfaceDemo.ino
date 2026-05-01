@@ -98,6 +98,36 @@ void printThreadAttachDiagnostics() {
   Serial.println(diagnostics.parentChanges);
 }
 
+void printThreadAttachDebugState(
+    const xiao_nrf54l15::Nrf54ThreadExperimental::AttachDebugState& debugState) {
+  Serial.print("matter_cmd_demo thread_attach_debug_valid=");
+  Serial.println(debugState.valid ? 1 : 0);
+  Serial.print("matter_cmd_demo thread_attach_in_progress=");
+  Serial.println(debugState.attachInProgress ? 1 : 0);
+  Serial.print("matter_cmd_demo thread_attach_timer_running=");
+  Serial.println(debugState.attachTimerRunning ? 1 : 0);
+  Serial.print("matter_cmd_demo thread_received_parent_response=");
+  Serial.println(debugState.receivedResponseFromParent ? 1 : 0);
+  Serial.print("matter_cmd_demo thread_attach_state=");
+  Serial.println(debugState.attachStateName);
+  Serial.print("matter_cmd_demo thread_attach_mode=");
+  Serial.println(debugState.attachModeName);
+  Serial.print("matter_cmd_demo thread_reattach_mode=");
+  Serial.println(debugState.reattachModeName);
+  Serial.print("matter_cmd_demo thread_parent_candidate_state=");
+  Serial.println(debugState.parentCandidateStateName);
+  Serial.print("matter_cmd_demo thread_parent_request_counter=");
+  Serial.println(debugState.parentRequestCounter);
+  Serial.print("matter_cmd_demo thread_child_id_requests_remaining=");
+  Serial.println(debugState.childIdRequestsRemaining);
+  Serial.print("matter_cmd_demo thread_attach_counter=");
+  Serial.println(debugState.attachCounter);
+  Serial.print("matter_cmd_demo thread_attach_timer_remaining_ms=");
+  Serial.println(debugState.attachTimerRemainingMs);
+  Serial.print("matter_cmd_demo thread_parent_candidate_rloc16=0x");
+  Serial.println(debugState.parentCandidateRloc16, HEX);
+}
+
 void applyIndicator() {
 #if defined(LED_BUILTIN)
   if (g_node.light().identifying()) {
@@ -225,6 +255,7 @@ void printState(const char* reason) {
   printThreadChangedFlags("thread_pending_flags",
                           g_node.thread().pendingChangedFlags());
   printThreadAttachDiagnostics();
+  printThreadAttachDebugState(status.threadAttachDebugState);
 
   xiao_nrf54l15::MatterAttributePath path;
   path.clusterId = xiao_nrf54l15::Nrf54MatterOnOffLightEndpoint::kOnOffClusterId;
@@ -343,11 +374,16 @@ void handleLine(char* line) {
     return;
   }
   if (strcmp(line, "thread-stats") == 0) {
+    xiao_nrf54l15::MatterOnNetworkOnOffLightStatus status;
+    const bool ok = g_node.snapshot(&status);
     printThreadAttachDiagnostics();
     printThreadChangedFlags("thread_last_flags",
                             g_node.thread().lastChangedFlags());
     printThreadChangedFlags("thread_pending_flags",
                             g_node.thread().pendingChangedFlags());
+    if (ok) {
+      printThreadAttachDebugState(status.threadAttachDebugState);
+    }
     return;
   }
   if (strcmp(line, "close-window") == 0) {

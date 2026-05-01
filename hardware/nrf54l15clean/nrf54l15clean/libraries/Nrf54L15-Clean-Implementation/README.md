@@ -498,7 +498,8 @@ Thread example organization:
     the internal Thread/light pair, print the onboarding codes, and report
     when the node is mechanically ready for on-network commissioning. That
     public node snapshot now also carries Thread attach diagnostics and the
-    latest OpenThread state-change flags.
+    latest OpenThread state-change flags, plus the hidden attach-state-machine
+    snapshot from the staged Thread runtime.
   - the new command-surface example lives at
     `examples/Matter/MatterOnNetworkOnOffLightCommandSurfaceDemo`, showing how
     to route `On`, `Off`, `Toggle`, and `Identify` plus attribute reads
