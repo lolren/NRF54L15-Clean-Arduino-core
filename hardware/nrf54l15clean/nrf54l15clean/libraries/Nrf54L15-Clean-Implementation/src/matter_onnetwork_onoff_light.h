@@ -52,6 +52,21 @@ struct MatterOnNetworkPersistentThreadDataset {
   uint8_t tlvs[OT_OPERATIONAL_DATASET_MAX_LENGTH] = {0};
 };
 
+struct MatterOnNetworkReadinessSummary {
+  bool ready = false;
+  bool storageOpen = false;
+  bool lightReady = false;
+  bool foundationReady = false;
+  bool threadStarted = false;
+  bool threadAttached = false;
+  bool manualCodeReady = false;
+  bool qrCodeReady = false;
+  bool threadDatasetExportable = false;
+  Nrf54ThreadExperimental::AttachSummary threadAttachSummary = {};
+  char phaseName[32] = {0};
+  char blockerName[48] = {0};
+};
+
 struct MatterOnNetworkOnOffLightConfig {
   const char* storageNamespace = "matter_node";
   const char* lightStorageNamespace = "matter_onoff";
@@ -77,6 +92,7 @@ struct MatterOnNetworkOnOffLightStatus {
   otChangedFlags threadLastChangedFlags = 0U;
   Nrf54ThreadExperimental::AttachDebugState threadAttachDebugState = {};
   Nrf54ThreadExperimental::AttachSummary threadAttachSummary = {};
+  MatterOnNetworkReadinessSummary readinessSummary = {};
   bool manualCodeReady = false;
   bool qrCodeReady = false;
   bool readyForOnNetworkCommissioning = false;
@@ -157,6 +173,7 @@ class Nrf54MatterOnNetworkOnOffLightNode {
   MatterCommissioningWindowState commissioningWindowState() const;
   bool commissioningWindowOpen() const;
   uint16_t commissioningWindowSecondsRemaining() const;
+  bool readinessSummary(MatterOnNetworkReadinessSummary* outSummary) const;
   bool buildCommissioningBundle(
       MatterOnNetworkCommissioningBundle* outBundle) const;
   bool exportOpenThreadDatasetTlvs(otOperationalDatasetTlvs* outTlvs) const;

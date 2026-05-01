@@ -534,7 +534,9 @@ Not finished yet:
 - Thread has real staged bring-up now, including fixed dataset, role, and UDP
   examples, but it is not yet a production Thread stack
 - Matter has staged foundation code and on/off-light demos, but not real
-  commissioning, discovery, control, or Home Assistant validation yet
+  commissioning, discovery, control, or Home Assistant validation yet. The
+  staged on-network node now reports a readiness phase/blocker so the next
+  commissioning slices can show exactly which gate is still closed.
 - Zigbee covers practical HA-style examples, but not full Zigbee 3.0
   certification-level stack coverage
 - broader automated BLE phone/interoperability coverage

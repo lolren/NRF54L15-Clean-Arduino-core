@@ -65,6 +65,30 @@ void printCodes() {
   Serial.println(qrOk ? qrCode : "error");
 }
 
+void printReadinessSummary(
+    const xiao_nrf54l15::MatterOnNetworkReadinessSummary& summary) {
+  Serial.print("matter_node_demo readiness_phase=");
+  Serial.println(summary.phaseName);
+  Serial.print("matter_node_demo readiness_blocker=");
+  Serial.println(summary.blockerName);
+  Serial.print("matter_node_demo readiness_storage=");
+  Serial.println(summary.storageOpen ? 1 : 0);
+  Serial.print("matter_node_demo readiness_light=");
+  Serial.println(summary.lightReady ? 1 : 0);
+  Serial.print("matter_node_demo readiness_foundation=");
+  Serial.println(summary.foundationReady ? 1 : 0);
+  Serial.print("matter_node_demo readiness_thread_started=");
+  Serial.println(summary.threadStarted ? 1 : 0);
+  Serial.print("matter_node_demo readiness_thread_attached=");
+  Serial.println(summary.threadAttached ? 1 : 0);
+  Serial.print("matter_node_demo readiness_manual=");
+  Serial.println(summary.manualCodeReady ? 1 : 0);
+  Serial.print("matter_node_demo readiness_qr=");
+  Serial.println(summary.qrCodeReady ? 1 : 0);
+  Serial.print("matter_node_demo readiness_dataset_exportable=");
+  Serial.println(summary.threadDatasetExportable ? 1 : 0);
+}
+
 void printStatus(const char* reason) {
   xiao_nrf54l15::MatterOnNetworkOnOffLightStatus status;
   if (!g_node.snapshot(&status)) {
@@ -120,6 +144,7 @@ void printStatus(const char* reason) {
   Serial.println(status.threadDatasetExportable ? 1 : 0);
   Serial.print("matter_node_demo ready=");
   Serial.println(status.readyForOnNetworkCommissioning ? 1 : 0);
+  printReadinessSummary(status.readinessSummary);
   Serial.print("matter_node_demo on=");
   Serial.println(status.light.on ? 1 : 0);
   Serial.print("matter_node_demo identifying=");

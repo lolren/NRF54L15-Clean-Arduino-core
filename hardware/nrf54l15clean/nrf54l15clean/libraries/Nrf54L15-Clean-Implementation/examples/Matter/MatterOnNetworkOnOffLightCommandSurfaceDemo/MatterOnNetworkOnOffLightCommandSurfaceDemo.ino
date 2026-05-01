@@ -140,6 +140,30 @@ void printThreadAttachSummary(
   Serial.println(summary.configuredForAttach ? 1 : 0);
 }
 
+void printReadinessSummary(
+    const xiao_nrf54l15::MatterOnNetworkReadinessSummary& summary) {
+  Serial.print("matter_cmd_demo readiness_phase=");
+  Serial.println(summary.phaseName);
+  Serial.print("matter_cmd_demo readiness_blocker=");
+  Serial.println(summary.blockerName);
+  Serial.print("matter_cmd_demo readiness_storage=");
+  Serial.println(summary.storageOpen ? 1 : 0);
+  Serial.print("matter_cmd_demo readiness_light=");
+  Serial.println(summary.lightReady ? 1 : 0);
+  Serial.print("matter_cmd_demo readiness_foundation=");
+  Serial.println(summary.foundationReady ? 1 : 0);
+  Serial.print("matter_cmd_demo readiness_thread_started=");
+  Serial.println(summary.threadStarted ? 1 : 0);
+  Serial.print("matter_cmd_demo readiness_thread_attached=");
+  Serial.println(summary.threadAttached ? 1 : 0);
+  Serial.print("matter_cmd_demo readiness_manual=");
+  Serial.println(summary.manualCodeReady ? 1 : 0);
+  Serial.print("matter_cmd_demo readiness_qr=");
+  Serial.println(summary.qrCodeReady ? 1 : 0);
+  Serial.print("matter_cmd_demo readiness_dataset_exportable=");
+  Serial.println(summary.threadDatasetExportable ? 1 : 0);
+}
+
 void applyIndicator() {
 #if defined(LED_BUILTIN)
   if (g_node.light().identifying()) {
@@ -269,6 +293,7 @@ void printState(const char* reason) {
   printThreadAttachDiagnostics();
   printThreadAttachDebugState(status.threadAttachDebugState);
   printThreadAttachSummary(status.threadAttachSummary);
+  printReadinessSummary(status.readinessSummary);
 
   xiao_nrf54l15::MatterAttributePath path;
   path.clusterId = xiao_nrf54l15::Nrf54MatterOnOffLightEndpoint::kOnOffClusterId;

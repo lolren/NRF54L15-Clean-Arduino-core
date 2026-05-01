@@ -496,7 +496,9 @@ Thread example organization:
     `src/matter_onnetwork_onoff_light.cpp` node layer now also owns the first
     commissioning-flow helper surface for this staged path: commissioning
     window state, commissioning bundle generation, OpenThread dataset TLV hex
-    export, and staged CHIP Thread dataset hex export
+    export, staged CHIP Thread dataset hex export, and a readiness summary that
+    reports the first blocked phase (`storage`, `light`, `foundation`,
+    `thread`, `onboarding`, `dataset`, or `ready`) with a short blocker string
   - the new bootstrap example lives at
     `examples/Matter/MatterOnNetworkOnOffLightNodeDemo`, showing the intended
     staged bring-up path: build a Thread dataset from passphrase inputs, start
@@ -504,7 +506,8 @@ Thread example organization:
     when the node is mechanically ready for on-network commissioning. That
     public node snapshot now also carries Thread attach diagnostics and the
     latest OpenThread state-change flags, plus the hidden attach-state-machine
-    snapshot from the staged Thread runtime.
+    snapshot from the staged Thread runtime, plus the Matter readiness
+    `phase` / `blocker` summary.
   - the new command-surface example lives at
     `examples/Matter/MatterOnNetworkOnOffLightCommandSurfaceDemo`, showing how
     to route `On`, `Off`, `Toggle`, and `Identify` plus attribute reads

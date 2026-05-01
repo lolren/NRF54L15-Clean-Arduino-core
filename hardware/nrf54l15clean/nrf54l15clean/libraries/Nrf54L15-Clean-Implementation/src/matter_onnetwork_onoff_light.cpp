@@ -21,6 +21,18 @@ bool commissioningFlowValid(MatterCommissioningFlow flow) {
   }
 }
 
+void setFixedText(char* destination, size_t length, const char* source) {
+  if (destination == nullptr || length == 0U) {
+    return;
+  }
+  destination[0] = '\0';
+  if (source == nullptr) {
+    return;
+  }
+  strncpy(destination, source, length - 1U);
+  destination[length - 1U] = '\0';
+}
+
 }  // namespace
 
 uint16_t Nrf54MatterOnNetworkOnOffLightNode::remainingWindowSeconds(
@@ -291,31 +303,16 @@ bool Nrf54MatterOnNetworkOnOffLightNode::snapshot(
   (void)thread_.getAttachDiagnostics(&outStatus->threadAttachDiagnostics);
   (void)thread_.getAttachDebugState(&outStatus->threadAttachDebugState);
   (void)thread_.getAttachSummary(&outStatus->threadAttachSummary);
+  (void)readinessSummary(&outStatus->readinessSummary);
   outStatus->buildSeamsAligned = foundation_.buildSeamsAligned();
   outStatus->datasetSource = datasetSource_;
   outStatus->threadRole = thread_.role();
   outStatus->rloc16 = thread_.rloc16();
   outStatus->identity = identity_;
-  outStatus->manualCodeReady =
-      manualPairingCode(nullptr, 0U) ||
-      matterManualPairingPayloadValid(MatterManualPairingPayload{
-          identity_.setupPinCode,
-          identity_.discriminator,
-          identity_.vendorId,
-          identity_.productId,
-          identity_.commissioningFlow});
-  outStatus->qrCodeReady =
-      matterQrCodePayloadValid(MatterQrCodePayload{
-          0U,
-          identity_.setupPinCode,
-          identity_.discriminator,
-          identity_.vendorId,
-          identity_.productId,
-          static_cast<uint8_t>(kMatterRendezvousOnNetwork |
-                               kMatterRendezvousThread),
-          identity_.commissioningFlow});
+  outStatus->manualCodeReady = outStatus->readinessSummary.manualCodeReady;
+  outStatus->qrCodeReady = outStatus->readinessSummary.qrCodeReady;
   outStatus->readyForOnNetworkCommissioning =
-      readyForOnNetworkCommissioning();
+      outStatus->readinessSummary.ready;
   outStatus->commissioningWindowPending = commissioningWindowPending_;
   outStatus->commissioningWindowState = commissioningWindowState();
   outStatus->commissioningWindowSecondsRemaining =
@@ -508,6 +505,78 @@ Nrf54MatterOnNetworkOnOffLightNode::commissioningWindowSecondsRemaining()
   return remainingWindowSeconds(commissioningWindowEndMs_);
 }
 
+bool Nrf54MatterOnNetworkOnOffLightNode::readinessSummary(
+    MatterOnNetworkReadinessSummary* outSummary) const {
+  if (outSummary == nullptr) {
+    return false;
+  }
+
+  memset(outSummary, 0, sizeof(*outSummary));
+  outSummary->storageOpen = storageOpen_;
+  outSummary->lightReady = lightReady_;
+  outSummary->foundationReady = foundation_.mechanicalPathPossible();
+  outSummary->threadStarted = thread_.started();
+  outSummary->threadAttached = thread_.attached();
+  outSummary->manualCodeReady = manualPairingCode(nullptr, 0U);
+  outSummary->qrCodeReady = qrCode(nullptr, 0U);
+  outSummary->threadDatasetExportable = threadDatasetExportable();
+  (void)thread_.getAttachSummary(&outSummary->threadAttachSummary);
+  outSummary->ready =
+      outSummary->storageOpen && outSummary->lightReady &&
+      outSummary->foundationReady && outSummary->threadStarted &&
+      outSummary->threadAttached && outSummary->manualCodeReady &&
+      outSummary->qrCodeReady && outSummary->threadDatasetExportable;
+
+  if (!outSummary->storageOpen) {
+    setFixedText(outSummary->phaseName, sizeof(outSummary->phaseName),
+                 "storage");
+    setFixedText(outSummary->blockerName, sizeof(outSummary->blockerName),
+                 "storage_closed");
+  } else if (!outSummary->lightReady) {
+    setFixedText(outSummary->phaseName, sizeof(outSummary->phaseName), "light");
+    setFixedText(outSummary->blockerName, sizeof(outSummary->blockerName),
+                 "light_not_ready");
+  } else if (!outSummary->foundationReady) {
+    setFixedText(outSummary->phaseName, sizeof(outSummary->phaseName),
+                 "foundation");
+    setFixedText(outSummary->blockerName, sizeof(outSummary->blockerName),
+                 "mechanical_path_unavailable");
+  } else if (!outSummary->threadStarted) {
+    setFixedText(outSummary->phaseName, sizeof(outSummary->phaseName),
+                 "thread");
+    setFixedText(outSummary->blockerName, sizeof(outSummary->blockerName),
+                 "thread_not_started");
+  } else if (!outSummary->threadAttached) {
+    const char* phase = outSummary->threadAttachSummary.phaseName;
+    const char* blocker = outSummary->threadAttachSummary.blockerName;
+    setFixedText(outSummary->phaseName, sizeof(outSummary->phaseName),
+                 phase[0] != '\0' ? phase : "thread_attach");
+    setFixedText(outSummary->blockerName, sizeof(outSummary->blockerName),
+                 blocker[0] != '\0' ? blocker : "thread_not_attached");
+  } else if (!outSummary->manualCodeReady) {
+    setFixedText(outSummary->phaseName, sizeof(outSummary->phaseName),
+                 "onboarding");
+    setFixedText(outSummary->blockerName, sizeof(outSummary->blockerName),
+                 "manual_code_not_ready");
+  } else if (!outSummary->qrCodeReady) {
+    setFixedText(outSummary->phaseName, sizeof(outSummary->phaseName),
+                 "onboarding");
+    setFixedText(outSummary->blockerName, sizeof(outSummary->blockerName),
+                 "qr_code_not_ready");
+  } else if (!outSummary->threadDatasetExportable) {
+    setFixedText(outSummary->phaseName, sizeof(outSummary->phaseName),
+                 "dataset");
+    setFixedText(outSummary->blockerName, sizeof(outSummary->blockerName),
+                 "thread_dataset_not_exportable");
+  } else {
+    setFixedText(outSummary->phaseName, sizeof(outSummary->phaseName), "ready");
+    setFixedText(outSummary->blockerName, sizeof(outSummary->blockerName),
+                 "none");
+  }
+
+  return true;
+}
+
 bool Nrf54MatterOnNetworkOnOffLightNode::buildCommissioningBundle(
     MatterOnNetworkCommissioningBundle* outBundle) const {
   if (outBundle == nullptr) {
@@ -588,10 +657,8 @@ bool Nrf54MatterOnNetworkOnOffLightNode::qrCode(char* outBuffer,
 
 bool Nrf54MatterOnNetworkOnOffLightNode::readyForOnNetworkCommissioning()
     const {
-  return storageOpen_ && lightReady_ && foundation_.mechanicalPathPossible() &&
-         thread_.started() && thread_.attached() &&
-         manualPairingCode(nullptr, 0U) && qrCode(nullptr, 0U) &&
-         threadDatasetExportable();
+  MatterOnNetworkReadinessSummary summary = {};
+  return readinessSummary(&summary) && summary.ready;
 }
 
 #if defined(NRF54L15_CLEAN_MATTER_CORE_ENABLE) && \
