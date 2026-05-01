@@ -1057,25 +1057,11 @@ bool bleUuidEqualsAttWire(const uint8_t* storedUuid, uint8_t storedUuidSize,
       storedUuidSize != attWireUuidSize) {
     return false;
   }
-  if (storedUuidSize == kBleUuid128Size) {
-    for (uint8_t i = 0U; i < kBleUuid128Size; ++i) {
-      if (storedUuid[i] != attWireUuid[kBleUuid128Size - 1U - i]) {
-        return false;
-      }
-    }
-    return true;
-  }
   return memcmp(storedUuid, attWireUuid, storedUuidSize) == 0;
 }
 
 void writeUuidToAttWire(uint8_t* out, const uint8_t* uuid, uint8_t uuidSize) {
   if (out == nullptr || uuid == nullptr) {
-    return;
-  }
-  if (uuidSize == kBleUuid128Size) {
-    for (uint8_t i = 0U; i < kBleUuid128Size; ++i) {
-      out[i] = uuid[kBleUuid128Size - 1U - i];
-    }
     return;
   }
   memcpy(out, uuid, uuidSize);
