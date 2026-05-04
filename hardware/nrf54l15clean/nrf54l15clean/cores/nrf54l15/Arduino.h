@@ -167,12 +167,6 @@ typedef uint8_t BitOrder;
 #define clockCyclesToMicroseconds(a) ((a) / clockCyclesPerMicrosecond())
 #define microsecondsToClockCycles(a) ((a) * clockCyclesPerMicrosecond())
 
-#ifndef ledOn
-#define ledOn(pin) digitalWrite((pin), LED_STATE_ON)
-#endif
-#ifndef ledOff
-#define ledOff(pin) digitalWrite((pin), (1 - LED_STATE_ON))
-#endif
 
 // Flash string macro
 #ifndef PROGMEM
@@ -207,6 +201,12 @@ void digitalToggle(uint8_t pin);
 
 // Analog I/O
 int analogRead(uint8_t pin);
+
+// LED pin helpers (inline functions placed after digitalWrite declaration)
+#ifdef LED_STATE_ON
+inline void ledOn(uint8_t pin) { digitalWrite(pin, LED_STATE_ON); }
+inline void ledOff(uint8_t pin) { digitalWrite(pin, 1 - LED_STATE_ON); }
+#endif
 void analogReference(uint8_t mode);
 void analogReadResolution(uint8_t bits);
 void analogWriteResolution(uint8_t bits);
