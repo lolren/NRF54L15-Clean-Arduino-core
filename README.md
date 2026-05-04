@@ -1,970 +1,174 @@
-# nRF54 Arduino Core
+# nRF54L15 Arduino Core
 
-Open-source Arduino board package for **nRF54L15 boards** with a secure
-single-image, register-level implementation.
+Open-source Arduino board package for **nRF54L15** — the latest-gen Cortex-M33 + RISC-V SoC from Nordic Semiconductor. No Zephyr, no nRF Connect SDK. Just pure register-level C++ on bare metal.
 
-- Board package: `nRF54L15 Boards`
-- Supported boards:
-  - `XIAO nRF54L15 / Sense`
-  - `HOLYIOT-25008 nRF54L15 Module`
-  - `HOLYIOT-25007 nRF54L15 Module`
-  - `Generic nRF54L15 Module (36-pad)`
-- Runtime model: no Zephyr runtime, no nRF Connect SDK runtime
-- Default build mode: secure single image
+---
 
-## What This Repo Provides
+## Quick Start
 
-This repo ships two things:
+1. Add Boards Manager URL in Arduino IDE:  
+   **`https://raw.githubusercontent.com/lolren/nrf54-arduino-core/main/package_nrf54l15clean_index.json`**
 
-1. A normal Arduino Boards Manager package for the supported `nRF54L15` boards.
-2. A bundled register-level HAL/BLE library used by the board core and exposed to sketches.
+2. Install **nRF54L15 Boards** from Tools → Board → Boards Manager
 
-Current scope:
+3. Select **XIAO nRF54L15 / Sense** and upload
 
-- GPIO, clock, SPI, I2C, UART, ADC, TIMER, PWM, GPIOTE, TEMP, WDT, PDM
-- DPPI/EGU helpers plus usable KMU and TAMPC security wrappers
-- Raw `NRF_RADIO` and `NRF_I2S` register access for low-level library ports
-- `RawRadioLink` helper for proprietary 1 Mbit packet TX/RX on `RADIO`
-- POWER / RESET / REGULATORS / GRTC control
-- BLE legacy and extended advertising, active/passive scan, stable connected-link scheduling, ATT/GATT peripheral and client flows, Nordic UART Service transport, and Bluefruit/Seeed-style wrapper support
-- Zigbee HA coordinator / light / sensor examples plus lower-level 802.15.4 bring-up helpers
-- experimental Thread/OpenThread staged-core work with fixed dataset, role, and
-  UDP bring-up examples
-- staged Matter foundation helpers for on-network/on-off-light work, onboarding
-  code generation, and Thread dataset export
-- reusable VPR shared-transport/controller-service groundwork plus a dedicated
-  VPR-backed CS transport image
-- channel-sounding bring-up hooks, phase-ranging examples, raw DFE helpers, and
-  controller-style CS parsing/host layers
-- Low-power `WFI` and true `SYSTEM OFF` paths on XIAO
-
-## Feature Matrix At A Glance
-
-This table is the GitHub-facing summary. The full tick-box checklist lives in
-[`docs/NRF54L15_FEATURE_MATRIX.md`](docs/NRF54L15_FEATURE_MATRIX.md).
-
-| Area | Status | Works now | Still not claimed |
-|---|---|---|---|
-| Arduino core APIs | Done | GPIO, interrupts, ADC, PWM, UART, SPI, I2C, timing, EEPROM/Preferences, board menus, upload tooling. | Broader third-party library parity and more mixed-peripheral stress coverage. |
-| Board support | Done | XIAO nRF54L15 / Sense, HOLYIOT-25008, HOLYIOT-25007, generic 36-pad module, PCA10156-style DK target. | Recurring real-host macOS smoke tests. |
-| Low power | Mostly done | WFI idle, CPU idle scaling, true System OFF, LPCOMP wake, low-power BLE and Zigbee examples. | More measured current tables across boards and wireless combinations. |
-| BLE | Partial | Legacy/extended advertising, scanning, connect, GATT, NUS, MTU paths, 2M/coded PHY request examples, Bluefruit-style compatibility. | Full Bluetooth controller conformance, periodic advertising, ISO/LE Audio, mesh, and stronger pairing/bonding interop matrix. |
-| Bluetooth Channel Sounding | Experimental | Two-board phase ranging, raw DFE helpers, HCI-style CS parsing, VPR-backed CS transport demos. | Production BLE-controller-backed Bluetooth CS interoperability. |
-| Zigbee / 802.15.4 | Partial | Raw 802.15.4, MAC-lite, coordinator/router/end-device demos, HA light/sensor/sleepy examples. | Full Zigbee 3.0 stack and certification-level cluster/profile coverage. |
-| Thread | Experimental | Staged OpenThread core, fixed dataset, leader/child/router paths, PSKc/passphrase helpers, UDP examples. | Joiner/commissioner, reference-network attach, reboot recovery, sleepy-device depth, and production claim. |
-| Matter | Foundation only | Staged connectedhomeip subset, onboarding-code helper, on/off-light model, Thread dataset TLV seam. | Real commissioning, discovery, control from commissioner/Home Assistant, and reboot recovery. |
-| VPR | Partial | Boot/control, shared transport, controller-service host, ticker/CRC/FNV offloads, lifecycle probes, CS service scaffolding. | General softperipheral runtime, sQSPI, and production controller-service ownership. |
-| Security / tamper | Partial | CRACEN RNG, AAR, ECB, CCM, KMU wrapper, TAMPC wrapper, OpenThread symmetric crypto paths. | CRACEN PKE/ECDSA, production KMU provisioning flow, and external tamper reset characterization. |
-
-Two-wire note:
-
-- `I3C` is not an nRF54L15 silicon block.
-- The chip exposes `TWIM/TWIS` I2C controller/target peripherals instead.
-- Not all peripherals are fully implemented yet; the open items are tracked in the full matrix.
-
-## Install
-
-Boards Manager URL for current releases:
-
-```text
-https://raw.githubusercontent.com/lolren/nrf54-arduino-core/main/package_nrf54l15clean_index.json
+```cpp
+#include <nrf54_all.h>
+void setup() { Serial.begin(115200); Serial.println("Hello nRF54!"); }
+void loop() {}
 ```
 
-Archive URL for older releases:
-
-```text
-https://raw.githubusercontent.com/lolren/nrf54-arduino-core/main/package_nrf54l15clean_archive_index.json
-```
-
-Install `nRF54L15 Boards`, then select one of:
-
-- `XIAO nRF54L15 / Sense`
-- `HOLYIOT-25008 nRF54L15 Module`
-- `HOLYIOT-25007 nRF54L15 Module`
-- `Generic nRF54L15 Module (36-pad)`
-
-Default upload methods:
-
-- `XIAO nRF54L15 / Sense`: `Auto Recover (Default)`
-- `HOLYIOT-25008 nRF54L15 Module`: `pyOCD (CMSIS-DAP, Default)`
-- `HOLYIOT-25007 nRF54L15 Module`: `pyOCD (CMSIS-DAP, Default)`
-- `Generic nRF54L15 Module (36-pad)`: `pyOCD (CMSIS-DAP, Default)`
-
-Important tools option:
-
-- `Tools -> VPR Support -> Enabled (Default)` keeps the shared VPR transport,
-  offload probes, and VPR-backed channel-sounding paths available.
-- `Tools -> VPR Support -> Disabled (Reclaim RAM for Non-VPR Sketches)` switches to the no-VPR
-  linker layout and raises the normal heap ceiling from `0x20018000` to
-  `0x2003EE00` for ordinary sketches.
-- In `Disabled (Reclaim RAM for Non-VPR Sketches)` mode, VPR/offload/channel-sounding VPR features
-  are intentionally unsupported and should be left on the default setting.
-
-What is automatic now:
-
-- Boards Manager installs the compiler, OpenOCD, and the small `nrf54l15hosttools` helper package
-- normal compile now emits `.elf`, `.hex`, `.bin`, and `.uf2` build artifacts
-- the bundled host-tools package now installs `pyOCD` into a tool-local
-  runtime instead of the system Python environment, so fresh Mint/Ubuntu
-  machines do not trip over PEP 668 managed-environment protection during the
-  normal recovery path
-- when a matching bundled wheelhouse is present in the host-tools package, the
-  local runtime install can stay offline; otherwise it falls back to the normal
-  online `pip` path inside that tool-local runtime
-
-What is still host-specific:
-
-- Linux `udev` access for the CMSIS-DAP probe when using `Auto Recover`,
-  `pyOCD Recovery`, or OpenOCD direct recovery
-- the recovery-capable default upload path still uses the Python helper so it can handle protected-target and unlock cases reliably
-- direct OpenOCD upload is exposed as an explicit experimental option, not the default, because the shipped OpenOCD target config still is not strong enough to replace the helper path completely
-- the helper still needs `python3` plus `pip` support on the host, but it no
-  longer needs write access to the system Python environment
-
-Fresh-machine recovery/setup helpers:
-
-- Linux `udev` only: run `tools/setup/install_linux_host_deps.sh --udev` from the installed `nrf54l15hosttools` package, or the matching script in the repo
-- Linux `pyOCD` only: run `tools/setup/install_linux_host_deps.sh` or `tools/setup/install_linux_host_deps.sh --python` to install `pyOCD` into the tool-local runtime
-- Linux both: run `tools/setup/install_linux_host_deps.sh --all`
-- Windows: run `tools\\setup\\install_windows_host_deps.ps1` from the installed `nrf54l15hosttools` package, or the matching script in the repo
-
-The main package index now stays intentionally lean and only keeps recent
-releases. Full version history stays in the archive index instead of bloating
-the default install path.
-
-CLI:
-
-```bash
-arduino-cli core update-index \
-  --additional-urls https://raw.githubusercontent.com/lolren/nrf54-arduino-core/main/package_nrf54l15clean_index.json
-
-arduino-cli core install nrf54l15clean:nrf54l15clean \
-  --additional-urls https://raw.githubusercontent.com/lolren/nrf54-arduino-core/main/package_nrf54l15clean_index.json
-```
+---
 
 ## Supported Boards
 
-| Board | FQBN | Default upload | Notes |
-|---|---|---|---|
-| `XIAO nRF54L15 / Sense` | `nrf54l15clean:nrf54l15clean:xiao_nrf54l15` | `Auto Recover` | Full onboard rail and antenna helpers. |
-| `HOLYIOT-25008 nRF54L15 Module` | `nrf54l15clean:nrf54l15clean:holyiot_25008_nrf54l15` | `pyOCD (CMSIS-DAP)` | Dedicated board target with onboard RGB LED, button, LIS2DH12, and `D0/D1` serial-pad GPIO menu. |
-| `HOLYIOT-25007 nRF54L15 Module` | `nrf54l15clean:nrf54l15clean:holyiot_25007_nrf54l15` | `pyOCD (CMSIS-DAP)` | Named module target with documented 36-pad pinout. |
-| `Generic nRF54L15 Module (36-pad)` | `nrf54l15clean:nrf54l15clean:generic_nrf54l15_module_36pin` | `pyOCD (CMSIS-DAP)` | Same 36-pad variant without vendor branding. |
-
-### XIAO nRF54L15 / Sense
-
-This is still the most fully integrated board target in the repo.
-
-- onboard rail helpers are implemented for battery sense, IMU/mic power, and RF switch control
-- antenna-path helpers are real on this board
-- low-power examples and board-policy behavior are primarily validated here
-- default upload path stays `Auto Recover`; `UF2 Bootloader` remains available
-  as a manual optional path if a bootloader drive is already present
-
-![XIAO nRF54L15 pinout](docs/xiao_nrf54l15_default_pin_routes.png)
-
-Quick reference:
-
-- `D0-D5`: main header GPIO/ADC set and the real hardware PWM pins
-- `D6-D7`: header UART pins when `Serial` is routed to the header
-- `D8-D10`: default SPI
-- `D11-D12`: back-pad `Wire1`
-- `LED_BUILTIN`: onboard user LED
-- `PIN_BUTTON`: onboard button
-
-Full board reference:
-
-- [XIAO nRF54L15 / Sense Reference](docs/board-reference.md)
-
-### HOLYIOT-25008
-
-The `HOLYIOT-25008 nRF54L15 Module` now has its own dedicated board target
-instead of living behind the generic module variant.
-
-<p>
-  <img src="docs/boards/holyiot_25008_product.jpg" alt="HOLYIOT-25008 product photo" width="220" />
-</p>
-
-![HOLYIOT-25008 quick reference](docs/boards/holyiot_25008_quick_reference.svg)
-
-Board-specific aliases:
-
-- `LED_BUILTIN` / `LED_GREEN` -> onboard green LED on `P1.10/D4`
-- `LED_RED` -> onboard red LED on `P2.09/D14`
-- `LED_BLUE` -> onboard blue LED on `P2.07/D7`
-- `PIN_BUTTON` -> onboard button on `P1.13/A6`
-- `PIN_LIS2DH12_*` -> onboard accelerometer SPI/INT pins
-
-Board-specific tools menu behavior:
-
-- `Serial Routing -> Header UART on D0/D1 (Default)`
-- `Serial Routing -> GPIO on D0/D1 (Serial disabled)`
-
-External programmer note:
-
-- validated with Raspberry Pi Debugprobe on Pico through `pyOCD / CMSIS-DAP`
-- upstream project: <https://github.com/raspberrypi/debugprobe>
-
-Dedicated onboard examples appear in:
-
-- `HOLYIOT-25008 Board Examples -> Holyiot25008RgbButton`
-- `HOLYIOT-25008 Board Examples -> Holyiot25008Lis2dh12Spi`
-- `HOLYIOT-25008 Board Examples -> Holyiot25008UartPadsAsGpio`
-
-Legacy copies also remain in:
-
-- `Boards -> Holyiot25008RgbButton`
-- `Boards -> Holyiot25008Lis2dh12Spi`
-- `Boards -> Holyiot25008UartPadsAsGpio`
-- `Nrf54L15-Clean-Implementation -> Board -> Holyiot25008RgbButton`
-- `Nrf54L15-Clean-Implementation -> Board -> Holyiot25008Lis2dh12Spi`
-
-Full board reference:
-
-- [HOLYIOT-25008 Module Reference](docs/holyiot-25008-module-reference.md)
-
-### HOLYIOT-25007 / Generic 36-pad Module
-
-The `HOLYIOT-25007 nRF54L15 Module` and `Generic nRF54L15 Module (36-pad)`
-boards share the same pad map and default peripheral routes.
-
-<p>
-  <img src="docs/boards/holyiot_25007_product.png" alt="HOLYIOT-25007 product photo" width="180" />
-</p>
-
-![HOLYIOT-25007 bottom pin map](docs/boards/holyiot_25007_bottom.png)
-
-![HOLYIOT-25007 quick reference](docs/boards/holyiot_25007_peripheral_pinout.png)
-
-Pin naming rule for the module boards:
-
-- use `P2_08` / `P1_10` when you want the real MCU GPIO names in code or hardware notes
-- use `D6` / `D4` when you want Arduino aliases
-- use physical pad numbers like `25` only for soldering and rework
-
-Default module routes:
-
-- `Serial`: `TX=D6/P2.08/pad 25`, `RX=D7/P2.07/pad 24`
-- `Serial1`: `TX=P1.09/pad 2`, `RX=P1.08/pad 16`
-- `Wire`: `SDA=D4/P1.10/pad 3`, `SCL=D5/P1.11/pad 5`
-- `Wire1`: `SDA=D12/P0.04/pad 34`, `SCL=D11/P0.03/pad 33`
-- `SPI`: `SS=D2/P1.06/pad 14`, `SCK=D8/P2.01/pad 18`,
-  `MISO=D9/P2.04/pad 21`, `MOSI=D10/P2.02/pad 19`
-- `LED_BUILTIN`: `P2.00/pad 17` as a separate compatibility LED pin, not `D13`
-
-Important module note:
-
-- `LED_BUILTIN` is a default Blink/demo pad on the bare module variants, not a guaranteed onboard LED
-- Raspberry Pi Debugprobe on Pico is validated on the module boards with `pyOCD`
-- XIAO board-control helpers still compile on the module variants; antenna
-  selection helpers remain harmless no-ops, while RF-path power ownership is
-  emulated in software so BLE/Zigbee bring-up still works on the fixed module
-  antenna path
-
-Full module reference:
-
-- [HOLYIOT-25007 Module Reference](docs/holyiot-25007-module-reference.md)
-
-## Board Peripheral Status
-
-The board-level Arduino peripheral story is in usable shape now. The core is no
-longer just a wireless bring-up experiment.
-
-Working and exercised in shipped examples:
-
-- GPIO, interrupts, and GPIOTE-based event handling
-- `Serial` / UART, including runtime pin remap paths plus buffered TX with
-  `availableForWrite()` / `flush()` semantics
-- SPI master
-- I2C controller, repeated-start flows, and basic target/responder examples
-- ADC, VBAT sampling, and on-chip temperature reads
-- hardware PWM plus the software/timer-backed fallback paths used on the XIAO
-  pinout
-- TIMER, watchdog, clock, reset, regulators, and GRTC-backed wake/sleep paths
-- PDM and I2S low-level bring-up helpers
-- EGU event generation, KMU metadata/status probing, TAMPC status/control probing,
-  and a broader TAMPC advanced-configuration probe
-- KMU -> CRACEN IKG seed proof, a generic VPR shared-transport probe, a
-  reusable VPR controller-service host wrapper, non-CS VPR offload proofs for
-  `FNV1a`, `CRC32`, `CRC32C`, an autonomous ticker service, queued VPR async
-  event handling, hibernate saved-context probes, reset-after-hibernate service
-  restart probes, and a runtime serial-fabric probe for the extra `22` / `30`
-  instance paths
-- board-control helpers for RF switch, antenna path, battery sampling, and
-  other XIAO-specific rails/pins
-
-What still needs more work:
-
-- broader third-party library compatibility on top of the core peripherals
-- more “finished product” examples around less-common blocks like I2S and PDM
-- more measured documentation around edge cases, especially low-power
-  combinations and mixed peripheral use
-- broader external-tamper and reset-cause characterization for TAMPC is still
-  ahead of the current config/runtime probes
-- richer VPR-side runtime depth still needs more work before calling that path
-  production-ready, and true raw VPR CPU-context resume is still intentionally
-  treated as an investigation topic instead of a public lifecycle feature
-
-## VPR Status
-
-The VPR path is now beyond a one-off bring-up experiment. There is a reusable
-shared-memory transport, a host-side controller-service wrapper, a generic VPR
-service image for non-CS work, and a dedicated CS-focused VPR image for the
-channel-sounding path.
-
-Working and validated:
-
-- shared-memory boot/control path on the XIAO nRF54L15 target
-- reusable `VprSharedTransportStream` and `VprControllerServiceHost` wrappers
-- built-in generic VPR service currently reporting `svc=1.15` /
-  `opmask=0x3FFFFF`
-- validated VPR offload/service probes:
-  `VprSharedTransportProbe`, `VprFnv1aOffloadProbe`,
-  `VprCrc32OffloadProbe`, `VprCrc32cOffloadProbe`,
-  `VprTickerOffloadProbe`, `VprTickerAsyncEventProbe`,
-  `VprBleLegacyAdvertisingProbe`, `VprBleConnectionStateProbe`,
-  `VprBleConnectionCsBindProbe`, `VprBleConnectionCsWorkflowProbe`,
-  `VprBleConnectionCsProcedureProbe`, `VprBleConnectionCsHandoffProbe`,
-  `VprHibernateContextProbe`, `VprHibernateWakeProbe`,
-  `VprHibernateResumeProbe`, and `VprRestartLifecycleProbe`
-- the VPR probe family now also appears directly in the normal
-  `File -> Examples -> Nrf54L15-Clean-Implementation -> VPR` library menu
-  instead of only in the board-package `Peripherals` examples
-- first broader BLE-controller-facing generic service slices now exist:
-  a VPR-owned legacy non-connectable advertising scheduler, retained adv-data
-  storage, single-link connected-session state, shared-state link snapshot,
-  and async event path exposed through `VprControllerServiceHost`
-- one real CPUAPP-side CS workflow can now import that VPR-owned connected
-  handle into the dedicated CS image through `VprBleConnectionCsHandoffProbe`
-  and complete one nominal synthetic CS run on the imported link
-- the generic VPR service now also owns CS link bind/readiness state for that
-  current live BLE connection through `VprBleConnectionCsBindProbe`
-- the generic VPR service now also owns CS workflow/config shadow state for
-  that current live BLE connection through `VprBleConnectionCsWorkflowProbe`
-- the generic VPR service now also owns one nominal CS workflow runtime and
-  completion summary on that current live BLE connection through
-  `VprBleConnectionCsProcedureProbe`
-- that generic-service runtime now also exports a richer controller-owned
-  completed-result layout summary: local/peer subevent counts, local/peer
-  step counts, local/peer mode1/mode2 counts, one packed demo-channel window,
-  and distinct local/peer completed-result hashes
-- that generic-service runtime now also exposes controller-produced completed
-  local/peer CS result payload bytes through the same host boundary, so the
-  normal example can parse real returned result payloads instead of only
-  trusting the reduced summary fields
-- that same in-place generic-service CS runtime is now also exposed as a
-  reusable host boundary and a normal library example through
-  `VprControllerServiceHost::runFreshBleConnectedCsWorkflow(...)` and
-  `BleChannelSoundingVprServiceNominal`
-- queued unsolicited VPR ticker/vendor events on the host side instead of the
-  old effectively single-depth handling
-- repeated loaded-image restart validated on both attached boards through
-  `VprRestartLifecycleProbe`
-- deterministic reset-after-hibernate retained service restart validated on
-  both attached boards through `VprHibernateResumeProbe`
-
-What this means in practice:
-
-- VPR can already absorb small controller/offload jobs that do not belong in
-  the main sketch loop
-- the main core does not need to own every timing-sensitive service path
-- the current reusable lifecycle design is the reset-after-hibernate retained
-  service restart, not raw VPR CPU-context resume
-
-Still incomplete:
-
-- a richer general-purpose VPR runtime/service beyond the current vendor-style
-  probe/offload set
-- real BLE controller service ownership on VPR instead of the current CS demo
-  responder model
-- true raw VPR CPU-context resume as a finished public feature
-
-## BLE Status
-
-BLE is stable enough now to be one of the main reasons to use this core.
-
-Tested and working on real hardware:
-
-- legacy advertising, connectable/scannable advertising, and the validated
-  extended advertising/scanning examples
-- the extended scanner regression from `0.2.0+` is fixed again, so
-  `BleExtendedScanner` now reassembles the full `BleExtendedAdv251`,
-  `BleExtendedAdv499`, and `BleExtendedAdv995` payload lengths instead of
-  truncating them on the scanner side
-- active and passive scanning
-- Bluefruit active scanning now surfaces separate real `SCAN_RSP` reports in
-  the scan callback path, including the correct `report->type.scan_response`
-  bit on scan-response packets
-- peripheral and central links on both nRF54<->nRF54 and nRF54<->nRF52840
-  combinations
-- bundled ATT/GATT examples for both 16-bit and 128-bit custom services
-- native Nordic UART Service (NUS) sketches, including the bridge and loopback
-  paths
-- Bluefruit BLEUart / central / notify flows used for common nRF52 sketch ports
-
-Practical status today:
-
-- the common BLE paths are usable without rewriting the whole sketch
-- the major central discovery/notify regressions from older releases are fixed
-- the Bluefruit active-scan wrapper now reports ADV and SCAN_RSP packets as
-  separate callback reports instead of collapsing everything into the ADV
-  packet path
-- the Qualcomm visibility/connectivity problem on the native NUS sketches was
-  fixed in `0.3.8`
-- ordinary user sketches should not have to tiptoe around BLE timing just
-  because they print status over `Serial`
-
-Still incomplete:
-
-- not every Bluetooth LE feature in the spec is implemented
-- not every upstream Bluefruit example has full runtime parity
-- some optional Bluefruit examples still depend on extra third-party libraries
-- channel sounding is still experimental and not finished as a user-facing BLE
-  feature
-- the clean-core CS path now exposes raw DFE capture, DFE switch-pattern
-  controls, HCI-style subevent step parsing helpers, raw HCI subevent-result
-  parsing/reassembly, controller-style step-buffer distance estimation
-  helpers, transport-agnostic HCI CS command/completion packet helpers, a CS
-  workflow/session/host state machine layer, H4-style HCI framing helpers for
-  command/event byte streams and mixed H4 streams with interleaved ACL traffic,
-  controller-standard RTT step decode and RTT distance estimation from HCI CS
-  subevent results, and a working VPR-backed controller transport path with a
-  dedicated CS VPR image and built-in demo responder for the supported opcode
-  set; the dedicated CS image now also reflects real command-owned `Create
-  Config` and `Set Procedure Parameters` state in its completion packets
-  instead of only fixed demo placeholders, and it now rejects at least one
-  real bad sequence (`Set Procedure Parameters` before `Security Enable`)
-  instead of blindly succeeding for every CS opcode; it also now handles
-  `Remove Config`, validates invalid `Create Config` / invalid procedure-parameter
-  payloads with real `0x12` errors on the VPR side, and resets the active CS
-  state on the VPR side; it still does not have a real production BLE
-  controller runtime, so this is not yet a full controller-backed Bluetooth CS
-  implementation
-- broader phone/runtime coverage is still worth adding over time
-
-## nRF52840 Sketch Compatibility
-
-The repo bundles a `Bluefruit52Lib` compatibility layer plus a small set of
-nRF52-style core shims so a large part of the XIAO nRF52840 / Seeed nRF52 /
-Bluefruit sketch style now carries over to the XIAO nRF54L15.
-
-The goal here is sketch compatibility, not a new API. For common BLE ports, the
-intended path is:
-
-- keep the same Bluefruit-style sketch structure
-- reuse the familiar BLEUart / scanner / central / peripheral calls
-- only adjust the sketch where it depends on an extra library or on an
-  upstream feature that is still outside this core’s tested surface
-
-The package exposes that compatibility in Arduino IDE with:
-
-- curated `Bluefruit52Lib -> nRF52Compat` examples for direct porting
-- broader Bluefruit example menus grouped by use case:
-  `Advertising`, `Central`, `Diagnostics`, `DualRoles`, `HID`, `Projects`,
-  `Security`, and `Services`
-
-In practice, the compatibility layer is in good shape for the standard BLE
-paths that matter most when moving sketches from XIAO nRF52840 to nRF54L15:
-
-- BLE UART / NUS
-- scanning and device discovery
-- common peripheral services
-- common central discovery and notify flows
-
-Remaining compile misses are generally optional third-party library
-dependencies, not the wrapper itself.
-
-## Zigbee Status
-
-Zigbee is no longer just local two-board bring-up. It now has a validated Home
-Assistant / Zigbee2MQTT path for the shipped HA light examples.
-
-Working and tested:
-
-- two-board local coordinator / joinable device flows on XIAO nRF54L15 boards
-- Home Assistant / Zigbee2MQTT join, interview, and on/off control on the
-  validated HA light path
-- Home Assistant / Zigbee2MQTT sleepy end-device interview on the new low-power
-  button path
-- retained network state and secure rejoin on the shipped HA examples
-- coordinator, router, end-device, light, sensor, and low-power example groups
-- sleepy-device style examples that wake, report battery/status, poll, and go
-  back to sleep
-
-What still needs work:
-
-- this is not full Zigbee 3.0 device/cluster coverage yet
-- RGB / color-light clusters are still missing
-- more coordinator combinations should be exercised beyond the validated path
-- richer Zigbee2MQTT / Home Assistant device typing for some generated devices,
-  especially sleepy remotes
-- more sensor/device personalities can still be added
-- battery-tuned sleepy devices still need more real current characterization
-
-## Low Power Status
-
-Low-power support is usable and already feeds into the Zigbee sleepy-device
-examples.
-
-Working:
-
-- `WFI` idle paths
-- true `SYSTEM OFF` examples with wake sources
-- low-power BLE advertiser patterns
-- Zigbee sleepy-device examples with configurable wake/report intervals
-- low-power Zigbee button and sensor examples that use the XIAO button for
-  pairing / action wake flows
-
-Still to do:
-
-- broaden the published current-draw tables
-- measure more full-system scenarios instead of only focused low-power probes
-- keep tightening the interaction between low power and long-running wireless
-  roles
-
-## Future Wireless Work
-
-The main wireless gaps now are feature-completeness gaps, not “does the radio
-basically work” gaps.
-
-Not finished yet:
-
-- channel sounding is still experimental until a real production BLE
-  controller/runtime owns the CS procedures end-to-end
-- Thread has real staged bring-up now, including fixed dataset, role, and UDP
-  examples, but it is not yet a production Thread stack
-- Matter has staged foundation code and on/off-light demos, but not real
-  commissioning, discovery, control, or Home Assistant validation yet. The
-  staged on-network node now reports a readiness phase/blocker so the next
-  commissioning slices can show exactly which gate is still closed, and it now
-  emits staged `_matterc._udp` discovery fields while honestly reporting that
-  real mDNS/SRP registration is still disabled.
-- Zigbee covers practical HA-style examples, but not full Zigbee 3.0
-  certification-level stack coverage
-- broader automated BLE phone/interoperability coverage
-
-Current planning docs:
-
-- [nRF54L15 Feature Matrix](docs/NRF54L15_FEATURE_MATRIX.md)
-- [Thread and Matter implementation plan](docs/THREAD_MATTER_IMPLEMENTATION_PLAN.md)
-
-## Examples
-
-### Board Examples
-
-Board examples live under [`hardware/nrf54l15clean/nrf54l15clean/examples`](hardware/nrf54l15clean/nrf54l15clean/examples).
-This menu is intentionally curated for board/core-specific sketches that are not already covered better by the implementation library.
-Most peripheral, BLE, and Zigbee demos now live under the library example menu instead of the board menu.
-
-In Arduino IDE they should appear under:
-
-- `File -> Examples -> Examples for XIAO nRF54L15 / Sense -> Basics`
-- `... -> Peripherals`
-- `... -> Power`
-
-Suggested starting points:
-
-- Basics: [`CoreVersionProbe`](hardware/nrf54l15clean/nrf54l15clean/examples/Basics/CoreVersionProbe)
-- Peripherals: [`RuntimePeripheralPinRemap`](hardware/nrf54l15clean/nrf54l15clean/examples/Peripherals/RuntimePeripheralPinRemap), [`WireImuRemapScanner`](hardware/nrf54l15clean/nrf54l15clean/examples/Peripherals/WireImuRemapScanner), [`XiaoBoardControlPins`](hardware/nrf54l15clean/nrf54l15clean/examples/Peripherals/XiaoBoardControlPins), [`VbatReadViaAnalogRead`](hardware/nrf54l15clean/nrf54l15clean/examples/Peripherals/VbatReadViaAnalogRead), [`WireRepeatedStartProbe`](hardware/nrf54l15clean/nrf54l15clean/examples/Peripherals/WireRepeatedStartProbe), [`WireTargetResponder`](hardware/nrf54l15clean/nrf54l15clean/examples/Peripherals/WireTargetResponder), [`InterruptPwmApiProbe`](hardware/nrf54l15clean/nrf54l15clean/examples/Peripherals/InterruptPwmApiProbe), [`PeripheralProbe`](hardware/nrf54l15clean/nrf54l15clean/examples/Peripherals/PeripheralProbe), [`EguTriggerDemo`](hardware/nrf54l15clean/nrf54l15clean/examples/Peripherals/EguTriggerDemo), [`KmuMetadataProbe`](hardware/nrf54l15clean/nrf54l15clean/examples/Peripherals/KmuMetadataProbe), [`KmuCracenIkgSeedProof`](hardware/nrf54l15clean/nrf54l15clean/examples/Peripherals/KmuCracenIkgSeedProof), [`TampcStatusReporter`](hardware/nrf54l15clean/nrf54l15clean/examples/Peripherals/TampcStatusReporter), [`TampcAdvancedConfigProbe`](hardware/nrf54l15clean/nrf54l15clean/examples/Peripherals/TampcAdvancedConfigProbe), [`SerialFabricExtraInstanceProbe`](hardware/nrf54l15clean/nrf54l15clean/examples/Peripherals/SerialFabricExtraInstanceProbe), [`SerialFabricRuntimeProbe`](hardware/nrf54l15clean/nrf54l15clean/examples/Peripherals/SerialFabricRuntimeProbe), [`VprSharedTransportProbe`](hardware/nrf54l15clean/nrf54l15clean/examples/Peripherals/VprSharedTransportProbe), [`VprFnv1aOffloadProbe`](hardware/nrf54l15clean/nrf54l15clean/examples/Peripherals/VprFnv1aOffloadProbe), [`VprCrc32OffloadProbe`](hardware/nrf54l15clean/nrf54l15clean/examples/Peripherals/VprCrc32OffloadProbe), [`VprCrc32cOffloadProbe`](hardware/nrf54l15clean/nrf54l15clean/examples/Peripherals/VprCrc32cOffloadProbe), [`VprTickerOffloadProbe`](hardware/nrf54l15clean/nrf54l15clean/examples/Peripherals/VprTickerOffloadProbe), [`VprTickerAsyncEventProbe`](hardware/nrf54l15clean/nrf54l15clean/examples/Peripherals/VprTickerAsyncEventProbe), [`VprBleLegacyAdvertisingProbe`](hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples/VPR/VprBleLegacyAdvertisingProbe), [`VprBleConnectionStateProbe`](hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples/VPR/VprBleConnectionStateProbe), [`VprBleConnectionCsBindProbe`](hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples/VPR/VprBleConnectionCsBindProbe), [`VprBleConnectionCsWorkflowProbe`](hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples/VPR/VprBleConnectionCsWorkflowProbe), [`VprBleConnectionCsProcedureProbe`](hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples/VPR/VprBleConnectionCsProcedureProbe), [`VprBleConnectionCsHandoffProbe`](hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples/VPR/VprBleConnectionCsHandoffProbe), [`VprHibernateContextProbe`](hardware/nrf54l15clean/nrf54l15clean/examples/Peripherals/VprHibernateContextProbe), [`VprHibernateWakeProbe`](hardware/nrf54l15clean/nrf54l15clean/examples/Peripherals/VprHibernateWakeProbe), [`VprHibernateResumeProbe`](hardware/nrf54l15clean/nrf54l15clean/examples/Peripherals/VprHibernateResumeProbe), [`VprRestartLifecycleProbe`](hardware/nrf54l15clean/nrf54l15clean/examples/Peripherals/VprRestartLifecycleProbe)
-- Power: [`DelayAutoLowPowerMeasure`](hardware/nrf54l15clean/nrf54l15clean/examples/Power/DelayAutoLowPowerMeasure), [`SystemOffWakeDiag`](hardware/nrf54l15clean/nrf54l15clean/examples/Power/SystemOffWakeDiag), [`SystemOffWakeOnceDiag`](hardware/nrf54l15clean/nrf54l15clean/examples/Power/SystemOffWakeOnceDiag)
-
-Bundled library examples for `EEPROM`, `Preferences`, `Nrf54L15-Clean-Implementation`, and `Bluefruit52Lib` appear in their own library menus.
-
-For the current Zigbee claim level and remaining gaps, use the full feature
-matrix instead of older phase notes:
-
-- [nRF54L15 Feature Matrix](docs/NRF54L15_FEATURE_MATRIX.md)
-
-### Library Examples
-
-The bundled HAL/BLE library examples live under [`hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples`](hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples).
-The bundled Bluefruit compatibility examples live under [`hardware/nrf54l15clean/nrf54l15clean/libraries/Bluefruit52Lib/examples`](hardware/nrf54l15clean/nrf54l15clean/libraries/Bluefruit52Lib/examples).
-
-In Arduino IDE they now appear under:
-
-- `File -> Examples -> Nrf54L15-Clean-Implementation -> BLE`
-- `File -> Examples -> Nrf54L15-Clean-Implementation -> LowPower`
-- `File -> Examples -> Nrf54L15-Clean-Implementation -> Diagnostics`
-- `File -> Examples -> Nrf54L15-Clean-Implementation -> Board`
-- `File -> Examples -> Nrf54L15-Clean-Implementation -> Peripherals`
-- `File -> Examples -> Nrf54L15-Clean-Implementation -> VPR`
-- `File -> Examples -> Nrf54L15-Clean-Implementation -> Zigbee`
-- `File -> Examples -> Bluefruit52Lib -> Advertising`
-- `File -> Examples -> Bluefruit52Lib -> Central`
-- `File -> Examples -> Bluefruit52Lib -> Diagnostics`
-- `File -> Examples -> Bluefruit52Lib -> DualRoles`
-- `File -> Examples -> Bluefruit52Lib -> HID`
-- `File -> Examples -> Bluefruit52Lib -> nRF52Compat`
-- `File -> Examples -> Bluefruit52Lib -> Peripheral`
-- `File -> Examples -> Bluefruit52Lib -> Projects`
-- `File -> Examples -> Bluefruit52Lib -> Security`
-- `File -> Examples -> Bluefruit52Lib -> Services`
-
-Recommended library examples:
-
-- Low-power floor measurement: `LowPowerZephyrParityBlink` (`5 ms` pulse, meter-oriented)
-- Visible timed system off check: `LowPowerDelaySystemOff`
-- Idle CPU scaling: `LowPowerIdleCpuScaling`
-- Continuous low-power BLE: `BleAdvertiserLowestPowerContinuous`, `BleAdvertiserRfSwitchDutyCycle`
-- Experimental GRTC fixed-pin PWM bring-up: `GrtcPwmFixedPin`, `GrtcPwmIrqReporter`, `LowPowerGrtcPwmSystemOff`
-- Burst/beacon BLE: `BleAdvertiserPhoneBeacon15s`, `BleAdvertiserHybridDutyCycle`, `BleAdvertiserBurstSystemOff`
-- Zigbee: `ZigbeeCoordinator`, `ZigbeeRouter`, `ZigbeeEndDevice`, `ZigbeePingInitiator`, `ZigbeePongResponder`, `ZigbeeStackCodecSelfTest`, `ZigbeeHaCoordinatorJoinDemo`, `ZigbeeHaOnOffLightStatic`, `ZigbeeHaOnOffLightJoinable`, `ZigbeeHaDimmableLightStatic`, `ZigbeeHaDimmableLightJoinable`, `ZigbeeHaTemperatureSensorStatic`, `ZigbeeHaTemperatureSensorJoinable`
-- BLE diagnostics: `BleAdvertiserProbe`, `BlePassiveScanner`, `BleActiveScanner`, `BleExtendedScanner`, `BleExtendedActiveScanner`, `BleLegacyAdv31Plus31`, `BleExtendedAdv251`, `BleExtendedScannableAdv251`, `BleExtendedAdv499`, `BleExtendedAdv995`, `BleConnectionPeripheral`, `BleGattBasicPeripheral`
-- Bluefruit/nRF52 compatibility starter pack: `central_bleuart`, `central_scan`, `central_notify`, `dual_bleuart`, `beacon`, `custom_hrm`, `notify_peripheral`, `pairing_pin`
-- Bluefruit wrapper categories: `Advertising` (`adv_advanced`, `beacon`, `eddystone_url`), `Central` (`central_bleuart_multi`, `central_hid`, `central_pairing`, `central_scan_advanced`), `Diagnostics` (`throughput`, `rssi_callback`, `rssi_poll`), `HID` (`blehid_keyboard`, `blehid_mouse`, `blehid_gamepad`), `Security` (`pairing_passkey`, `clearbonds`), `Services` (`bleuart`, `bleuart_multi`, `custom_hrm`, `custom_htm`, `client_cts`, `ancs`), `Projects` (`rssi_proximity_central`, `rssi_proximity_peripheral`), plus the existing `Peripheral` menu
-- Peripheral bring-up: `RawI2sTxInterrupt`, `I2sTxWrapperInterrupt`, `I2sRxWrapperInterrupt`, `I2sDuplexWrapperInterrupt`, `RawRadioPacketTx`, `RawRadioPacketRx`, `RawRadioAckRequester`, `RawRadioAckResponder`
-- `I2sTxWrapperInterrupt` shows the callback-based refill path, where the next buffer is generated from the I2S IRQ instead of managed manually in the sketch loop
-- `I2sRxWrapperInterrupt` shows the matching receive path, where completed RX buffers are handed to a callback from the same `I2S20` IRQ service model
-- `I2sDuplexWrapperInterrupt` combines both directions on one `I2S20` instance and supports a simple one-board loopback with a jumper from `D11` to `D15`
-
-Two-board extended advertising regression:
-
-- `scripts/ble_extended_adv_dual_board_regression.py --advertiser 995`
-- `scripts/ble_extended_adv_dual_board_regression.py --advertiser 499`
-- expects two XIAO nRF54L15 boards on separate `/dev/ttyACM*` ports
-- auto-resolves each board's CMSIS-DAP UID from the serial port and flashes deterministically
-- Host-side NUS HCI trace regression: `scripts/ble_nus_btmon_regression.py --iterations 12`
-- Pure-BLE NUS loopback regression: `scripts/ble_nus_loopback_btmon_regression.py --iterations 64`
-- Bring-up: `CleanBringUp`, `PeripheralSelfTest`, `FeatureParitySelfTest`
-
-The Zigbee examples now cover more than raw radio bring-up. The practical set
-for this release is:
-
-- coordinator and joinable HA light demos for two-board work
-- Zigbee2MQTT / Home Assistant join and interview on the validated light path
-- retained network state and secure rejoin on the shipped HA examples
-- sleepy sensor demos that wake, report, poll, and return to `SYSTEM OFF`
-
-It is still not a full Zigbee 3.0 stack with every cluster profile or every
-coordinator combination exercised. The detailed state of that work stays in the
-Zigbee docs listed above.
-
-## Power And Zephyr Parity
-
-This core now reproduces the same **class of low-power behavior** we were chasing in Zephyr on XIAO nRF54L15.
-
-What mattered was not only the final `SYSTEMOFF` write. The working path required:
-
-- secure peripheral map
-- Zephyr-like secure startup writes in `SystemInit()`
-- oscillator trim and regulator setup parity
-- correct secure-domain GRTC wake programming
-- board rail shutdown before `SYSTEM OFF`
-- optional RAM retention clear only for the explicit ultra-low-power paths
-
-Practical result on the XIAO board from local validation:
-
-- true `SYSTEM OFF` blink / burst-beacon paths: **tens of uA**
-- continuous low-power BLE with RF-switch duty-cycling: about **0.1 mA**
-- long-sleep phone-tuned beaconing is now available as `BleAdvertiserPhoneBeacon15s`, which keeps the payload in the primary ADV packet, avoids scan-response dependence, and spends most of its cycle in true `SYSTEM OFF`
-- `delay()` / `yield()` low-power idle path: both now stay board-state-neutral
-  in the normal Arduino path, so sketch-controlled rails such as `VBAT_EN`,
-  `RF_SW`, and `IMU_MIC_EN` remain asserted across `delay()` in WFI mode
-- `examples/Power/SenseDelayRailRetentionProbe`: samples those rail pins
-  halfway through `delay(500)` from a GRTC interrupt and immediately probes
-  VBAT/IMU after wake, which is useful when checking the `#43` regression on
-  a Sense board without a PPK2
-
-For the explicit XIAO save/collapse/restore helper, use `delayLowPowerIdle(ms)`.
-
-That puts the `SYSTEM OFF` path in the same broad regime as the Zephyr result on this board.
-
-New core-level low-power helpers:
-
-- `delaySystemOff(ms)`: timed `SYSTEM OFF` sleep with cold-boot wake, preserving `.noinit` RAM by default
-- `delaySystemOffNoRetention(ms)`: same path, but clears RAM retention for the lowest current
-- `ClockControl::enableIdleCpuScaling(CpuFrequency::k64MHz)`: keep active code at the current CPU speed, but drop to 64 MHz around `delay()` / `yield()` idle windows and restore on wake
-
-Important distinction:
-
-- `SYSTEM OFF` parity is now real and reproducible in this core
-- continuous BLE advertising is still not controller-equivalent to Zephyr, because this core manually emits raw legacy advertising events rather than running Zephyr's controller scheduler
-
-Relevant docs:
-
-- [Zephyr low-power parity](docs/low-power-zephyr-parity.md)
-- [Low-power BLE patterns](docs/low-power-ble-patterns.md)
-- [BLE advertising validation](docs/ble-advertising-validation.md)
-- [Power profile measurements](POWER_PROFILE_MEASUREMENTS.md)
-- [BLE / CS power characterization path](docs/ble-cs-power-characterization.md)
-
-## Channel Sounding
-
-The shipped CS path is a real two-board bring-up and controller-transport
-foundation, not just a stub example, but it is still not a finished
-Bluetooth-CS product feature.
-
-What works today:
-
-- two-board phase-based ranging over the nRF54L15 `RADIO.CSTONES` / DFE path
-- raw DFE capture and packet retention for bring-up/hardware validation
-- valid CS channel-map helpers, antenna-permutation helpers, and
-  phase-correction-term parsing
-- HCI-style CS step parsing, raw HCI subevent-result reassembly, and
-  controller-style step-buffer distance estimation
-- controller-style RTT step decode and RTT distance estimation from HCI CS
-  result packets
-- CS workflow/session/host layers plus H4-style command/event framing and
-  mixed-stream handling
-- a working VPR-backed CS transport path with a dedicated CS VPR image
-- built-in CS demo responder behavior on the VPR side for the supported opcode
-  set, including command-driven config/procedure metadata and dedicated-image
-  publication of both local and peer result packets, with CPUAPP only routing
-  peer packets after a small VPR source-marker event
-- dedicated-image multi-procedure sequencing driven from
-  `Set Procedure Parameters.maxProcedureCount`, not only a single built-in
-  procedure per enable
-
-Use these library examples together:
-
-- [`BleChannelSoundingReflector`](hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples/BLE/ChannelSounding/BleChannelSoundingReflector)
-- [`BleChannelSoundingInitiator`](hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples/BLE/ChannelSounding/BleChannelSoundingInitiator)
-- [`BleChannelSoundingVprLinkedInitiator`](hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples/BLE/ChannelSounding/BleChannelSoundingVprLinkedInitiator)
-- [`BleChannelSoundingVprServiceNominal`](hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples/BLE/ChannelSounding/BleChannelSoundingVprServiceNominal)
-  - validates controller-produced completed local/peer result payloads against
-    the workflow summary and controller hashes
-- [`BleChannelSoundingVprServicePowerProbe`](hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples/BLE/ChannelSounding/BleChannelSoundingVprServicePowerProbe)
-  - quiet current-measurement harness for generic-service BLE -> CS bench work
-  - splits `service idle`, `BLE connected`, and `BLE + CS` phases in one run
-
-Current measured latency note:
-
-- [`docs/ble-cs-latency-characterization.md`](docs/ble-cs-latency-characterization.md)
-- [`docs/ble-cs-power-characterization.md`](docs/ble-cs-power-characterization.md)
-
-Calibration and trust-model notes:
-
-- [`docs/channel-sounding-calibration.md`](docs/channel-sounding-calibration.md)
-- [`docs/channel-sounding-20cm-validation.md`](docs/channel-sounding-20cm-validation.md)
-- [`docs/channel-sounding-board-pair-characterization.md`](docs/channel-sounding-board-pair-characterization.md)
-- [`docs/channel-sounding-physical-output.md`](docs/channel-sounding-physical-output.md)
-- [`docs/channel-sounding-profiles/README.md`](docs/channel-sounding-profiles/README.md)
-- [`docs/channel-sounding-error-model.md`](docs/channel-sounding-error-model.md)
-
-What has been added beyond the original phase demo:
-
-- controller-style CS command/completion builders and parsers
-- raw HCI subevent-result parsing and reassembly
-- a `Stream`-friendly H4 transport bridge and transport-agnostic host/session
-  layers
-- a dedicated VPR CS controller image so CS work no longer competes directly
-  with the generic VPR service image budget
-- dedicated-image demo channel ownership driven from the real `Create Config`
-  channel map instead of only a side mailbox
-- a live `hcivprmultidemo` proof path showing the dedicated CS image can walk
-  multiple procedure counters on VPR without sketch-side packet synthesis
-- live repo examples that exercise the VPR-backed CS bring-up path on two
-  boards
-
-What it is good for:
-
-- exercising the nRF54L15 channel-sounding radio/DFE hardware on real boards
-- experimenting with phase-based ranging in a simple two-board setup
-- bringing up controller-facing CS plumbing before a full BLE controller exists
-
-What is still missing:
-
-- a real production BLE controller/runtime behind the CS transport
-- full Bluetooth Channel Sounding Link Layer interoperability
-- reliable raw `RADIO` RTT `AUXDATA` decode from the bare-radio path
-- meaningful AoA/AoD angle support on hardware with a real antenna array
-- production-grade calibration/validation beyond the current two-board bring-up
-
-## Board Notes
-
-Default peripheral routes and board-control helpers are documented in [Board Reference](docs/board-reference.md).
-
-### PWM On XIAO nRF54L15
-
-- `analogWrite()` PWM is available on `D0-D15`.
-- `D0-D5` are the real direct hardware PWM pins. They are `P1` pins and use the direct nRF54L15 PWM peripheral path for normal `analogWrite()`. That direct path stays aligned with the known-good `0.6.52` behavior.
-- `D6-D9` are on `P2` on the XIAO header, so they do not route to the nRF54L15 `PWM20/21/22` peripheral outputs on this package. They use the fallback path instead of the direct PWM peripheral.
-- `analogWriteFrequency(hz)` sets the shared/default PWM frequency. On `D0-D5` it changes the direct hardware PWM frequency, and on `D6-D15` it changes the default software-PWM period.
-- `analogWritePinFrequency(pin, hz)` is the per-pin API. On `D0-D5` it uses `TIMER20-24 + TIMER10 + GPIOTE20 + DPPIC20 + DPPIC10`, so sketches can give individual `D0-D5` pins different PWM frequencies on hardware. On `D6-D15` it changes the software-PWM rate for that pin instead.
-- The direct PWM peripheral path can drive up to 4 active hardware channels per PWM instance.
-- The per-pin timer-backed path keeps all six `D0-D5` pins on hardware, even when all six use different frequencies.
-- When several `D0-D5` pins share one frequency, the backend packs them into timer groups. A single 16 MHz timer group can carry up to 5 pins at that frequency; the 6th same-frequency pin is placed on a second hardware group instead of falling back to software PWM.
-- `D6-D15` are software PWM only.
-- Software PWM on `D6-D15` needs the sketch to keep yielding so the idle service can refresh those pins. Normal `loop()` returns, `delay()`, `Serial`, and explicit `yield()` calls are fine. A long tight busy loop can leave a software-PWM pin stuck at its last state until the sketch yields again.
-- `LED_BUILTIN` is still not an `analogWrite()` PWM pin on this board.
-
-Practical rule:
-
-- use `analogWrite(pin, value)` on `D0-D5` when you just want normal hardware PWM
-- use `analogWritePinFrequency(pin, hz)` before `analogWrite(...)` when you want a different frequency on a specific `D0-D5` pin
-- use `D6-D15` only when software PWM is acceptable
-- if you use `analogWritePinFrequency(pin, hz)` on `D6-D15`, treat it as CPU-driven software PWM rather than a true hardware-timed PWM output
-- start with `PwmDatasheetStress` for the Arduino-facing PWM path and the HAL-side `Pwm*` examples for lower-level PWM probing
-
-Sizing rule for `analogWritePinFrequency()` on `D0-D5`:
-
-- Use `effective_duty_steps ~= min(2^writeResolution, timer_clock / pwm_hz)` as the planning rule.
-- For the guaranteed rule-of-thumb, use `timer_clock = 16 MHz`. One slot can be backed by `TIMER10` at `32 MHz`, but `16 MHz` is the safe baseline for sketches and docs.
-- If `timer_clock / pwm_hz` is smaller than your requested duty resolution, duty still works, but adjacent `analogWrite()` codes will collapse onto the same pulse width.
-
-Recommended combinations for the timer-backed `D0-D5` path:
-
-| `analogWriteResolution()` | Keep `analogWritePinFrequency()` at or below | Why |
-| --- | --- | --- |
-| `8` bits | `62.5 kHz` | full `0..255` duty-code coverage on the 16 MHz timer groups |
-| `10` bits | `15.6 kHz` | full `0..1023` duty-code coverage |
-| `12` bits | `3.9 kHz` | full `0..4095` duty-code coverage |
-| `14` bits | `976 Hz` | full `0..16383` duty-code coverage |
-
-Validated stress point:
-
-- `Examples -> Peripherals -> PwmDatasheetStress` was rechecked on two boards with `D0-D5`, `1 kHz`, `8-bit`, and `1 ms` monotonic duty sweeps.
-
-Useful board-control calls:
-
-```cpp
-#include "nrf54l15_hal.h"
-using namespace xiao_nrf54l15;
-
-int32_t vbatMv = 0;
-BoardControl::sampleBatteryMilliVolts(&vbatMv);
-BoardControl::setAntennaPath(BoardAntennaPath::kCeramic);
-BoardControl::setRfSwitchPowerEnabled(false);
-```
-
-## Troubleshooting
-
-### Board Does Not Appear In Boards Manager
-
-Most common cause: a local sketchbook override is shadowing the package.
-
-Check:
-
-- the package index URL matches the one in `Install`
-- remove stale local override `~/Arduino/hardware/nrf54l15clean`
-  A symlink there also counts as an override and can shadow the Boards Manager package.
-- refresh indexes:
-
+| Board | Identifier |
+|---|---|
+| XIAO nRF54L15 / Sense | `xiao_nrf54l15` |
+| HOLYIOT-25008 Module | `holyiot_25008_nrf54l15` |
+| HOLYIOT-25007 Module | `holyiot_25007_nrf54l15` |
+| Generic 36-pad Module | `generic_nrf54l15_module_36pin` |
+
+---
+
+## ✨ Feature Matrix
+
+| Category | Feature | Status |
+|---|---|---|
+| **Wireless** | BLE advertising, scanning, connections | ✅ |
+| | BLE 2M/coded PHY | ✅ |
+| | BLE SMP pairing (phone) | ✅ |
+| | BLE Channel Sounding (phase ranging) | ✅ |
+| | BLE Channel Sounding (2-board, 57-62cm) | ✅ |
+| | Thread: leader, child, router | ✅ |
+| | Thread: UDP communication | ✅ |
+| | Thread: PSK Joiner/Commissioner | ✅ |
+| | Thread: CSL sleepy end device | ✅ |
+| | Zigbee: coordinator, router, end-device | ✅ |
+| | Zigbee: 2-board join | ✅ |
+| **Matter** | On/off light over Thread | ✅ |
+| | Encrypted IM (AES-CTR) | ✅ |
+| | PASE SPAKE2+ commissioning | ✅ |
+| | CASE Sigma protocol + fragmentation | ✅ |
+| | Software secp256r1 ECC | ✅ |
+| **Crypto** | CRACEN hardware RNG | ✅ |
+| | CRACEN IKG key generation (0 ms) | ✅ |
+| | ECDSA sign (21 s) / verify (50 s) | ✅ |
+| | PBKDF2-HMAC-SHA256 | ✅ |
+| | AES-ECB, AES-CCM hardware | ✅ |
+| **Peripherals** | GPIO, PWM, ADC, I2C, SPI, UART | ✅ |
+| | I2S, PDM (microphone) | ✅ |
+| | QDEC (rotary encoder) | ✅ |
+| | NFC-A tag | ✅ |
+| | Temperature sensor | ✅ |
+| | Comparator, LPCOMP | ✅ |
+| | Watchdog timer | ✅ |
+| **System** | VPR RISC-V coprocessor | ✅ |
+| | VPR SoftPeripheral SDK + sQSPI | ✅ |
+| | Deep sleep / System OFF | ✅ |
+| | DPPI hardware event system | ✅ |
+| | Tamper detection | ✅ |
+| | KMU key management | ✅ |
+
+---
+
+## ⚠️ Known Limitations
+
+| Limitation | Detail |
+|---|---|
+| **BLE 2-board pairing** | SMP connection works; full JustWorks handshake needs L2CAP routing fix |
+| **Thread partitions** | Two boards may form separate networks; 8 s upload delay helps |
+| **CRACEN PK engine** | ECDSA hardware acceleration needs proprietary Nordic microcode |
+| **NIST fast reduction** | bnMul at 3 ms (bit-level long division); sub-word carry blocks optimization |
+| **ECDSA speed** | Software ECC at 21 s sign / 50 s verify — acceptable for demos, not production |
+| **OpenThread radio** | 7 radio diag examples need full OT radio stack (linker errors) |
+
+---
+
+## 📦 Installation
+
+### Arduino IDE
+1. **File → Preferences → Additional Boards Manager URLs**  
+   Add: `https://raw.githubusercontent.com/lolren/nrf54-arduino-core/main/package_nrf54l15clean_index.json`
+2. **Tools → Board → Boards Manager** → search "nRF54L15" → Install
+3. **Tools → Board** → select your board
+
+### Arduino CLI
 ```bash
-rm -f ~/.arduino15/package_nrf54l15clean_index.json \
-      ~/.arduino15/package_nrf54l15clean_stable_index.json
+arduino-cli config add board_manager.additional_urls \
+  https://raw.githubusercontent.com/lolren/nrf54-arduino-core/main/package_nrf54l15clean_index.json
+
 arduino-cli core update-index
+arduino-cli core install nrf54l15clean:nrf54l15clean
+
+# Compile and upload
+arduino-cli compile --fqbn nrf54l15clean:nrf54l15clean:xiao_nrf54l15 MySketch
+arduino-cli upload -p /dev/ttyACM0 --fqbn nrf54l15clean:nrf54l15clean:xiao_nrf54l15 MySketch
 ```
 
-### Examples Are Missing In Arduino IDE
+### Linux udev (for upload)
+```bash
+# From the installed package:
+~/.arduino15/packages/nrf54l15clean/hardware/nrf54l15clean/*/tools/setup/install_linux_host_deps.sh --udev
+```
 
-Check:
+---
 
-- the selected board is `XIAO nRF54L15 / Sense`
-- there is no stale `~/Arduino/hardware/nrf54l15clean` override
-  A symlink there can make Arduino IDE show a different package/example tree than the installed release.
-- restart Arduino IDE after reinstall so the example tree is rebuilt
-- the VPR probes now live in both places:
-  `Examples for XIAO nRF54L15 / Sense -> Peripherals` and
-  `Nrf54L15-Clean-Implementation -> VPR`
+## 🏗️ Architecture
 
-CLI sanity check:
+```
+nrf54-arduino-core/
+├── hardware/nrf54l15clean/nrf54l15clean/
+│   ├── cores/nrf54l15/          # Arduino core (GPIO, Serial, Wire, SPI)
+│   ├── variants/                # Board pinouts
+│   └── libraries/
+│       └── Nrf54L15-Clean-Implementation/
+│           ├── src/             # HAL, BLE, Thread, Matter, Zigbee, ECC
+│           ├── examples/        # 235+ example sketches
+│           └── third_party/     # OpenThread, CHIP headers
+├── docs/                        # Documentation
+├── package_nrf54l15clean_index.json  # Boards Manager index
+└── README.md
+```
+
+### Single Include
+All features accessible through one header:
+```cpp
+#include <nrf54_all.h>
+// Gives you: Secp256r1, Nrf54ThreadExperimental, BleRadio, 
+//            ZigbeeRadio, VprSoftperipheralManager, VprSQspi, ...
+```
+
+---
+
+## 📊 Performance
+
+| Operation | Time | Method |
+|---|---|---|
+| bnMul (mod p) | 3 ms | Bit-level long division |
+| Point double (Jacobian) | ~42 ms | 14 bnMuls |
+| Point add (mixed Jacobian) | ~42 ms | 14 bnMuls |
+| Scalar multiply (windowed) | ~21 s | 256 doubles + ~16 adds |
+| ECDSA sign | ~21 s | 1 scalar mul |
+| ECDSA verify | ~50 s | 2 scalar muls |
+| CRACEN IKG keygen | 0 ms | Hardware DRBG |
+
+---
+
+## 🔧 Development
 
 ```bash
-find ~/.arduino15/packages/nrf54l15clean/hardware -path '*/examples/*/*.ino' -print
+git clone https://github.com/lolren/nrf54-arduino-core.git
+cd nrf54-arduino-core
+
+# Compile all examples (takes ~30 min)
+find hardware/.../examples -name "*.ino" -exec dirname {} \; | sort -u | \
+  while read d; do arduino-cli compile --fqbn nrf54l15clean:nrf54l15clean:xiao_nrf54l15 "$d"; done
 ```
 
-### Upload Fails
+---
 
-Use `Upload Method = Auto Recover` unless you have a reason to force a runner.
-That keeps the normal XIAO path on the CMSIS-DAP recovery uploader and avoids
-the VM-unfriendly automatic UF2 reset/touch path.
+## 📝 License
 
-For Linux guests in VirtualBox or another VM, use `Upload Method = pyOCD VM Safe
-(No Reset / VirtualBox)` if `Auto Recover` still makes the guest unstable. The
-core also auto-detects common VMs and switches pyOCD to a conservative
-CMSIS-DAP transport automatically. That mode forces CMSIS-DAP v1 HID, lowers
-SWD to 1 MHz, limits packets, disables deferred transfers, and skips the
-post-upload reset. Skipping reset avoids the USB detach/re-enumeration step
-that can lock up some VM USB passthrough stacks. If the sketch does not start
-after upload, press RESET or power-cycle the board.
-
-`Upload Method = UF2 Bootloader` is still available as a manual optional mode.
-It now assumes the bootloader drive is already present and does not do an
-automatic `1200 bps` touch/reset. On the normal XIAO nRF54L15 CMSIS-DAP
-firmware there is no target-programming mass-storage drive, so this mode can
-avoid the VM freeze without actually flashing the board. If you explicitly want
-UF2, put the board into a bootloader that exposes a UF2 drive first, wait for
-the drive to mount, and upload. If the drive is mounted at an unusual path, set
-`NRF54L15_UF2_DRIVE` to that path.
-
-On a clean Linux machine, install just the access rules first:
-
-```bash
-hardware/nrf54l15clean/nrf54l15clean/tools/setup/install_linux_host_deps.sh --udev
-```
-
-That `--udev` path only installs the `udev` rules for `/dev/hidraw*` and
-`/dev/ttyACM*`. It does not touch Python, so it avoids the fresh Mint
-externally-managed-environment failure. If you also want the helper's `pyOCD`
-Python dependencies, run:
-
-```bash
-hardware/nrf54l15clean/nrf54l15clean/tools/setup/install_linux_host_deps.sh --all
-```
-
-That Python path now installs into the uploader's own runtime under the tool
-package. It no longer tries to write into the system Python environment.
-
-Windows PowerShell:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File hardware\nrf54l15clean\nrf54l15clean\tools\setup\install_windows_host_deps.ps1
-```
-
-If Linux sees the CMSIS-DAP probe in `lsusb` but Arduino says there is no probe
-while using `Auto Recover`, `pyOCD Recovery`, or OpenOCD direct recovery, add a
-udev rule:
-
-Important: a `/dev/ttyACM*` rule is not enough. The uploader needs access to the
-probe's `/dev/hidraw*` node.
-
-```bash
-cat <<'RULE' | sudo tee /etc/udev/rules.d/60-seeed-xiao-nrf54-cmsis-dap.rules >/dev/null
-SUBSYSTEM=="hidraw", ATTRS{idVendor}=="2886", ATTRS{idProduct}=="0066", MODE="0660", GROUP="plugdev", TAG+="uaccess"
-SUBSYSTEM=="tty", ATTRS{idVendor}=="2886", ATTRS{idProduct}=="0066", MODE="0660", GROUP="dialout", TAG+="uaccess"
-SUBSYSTEM=="usb", ATTR{idVendor}=="2886", ATTR{idProduct}=="0066", MODE="0660", GROUP="plugdev", TAG+="uaccess"
-RULE
-sudo udevadm control --reload-rules
-sudo udevadm trigger --attr-match=idVendor=2886 --attr-match=idProduct=0066
-```
-
-## More Docs
-
-- [Board Reference](docs/board-reference.md)
-- [nRF54L15 Feature Matrix](docs/NRF54L15_FEATURE_MATRIX.md)
-- [Zephyr low-power parity](docs/low-power-zephyr-parity.md)
-- [Low-power BLE patterns](docs/low-power-ble-patterns.md)
-- [BLE advertising validation](docs/ble-advertising-validation.md)
-- [Power profile measurements](POWER_PROFILE_MEASUREMENTS.md)
-- [BLE / CS power characterization path](docs/ble-cs-power-characterization.md)
-- [Development Notes](docs/development.md)
-- [Thread and Matter implementation plan](docs/THREAD_MATTER_IMPLEMENTATION_PLAN.md)
-- [Thread runtime ownership](docs/THREAD_RUNTIME_OWNERSHIP.md)
-- [Matter runtime ownership](docs/MATTER_RUNTIME_OWNERSHIP.md)
-- [Matter foundation manifest](docs/MATTER_FOUNDATION_MANIFEST.md)
-- [Bundled HAL / BLE library README](hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/README.md)
-- [Releases](https://github.com/lolren/nrf54-arduino-core/releases)
-
-## Browser Fallback Flasher
-
-If Arduino upload still fails because the local `pyOCD` / OpenOCD path cannot
-open the CMSIS-DAP probe, FreeOCD Web can be used as a browser-based fallback
-to flash the generated `.hex` file.
-
-Use this as a recovery or diagnostic path. It does not replace the Linux
-`hidraw` / `udev` setup above for normal Arduino IDE uploads.
-
-Steps:
-
-- Build the sketch and keep the generated `.hex` file. In Arduino IDE, use
-  `Sketch -> Export Compiled Binary`; in `arduino-cli`, use the `.hex` emitted
-  in the build output directory.
-- Open <https://freeocd.org/tools/web/v0.0.2/> in Chrome or Edge.
-- Set `Connection Method` to `WebUSB`.
-- Set `Target MCU` to `nRF54L15 - Nordic nRF54L15 (Cortex-M33, RRAMC)`.
-- Choose the generated `.hex` firmware file.
-- Click `Flash`. If the board is protected or stuck, use `Recover` to erase and
-  recover the target before flashing.
-
-![FreeOCD Web flasher example](docs/freeocd_web_flasher_example.png)
+MIT — see source files for details. Third-party components (OpenThread, CHIP headers) retain their original licenses.

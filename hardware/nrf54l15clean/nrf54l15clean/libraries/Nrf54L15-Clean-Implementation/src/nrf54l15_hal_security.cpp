@@ -1,4 +1,5 @@
 #include "nrf54l15_hal.h"
+#include <string.h>
 
 namespace xiao_nrf54l15 {
 
@@ -304,7 +305,7 @@ bool CracenIkg::begin(uint32_t spinLimit) {
     return false;
   }
 
-  cracen_->ENABLE |= CRACEN_ENABLE_PKEIKG_Msk;
+  cracen_->ENABLE |= CRACEN_ENABLE_PKEIKG_Msk | CRACEN_ENABLE_CRYPTOMASTER_Msk;
   active_ = true;
   clearEvent();
   return waitReady(spinLimit);
@@ -319,7 +320,7 @@ void CracenIkg::end() {
     active_ = false;
     return;
   }
-  cracen_->ENABLE &= ~CRACEN_ENABLE_PKEIKG_Msk;
+  cracen_->ENABLE &= ~(CRACEN_ENABLE_PKEIKG_Msk | CRACEN_ENABLE_CRYPTOMASTER_Msk);
   clearEvent();
   active_ = false;
 #endif
@@ -558,6 +559,233 @@ bool CracenIkg::waitGenerationComplete(uint32_t spinLimit) const {
     }
   }
   return false;
+}
+
+// ─── PKE / PK Engine direct access ───────────────────────────
+
+bool CracenIkg::pkStart() {
+  if (core_ == nullptr) return false;
+  core_->PK.CONTROL = CRACENCORE_PK_CONTROL_START_Msk;
+  return true;
+}
+
+bool CracenIkg::pkBusy() const {
+  if (core_ == nullptr) return true;
+  return (core_->PK.STATUS & CRACENCORE_PK_STATUS_PKBUSY_Msk) != 0U;
+}
+
+void CracenIkg::pkClearIrq() {
+  if (core_ == nullptr) return;
+  core_->PK.CONTROL = CRACENCORE_PK_CONTROL_CLEARIRQ_Msk;
+}
+
+void CracenIkg::pkSetCommand(uint32_t cmd) {
+  if (core_ == nullptr) return;
+  core_->PK.COMMAND = cmd;
+}
+
+void CracenIkg::pkSetPointers(uint8_t a, uint8_t b, uint8_t c, uint8_t n) {
+  if (core_ == nullptr) return;
+  uint32_t ptrs = ((uint32_t)(a & 0xF) << CRACENCORE_PK_POINTERS_OPPTRA_Pos) |
+                  ((uint32_t)(b & 0xF) << CRACENCORE_PK_POINTERS_OPPTRB_Pos) |
+                  ((uint32_t)(c & 0xF) << CRACENCORE_PK_POINTERS_OPPTRC_Pos) |
+                  ((uint32_t)(n & 0xF) << CRACENCORE_PK_POINTERS_OPPTRN_Pos);
+  core_->PK.POINTERS = ptrs;
+}
+
+void CracenIkg::pkSetOpsize(uint32_t size) {
+  if (core_ == nullptr) return;
+  core_->PK.OPSIZE = size;
+}
+
+void CracenIkg::pkWriteOperand(int slot, const uint8_t* data, size_t len) {
+  if (core_ == nullptr || data == nullptr || slot < 0 || slot > 15) return;
+  // PK data memory at 0x51808000, 256 bytes per slot, word-aligned access
+  volatile uint32_t* pkRam = (volatile uint32_t*)(0x51808000UL + (uint32_t)(slot * 256));
+  size_t words = (len + 3) / 4;
+  for (size_t i = 0; i < words; i++) {
+    uint32_t w = 0;
+    if (i*4 < len) w |= (uint32_t)data[i*4];
+    if (i*4+1 < len) w |= (uint32_t)data[i*4+1] << 8;
+    if (i*4+2 < len) w |= (uint32_t)data[i*4+2] << 16;
+    if (i*4+3 < len) w |= (uint32_t)data[i*4+3] << 24;
+    pkRam[i] = w;
+  }
+}
+
+bool CracenIkg::pkReadOperand(int slot, uint8_t* data, size_t len) {
+  if (core_ == nullptr || data == nullptr || slot < 0 || slot > 15) return false;
+  // Disable protected RAM lock so CPU can read PK data memory
+  if (cracen_ != nullptr) {
+    cracen_->PROTECTEDRAMLOCK = CRACEN_PROTECTEDRAMLOCK_ENABLE_Disabled;
+  }
+  __asm volatile("dsb 0xF" ::: "memory");
+  volatile const uint32_t* pkRam = (volatile const uint32_t*)(0x51808000UL + (uint32_t)(slot * 256));
+  size_t words = (len + 3) / 4;
+  for (size_t i = 0; i < words; i++) {
+    uint32_t w = pkRam[i];
+    if (i*4 < len) data[i*4] = (uint8_t)(w & 0xFF);
+    if (i*4+1 < len) data[i*4+1] = (uint8_t)((w>>8) & 0xFF);
+    if (i*4+2 < len) data[i*4+2] = (uint8_t)((w>>16) & 0xFF);
+    if (i*4+3 < len) data[i*4+3] = (uint8_t)((w>>24) & 0xFF);
+  }
+  return true;
+}
+
+bool CracenIkg::pkWaitComplete(uint32_t spinLimit) {
+  while (spinLimit-- > 0U) {
+    if (!pkBusy()) {
+      uint32_t st = core_->PK.STATUS;
+      return (st & CRACENCORE_PK_STATUS_ERRORFLAGS_Msk) == 0U;
+    }
+  }
+  return false;
+}
+
+// ─── IKG high-level ECC operations ─────────────────────────────
+
+bool CracenIkg::ikgGenerateKey() {
+  if (core_ == nullptr) return false;
+  // Set up IKG for P-256 key generation
+  // Write personalization and nonce for DRBG seeding
+  uint32_t pers[8] = {};
+  uint32_t nonce[8] = {};
+  for (int i = 0; i < 8; i++) {
+    pers[i] = 0x4E524635UL + i;  // "NRF5" pattern
+    nonce[i] = (uint32_t)(i * 0x9E3779B9UL + 0x12345678UL);
+  }
+  if (!initInput()) return false;
+  if (!writePersonalization(pers, 8)) return false;
+  if (!writeNonce(nonce, 8)) return false;
+  if (!markSeedValid(true)) return false;
+  if (!start(1000000UL)) return false;
+  return waitGenerationComplete(1000000UL) && privateKeysStored();
+}
+
+bool CracenIkg::ikgEcdsaSign(const uint8_t hash[32]) {
+  if (core_ == nullptr || hash == nullptr) return false;
+  if (!privateKeysStored()) return false;
+  // Let IKG configure PK
+  
+  pkWriteOperand(1, hash, 32);
+  
+  // Set IKG command: ECDSA sign with key slot 0
+  core_->IKG.PKECOMMAND = 
+      CRACENCORE_IKG_PKECOMMAND_SECUREMODE_ACTIVATED << CRACENCORE_IKG_PKECOMMAND_SECUREMODE_Pos |
+      (0U << CRACENCORE_IKG_PKECOMMAND_SELECTEDKEY_Pos) |
+      CRACENCORE_IKG_PKECOMMAND_OPSEL_ECDSA << CRACENCORE_IKG_PKECOMMAND_OPSEL_Pos;
+  
+  core_->IKG.PKECONTROL = CRACENCORE_IKG_PKECONTROL_PKESTART_Msk;
+  
+  // Wait for completion
+  uint32_t spin = 5000000UL;
+  while (spin-- > 0U) {
+    uint32_t st = core_->IKG.PKESTATUS;
+    if ((st & 0x1) != 0) return false;  // ERROR (bit 0)
+    if ((st & 0x4) == 0) return true;   // IKGPKBUSY cleared = done
+  }
+  return false;
+}
+
+bool CracenIkg::ikgPointMul(const uint8_t scalar[32], const uint8_t pointX[32], const uint8_t pointY[32]) {
+  if (core_ == nullptr) return false;
+  // Let IKG configure PK
+  
+  pkWriteOperand(0, scalar, 32);
+  pkWriteOperand(4, pointX, 32);
+  pkWriteOperand(5, pointY, 32);
+  
+  // Set IKG command: PTMUL
+  core_->IKG.PKECOMMAND = 
+      CRACENCORE_IKG_PKECOMMAND_SECUREMODE_ACTIVATED << CRACENCORE_IKG_PKECOMMAND_SECUREMODE_Pos |
+      CRACENCORE_IKG_PKECOMMAND_OPSEL_PTMUL << CRACENCORE_IKG_PKECOMMAND_OPSEL_Pos;
+  
+  core_->IKG.PKECONTROL = CRACENCORE_IKG_PKECONTROL_PKESTART_Msk;
+  
+  uint32_t spin = 5000000UL;
+  while (spin-- > 0U) {
+    uint32_t st = core_->IKG.PKESTATUS;
+    if ((st & 0x1) != 0) return false;
+    if ((st & 0x4) == 0) return true;
+  }
+  return false;
+}
+
+bool CracenIkg::ikgReadPublicKey(uint8_t pubKey[65]) {
+  if (core_ == nullptr || pubKey == nullptr) return false;
+  if (!privateKeysStored()) return false;
+  
+  // Let IKG configure PK
+  
+  core_->IKG.PKECOMMAND = 
+      CRACENCORE_IKG_PKECOMMAND_SECUREMODE_ACTIVATED << CRACENCORE_IKG_PKECOMMAND_SECUREMODE_Pos |
+      (0U << CRACENCORE_IKG_PKECOMMAND_SELECTEDKEY_Pos) |
+      CRACENCORE_IKG_PKECOMMAND_OPSEL_PUBKEY << CRACENCORE_IKG_PKECOMMAND_OPSEL_Pos;
+  
+  // Trigger
+  core_->IKG.PKECONTROL = CRACENCORE_IKG_PKECONTROL_PKESTART_Msk;
+  
+  // Wait for completion (IKGPKBUSY bit 2 = 0x4)
+  uint32_t spin = 10000000UL;
+  while (spin-- > 0U) {
+    uint32_t st = core_->IKG.PKESTATUS;
+    if (st & 0x1) return false;  // ERROR
+    if ((st & 0x4) == 0 && spin < 9999990UL) break;  // IKGPKBUSY cleared (with debounce: skip first few iterations)
+  }
+  if (spin == 0) return false;
+  
+  pubKey[0] = 0x04;
+  if (!pkReadOperand(7, pubKey + 1, 32)) return false;
+  if (!pkReadOperand(8, pubKey + 33, 32)) return false;
+  return true;
+}
+
+bool CracenIkg::ikgReadEcdsaSignature(uint8_t r[32], uint8_t s[32]) {
+  // ECDSA result: r in slot 2, s in slot 3
+  if (!pkReadOperand(2, r, 32)) return false;
+  if (!pkReadOperand(3, s, 32)) return false;
+  return true;
+}
+
+bool CracenIkg::ikgReadPointMulResult(uint8_t x[32], uint8_t y[32]) {
+  // PTMUL result: x in slot 7, y in slot 8
+  if (!pkReadOperand(7, x, 32)) return false;
+  if (!pkReadOperand(8, y, 32)) return false;
+  return true;
+}
+
+uint32_t CracenIkg::pkStatus() const {
+  return (core_ == nullptr) ? 0xFFFFFFFFUL : core_->PK.STATUS;
+}
+
+uint32_t CracenIkg::ikgPkeStatus() const {
+  return (core_ == nullptr) ? 0xFFFFFFFFUL : core_->IKG.PKESTATUS;
+}
+
+uint32_t CracenIkg::ikgStatus() const {
+  return (core_ == nullptr) ? 0xFFFFFFFFUL : core_->IKG.STATUS;
+}
+
+uint32_t CracenIkg::pkCommand() const {
+  return (core_ == nullptr) ? 0xFFFFFFFFUL : core_->PK.COMMAND;
+}
+
+bool CracenIkg::pkConfigureP256() {
+  if (core_ == nullptr || !active_) return false;
+  // Only set curve and size fields — OPEADDR is set by IKG operation.
+  // Read current command to preserve OPEADDR (default 0xF is fine)
+  uint32_t cmd = core_->PK.COMMAND;
+  // Clear fields we're setting
+  cmd &= ~(CRACENCORE_PK_COMMAND_SELCURVE_Msk |
+           CRACENCORE_PK_COMMAND_OPBYTESM1_Msk |
+           CRACENCORE_PK_COMMAND_FIELDF_Msk);
+  // Set P-256 configuration
+  cmd |= (CRACENCORE_PK_COMMAND_SELCURVE_P256 << CRACENCORE_PK_COMMAND_SELCURVE_Pos);
+  cmd |= (31U << CRACENCORE_PK_COMMAND_OPBYTESM1_Pos);  // 32 bytes
+  cmd |= (0U << CRACENCORE_PK_COMMAND_FIELDF_Pos);  // GF(p)
+  core_->PK.COMMAND = cmd;
+  core_->PK.OPSIZE = 0x0100;
+  return true;
 }
 
 Tampc::Tampc(uint32_t base)

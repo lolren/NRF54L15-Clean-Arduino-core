@@ -594,6 +594,37 @@ class CracenIkg {
   bool setReseedInterval(uint64_t interval);
   bool start(uint32_t spinLimit = 600000UL);
 
+  // PKE (Public Key Engine) access for ECC operations
+  bool pkStart();
+  bool pkBusy() const;
+  void pkClearIrq();
+  void pkSetCommand(uint32_t cmd);
+  void pkSetPointers(uint8_t a, uint8_t b, uint8_t c, uint8_t n);
+  void pkSetOpsize(uint32_t size);
+  void pkWriteOperand(int slot, const uint8_t* data, size_t len);
+  bool pkReadOperand(int slot, uint8_t* data, size_t len);
+  bool pkWaitComplete(uint32_t spinLimit = 1000000UL);
+
+  // High-level ECC operations via IKG
+  bool ikgGenerateKey();
+  bool ikgEcdsaSign(const uint8_t hash[32]);
+  bool ikgPointMul(const uint8_t scalar[32], const uint8_t pointX[32], const uint8_t pointY[32]);
+  bool ikgReadPublicKey(uint8_t pubKey[65]);
+  bool ikgReadEcdsaSignature(uint8_t r[32], uint8_t s[32]);
+  bool ikgReadPointMulResult(uint8_t x[32], uint8_t y[32]);
+
+  // Configure PK engine for a specific curve
+  bool pkConfigureP256();
+
+  // Read PK and IKG status registers
+  uint32_t pkStatus() const;
+  uint32_t ikgPkeStatus() const;
+  uint32_t ikgStatus() const;
+  uint32_t pkCommand() const;
+
+  // Debug: dump all status registers
+  void dumpRegs();
+
  private:
   bool waitReady(uint32_t spinLimit) const;
   bool waitGenerationComplete(uint32_t spinLimit) const;

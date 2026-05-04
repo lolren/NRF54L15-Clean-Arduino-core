@@ -1,4 +1,4 @@
-#include <Arduino.h>
+
 
 #include "nrf54l15_hal.h"
 #include "openthread_platform_nrf54l15.h"

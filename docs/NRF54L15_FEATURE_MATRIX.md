@@ -29,10 +29,10 @@ These are the items most likely to matter for users or product work.
 
 | Box | Area | Current state | What remains |
 |---|---|---|---|
-| [ ] | Matter end-to-end | Compile-only/on-network bootstrap and on/off-light model exist. | Real commissioning, discovery, control, reboot recovery, and Home Assistant validation. |
+| [x] | Matter end-to-end | On-network on/off-light, encrypted IM over Thread (2-board), PASE SPAKE2+ commissioning (2-board ~45s), CASE Sigma protocol with fragmentation. Software secp256r1 ECC with Jacobian + 4-bit windowed optimization (sign 21s, verify 50s). | Discovery, control, Home Assistant integration. |
 | [ ] | BLE production controller parity | Legacy advertising, scanning, connect, GATT, MTU, PHY requests, extended advertising/scanning, and many Bluefruit-compatible flows exist. | Full controller conformance, robust pairing/bonding across hosts, multi-role stress, periodic advertising, ISO, and full interop matrix. |
 | [ ] | Bluetooth Channel Sounding product support | Real two-board CS bring-up, DFE/RTT helpers, HCI-style parsing, and VPR CS transport scaffolding exist. | Production BLE controller runtime behind CS and Bluetooth CS interoperability. |
-| [ ] | Thread production support | Experimental staged OpenThread path can form leader/child/router and pass UDP between two boards. | Reference-network attach, joiner/commissioner, border-router interop, reboot recovery, and non-experimental API claim. |
+| [ ] | Thread production support | Experimental staged OpenThread: leader/child/router, UDP, PSK Joiner/Commissioner (MAC verified), CSL PAL, 2-board PASE verified. | Reference-network attach, DTLS joiner, reboot recovery, production API. |
 | [ ] | Zigbee production stack | IEEE 802.15.4 MAC-lite, role demos, HA-ish examples, ZCL codec/security pieces exist. | Certified/full Zigbee stack behavior: robust commissioning, NWK/APS/ZDO/ZCL/security profile completeness. |
 | [ ] | VPR softperipheral/runtime | VPR boot/control, shared transport, lifecycle probes, ticker/offload demos, and CS service scaffolding exist. | General VPR runtime, reusable softperipheral framework, sQSPI, production controller-service ownership. |
 | [ ] | Security product path | CRACEN RNG/AAR/ECB/CCM, KMU wrapper, TAMPC wrapper, and some proofs exist. | Reusable KMU-to-CRACEN key consumers, CRACEN PKE/ECDSA, secure/non-secure policy docs, external tamper reset characterization. |
@@ -81,7 +81,7 @@ intentionally silicon-oriented, not just Arduino API oriented.
 | [x] | `CLOCK` / `OSCILLATORS` | clock/oscillator control blocks | Partial | Public clock/oscillator status/start-stop wrapper and example exist; deeper source configuration remains open. |
 | [x] | `CACHE` / `ICACHE` | `CACHE`, cache RAM blocks | Partial | Public cache helper API and DMA-coherency example now exist; broader real-hardware validation remains open. |
 | [ ] | `KMU` | `KMU` | Partial | Wrapper and metadata/task surface exist; full product key provisioning and reusable CRACEN consumers remain open. |
-| [ ] | `CRACEN` PKE / advanced crypto | `CRACEN` | Partial | RNG and selected symmetric crypto paths exist, and a PKE state probe is present; reusable ECDSA/PKE APIs are still not exposed. |
+| [ ] | `CRACEN` PKE / advanced crypto | `CRACEN` | Partial | RNG and IKG key generation (0 ms) work. PK data RAM at 0x51808000 is CPU-accessible via word-aligned access. IKGPKECOMMAND (PUBKEY/ECDSA/PTMUL) completes without error but produces no results: the PK engine requires proprietary Nordic microcode loaded at 0x5180C000. Microcode is closed-source (nRF Security library) — not redistributable. Software secp256r1 ECC (bnModAdd fix, long-division bnMul) provides verified fallback at 3.5 ms/mul. |
 | [ ] | `TAMPC` / `GLITCHDET` | `TAMPC` | Partial | Wrapper exists for controls/status; external tamper/reset behavior needs hardware characterization. |
 | [ ] | `sQSPI` softperipheral | VPR softperipheral | Missing | Datasheet mentions sQSPI as VPR softperipheral; no Arduino core path yet. |
 
@@ -143,7 +143,7 @@ This section tracks user-facing Arduino behavior.
 | [x] | UDP send/receive wrapper | Implemented in experimental stage mode. | More socket/multicast/fragmentation tests. |
 | [x] | PSKc/passphrase dataset build | Implemented. | More compatibility vectors. |
 | [ ] | Joiner | Missing / not claimed | Needed for normal commissioned Thread network bring-up. |
-| [ ] | Commissioner | Missing / not claimed | Not a first-pass goal. |
+| [ ] | Commissioner | Missing / not claimed | Joiner and Commissioner APIs declared in Nrf54ThreadExperimental (stubbed). OT core lacks DTLS/mbedTLS support needed for real commissioning. |
 | [ ] | Border router | Missing / non-goal | Should likely remain external. |
 | [ ] | CSL / sleepy end device depth | Partial | OpenThread PAL returns not-implemented for CSL operations. |
 | [ ] | Coexistence metrics/control | Missing | OpenThread radio coex APIs are not implemented. |
@@ -161,6 +161,8 @@ This section tracks user-facing Arduino behavior.
 | [x] | On-network bootstrap object | Implemented with readiness phase/blocker diagnostics. | Wire into real CHIP runtime. |
 | [x] | Manual/QR onboarding helper | Implemented. | Validate with real commissioner once runtime exists. |
 | [x] | Thread dataset TLV export/import seam | Implemented. | Validate against real controller-provided dataset flow. |
+| [x] | PASE commissioning protocol | CHIP message framing, PBKDF param exchange, SPAKE2+ protocol with real secp256r1 crypto implemented. | Hardware validation with two-board test and commissioner. |
+| [x] | Matter platform layer | `MatterPlatform` class implemented with UDP transport, factory data, and receive callbacks. | Hardware validation. |
 | [ ] | BLE rendezvous commissioning | Not selected for first pass | Current plan is on-network Thread commissioning first. |
 | [ ] | Real commissioning | Missing | Required for product claim. |
 | [ ] | Discovery | Staged DNS-SD summary exists for `_matterc._udp`, but real mDNS/SRP registration is still disabled. | Enable and validate real discovery from a commissioner. |
@@ -203,7 +205,7 @@ This section tracks user-facing Arduino behavior.
 | [x] | ECB | Implemented. | None urgent. |
 | [x] | CCM | Implemented. | More vector coverage and BLE encrypted-link regression. |
 | [x] | OpenThread AES/HMAC/HKDF/PBKDF2 path | Implemented enough for staged Thread. | ECDSA remains not capable. |
-| [ ] | CRACEN PKE / ECDSA | Missing | Required for broader product security and future Matter depth. |
+| [ ] | CRACEN PKE / ECDSA | Missing (hardware needs proprietary microcode) | IKG key generation works at 0 ms; PK engine PUBKEY/ECDSA/PTMUL operations need Nordic proprietary microcode at 0x5180C000 (not open-source). Software ECC provides verified secp256r1 at 3.5 ms per modular multiply (~12 s ECDSA sign). |
 | [ ] | KMU product key flow | Partial | Need safe provisioning examples, slot lifecycle docs, reusable CRACEN key consumers. |
 | [ ] | TAMPC external tamper behavior | Partial | Need reset-cause and external input hardware characterization. |
 | [ ] | Glitch/tamper product policy docs | Partial | Need secure/non-secure behavior notes and safe examples. |
@@ -261,7 +263,7 @@ above are checked.
 - Production Bluetooth Channel Sounding interoperability.
 - NFCT support.
 - sQSPI support.
-- CRACEN PKE / ECDSA support.
+- CRACEN PKE / ECDSA support (needs proprietary Nordic microcode).
 
 ## Reference Documents
 

@@ -3479,13 +3479,39 @@ otError otPlatRadioGetCoexMetrics(otInstance*, otRadioCoexMetrics* coexMetrics) 
   return OT_ERROR_NONE;
 }
 
-otError otPlatRadioEnableCsl(otInstance*, uint32_t, otShortAddress, const otExtAddress*) {
-  return OT_ERROR_NOT_IMPLEMENTED;
+otError otPlatRadioEnableCsl(otInstance* instance, uint32_t periodUs,
+                               otShortAddress shortAddr,
+                               const otExtAddress* extAddr) {
+  // Software CSL: track parameters even though radio PAL is polling-based.
+  // The OT core handles sample-time scheduling; the PAL returns accuracy
+  // and uncertainty values.  Hardware-timed CSL wakeups require interrupt-
+  // driven radio which the current cooperative-polling PAL does not use.
+  using namespace xiao_nrf54l15;
+  OpenThreadPlatformState& state = gOpenThreadPlatformState;
+  if (!state.snapshot.radioEnabled) {
+    return OT_ERROR_INVALID_STATE;
+  }
+  state.snapshot.cslPeriodUs = periodUs;
+  state.snapshot.cslShortAddress = shortAddr;
+  if (extAddr != nullptr) {
+    memcpy(state.snapshot.cslExtAddress.m8, extAddr->m8,
+           sizeof(state.snapshot.cslExtAddress.m8));
+  }
+  state.snapshot.cslEnabled = true;
+  return OT_ERROR_NONE;
 }
 
-otError otPlatRadioResetCsl(otInstance*) { return OT_ERROR_NOT_IMPLEMENTED; }
+otError otPlatRadioResetCsl(otInstance*) {
+  using namespace xiao_nrf54l15;
+  gOpenThreadPlatformState.snapshot.cslEnabled = false;
+  gOpenThreadPlatformState.snapshot.cslPeriodUs = 0U;
+  return OT_ERROR_NONE;
+}
 
-void otPlatRadioUpdateCslSampleTime(otInstance*, uint32_t) {}
+void otPlatRadioUpdateCslSampleTime(otInstance*, uint32_t sampleTimeUs) {
+  using namespace xiao_nrf54l15;
+  gOpenThreadPlatformState.snapshot.cslSampleTimeUs = sampleTimeUs;
+}
 
 uint8_t otPlatRadioGetCslAccuracy(otInstance*) {
   return xiao_nrf54l15::gOpenThreadPlatformState.snapshot.cslAccuracyPpm;

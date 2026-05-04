@@ -1,16 +1,7 @@
-/*
- * ThreadExperimentalUdpPing — Thread UDP communication test between two XIAO boards
- *
- * Flash this example to BOTH boards. Each board:
- *   1. Joins a Thread network (same passphrase/network)
- *   2. Sends UDP "ping" messages to the other board
- *   3. Expects "pong" replies
- *
- * Results are stored in volatile globals for pyocd reading.
- */
-#include <Arduino.h>
-#include <nrf54_thread_experimental.h>
-#include <string.h>
+// ThreadExperimentalUdpPing — Thread UDP ping/pong test between two XIAO boards
+// Flash to both boards. Each sends "ping", expects "pong" reply.
+
+#include <nrf54_all.h>
 
 using xiao_nrf54l15::Nrf54ThreadExperimental;
 

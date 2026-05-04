@@ -1,4 +1,5 @@
-#include <Arduino.h>
+
+#include <nrf54_all.h>
 
 #include "nrf54l15_hal.h"
 

@@ -1,4 +1,36 @@
-#include <nrf54_thread_experimental.h>
+// Thread UDP Ping-Pong — Simple 2-Board Hello World
+// =================================================
+// 
+// What this does:
+//   Upload to two XIAO nRF54L15 boards. Both boards form a Thread
+//   network and exchange "hello-ping" / "hello-pong" over UDP.
+//   This is the simplest Thread example — no crypto, no Matter.
+//
+// How to use:
+//   1. Upload to board A, wait 5 seconds
+//   2. Upload to board B
+//   3. Open Serial Monitor on each board at 115200 baud
+//   4. Watch for "ping" and "pong" messages
+//
+// Expected output:
+//   [ping]    rx=1  pong rx=0    (receiving pings)
+//   [pong]    tx=3  ping rx=2   (received ping, sent pong)
+//
+// Functions used:
+//   Nrf54ThreadExperimental::buildDemoDataset() - creates network config
+//   gThread.setActiveDataset(ds)  - applies Thread network settings
+//   gThread.begin()               - starts Thread radio
+//   gThread.openUdp(port, callback) - opens UDP socket
+//   gThread.sendUdp(addr, port, data, len) - sends UDP packet
+//   gThread.roleName()            - returns "leader"/"child"/"router"
+//
+// Troubleshooting:
+//   - Both boards must be within ~10m of each other
+//   - If no messages appear, reset both boards and try again
+//   - Thread radio uses channel 15 (2.425 GHz)
+//   - Upload board A FIRST, wait 5s, then upload board B
+
+#include <nrf54_all.h>
 
 #include <string.h>
 

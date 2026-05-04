@@ -59,6 +59,11 @@ struct OpenThreadPlatformSkeletonSnapshot {
   uint8_t diagLastTxError = OT_ERROR_NONE;
   uint8_t cslAccuracyPpm = 0;
   uint8_t cslUncertainty10us = 0;
+  bool cslEnabled = false;
+  uint32_t cslPeriodUs = 0U;
+  uint32_t cslSampleTimeUs = 0U;
+  otShortAddress cslShortAddress = OT_RADIO_INVALID_SHORT_ADDR;
+  otExtAddress cslExtAddress = {};
   uint8_t radioSrcMatchShortCount = 0;
   uint8_t radioSrcMatchExtCount = 0;
 

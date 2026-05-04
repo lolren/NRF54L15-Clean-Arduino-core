@@ -32,6 +32,14 @@ constexpr uint8_t kDemoPskc[OT_PSKC_MAX_SIZE] = {
 }  // namespace
 
 bool Nrf54ThreadExperimental::begin(bool wipeSettings) {
+  return begin(wipeSettings, false);
+}
+
+bool Nrf54ThreadExperimental::beginAsChild(bool wipeSettings) {
+  return begin(wipeSettings, true);
+}
+
+bool Nrf54ThreadExperimental::begin(bool wipeSettings, bool asChild) {
   if (beginCalled_) {
     return false;
   }
@@ -48,6 +56,7 @@ bool Nrf54ThreadExperimental::begin(bool wipeSettings) {
   wipeSettings_ = wipeSettings;
   beginMs_ = millis();
   beginCalled_ = true;
+  attachAsChild_ = asChild;
   lastError_ = OT_ERROR_NONE;
   lastUdpError_ = OT_ERROR_NONE;
   lastChangedFlags_ = 0U;
@@ -173,6 +182,10 @@ void Nrf54ThreadExperimental::process() {
 
   if (instance_ != nullptr && datasetConfigured_ && !datasetApplied_ &&
       elapsedMs >= kStageDatasetApplyDelayMs) {
+    if (attachAsChild_) {
+      dataset_.mActiveTimestamp.mAuthoritative = false;
+      dataset_.mActiveTimestamp.mSeconds = 0;
+    }
     lastError_ = otDatasetSetActive(instance_, &dataset_);
     if (lastError_ == OT_ERROR_NONE) {
       datasetApplied_ = true;

@@ -1,6 +1,5 @@
-#include <Arduino.h>
-#include <nrf54_thread_experimental.h>
-#include <string.h>
+
+#include <nrf54_all.h>
 
 using xiao_nrf54l15::Nrf54ThreadExperimental;
 

@@ -12,7 +12,7 @@
         {
           "name": "nRF54L15 Boards",
           "architecture": "nrf54l15clean",
-          "version": "0.6.68",
+          "version": "0.6.70",
           "category": "Arduino",
           "url": "https://github.com/lolren/nrf54-arduino-core/releases/download/v0.6.68/nrf54l15clean-0.6.68-6a328322281b.tar.bz2",
           "archiveFileName": "nrf54l15clean-0.6.68-6a328322281b.tar.bz2",

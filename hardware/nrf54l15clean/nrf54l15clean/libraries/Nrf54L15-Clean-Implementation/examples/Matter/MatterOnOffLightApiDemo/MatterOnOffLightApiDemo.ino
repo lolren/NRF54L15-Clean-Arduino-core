@@ -1,5 +1,8 @@
-#include <Arduino.h>
+#include <nrf54_all.h>
+
 #include <matter_onoff_light.h>
+#include <nrf54_all.h>
+
 #include <matter_platform_nrf54l15.h>
 
 #if !defined(NRF54L15_CLEAN_MATTER_CORE_ENABLE) || \

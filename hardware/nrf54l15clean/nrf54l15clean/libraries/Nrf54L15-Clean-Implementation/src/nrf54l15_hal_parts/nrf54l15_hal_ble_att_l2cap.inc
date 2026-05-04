@@ -1524,7 +1524,20 @@ bool BleRadio::buildL2capSmpResponse(const uint8_t* l2capPayload,
       if (smpLength != 2U) {
         return buildSmpPairingFailed(kSmpReasonInvalidParameters);
       }
-      return buildSmpPairingFailed(kSmpReasonCommandNotSupported);
+      // Peripheral requests pairing → initiate as central
+      if (smpPairingState_ == kSmpPairingStateIdle) {
+        uint8_t pairingReq[kSmpPairingRequestLen];
+        pairingReq[0] = kSmpCodePairingRequest;
+        pairingReq[1] = kSmpIoCapNoInputNoOutput;
+        pairingReq[2] = 0x00U; // OOB not supported
+        pairingReq[3] = 0x01U; // Bonding requested
+        pairingReq[4] = 16U;   // Max encryption key size
+        pairingReq[5] = kSmpKeyDistEncKeyMask | kSmpKeyDistIdKeyMask;
+        pairingReq[6] = kSmpKeyDistEncKeyMask | kSmpKeyDistIdKeyMask;
+        smpBondingRequested_ = true;
+        return buildSmpResponse(pairingReq, kSmpPairingRequestLen);
+      }
+      return false;
 
     default:
       return buildSmpPairingFailed(kSmpReasonPairingNotSupported);

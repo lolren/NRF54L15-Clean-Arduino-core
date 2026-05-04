@@ -82,6 +82,7 @@ class Nrf54ThreadExperimental {
   Nrf54ThreadExperimental() = default;
 
   bool begin(bool wipeSettings = true);
+  bool beginAsChild(bool wipeSettings = true);
   bool stop();
   bool restart(bool wipeSettings = false);
   void process();
@@ -141,6 +142,7 @@ class Nrf54ThreadExperimental {
       otOperationalDataset* outDataset);
 
  private:
+  bool begin(bool wipeSettings, bool asChild);
   static void handleUdpReceiveStatic(void* context,
                                      otMessage* message,
                                      const otMessageInfo* messageInfo);
@@ -178,6 +180,7 @@ class Nrf54ThreadExperimental {
   otChangedFlags pendingChangedFlags_ = 0U;
 
   bool beginCalled_ = false;
+  bool attachAsChild_ = false;
   bool settingsWiped_ = false;
   bool datasetConfigured_ = false;
   bool datasetApplied_ = false;
