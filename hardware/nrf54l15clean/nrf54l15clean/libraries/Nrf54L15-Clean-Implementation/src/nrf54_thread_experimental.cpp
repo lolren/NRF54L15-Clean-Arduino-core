@@ -194,7 +194,8 @@ void Nrf54ThreadExperimental::process() {
 
   if (instance_ != nullptr && datasetApplied_ && !linkConfigured_ &&
       elapsedMs >= kStageIp6EnableDelayMs) {
-    const otLinkModeConfig mode = {true, true, true};
+    // MTD (mDeviceType=false) prevents router/leader promotion for child-only attach
+    const otLinkModeConfig mode = {true, !attachAsChild_, true};
     lastError_ = otThreadSetLinkMode(instance_, mode);
     if (lastError_ == OT_ERROR_NONE) {
       linkConfigured_ = true;

@@ -14,14 +14,8 @@ using xiao_nrf54l15::Secp256r1Scalar;
 using xiao_nrf54l15::MatterPbkdf2;
 
 #if !defined(NRF54L15_CLEAN_OPENTHREAD_CORE_ENABLE) || (NRF54L15_CLEAN_OPENTHREAD_CORE_ENABLE == 0)
-#error "Enable Thread Core"
+#error "Select Tools > Thread Core > Staged OpenThread"
 #endif
-
-using xiao_nrf54l15::Nrf54ThreadExperimental;
-using xiao_nrf54l15::Secp256r1;
-using xiao_nrf54l15::Secp256r1Point;
-using xiao_nrf54l15::Secp256r1Scalar;
-using xiao_nrf54l15::MatterPbkdf2;
 
 // ═══════════════════════════════════════════════════════
 enum class DemoRole : uint8_t { COMMISSIONER = 0, COMMISSIONEE = 1 };
