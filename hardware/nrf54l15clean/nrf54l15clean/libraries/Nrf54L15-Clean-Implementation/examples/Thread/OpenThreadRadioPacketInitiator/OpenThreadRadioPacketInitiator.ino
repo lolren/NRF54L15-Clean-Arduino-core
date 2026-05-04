@@ -1,3 +1,4 @@
+#error "This example requires the full OpenThread radio stack, not available in the staged Thread core."
 
 
 #include "nrf54l15_hal.h"
