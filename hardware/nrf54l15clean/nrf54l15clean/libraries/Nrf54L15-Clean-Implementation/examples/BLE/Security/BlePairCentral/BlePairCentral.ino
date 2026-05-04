@@ -25,7 +25,7 @@ using namespace xiao_nrf54l15;
 
 // ═══════════════════════════════════════════════════════════
 enum class DemoRole : uint8_t { PERIPHERAL = 0, CENTRAL = 1 };
-constexpr DemoRole ROLE = DemoRole::CENTRAL;
+constexpr DemoRole ROLE = DemoRole::PERIPHERAL;
 // ═══════════════════════════════════════════════════════════
 
 namespace {

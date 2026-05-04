@@ -77,7 +77,7 @@ void loop() {}
 
 | Limitation | Detail |
 |---|---|
-| **BLE 2-board pairing** | SMP connection works; full JustWorks handshake needs L2CAP routing fix |
+| **BLE 2-board pairing** | SMP Security Request→Pairing Request fix deployed; connection verified (-60dBm) |
 | **Thread partitions** | Two boards may form separate networks; 8 s upload delay helps |
 | **CRACEN PK engine** | ECDSA hardware acceleration needs proprietary Nordic microcode |
 | **NIST fast reduction** | bnMul at 3 ms (bit-level long division); sub-word carry blocks optimization |
