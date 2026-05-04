@@ -77,7 +77,7 @@ void loop() {}
 
 | Limitation | Detail |
 |---|---|
-| **Thread partitions** | Two boards may form separate networks; use `beginAsChild()` (MTD mode) to force child-only attach |
+| **Thread partitions** | Two boards may form separate networks; `beginAsChild()` API available (MTD mode needs OT scan tuning) |
 | **CRACEN PK engine** | ECDSA hardware acceleration needs proprietary Nordic microcode |
 | **NIST fast reduction** | bnMul at 3 ms (bit-level long division); sub-word carry blocks optimization |
 | **ECDSA speed** | Software ECC at 21 s sign / 50 s verify — acceptable for demos, not production |
