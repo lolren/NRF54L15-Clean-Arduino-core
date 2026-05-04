@@ -35,6 +35,7 @@
 #define LED_BUILTIN     PIN_LED_BUILTIN
 #define LED_RED         PIN_LED_BUILTIN
 #define LED_GREEN       PIN_LED_BUILTIN
+#define LED_STATE_ON    LOW            // active-low LED on XIAO
 #define LED_BLUE        PIN_LED_BUILTIN
 #define LED_STATE_ON    LOW
 
