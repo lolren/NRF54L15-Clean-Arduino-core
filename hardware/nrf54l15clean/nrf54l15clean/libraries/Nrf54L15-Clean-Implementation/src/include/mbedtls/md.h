@@ -1,1 +1,1 @@
-/home/lolren/.arduino15/packages/nrf54l15clean/hardware/nrf54l15clean/0.6.53/libraries/Nrf54L15-Clean-Implementation/third_party/openthread-core/third_party/mbedtls/repo/include/mbedtls/md.h
+../../../third_party/openthread-core/third_party/mbedtls/repo/include/mbedtls/md.h

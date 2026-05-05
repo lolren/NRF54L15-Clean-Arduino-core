@@ -140,7 +140,7 @@ This section tracks user-facing Arduino behavior.
 | [x] | Fixed dataset attach | Implemented in experimental stage mode. | Reference-network attach validation. |
 | [x] | Leader/child role path | Implemented in experimental stage mode; default wrapper uses child-first attach with deterministic leader fallback to avoid two-board demo partition races. | Reboot recovery and longer soak. |
 | [x] | Router promotion | Implemented in experimental stage mode. | Broader router behavior validation. |
-| [x] | UDP send/receive wrapper | Implemented in experimental stage mode. | More socket/multicast/fragmentation tests. |
+| [x] | UDP send/receive wrapper | Implemented in experimental stage mode; two-board checked payload smoke passes through 63-byte single-frame UDP payloads. | Larger fragmented UDP payloads, multicast, and longer soak. |
 | [x] | PSKc/passphrase dataset build | Implemented. | More compatibility vectors. |
 | [ ] | Standard MeshCoP Joiner | API surface now exists and examples compile, but runtime reports unsupported while `OPENTHREAD_CONFIG_JOINER_ENABLE=0`. | Enable secure transport/DTLS and validate against a real commissioner. |
 | [ ] | Standard MeshCoP Commissioner | API surface now exists and examples compile, but runtime reports unsupported while `OPENTHREAD_CONFIG_COMMISSIONER_ENABLE=0`. | Enable secure transport/DTLS, add joiner table validation, then two-board commissioning soak. |
@@ -245,7 +245,7 @@ fresh compile/install/hardware pass.
 | [ ] | BLE MTU/PHY smoke | Two-device or host evidence. |
 | [ ] | BLE pair/bond smoke | Repeated cross-host evidence. |
 | [ ] | 802.15.4 two-board smoke | Zigbee or Thread radio pair evidence. |
-| [ ] | Thread staged UDP smoke | Two-board `ThreadExperimentalUdpHello` evidence. |
+| [x] | Thread staged UDP smoke | Two-board `ThreadExperimentalUdpPing` evidence: same partition, child sent 4 checked payload sizes through 63 bytes, leader ACKed all, sender reported `done=1 fail=0`. |
 | [x] | Matter staged compile smoke | All Matter example folders compile for XIAO with `clean_thread=stage,clean_matter=stage`; loose stale sketch removed. |
 | [ ] | Matter real commission smoke | Commissioner/Home Assistant evidence. |
 | [ ] | Low-power current smoke | Measured current for selected board/profile. |

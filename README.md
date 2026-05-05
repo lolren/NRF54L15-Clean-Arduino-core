@@ -78,6 +78,7 @@ void loop() {}
 | Limitation | Detail |
 |---|---|
 | **Thread attach** | Common two-board demo partition race is mitigated with child-first attach + deterministic leader fallback; still experimental and needs longer soak/reference-network validation |
+| **Thread UDP fragmentation** | Two-board staged UDP smoke validates checked single-frame payloads through 63 bytes; larger fragmented UDP payloads are still experimental |
 | **Standard Thread commissioning** | MeshCoP Joiner/Commissioner examples now compile and report support status, but the staged core still ships those roles disabled until DTLS/secure transport is enabled and tested |
 | **CRACEN PK engine** | ECDSA hardware acceleration needs proprietary Nordic microcode |
 | **NIST fast reduction** | bnMul at 3 ms (bit-level long division); sub-word carry blocks optimization |
