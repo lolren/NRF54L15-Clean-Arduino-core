@@ -49,12 +49,12 @@ jobs:
       - name: Verify checksum and size
         run: |
           PLATFORM_ARCHIVE="$(python3 - <<'PY'
-import json
-from pathlib import Path
-manifest = json.loads(Path('dist/release-manifest.json').read_text())
-print(manifest['platform']['archivePath'])
-PY
-)"
+          import json
+          from pathlib import Path
+          manifest = json.loads(Path('dist/release-manifest.json').read_text())
+          print(manifest['platform']['archivePath'])
+          PY
+          )"
           python3 ./scripts/verify_package_index.py \
             --index dist/package_nrf54l15clean_index.json \
             --archive "${PLATFORM_ARCHIVE}"
