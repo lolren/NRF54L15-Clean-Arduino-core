@@ -4,6 +4,130 @@
 
 namespace xiao_nrf54l15 {
 
+namespace {
+
+constexpr size_t kBnWordCount = 8U;
+constexpr size_t kBarrettWordCount = kBnWordCount + 1U;
+constexpr size_t kBnWideWordCount = kBnWordCount * 2U;
+constexpr size_t kBarrettMulWordCount = kBarrettWordCount * 2U;
+
+static const uint32_t kPrimePBarrettMu[kBarrettWordCount] = {
+    0x00000003U, 0x00000000U, 0xFFFFFFFFU, 0xFFFFFFFEU,
+    0xFFFFFFFEU, 0xFFFFFFFEU, 0xFFFFFFFFU, 0x00000000U,
+    0x00000001U,
+};
+
+static const uint32_t kOrderNBarrettMu[kBarrettWordCount] = {
+    0xEEDF9BFEU, 0x012FFD85U, 0xDF1A6C21U, 0x43190552U,
+    0xFFFFFFFFU, 0xFFFFFFFEU, 0xFFFFFFFFU, 0x00000000U,
+    0x00000001U,
+};
+
+// 2^256 mod n, used to repair wrapped scalar additions before reduction.
+static const uint32_t kOrderNOverflowResidue[kBnWordCount] = {
+    0x039CDAAFU, 0x0C46353DU, 0x58E8617BU, 0x43190552U,
+    0x00000000U, 0x00000000U, 0xFFFFFFFFU, 0x00000000U,
+};
+
+static int compareWords(const uint32_t* a, const uint32_t* b, size_t words) {
+  for (size_t i = words; i-- > 0U;) {
+    if (a[i] > b[i]) {
+      return 1;
+    }
+    if (a[i] < b[i]) {
+      return -1;
+    }
+  }
+  return 0;
+}
+
+static void multiplyWords(const uint32_t* a, size_t aWords,
+                          const uint32_t* b, size_t bWords,
+                          uint32_t* out, size_t outWords) {
+  memset(out, 0, outWords * sizeof(uint32_t));
+
+  for (size_t i = 0; i < aWords; ++i) {
+    uint64_t carry = 0U;
+    for (size_t j = 0; j < bWords && (i + j) < outWords; ++j) {
+      const uint64_t acc =
+          static_cast<uint64_t>(out[i + j]) +
+          static_cast<uint64_t>(a[i]) * static_cast<uint64_t>(b[j]) + carry;
+      out[i + j] = static_cast<uint32_t>(acc);
+      carry = acc >> 32U;
+    }
+
+    size_t idx = i + bWords;
+    while (carry != 0U && idx < outWords) {
+      const uint64_t acc = static_cast<uint64_t>(out[idx]) + carry;
+      out[idx] = static_cast<uint32_t>(acc);
+      carry = acc >> 32U;
+      ++idx;
+    }
+  }
+}
+
+static void subtractWordsModuloBase(uint32_t* io, const uint32_t* sub,
+                                    size_t words) {
+  uint64_t borrow = 0U;
+  for (size_t i = 0; i < words; ++i) {
+    const uint64_t diff =
+        static_cast<uint64_t>(io[i]) - static_cast<uint64_t>(sub[i]) - borrow;
+    io[i] = static_cast<uint32_t>(diff);
+    borrow = (diff >> 63U) & 0x1U;
+  }
+}
+
+static void reduceBarrett512(const uint32_t product[kBnWideWordCount],
+                             const uint32_t modulus[kBnWordCount],
+                             const uint32_t mu[kBarrettWordCount],
+                             Secp256r1::BigNum256* out) {
+  uint32_t q1[kBarrettWordCount] = {0};
+  uint32_t q2[kBarrettMulWordCount] = {0};
+  uint32_t q3[kBarrettWordCount] = {0};
+  uint32_t r[kBarrettWordCount] = {0};
+  uint32_t r2[kBarrettWordCount] = {0};
+  uint32_t modulusExt[kBarrettWordCount] = {0};
+
+  for (size_t i = 0; i < kBarrettWordCount; ++i) {
+    q1[i] = product[(kBnWordCount - 1U) + i];
+    r[i] = product[i];
+  }
+  memcpy(modulusExt, modulus, kBnWordCount * sizeof(uint32_t));
+
+  multiplyWords(q1, kBarrettWordCount, mu, kBarrettWordCount, q2,
+                kBarrettMulWordCount);
+  for (size_t i = 0; i < kBarrettWordCount; ++i) {
+    q3[i] = q2[(kBnWordCount + 1U) + i];
+  }
+
+  multiplyWords(q3, kBarrettWordCount, modulus, kBnWordCount, r2,
+                kBarrettWordCount);
+  subtractWordsModuloBase(r, r2, kBarrettWordCount);
+
+  while (r[kBnWordCount] != 0U ||
+         compareWords(r, modulus, kBnWordCount) >= 0) {
+    subtractWordsModuloBase(r, modulusExt, kBarrettWordCount);
+  }
+
+  memcpy(out->w, r, kBnWordCount * sizeof(uint32_t));
+}
+
+static void addWords(uint32_t* io, const uint32_t* add, size_t words,
+                     uint32_t* carryOut) {
+  uint64_t carry = 0U;
+  for (size_t i = 0; i < words; ++i) {
+    const uint64_t acc =
+        static_cast<uint64_t>(io[i]) + static_cast<uint64_t>(add[i]) + carry;
+    io[i] = static_cast<uint32_t>(acc);
+    carry = acc >> 32U;
+  }
+  if (carryOut != nullptr) {
+    *carryOut = static_cast<uint32_t>(carry);
+  }
+}
+
+}  // namespace
+
 // ─── Curve constants as file-scope arrays (NO class static members) ────────
 
 static const uint32_t kPrimeP[8] = {
@@ -75,41 +199,10 @@ void Secp256r1::bnSub(const BigNum256& a, const BigNum256& b, BigNum256* out) {
 // ─── Modular multiplication (NIST fast reduction for P-256) ─────────────────
 
 void Secp256r1::bnMul(const BigNum256& a, const BigNum256& b, BigNum256* out) {
-  uint32_t T[16] = {0};
-  for (size_t i = 0; i < 8; ++i) {
-    uint64_t carry = 0;
-    for (size_t j = 0; j < 8; ++j) {
-      carry += (uint64_t)a.w[i] * b.w[j] + T[i+j];
-      T[i+j] = (uint32_t)carry; carry >>= 32;
-    }
-    T[i+8] = (uint32_t)carry;
-  }
-
-  // Bit-level long division reduction (correct, 256 iterations, 3ms)
-  BigNum256 p = primeP();
-  for (int shift = 255; shift >= 0; shift--) {
-    uint32_t ps[16] = {0};
-    int ws = shift / 32, bs = shift % 32;
-    if (bs == 0) {
-      for (int i = 0; i < 8 && ws+i < 16; i++) ps[ws+i] = p.w[i];
-    } else {
-      uint64_t c = 0;
-      for (int i = 0; i < 8; i++) {
-        uint64_t v = ((uint64_t)p.w[i] << bs) | c;
-        if (ws+i < 16) ps[ws+i] = (uint32_t)v;
-        c = v >> 32;
-      }
-      if (ws+8 < 16) ps[ws+8] = (uint32_t)c;
-    }
-    bool ge = false;
-    for (int i = 15; i >= 0; i--) { if (T[i] > ps[i]) { ge=true; break; } if (T[i] < ps[i]) break; if (i==0) ge=true; }
-    if (ge) {
-      uint64_t borrow = 0;
-      for (int i = 0; i < 16; i++) { uint64_t d = (uint64_t)T[i] - ps[i] - borrow; T[i] = (uint32_t)d; borrow = (d>>63)&1ULL; }
-    }
-  }
-  BigNum256 r; memcpy(r.w, T, 32);
-  *out = r;
+  uint32_t product[kBnWideWordCount] = {0};
+  multiplyWords(a.w, kBnWordCount, b.w, kBnWordCount, product,
+                kBnWideWordCount);
+  reduceBarrett512(product, kPrimeP, kPrimePBarrettMu, out);
 }
 
 void Secp256r1::bnToMont(const BigNum256& x, BigNum256* out) { *out = x; }
@@ -161,46 +254,36 @@ void Secp256r1::bnModInv(const BigNum256& a, BigNum256* out) {
 // ─── Scalar arithmetic mod n ───────────────────────────────────────────────
 
 void Secp256r1::bnModAddN(const BigNum256& a, const BigNum256& b, BigNum256* out) {
-  bnAdd(a,b,out); BigNum256 n=orderN(); if(bnCompare(*out,n)>=0) bnSub(*out,n,out);
+  uint32_t acc[kBarrettWordCount] = {0};
+  uint64_t carry = 0U;
+  for (size_t i = 0; i < kBnWordCount; ++i) {
+    const uint64_t sum =
+        static_cast<uint64_t>(a.w[i]) + static_cast<uint64_t>(b.w[i]) + carry;
+    acc[i] = static_cast<uint32_t>(sum);
+    carry = sum >> 32U;
+  }
+  acc[kBnWordCount] = static_cast<uint32_t>(carry);
+
+  if (acc[kBnWordCount] != 0U) {
+    uint32_t residueCarry = 0U;
+    addWords(acc, kOrderNOverflowResidue, kBnWordCount, &residueCarry);
+    acc[kBnWordCount] += residueCarry;
+  }
+
+  uint32_t orderExt[kBarrettWordCount] = {0};
+  memcpy(orderExt, kOrderN, sizeof(kOrderN));
+  while (acc[kBnWordCount] != 0U ||
+         compareWords(acc, kOrderN, kBnWordCount) >= 0) {
+    subtractWordsModuloBase(acc, orderExt, kBarrettWordCount);
+  }
+  memcpy(out->w, acc, kBnWordCount * sizeof(uint32_t));
 }
 
 void Secp256r1::bnModMulN(const BigNum256& a, const BigNum256& b, BigNum256* out) {
-  // Compute 512-bit product
-  uint32_t T[16] = {0};
-  for (size_t i = 0; i < 8; ++i) {
-    uint64_t carry = 0;
-    for (size_t j = 0; j < 8; ++j) {
-      carry += (uint64_t)a.w[i] * b.w[j] + T[i+j];
-      T[i+j] = (uint32_t)carry; carry >>= 32;
-    }
-    T[i+8] = (uint32_t)carry;
-  }
-  
-  // Bit-level long division modulo n
-  BigNum256 n = orderN();
-  for (int shift = 255; shift >= 0; shift--) {
-    uint32_t ns[16] = {0};
-    int ws = shift / 32, bs = shift % 32;
-    if (bs == 0) {
-      for (int i = 0; i < 8 && ws+i < 16; i++) ns[ws+i] = n.w[i];
-    } else {
-      uint64_t c = 0;
-      for (int i = 0; i < 8; i++) {
-        uint64_t v = ((uint64_t)n.w[i] << bs) | c;
-        if (ws+i < 16) ns[ws+i] = (uint32_t)v;
-        c = v >> 32;
-      }
-      if (ws+8 < 16) ns[ws+8] = (uint32_t)c;
-    }
-    bool ge = false;
-    for (int i = 15; i >= 0; i--) { if (T[i] > ns[i]) { ge=true; break; } if (T[i] < ns[i]) break; if (i==0) ge=true; }
-    if (ge) {
-      uint64_t borrow = 0;
-      for (int i = 0; i < 16; i++) { uint64_t d = (uint64_t)T[i] - ns[i] - borrow; T[i] = (uint32_t)d; borrow = (d>>63)&1ULL; }
-    }
-  }
-  BigNum256 r; memcpy(r.w, T, 32);
-  *out = r;
+  uint32_t product[kBnWideWordCount] = {0};
+  multiplyWords(a.w, kBnWordCount, b.w, kBnWordCount, product,
+                kBnWideWordCount);
+  reduceBarrett512(product, kOrderN, kOrderNBarrettMu, out);
 }
 
 // ─── Point operations ──────────────────────────────────────────────────────

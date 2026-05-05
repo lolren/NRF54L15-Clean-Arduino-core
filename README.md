@@ -54,7 +54,7 @@ void loop() {}
 | | Software secp256r1 ECC | ✅ |
 | **Crypto** | CRACEN hardware RNG | ✅ |
 | | CRACEN IKG key generation (0 ms) | ✅ |
-| | ECDSA sign (21 s) / verify (50 s) | ✅ |
+| | ECDSA sign (~0.84 s) / verify (~1.76 s) | ✅ |
 | | PBKDF2-HMAC-SHA256 | ✅ |
 | | AES-ECB, AES-CCM hardware | ✅ |
 | **Peripherals** | GPIO, PWM, ADC, I2C, SPI, UART | ✅ |
@@ -80,10 +80,9 @@ void loop() {}
 | **Thread attach** | Common two-board demo partition race is mitigated with child-first attach + deterministic leader fallback; still experimental and needs longer soak/reference-network validation |
 | **Thread UDP fragmentation** | Two-board staged UDP smoke validates checked single-frame payloads through 63 bytes; larger fragmented UDP payloads are still experimental |
 | **Standard Thread commissioning** | MeshCoP Joiner/Commissioner examples now compile and report support status, but the staged core still ships those roles disabled until DTLS/secure transport is enabled and tested |
-| **BLE LE Secure Connections** | Not implemented in the in-tree BLE controller; phones that allow fallback can pair through legacy Just Works, but SC-only centrals need the future P-256 path |
-| **CRACEN PK engine** | ECDSA hardware acceleration needs proprietary Nordic microcode |
-| **NIST fast reduction** | bnMul at 3 ms (bit-level long division); sub-word carry blocks optimization |
-| **ECDSA speed** | Software ECC at 21 s sign / 50 s verify — acceptable for demos, not production |
+| **BLE LE Secure Connections** | Faster software secp256r1 does not enable LESC by itself. The controller still only implements legacy SMP confirm/random/key-distribution, so SC-only centrals still need the missing LESC Public Key / DHKey Check / f4-f5-f6-g2 flow |
+| **CRACEN PK engine** | Hardware ECDSA / P-256 acceleration still needs proprietary Nordic microcode |
+| **ECDSA speed** | Software ECC now uses Barrett reduction and measures about 0.84 s sign / 1.76 s verify on board — workable for demos, still much slower than dedicated hardware |
 | **OpenThread radio** | Radio/diag examples now compile with the staged core; PAL is still experimental and needs longer two-board soak before production use |
 
 ---
@@ -148,13 +147,14 @@ All features accessible through one header:
 
 | Operation | Time | Method |
 |---|---|---|
-| bnMul (mod p) | 3 ms | Bit-level long division |
-| Point double (Jacobian) | ~42 ms | 14 bnMuls |
-| Point add (mixed Jacobian) | ~42 ms | 14 bnMuls |
-| Scalar multiply (windowed) | ~21 s | 256 doubles + ~16 adds |
-| ECDSA sign | ~21 s | 1 scalar mul |
-| ECDSA verify | ~50 s | 2 scalar muls |
+| Field multiply (100x) | 12 ms | 256-bit schoolbook multiply + Barrett reduction |
+| Public-key derive / keygen | 785 ms | Software secp256r1 scalar multiply |
+| ECDSA sign | 839 ms | Software secp256r1 |
+| ECDSA verify | 1764 ms | Software secp256r1, two scalar multiplies |
+| ECDH shared secret | 903 ms | Software secp256r1 |
 | CRACEN IKG keygen | 0 ms | Hardware DRBG |
+
+This speedup makes software P-256 practical for staged Matter flows and other on-device crypto work. It does not, by itself, turn on BLE LE Secure Connections: the SMP LESC message flow is still not implemented in the controller.
 
 ---
 

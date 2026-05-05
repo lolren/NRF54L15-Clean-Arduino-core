@@ -2,7 +2,7 @@
 
 Status baseline:
 
-- Repository release line: `0.6.52`
+- Repository release line: `0.6.79`
 - Audit date: `2026-04-28`
 - Silicon source: `Nordic_nRF54L15_Datasheet_v1.0.pdf`
 - Core source: `hardware/nrf54l15clean/nrf54l15clean`
@@ -29,7 +29,7 @@ These are the items most likely to matter for users or product work.
 
 | Box | Area | Current state | What remains |
 |---|---|---|---|
-| [x] | Matter end-to-end | On-network on/off-light, encrypted IM over Thread (2-board), PASE SPAKE2+ commissioning (2-board ~45s), CASE Sigma protocol with fragmentation. Software secp256r1 ECC with Jacobian + 4-bit windowed optimization (sign 21s, verify 50s). | Discovery, control, Home Assistant integration. |
+| [x] | Matter end-to-end | On-network on/off-light, encrypted IM over Thread (2-board), PASE SPAKE2+ commissioning (2-board ~45s), CASE Sigma protocol with fragmentation. Software secp256r1 ECC with Jacobian + 4-bit windowed optimization now measures about 0.84s sign / 1.76s verify on board. | Discovery, control, Home Assistant integration. |
 | [ ] | BLE production controller parity | Legacy advertising, scanning, connect, GATT, MTU, PHY requests, extended advertising/scanning, and many Bluefruit-compatible flows exist. | Full controller conformance, robust pairing/bonding across hosts, multi-role stress, periodic advertising, ISO, and full interop matrix. |
 | [ ] | Bluetooth Channel Sounding product support | Real two-board CS bring-up, DFE/RTT helpers, HCI-style parsing, and VPR CS transport scaffolding exist. | Production BLE controller runtime behind CS and Bluetooth CS interoperability. |
 | [ ] | Thread production support | Experimental staged OpenThread: leader/child/router, UDP, PSK Joiner/Commissioner (MAC verified), CSL PAL, 2-board PASE verified. | Reference-network attach, DTLS joiner, reboot recovery, production API. |
@@ -205,7 +205,7 @@ This section tracks user-facing Arduino behavior.
 | [x] | ECB | Implemented. | None urgent. |
 | [x] | CCM | Implemented. | More vector coverage and BLE encrypted-link regression. |
 | [x] | OpenThread AES/HMAC/HKDF/PBKDF2 path | Implemented enough for staged Thread. | ECDSA remains not capable. |
-| [ ] | CRACEN PKE / ECDSA | Missing (hardware needs proprietary microcode) | IKG key generation works at 0 ms; PK engine PUBKEY/ECDSA/PTMUL operations need Nordic proprietary microcode at 0x5180C000 (not open-source). Software ECC provides verified secp256r1 at 3.5 ms per modular multiply (~12 s ECDSA sign). |
+| [ ] | CRACEN PKE / ECDSA | Missing (hardware needs proprietary microcode) | IKG key generation works at 0 ms; PK engine PUBKEY/ECDSA/PTMUL operations need Nordic proprietary microcode at 0x5180C000 (not open-source). Software ECC now uses Barrett reduction and measures about 0.84 s ECDSA sign / 1.76 s verify on board. |
 | [ ] | KMU product key flow | Partial | Need safe provisioning examples, slot lifecycle docs, reusable CRACEN key consumers. |
 | [ ] | TAMPC external tamper behavior | Partial | Need reset-cause and external input hardware characterization. |
 | [ ] | Glitch/tamper product policy docs | Partial | Need secure/non-secure behavior notes and safe examples. |

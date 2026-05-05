@@ -44,7 +44,7 @@ staged OpenThread and Matter foundation work landed.
 | [x] | 2. Real 802.15.4 radio backend | Done | Keep Zigbee regression coverage because Thread shares the same radio path. |
 | [x] | 3. Experimental Thread runtime | Partial / experimental | Fixed dataset, role, and UDP examples exist; production validation remains open. |
 | [x] | 4. Arduino Thread wrapper | Partial / experimental | Keep API explicitly experimental until reference-network and reboot tests pass. Joiner and Commissioner APIs declared (stubbed until OT core DTLS support is added). |
-| [x] | 5. Matter foundation | Foundation done | On-network on/off-light, encrypted IM over Thread (2-board), PASE SPAKE2+ commissioning verified ~45s, PBKDF2-HMAC-SHA256, software secp256r1 ECC (Jacobian + 4-bit windowed, sign 21s/verify 50s). CRACEN IKG keygen 0ms; PK engine needs proprietary microcode. |
+| [x] | 5. Matter foundation | Foundation done | On-network on/off-light, encrypted IM over Thread (2-board), PASE SPAKE2+ commissioning verified ~45s, PBKDF2-HMAC-SHA256, software secp256r1 ECC (Jacobian + 4-bit windowed, sign ~0.84s / verify ~1.76s on board). CRACEN IKG keygen 0ms; PK engine needs proprietary microcode. |
 | [x] | 6. Matter commissioning | Protocol verified | PASE fully verified on 2 boards (PBKDF exchange + SPAKE2+ commit 22.5s + shared secret). CASE Sigma protocol with message fragmentation compiles and protocol logic verified. Thread PSK Joiner MAC verification passes. | HDK integration, mDNS/SRP, reboot recovery. |
 | [ ] | 7. Hardening | Not done | Soak tests, failure recovery, storage migration, interop matrix, and docs for production limits. |
 
