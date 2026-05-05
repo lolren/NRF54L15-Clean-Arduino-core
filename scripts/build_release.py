@@ -104,43 +104,69 @@ def build_archive(
     if archive_path.exists():
         archive_path.unlink()
 
+    def resolve_archive_path(fs_path: Path) -> Path:
+        if fs_path.is_symlink():
+            return fs_path.resolve(strict=True)
+        return fs_path
+
+    def iter_symlink_dir_entries(link_path: Path) -> list[tuple[Path, str]]:
+        target_dir = link_path.resolve(strict=True)
+        return [
+            (target_child, target_child.relative_to(target_dir).as_posix())
+            for target_child in sorted(target_dir.rglob("*"))
+        ]
+
     if archive_path.suffix == ".zip":
+        def write_zip_entry(zf: zipfile.ZipFile, fs_path: Path, arcname: str) -> None:
+            content_path = resolve_archive_path(fs_path)
+            is_dir = content_path.is_dir()
+            info = zipfile.ZipInfo(arcname + ("/" if is_dir else ""))
+            info.date_time = (1980, 1, 1, 0, 0, 0)
+            info.create_system = 3
+            info.external_attr = normalize_mode(content_path) << 16
+            if is_dir:
+                zf.writestr(info, "")
+                if fs_path.is_symlink():
+                    for target_child, rel in iter_symlink_dir_entries(fs_path):
+                        write_zip_entry(zf, target_child, f"{arcname}/{rel}")
+                return
+            if content_path.is_file():
+                zf.writestr(info, content_path.read_bytes())
+                return
+            raise SystemExit(f"Unsupported archive entry type: {fs_path}")
+
         with zipfile.ZipFile(archive_path, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
             for child in iter_archive_entries(source_dir, excludes):
                 rel = "" if child == source_dir else child.relative_to(source_dir).as_posix()
                 arcname = archive_root if not rel else f"{archive_root}/{rel}"
-                info = zipfile.ZipInfo(arcname + ("/" if child.is_dir() else ""))
-                info.date_time = (1980, 1, 1, 0, 0, 0)
-                info.create_system = 3
-                info.external_attr = normalize_mode(child) << 16
-                if child.is_dir():
-                    zf.writestr(info, "")
-                else:
-                    zf.writestr(info, child.read_bytes())
+                write_zip_entry(zf, child, arcname)
         return
 
-    def normalize_tarinfo(ti: tarfile.TarInfo) -> tarfile.TarInfo:
-        ti.uid = 0
-        ti.gid = 0
-        ti.uname = ""
-        ti.gname = ""
-        ti.mtime = 0
-        ti.mode = normalize_mode(Path(ti.name))
-        return ti
-
     def add_path(tar: tarfile.TarFile, fs_path: Path, arcname: str) -> None:
-        tarinfo = tar.gettarinfo(str(fs_path), arcname=arcname)
+        content_path = resolve_archive_path(fs_path)
+        is_dir = content_path.is_dir()
+        tarinfo = tarfile.TarInfo(arcname)
         tarinfo.uid = 0
         tarinfo.gid = 0
         tarinfo.uname = ""
         tarinfo.gname = ""
         tarinfo.mtime = 0
-        tarinfo.mode = normalize_mode(fs_path)
-        if fs_path.is_file():
-            with fs_path.open("rb") as f:
+        tarinfo.mode = normalize_mode(content_path)
+        if is_dir:
+            tarinfo.type = tarfile.DIRTYPE
+            tarinfo.size = 0
+            tar.addfile(tarinfo)
+            if fs_path.is_symlink():
+                for target_child, rel in iter_symlink_dir_entries(fs_path):
+                    add_path(tar, target_child, f"{arcname}/{rel}")
+            return
+        if content_path.is_file():
+            tarinfo.type = tarfile.REGTYPE
+            tarinfo.size = content_path.stat().st_size
+            with content_path.open("rb") as f:
                 tar.addfile(tarinfo, f)
             return
-        tar.addfile(tarinfo)
+        raise SystemExit(f"Unsupported archive entry type: {fs_path}")
 
     with tarfile.open(archive_path, mode="w:bz2", format=tarfile.GNU_FORMAT) as tar:
         add_path(tar, source_dir, archive_root)

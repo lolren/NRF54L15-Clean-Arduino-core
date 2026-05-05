@@ -15,29 +15,29 @@ jobs:
         include:
           - sketch: hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples/Diagnostics/CleanBringUp
             options: clean_ble=off,clean_cpu=cpu64,clean_power=low
-          - sketch: hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples/BLE/BleGattBasicPeripheral
+          - sketch: hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples/BLE/GATT/BleGattBasicPeripheral
             options: clean_ble=on,clean_cpu=cpu64,clean_power=low
-          - sketch: hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples/BLE/BleConnectionPeripheral
+          - sketch: hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples/BLE/Connections/BleConnectionPeripheral
             options: clean_ble=on,clean_cpu=cpu128,clean_power=balanced
-          - sketch: hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples/BLE/BleConnectionPeripheral
+          - sketch: hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples/BLE/Connections/BleConnectionPeripheral
             options: clean_ble=on,clean_ble_timing=aggressive,clean_cpu=cpu64,clean_power=low
-          - sketch: hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples/BLE/BleConnectionTimingMetrics
-            options: clean_ble=on,clean_ble_tx=n20,clean_ble_timing=balanced,clean_cpu=cpu64,clean_power=low
-          - sketch: hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples/BLE/BleBatteryNotifyPeripheral
+          - sketch: hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples/BLE/Connections/BleConnectionTimingMetrics
+            options: clean_ble=on,clean_ble_timing=balanced,clean_cpu=cpu64,clean_power=low
+          - sketch: hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples/BLE/GATT/BleBatteryNotifyPeripheral
             options: clean_ble=on,clean_cpu=cpu64,clean_power=low
-          - sketch: hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples/BLE/BleNordicUartBridge
+          - sketch: hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples/BLE/NordicUart/BleNordicUartBridge
             options: clean_ble=on,clean_cpu=cpu64,clean_power=low
-          - sketch: hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples/BLE/BleNordicUartCommandConsole
+          - sketch: hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples/BLE/NordicUart/BleNordicUartCommandConsole
             options: clean_ble=on,clean_cpu=cpu64,clean_power=low
-          - sketch: hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples/BLE/BlePairingEncryptionStatus
+          - sketch: hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples/BLE/Security/BlePairingEncryptionStatus
             options: clean_ble=on,clean_cpu=cpu64,clean_power=low
-          - sketch: hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples/BLE/BlePairingEncryptionStatus
+          - sketch: hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples/BLE/Security/BlePairingEncryptionStatus
             options: clean_ble=on,clean_ble_trace=on,clean_cpu=cpu64,clean_power=low
-          - sketch: hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples/BLE/BleBondPersistenceProbe
+          - sketch: hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples/BLE/Security/BleBondPersistenceProbe
             options: clean_ble=on,clean_cpu=cpu64,clean_power=low
-          - sketch: hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples/BLE/BleChannelSoundingReflector
+          - sketch: hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples/BLE/ChannelSounding/BleChannelSoundingReflector
             options: clean_ble=on,clean_cpu=cpu64,clean_power=low
-          - sketch: hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples/BLE/BleChannelSoundingInitiator
+          - sketch: hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples/BLE/ChannelSounding/BleChannelSoundingInitiator
             options: clean_ble=on,clean_cpu=cpu64,clean_power=low
           - sketch: hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples/LowPower/LowPowerIdleWfi
             options: clean_ble=off,clean_cpu=cpu64,clean_power=low
@@ -49,12 +49,12 @@ jobs:
             options: clean_ble=off,clean_cpu=cpu64,clean_power=low
           - sketch: hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples/Board/BoardBatteryAntennaBusControl
             options: clean_ble=off,clean_cpu=cpu64,clean_power=balanced
-          - sketch: hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples/BLE/LowPowerBleBeaconDutyCycle
+          - sketch: hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples/BLE/AdvertisingLowPower/LowPowerBleBeaconDutyCycle
             options: clean_ble=on,clean_ble_timing=balanced,clean_cpu=cpu64,clean_power=low
           - sketch: hardware/nrf54l15clean/nrf54l15clean/examples/Basics/CoreVersionProbe
             options: clean_ble=off,clean_cpu=cpu64,clean_power=low
           - sketch: hardware/nrf54l15clean/nrf54l15clean/examples/Peripherals/RuntimePeripheralPinRemap
-            options: clean_ble=off,clean_serial=bridge,clean_cpu=cpu64,clean_power=balanced
+            options: clean_ble=off,clean_cpu=cpu64,clean_power=balanced
           - sketch: hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples/Zigbee/ZigbeePingInitiator
             options: clean_ble=off,clean_cpu=cpu64,clean_power=low
           - sketch: hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples/Zigbee/ZigbeePongResponder
@@ -66,9 +66,9 @@ jobs:
           - sketch: hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples/Zigbee/ZigbeeRouter
             options: clean_ble=off,clean_cpu=cpu64,clean_power=low
           - sketch: hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples/Peripherals/SaadcDifferentialProbe
-            options: clean_ble=off,clean_serial=bridge,clean_cpu=cpu64,clean_power=balanced
+            options: clean_ble=off,clean_cpu=cpu64,clean_power=balanced
           - sketch: hardware/nrf54l15clean/nrf54l15clean/examples/Peripherals/VbatReadViaAnalogRead
-            options: clean_ble=off,clean_serial=bridge,clean_cpu=cpu64,clean_power=balanced
+            options: clean_ble=off,clean_cpu=cpu64,clean_power=balanced
 
     steps:
       - name: Checkout
@@ -105,7 +105,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.x"
+          python-version: "3.10"
 
       - name: Build release artifacts
         run: |
@@ -130,13 +130,13 @@ jobs:
 
       - name: Verify checksum and size
         run: |
-          if [ -d "hardware/nrf54l15clean/nrf54l15clean" ]; then
-            SOURCE_VERSION="nrf54l15clean"
-          else
-            SOURCE_VERSION="$(ls -1 hardware/nrf54l15clean | sort -V | tail -n1)"
-          fi
-          VERSION="$(sed -n 's/^version=//p' "hardware/nrf54l15clean/${SOURCE_VERSION}/platform.txt" | head -n1)"
-          test -n "${VERSION}"
+          PLATFORM_ARCHIVE="$(python3 - <<'PY'
+import json
+from pathlib import Path
+manifest = json.loads(Path('dist/release-manifest.json').read_text())
+print(manifest['platform']['archivePath'])
+PY
+)"
           python3 ./scripts/verify_package_index.py \
             --index dist/package_nrf54l15clean_index.json \
-            --archive "dist/nrf54l15clean-${VERSION}.tar.bz2"
+            --archive "${PLATFORM_ARCHIVE}"

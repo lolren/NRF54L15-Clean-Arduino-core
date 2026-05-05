@@ -18,7 +18,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.x"
+          python-version: "3.10"
 
       - name: Derive version from tag
         id: vars
@@ -71,5 +71,6 @@ PY
           python3 ./scripts/verify_public_release.py \
             --index dist/package_nrf54l15clean_index.json \
             --version "${{ steps.vars.outputs.version }}" \
+            --include-tools \
             --retries 12 \
             --retry-delay 10
