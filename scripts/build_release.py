@@ -142,7 +142,7 @@ def build_archive(
             return
         tar.addfile(tarinfo)
 
-    with tarfile.open(archive_path, mode="w:bz2") as tar:
+    with tarfile.open(archive_path, mode="w:bz2", format=tarfile.GNU_FORMAT) as tar:
         add_path(tar, source_dir, archive_root)
         for child in sorted(source_dir.rglob("*")):
             if path_is_excluded(child, source_dir, excludes):
