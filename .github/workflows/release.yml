@@ -42,7 +42,8 @@ jobs:
             --version "${{ steps.vars.outputs.version }}" \
             --source-version "${SOURCE_VERSION}" \
             --repo-url "https://github.com/${GITHUB_REPOSITORY}" \
-            --release-base-url "https://github.com/${GITHUB_REPOSITORY}/releases/download/v{version}"
+            --release-base-url "https://github.com/${GITHUB_REPOSITORY}/releases/download/v{version}" \
+            --include-openthread-core
 
       - name: Verify checksum and size
         run: |

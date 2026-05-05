@@ -120,7 +120,8 @@ jobs:
             --version "${VERSION}" \
             --source-version "${SOURCE_VERSION}" \
             --repo-url "https://github.com/${GITHUB_REPOSITORY}" \
-            --release-base-url "https://github.com/${GITHUB_REPOSITORY}/releases/download/v{version}"
+            --release-base-url "https://github.com/${GITHUB_REPOSITORY}/releases/download/v{version}" \
+            --include-openthread-core
 
       - name: Ensure checked-in index matches generated index
         run: |
