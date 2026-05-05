@@ -179,6 +179,7 @@ struct OpenThreadPlatformState {
 
   otPlatDiagOutputCallback diagCallback = nullptr;
   void* diagCallbackContext = nullptr;
+  OpenThreadPlatformRadioHooks radioHooks = {};
   CracenRng cryptoRng;
   bool cryptoRngReady = false;
   otCryptoKeyRef nextVolatileKeyRef = 1;
@@ -195,6 +196,39 @@ void ensureTxAckFrameInitialized() {
 
 void ensureRxFrameInitialized() {
   gOpenThreadPlatformState.rxFrame.mPsdu = gOpenThreadPlatformState.rxPsdu;
+}
+
+void notifyRadioTxStarted(otInstance* instance, otRadioFrame* frame) {
+  if (gOpenThreadPlatformState.radioHooks.txStarted != nullptr) {
+    gOpenThreadPlatformState.radioHooks.txStarted(instance, frame);
+  }
+}
+
+void notifyRadioTxDone(otInstance* instance, otRadioFrame* frame,
+                       otRadioFrame* ackFrame, otError error) {
+  if (gOpenThreadPlatformState.radioHooks.txDone != nullptr) {
+    gOpenThreadPlatformState.radioHooks.txDone(instance, frame, ackFrame, error);
+  }
+}
+
+void notifyRadioReceiveDone(otInstance* instance, otRadioFrame* frame,
+                            otError error) {
+  if (gOpenThreadPlatformState.radioHooks.receiveDone != nullptr) {
+    gOpenThreadPlatformState.radioHooks.receiveDone(instance, frame, error);
+  }
+}
+
+void notifyRadioEnergyScanDone(otInstance* instance, int8_t maxRssi) {
+  if (gOpenThreadPlatformState.radioHooks.energyScanDone != nullptr) {
+    gOpenThreadPlatformState.radioHooks.energyScanDone(instance, maxRssi);
+  }
+}
+
+void notifyDiagRadioReceived(otInstance* instance, otRadioFrame* frame,
+                             otError error) {
+  if (gOpenThreadPlatformState.radioHooks.diagRadioReceived != nullptr) {
+    gOpenThreadPlatformState.radioHooks.diagRadioReceived(instance, frame, error);
+  }
 }
 
 uint16_t readLe16(const uint8_t* src) {
@@ -1867,11 +1901,17 @@ void finishThreadRadioRx(otInstance* instance) {
             ? state.rxFrame.mPsdu[2]
             : 0U;
     state.snapshot.diagLastRxRssi = state.rxFrame.mInfo.mRxInfo.mRssi;
-    otPlatDiagRadioReceived(instance, &state.rxFrame, OT_ERROR_NONE);
+    notifyDiagRadioReceived(instance, &state.rxFrame, OT_ERROR_NONE);
+    if (instance != nullptr) {
+      otPlatDiagRadioReceived(instance, &state.rxFrame, OT_ERROR_NONE);
+    }
     return;
   }
 
-  otPlatRadioReceiveDone(instance, &state.rxFrame, OT_ERROR_NONE);
+  notifyRadioReceiveDone(instance, &state.rxFrame, OT_ERROR_NONE);
+  if (instance != nullptr) {
+    otPlatRadioReceiveDone(instance, &state.rxFrame, OT_ERROR_NONE);
+  }
 }
 
 void finishThreadRadioTx(otInstance* instance) {
@@ -1895,9 +1935,14 @@ void finishThreadRadioTx(otInstance* instance) {
         static_cast<uint8_t>(state.radioTxDoneError);
   }
   applyThreadRadioIdleState();
-  otPlatRadioTxDone(instance, &state.txFrame,
+  notifyRadioTxDone(instance, &state.txFrame,
                     state.radioTxAckFrameValid ? &state.txAckFrame : nullptr,
                     state.radioTxDoneError);
+  if (instance != nullptr) {
+    otPlatRadioTxDone(instance, &state.txFrame,
+                      state.radioTxAckFrameValid ? &state.txAckFrame : nullptr,
+                      state.radioTxDoneError);
+  }
   state.radioTxAckFrameValid = false;
 }
 
@@ -1959,7 +2004,10 @@ void finishThreadRadioEnergyScan(otInstance* instance) {
   state.snapshot.radioEnergyScanCount++;
   state.snapshot.lastRssiDbm = state.radioEnergyScanDoneDbm;
   state.snapshot.radioLastError = OT_ERROR_NONE;
-  otPlatRadioEnergyScanDone(instance, state.radioEnergyScanDoneDbm);
+  notifyRadioEnergyScanDone(instance, state.radioEnergyScanDoneDbm);
+  if (instance != nullptr) {
+    otPlatRadioEnergyScanDone(instance, state.radioEnergyScanDoneDbm);
+  }
   applyThreadRadioIdleState();
 }
 
@@ -2126,6 +2174,15 @@ bool OpenThreadPlatformSkeleton::snapshot(OpenThreadPlatformSkeletonSnapshot* ou
   updateRadioTime();
   *outSnapshot = gOpenThreadPlatformState.snapshot;
   return true;
+}
+
+void OpenThreadPlatformSkeleton::setRadioEventHooks(
+    const OpenThreadPlatformRadioHooks* hooks) {
+  if (hooks == nullptr) {
+    gOpenThreadPlatformState.radioHooks = {};
+    return;
+  }
+  gOpenThreadPlatformState.radioHooks = *hooks;
 }
 
 otError OpenThreadPlatformSkeleton::fillEntropy(uint8_t* output, uint16_t outputLength) {
@@ -3296,7 +3353,10 @@ otError otPlatRadioTransmit(otInstance* instance, otRadioFrame* frame) {
 
   state.radioCallbackInstance = instance;
   frame->mInfo.mTxInfo.mTimestamp = otPlatRadioGetNow(instance);
-  otPlatRadioTxStarted(instance, frame);
+  xiao_nrf54l15::notifyRadioTxStarted(instance, frame);
+  if (instance != nullptr) {
+    otPlatRadioTxStarted(instance, frame);
+  }
   state.snapshot.radioState = OT_RADIO_STATE_TRANSMIT;
   state.snapshot.radioChannel = frame->mChannel;
   state.snapshot.txRequestCount++;

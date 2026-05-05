@@ -77,11 +77,12 @@ void loop() {}
 
 | Limitation | Detail |
 |---|---|
-| **Thread partitions** | Two boards may form separate networks; `beginAsChild()` API available (MTD mode needs OT scan tuning) |
+| **Thread attach** | Common two-board demo partition race is mitigated with child-first attach + deterministic leader fallback; still experimental and needs longer soak/reference-network validation |
+| **Standard Thread commissioning** | MeshCoP Joiner/Commissioner examples now compile and report support status, but the staged core still ships those roles disabled until DTLS/secure transport is enabled and tested |
 | **CRACEN PK engine** | ECDSA hardware acceleration needs proprietary Nordic microcode |
 | **NIST fast reduction** | bnMul at 3 ms (bit-level long division); sub-word carry blocks optimization |
 | **ECDSA speed** | Software ECC at 21 s sign / 50 s verify — acceptable for demos, not production |
-| **OpenThread radio** | 7 radio diag examples need full OT radio stack (linker errors) |
+| **OpenThread radio** | Radio/diag examples now compile with the staged core; PAL is still experimental and needs longer two-board soak before production use |
 
 ---
 

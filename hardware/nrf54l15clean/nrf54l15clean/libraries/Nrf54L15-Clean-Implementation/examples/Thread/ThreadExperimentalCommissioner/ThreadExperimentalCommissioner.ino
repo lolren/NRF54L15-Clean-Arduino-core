@@ -54,6 +54,17 @@ void onStateChanged(void* context, otChangedFlags flags,
 
   if (role == xiao_nrf54l15::Nrf54ThreadExperimental::Role::kLeader &&
       !g_commissionerStarted) {
+    if (!g_thread.commissionerSupported()) {
+      g_commissionerStarted = true;
+      Serial.println(
+          "thread_commissioner Standard MeshCoP Commissioner is not compiled "
+          "in this staged core yet.");
+      Serial.println(
+          "thread_commissioner Use the PSK UDP examples for current two-board "
+          "joining tests.");
+      return;
+    }
+
     Serial.println("thread_commissioner LEADER detected — starting commissioner...");
     const bool ok = g_thread.startCommissioner();
     Serial.print("thread_commissioner commissioner_start=");
@@ -85,6 +96,8 @@ void printStatus(const char* reason) {
   Serial.println(g_thread.roleName());
   Serial.print("thread_commissioner rloc16=0x");
   Serial.println(g_thread.rloc16(), HEX);
+  Serial.print("thread_commissioner commissioner_supported=");
+  Serial.println(g_thread.commissionerSupported() ? 1 : 0);
   Serial.print("thread_commissioner commissioner_active=");
   Serial.println(g_thread.commissionerActive() ? 1 : 0);
   Serial.print("thread_commissioner commissioner_state=");
@@ -111,6 +124,8 @@ void setup() {
   Serial.println("thread_commissioner Commissioner example starting...");
   Serial.print("thread_commissioner PSKd=");
   Serial.println(kCommissionerPskd);
+  Serial.print("thread_commissioner standard_meshcop_enabled=");
+  Serial.println(g_thread.commissionerSupported() ? 1 : 0);
 
   const bool beginOk = g_thread.begin(false);
   Serial.print("thread_commissioner begin=");

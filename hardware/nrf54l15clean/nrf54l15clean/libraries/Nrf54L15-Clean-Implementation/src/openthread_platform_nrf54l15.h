@@ -141,6 +141,17 @@ struct OpenThreadPlatformSkeletonSnapshot {
   char threadParentCandidateStateName[16] = {0};
 };
 
+struct OpenThreadPlatformRadioHooks {
+  void (*txStarted)(otInstance* instance, otRadioFrame* frame) = nullptr;
+  void (*txDone)(otInstance* instance, otRadioFrame* frame,
+                 otRadioFrame* ackFrame, otError error) = nullptr;
+  void (*receiveDone)(otInstance* instance, otRadioFrame* frame,
+                      otError error) = nullptr;
+  void (*energyScanDone)(otInstance* instance, int8_t maxRssi) = nullptr;
+  void (*diagRadioReceived)(otInstance* instance, otRadioFrame* frame,
+                            otError error) = nullptr;
+};
+
 struct OpenThreadRuntimeOwnership {
   static constexpr bool kCpuAppHostsCore = true;
   static constexpr bool kUsesZigbeeRadioBackend = true;
@@ -191,6 +202,7 @@ class OpenThreadPlatformSkeleton {
   static void end();
   static void process(otInstance* instance = nullptr);
   static bool snapshot(OpenThreadPlatformSkeletonSnapshot* outSnapshot);
+  static void setRadioEventHooks(const OpenThreadPlatformRadioHooks* hooks);
 
   static otError fillEntropy(uint8_t* output, uint16_t outputLength);
   static otError writeSetting(uint16_t key, const uint8_t* value, uint16_t valueLength);

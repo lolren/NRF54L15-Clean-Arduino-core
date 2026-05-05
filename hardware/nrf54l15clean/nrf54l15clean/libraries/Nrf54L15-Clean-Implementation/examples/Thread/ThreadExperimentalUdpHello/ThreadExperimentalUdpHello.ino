@@ -7,10 +7,10 @@
 //   This is the simplest Thread example — no crypto, no Matter.
 //
 // How to use:
-//   1. Upload to board A, wait 5 seconds
-//   2. Upload to board B
+//   1. Upload to both boards, or upload board A then board B
 //   3. Open Serial Monitor on each board at 115200 baud
-//   4. Watch for "ping" and "pong" messages
+//   4. Wait up to ~30 seconds: one board should become leader, the other child
+//   5. Watch for "ping" and "pong" messages
 //
 // Expected output:
 //   [ping]    rx=1  pong rx=0    (receiving pings)
@@ -19,16 +19,16 @@
 // Functions used:
 //   Nrf54ThreadExperimental::buildDemoDataset() - creates network config
 //   gThread.setActiveDataset(ds)  - applies Thread network settings
-//   gThread.begin()               - starts Thread radio
+//   gThread.begin()               - starts child-first attach with leader fallback
 //   gThread.openUdp(port, callback) - opens UDP socket
 //   gThread.sendUdp(addr, port, data, len) - sends UDP packet
 //   gThread.roleName()            - returns "leader"/"child"/"router"
 //
 // Troubleshooting:
 //   - Both boards must be within ~10m of each other
-//   - If no messages appear, reset both boards and try again
+//   - If no messages appear, reset both boards and wait for one leader + one child
 //   - Thread radio uses channel 15 (2.425 GHz)
-//   - Upload board A FIRST, wait 5s, then upload board B
+//   - For a fixed leader sketch, use beginAsRouter(); for a fixed child, use beginAsChild()
 
 #include <nrf54_all.h>
 
@@ -94,6 +94,16 @@ void printStatus() {
   Serial.print(gThread.roleName());
   Serial.print(" rloc16=0x");
   Serial.print(gThread.rloc16(), HEX);
+  Serial.print(" part=0x");
+  Serial.print(gThread.partitionId(), HEX);
+  Serial.print(" elig=");
+  Serial.print(gThread.routerEligible() ? 1 : 0);
+  Serial.print(" fb=");
+  Serial.print(gThread.childFirstFallbackArmed() ? 1 : 0);
+  Serial.print("/");
+  Serial.print(gThread.childFirstFallbackUsed() ? 1 : 0);
+  Serial.print("/");
+  Serial.print(gThread.childFirstFallbackDelayMs());
   Serial.print(" ping=");
   Serial.print(gPingTxCount);
   Serial.print("/");

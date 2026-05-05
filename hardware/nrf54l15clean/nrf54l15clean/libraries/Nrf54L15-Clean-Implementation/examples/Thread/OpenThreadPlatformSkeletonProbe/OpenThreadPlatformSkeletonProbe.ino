@@ -14,6 +14,7 @@
 
 using xiao_nrf54l15::OpenThreadPlatformSkeleton;
 using xiao_nrf54l15::OpenThreadPlatformSkeletonSnapshot;
+using xiao_nrf54l15::OpenThreadPlatformRadioHooks;
 using xiao_nrf54l15::OpenThreadRuntimeOwnership;
 
 namespace {
@@ -156,9 +157,7 @@ void printStageCoreSummary() {
 }
 #endif
 
-}  // namespace
-
-extern "C" void otPlatRadioTxStarted(otInstance*, otRadioFrame* frame) {
+void handleRadioTxStarted(otInstance*, otRadioFrame* frame) {
   ++gRadioTxStartedCount;
   if (frame != nullptr) {
     gRadioLastTxLength = frame->mLength;
@@ -166,14 +165,13 @@ extern "C" void otPlatRadioTxStarted(otInstance*, otRadioFrame* frame) {
   }
 }
 
-extern "C" void otPlatRadioTxDone(otInstance*, otRadioFrame*, otRadioFrame*,
-                                  otError error) {
+void handleRadioTxDone(otInstance*, otRadioFrame*, otRadioFrame*,
+                       otError error) {
   ++gRadioTxDoneCount;
   gRadioLastTxError = error;
 }
 
-extern "C" void otPlatRadioReceiveDone(otInstance*, otRadioFrame* frame,
-                                       otError error) {
+void handleRadioReceiveDone(otInstance*, otRadioFrame* frame, otError error) {
   ++gRadioRxDoneCount;
   gRadioLastRxError = error;
   if (frame != nullptr) {
@@ -192,10 +190,21 @@ extern "C" void otPlatRadioReceiveDone(otInstance*, otRadioFrame* frame,
   }
 }
 
-extern "C" void otPlatRadioEnergyScanDone(otInstance*, int8_t maxRssi) {
+void handleRadioEnergyScanDone(otInstance*, int8_t maxRssi) {
   ++gRadioEnergyScanDoneCount;
   gRadioLastEnergyScanDbm = maxRssi;
 }
+
+void installRadioHooks() {
+  OpenThreadPlatformRadioHooks hooks = {};
+  hooks.txStarted = handleRadioTxStarted;
+  hooks.txDone = handleRadioTxDone;
+  hooks.receiveDone = handleRadioReceiveDone;
+  hooks.energyScanDone = handleRadioEnergyScanDone;
+  OpenThreadPlatformSkeleton::setRadioEventHooks(&hooks);
+}
+
+}  // namespace
 
 void setup() {
   Serial.begin(115200);
@@ -204,6 +213,7 @@ void setup() {
   }
 
   OpenThreadPlatformSkeleton::begin();
+  installRadioHooks();
   otPlatSettingsInit(nullptr, nullptr, 0);
 
   const uint32_t nowMs = otPlatAlarmMilliGetNow();

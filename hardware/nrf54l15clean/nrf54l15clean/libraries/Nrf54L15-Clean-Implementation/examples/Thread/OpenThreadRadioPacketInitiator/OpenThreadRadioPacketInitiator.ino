@@ -7,6 +7,7 @@
 #include <openthread/platform/radio.h>
 
 using xiao_nrf54l15::OpenThreadPlatformSkeleton;
+using xiao_nrf54l15::OpenThreadPlatformRadioHooks;
 using xiao_nrf54l15::ZigbeeDataFrameView;
 using xiao_nrf54l15::ZigbeeMacAcknowledgementView;
 using xiao_nrf54l15::ZigbeeRadio;
@@ -114,10 +115,8 @@ void startPingTransmit() {
   (void)otPlatRadioTransmit(nullptr, frame);
 }
 
-}  // namespace
-
-extern "C" void otPlatRadioTxDone(otInstance*, otRadioFrame*, otRadioFrame* ackFrame,
-                                  otError error) {
+void handleRadioTxDone(otInstance*, otRadioFrame*, otRadioFrame* ackFrame,
+                       otError error) {
   gPingTxDone = true;
   gPingTxError = error;
   gPingAckValid = false;
@@ -137,8 +136,7 @@ extern "C" void otPlatRadioTxDone(otInstance*, otRadioFrame*, otRadioFrame* ackF
   }
 }
 
-extern "C" void otPlatRadioReceiveDone(otInstance*, otRadioFrame* frame,
-                                       otError error) {
+void handleRadioReceiveDone(otInstance*, otRadioFrame* frame, otError error) {
   if (error != OT_ERROR_NONE || frame == nullptr || frame->mPsdu == nullptr) {
     return;
   }
@@ -166,9 +164,19 @@ extern "C" void otPlatRadioReceiveDone(otInstance*, otRadioFrame* frame,
                                     kPongPayload, sizeof(kPongPayload));
 }
 
+void installRadioHooks() {
+  OpenThreadPlatformRadioHooks hooks = {};
+  hooks.txDone = handleRadioTxDone;
+  hooks.receiveDone = handleRadioReceiveDone;
+  OpenThreadPlatformSkeleton::setRadioEventHooks(&hooks);
+}
+
+}  // namespace
+
 void setup() {
   gBootMs = millis();
   OpenThreadPlatformSkeleton::begin();
+  installRadioHooks();
   otPlatRadioEnable(nullptr);
   otPlatRadioSetPanId(nullptr, kPanId);
   otPlatRadioSetShortAddress(nullptr, kInitiatorShort);

@@ -9,6 +9,7 @@
 
 using xiao_nrf54l15::OpenThreadPlatformSkeleton;
 using xiao_nrf54l15::OpenThreadPlatformSkeletonSnapshot;
+using xiao_nrf54l15::OpenThreadPlatformRadioHooks;
 using xiao_nrf54l15::ZigbeeDataFrameView;
 using xiao_nrf54l15::ZigbeeRadio;
 
@@ -120,10 +121,8 @@ void updateResults() {
   g_ot_diag_responder_results[23] = millis() - gBootMs;
 }
 
-}  // namespace
-
-extern "C" void otPlatRadioTxDone(otInstance*, otRadioFrame* frame,
-                                  otRadioFrame*, otError error) {
+void handleRadioTxDone(otInstance*, otRadioFrame* frame, otRadioFrame*,
+                       otError error) {
   ++gTxDoneCount;
   gLastTxError = error;
   gLastTxSequence = (frame != nullptr && frame->mPsdu != nullptr && frame->mLength >= 3U)
@@ -131,8 +130,7 @@ extern "C" void otPlatRadioTxDone(otInstance*, otRadioFrame* frame,
                         : 0U;
 }
 
-extern "C" void otPlatDiagRadioReceived(otInstance*, otRadioFrame* frame,
-                                        otError error) {
+void handleDiagRadioReceived(otInstance*, otRadioFrame* frame, otError error) {
   if (error != OT_ERROR_NONE || frame == nullptr || frame->mPsdu == nullptr) {
     return;
   }
@@ -160,9 +158,19 @@ extern "C" void otPlatDiagRadioReceived(otInstance*, otRadioFrame* frame,
   gResponseAttempts = 0U;
 }
 
+void installRadioHooks() {
+  OpenThreadPlatformRadioHooks hooks = {};
+  hooks.txDone = handleRadioTxDone;
+  hooks.diagRadioReceived = handleDiagRadioReceived;
+  OpenThreadPlatformSkeleton::setRadioEventHooks(&hooks);
+}
+
+}  // namespace
+
 void setup() {
   gBootMs = millis();
   OpenThreadPlatformSkeleton::begin();
+  installRadioHooks();
   otPlatDiagSetOutputCallback(nullptr, diagOutputCallback, nullptr);
 
   gVersionError = runDiagCommand("version");

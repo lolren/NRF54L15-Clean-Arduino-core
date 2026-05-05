@@ -90,6 +90,17 @@ void onStateChanged(void* context, otChangedFlags flags,
   if (kMyRole == DeviceRole::kCommissioner &&
       role == xiao_nrf54l15::Nrf54ThreadExperimental::Role::kLeader &&
       !g_commissionerStarted) {
+    if (!g_thread.commissionerSupported()) {
+      g_commissionerStarted = true;
+      Serial.println(
+          "thread_cj_demo Standard MeshCoP Commissioner is not compiled in "
+          "this staged core yet.");
+      Serial.println(
+          "thread_cj_demo Use ThreadExperimentalJoinerPSK* for the current "
+          "two-board join path.");
+      return;
+    }
+
     Serial.println("thread_cj_demo LEADER — starting commissioner...");
     const bool ok = g_thread.startCommissioner();
     Serial.print("thread_cj_demo commissioner_start=");
@@ -180,6 +191,8 @@ void printStatus(const char* reason) {
   Serial.println(g_thread.attached() ? 1 : 0);
 
   if (kMyRole == DeviceRole::kCommissioner) {
+    Serial.print("thread_cj_demo commissioner_supported=");
+    Serial.println(g_thread.commissionerSupported() ? 1 : 0);
     Serial.print("thread_cj_demo commissioner_active=");
     Serial.println(g_thread.commissionerActive() ? 1 : 0);
     Serial.print("thread_cj_demo commissioner_state=");
@@ -190,6 +203,8 @@ void printStatus(const char* reason) {
       Serial.println(sessionId);
     }
   } else {
+    Serial.print("thread_cj_demo joiner_supported=");
+    Serial.println(g_thread.joinerSupported() ? 1 : 0);
     Serial.print("thread_cj_demo joiner_active=");
     Serial.println(g_thread.joinerActive() ? 1 : 0);
     Serial.print("thread_cj_demo joiner_state=");
@@ -216,6 +231,10 @@ void setup() {
                                                        : "joiner");
   Serial.print("thread_cj_demo pskd=");
   Serial.println(kCommissionerPskd);
+  Serial.print("thread_cj_demo standard_meshcop_enabled=");
+  Serial.println((g_thread.commissionerSupported() && g_thread.joinerSupported())
+                     ? 1
+                     : 0);
 
   const bool beginOk = g_thread.begin(false);
   Serial.print("thread_cj_demo begin=");
@@ -236,6 +255,17 @@ void setup() {
         "start Commissioner...");
   } else {
     // Board B: start joiner
+    if (!g_thread.joinerSupported()) {
+      Serial.println(
+          "thread_cj_demo Standard MeshCoP Joiner is not compiled in this "
+          "staged core yet.");
+      Serial.println(
+          "thread_cj_demo Use ThreadExperimentalJoinerPSK* for the current "
+          "two-board join path.");
+      printStatus("joiner-not-compiled");
+      return;
+    }
+
     const bool joinerOk = g_thread.startJoiner(kCommissionerPskd, nullptr,
                                                onJoinerCallback, nullptr);
     Serial.print("thread_cj_demo joiner_start=");

@@ -14,8 +14,16 @@ void printStatus() {
   Serial.print(gThread.roleName());
   Serial.print(" rloc16=0x");
   Serial.print(gThread.rloc16(), HEX);
+  Serial.print(" part=0x");
+  Serial.print(gThread.partitionId(), HEX);
   Serial.print(" attached=");
   Serial.print(gThread.attached() ? 1 : 0);
+  Serial.print(" elig=");
+  Serial.print(gThread.routerEligible() ? 1 : 0);
+  Serial.print(" fb=");
+  Serial.print(gThread.childFirstFallbackArmed() ? 1 : 0);
+  Serial.print("/");
+  Serial.print(gThread.childFirstFallbackUsed() ? 1 : 0);
   Serial.print(" err=");
   Serial.print(static_cast<int>(gThread.lastError()));
   Serial.println();

@@ -7,6 +7,7 @@
 #include <openthread/platform/radio.h>
 
 using xiao_nrf54l15::OpenThreadPlatformSkeleton;
+using xiao_nrf54l15::OpenThreadPlatformRadioHooks;
 using xiao_nrf54l15::ZigbeeMacAcknowledgementView;
 using xiao_nrf54l15::ZigbeeRadio;
 
@@ -62,10 +63,8 @@ void startTransmit() {
   (void)otPlatRadioTransmit(nullptr, frame);
 }
 
-}  // namespace
-
-extern "C" void otPlatRadioTxDone(otInstance*, otRadioFrame*, otRadioFrame* ackFrame,
-                                  otError error) {
+void handleRadioTxDone(otInstance*, otRadioFrame*, otRadioFrame* ackFrame,
+                       otError error) {
   ++gTxDoneCount;
   gLastTxError = error;
   gLastTxAckValid = false;
@@ -83,9 +82,18 @@ extern "C" void otPlatRadioTxDone(otInstance*, otRadioFrame*, otRadioFrame* ackF
   }
 }
 
+void installRadioHooks() {
+  OpenThreadPlatformRadioHooks hooks = {};
+  hooks.txDone = handleRadioTxDone;
+  OpenThreadPlatformSkeleton::setRadioEventHooks(&hooks);
+}
+
+}  // namespace
+
 void setup() {
   gBootMs = millis();
   OpenThreadPlatformSkeleton::begin();
+  installRadioHooks();
   otPlatRadioEnable(nullptr);
   otPlatRadioSetPanId(nullptr, kPanId);
   otPlatRadioSetShortAddress(nullptr, kResponderShort);

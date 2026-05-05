@@ -50,6 +50,8 @@ void printStatus(const char* reason) {
   Serial.println(g_thread.roleName());
   Serial.print("thread_joiner rloc16=0x");
   Serial.println(g_thread.rloc16(), HEX);
+  Serial.print("thread_joiner joiner_supported=");
+  Serial.println(g_thread.joinerSupported() ? 1 : 0);
   Serial.print("thread_joiner joiner_active=");
   Serial.println(g_thread.joinerActive() ? 1 : 0);
   Serial.print("thread_joiner joiner_state=");
@@ -69,6 +71,8 @@ void setup() {
   Serial.println("thread_joiner Joiner example starting...");
   Serial.print("thread_joiner PSKd=");
   Serial.println(kJoinerPskd);
+  Serial.print("thread_joiner standard_meshcop_enabled=");
+  Serial.println(g_thread.joinerSupported() ? 1 : 0);
 
   const bool beginOk = g_thread.begin(false);
   Serial.print("thread_joiner begin=");
@@ -80,6 +84,16 @@ void setup() {
 
   g_thread.setStateChangedCallback(onStateChanged, nullptr);
   printStatus("boot");
+
+  if (!g_thread.joinerSupported()) {
+    Serial.println(
+        "thread_joiner Standard MeshCoP Joiner is not compiled in this staged "
+        "core yet.");
+    Serial.println(
+        "thread_joiner Use the PSK UDP examples for current two-board joining "
+        "tests.");
+    return;
+  }
 
   const bool joinerOk = g_thread.startJoiner(kJoinerPskd, nullptr,
                                              onJoinerCallback, nullptr);

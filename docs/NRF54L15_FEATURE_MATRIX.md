@@ -138,12 +138,12 @@ This section tracks user-facing Arduino behavior.
 | [x] | OpenThread PAL skeleton | Implemented. | Keep compile coverage. |
 | [x] | 802.15.4 TX/RX PAL | Implemented and two-board proven. | More stress and reference sniff validation. |
 | [x] | Fixed dataset attach | Implemented in experimental stage mode. | Reference-network attach validation. |
-| [x] | Leader/child role path | Implemented in experimental stage mode. | Reboot recovery and longer soak. |
+| [x] | Leader/child role path | Implemented in experimental stage mode; default wrapper uses child-first attach with deterministic leader fallback to avoid two-board demo partition races. | Reboot recovery and longer soak. |
 | [x] | Router promotion | Implemented in experimental stage mode. | Broader router behavior validation. |
 | [x] | UDP send/receive wrapper | Implemented in experimental stage mode. | More socket/multicast/fragmentation tests. |
 | [x] | PSKc/passphrase dataset build | Implemented. | More compatibility vectors. |
-| [ ] | Joiner | Missing / not claimed | Needed for normal commissioned Thread network bring-up. |
-| [ ] | Commissioner | Missing / not claimed | Joiner and Commissioner APIs declared in Nrf54ThreadExperimental (stubbed). OT core lacks DTLS/mbedTLS support needed for real commissioning. |
+| [ ] | Standard MeshCoP Joiner | API surface now exists and examples compile, but runtime reports unsupported while `OPENTHREAD_CONFIG_JOINER_ENABLE=0`. | Enable secure transport/DTLS and validate against a real commissioner. |
+| [ ] | Standard MeshCoP Commissioner | API surface now exists and examples compile, but runtime reports unsupported while `OPENTHREAD_CONFIG_COMMISSIONER_ENABLE=0`. | Enable secure transport/DTLS, add joiner table validation, then two-board commissioning soak. |
 | [ ] | Border router | Missing / non-goal | Should likely remain external. |
 | [ ] | CSL / sleepy end device depth | Partial | OpenThread PAL returns not-implemented for CSL operations. |
 | [ ] | Coexistence metrics/control | Missing | OpenThread radio coex APIs are not implemented. |
