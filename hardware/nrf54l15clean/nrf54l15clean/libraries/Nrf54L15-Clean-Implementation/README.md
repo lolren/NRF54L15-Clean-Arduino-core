@@ -1039,6 +1039,9 @@ Examples:
     - Pairing Request/Response/Confirm/Random validation flow
     - Legacy `c1`/`s1` confirm and STK derivation
     - Encryption Information/Master Identification key distribution parsing
+    - LE Secure Connections requests are deliberately answered with a legacy
+      Just Works response when the peer permits fallback. SC-only peers still
+      fail because the in-tree controller has no P-256 ECDH SMP path yet.
   - Optional protocol-level BLE trace path:
     - Enable Arduino Tools -> `BLE Trace` to emit LL/SMP trace markers for interop debugging
   - BLE timing profile controls:

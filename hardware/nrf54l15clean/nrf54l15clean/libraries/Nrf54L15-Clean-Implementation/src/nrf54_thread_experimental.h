@@ -19,6 +19,8 @@ namespace xiao_nrf54l15 {
 
 class Nrf54ThreadExperimental {
  public:
+  static constexpr uint8_t kMaxUdpSockets = 4U;
+
   using UdpReceiveCallback = void (*)(void* context,
                                       const uint8_t* payload,
                                       uint16_t length,
@@ -145,6 +147,13 @@ class Nrf54ThreadExperimental {
                uint16_t peerPort,
                const void* payload,
                uint16_t payloadLength);
+  bool sendUdpFrom(uint16_t localPort,
+                   const otIp6Address& peerAddr,
+                   uint16_t peerPort,
+                   const void* payload,
+                   uint16_t payloadLength);
+  bool subscribeMulticast(const otIp6Address& multicastAddr);
+  bool unsubscribeMulticast(const otIp6Address& multicastAddr);
   bool getLeaderRloc(otIp6Address* outLeaderAddr) const;
   bool getAttachDiagnostics(AttachDiagnostics* outDiagnostics) const;
   bool getAttachDebugState(AttachDebugState* outState) const;
@@ -177,6 +186,7 @@ class Nrf54ThreadExperimental {
   otChangedFlags pendingChangedFlags() const;
   otChangedFlags consumePendingChangedFlags();
   bool udpOpened() const;
+  bool udpOpened(uint16_t port) const;
   otInstance* rawInstance() const;
 
   static const char* roleName(Role role);
@@ -219,6 +229,21 @@ class Nrf54ThreadExperimental {
   bool configureAttachPolicy();
   bool maybePromoteChildFirstFallback(uint32_t elapsedMs);
 
+  struct UdpSocketSlot {
+    otUdpSocket socket = {};
+    UdpReceiveCallback callback = nullptr;
+    void* callbackContext = nullptr;
+    uint16_t port = 0U;
+    bool requested = false;
+    bool opened = false;
+  };
+
+  UdpSocketSlot* findUdpSlot(uint16_t port);
+  const UdpSocketSlot* findUdpSlot(uint16_t port) const;
+  UdpSocketSlot* firstUdpSlot(bool openedOnly);
+  const UdpSocketSlot* firstUdpSlot(bool openedOnly) const;
+  bool openUdpSlot(UdpSocketSlot* slot);
+
   static Role convertRole(otDeviceRole role);
   static uint32_t computeChildFirstFallbackDelayMs();
   static bool bytesToUpperHex(const uint8_t* data, size_t length,
@@ -236,10 +261,8 @@ class Nrf54ThreadExperimental {
   static constexpr uint32_t kChildFirstFallbackJitterMs = 12000UL;
 
   otInstance* instance_ = nullptr;
-  otUdpSocket udpSocket_ = {};
+  UdpSocketSlot udpSockets_[kMaxUdpSockets] = {};
   otOperationalDataset dataset_ = {};
-  UdpReceiveCallback udpCallback_ = nullptr;
-  void* udpCallbackContext_ = nullptr;
   StateChangedCallback stateChangedCallback_ = nullptr;
   void* stateChangedCallbackContext_ = nullptr;
   CommissionerStateCallback commissionerStateCallback_ = nullptr;
@@ -250,7 +273,6 @@ class Nrf54ThreadExperimental {
   void* joinerCallbackContext_ = nullptr;
 
   uint32_t beginMs_ = 0;
-  uint16_t udpPort_ = 0U;
   otError lastError_ = OT_ERROR_NONE;
   otError lastUdpError_ = OT_ERROR_NONE;
   otChangedFlags lastChangedFlags_ = 0U;
@@ -269,8 +291,6 @@ class Nrf54ThreadExperimental {
   bool linkConfigured_ = false;
   bool ip6Enabled_ = false;
   bool threadEnabled_ = false;
-  bool udpRequested_ = false;
-  bool udpOpened_ = false;
   bool wipeSettings_ = true;
   bool stateChangedCallbackRegistered_ = false;
   bool commissionerStarted_ = false;

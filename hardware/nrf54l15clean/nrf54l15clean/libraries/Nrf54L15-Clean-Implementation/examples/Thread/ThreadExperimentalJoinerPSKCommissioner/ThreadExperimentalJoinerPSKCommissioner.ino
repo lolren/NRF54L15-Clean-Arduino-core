@@ -116,6 +116,17 @@ bool reassFrag(const uint8_t* f, uint16_t fl, uint8_t* ot, uint8_t** od, uint16_
   if((g_rmask&am)==am){*ot=f[0];*od=g_rbuf;*ol=g_rlen;g_rtot=0;return true;} return false;
 }
 
+void markCompactDatasetComponents(otOperationalDataset* dataset) {
+  if (dataset == nullptr) return;
+  dataset->mComponents.mIsActiveTimestampPresent = true;
+  dataset->mComponents.mIsNetworkKeyPresent = true;
+  dataset->mComponents.mIsNetworkNamePresent = true;
+  dataset->mComponents.mIsExtendedPanIdPresent = true;
+  dataset->mComponents.mIsPanIdPresent = true;
+  dataset->mComponents.mIsChannelPresent = true;
+  dataset->mComponents.mIsPskcPresent = true;
+}
+
 // ─── Commissioner: handle join request ──────────────────────
 
 void handleJoinReq(const uint8_t* data, uint16_t len,
@@ -136,44 +147,44 @@ void handleJoinReq(const uint8_t* data, uint16_t len,
   }
   Serial.println("join mac OK"); Serial.flush();
 
-  // Build response: enc(dataset_tlvs || nonce) || mac
-  otOperationalDatasetTlvs dsTlvs;
-  if (!g_thread.getActiveDatasetTlvs(&dsTlvs)) return;
+  // Compact response fits below the proven single-frame UDP payload limit:
+  // channel(2), panid(2), extpanid(8), name(16), key(16), pskc(16), nonce(8).
+  otOperationalDataset ds = {};
+  if (!g_thread.getConfiguredOrActiveDataset(&ds)) return;
+  uint8_t plain[68] = {0};
+  memcpy(plain, &ds.mChannel, 2);
+  memcpy(plain + 2, &ds.mPanId, 2);
+  memcpy(plain + 4, ds.mExtendedPanId.m8, 8);
+  memcpy(plain + 12, ds.mNetworkName.m8, 16);
+  memcpy(plain + 28, ds.mNetworkKey.m8, 16);
+  memcpy(plain + 44, ds.mPskc.m8, 16);
+  memcpy(plain + 60, nonce, 8);
 
-  // Build plaintext: dataset_tlvs(248) + nonce(8)
-  uint8_t plain[256];
-  memcpy(plain, &dsTlvs, sizeof(dsTlvs));
-  memcpy(plain + sizeof(dsTlvs), nonce, 8);
-  size_t ptLen = sizeof(dsTlvs) + 8;
-
-  // Pad to 16-byte boundary
-  while (ptLen % 16) plain[ptLen++] = 0;
-
-  uint8_t resp[256];
-  resp[0] = (uint8_t)JoinMsg::kJoinResp;
-
+  uint8_t resp[1 + sizeof(plain) + 16] = {0};
+  resp[0] = static_cast<uint8_t>(JoinMsg::kJoinResp);
   uint8_t iv[16] = {0};
-  aesCtr(g_psk, iv, plain, resp + 1, ptLen);
-  computeMac(g_psk, resp + 1, ptLen, resp + 1 + ptLen);
+  aesCtr(g_psk, iv, plain, resp + 1, sizeof(plain));
+  computeMac(g_psk, resp + 1, sizeof(plain), resp + 1 + sizeof(plain));
 
-  // Send fragmented response (may be >200 bytes)
-  sendFrag((uint8_t)JoinMsg::kJoinResp, resp + 1, ptLen + 16, kMeshLocalAllNodes);
+  // Repeat the compact unicast response a few times so a missed receive window
+  // does not strand the joiner.
+  for (uint8_t i = 0; i < 3U; ++i) {
+    g_thread.sendUdp(info.mPeerAddr, info.mPeerPort, resp, sizeof(resp));
+    delay(80);
+  }
   g_commissioned = true;
   Serial.println("join resp sent"); Serial.flush();
-  uint8_t test[4] = {9, 'T','E','S'};
-  g_thread.sendUdp(kMeshLocalAllNodes, kPort, test, 4);
-  Serial.println("join testmsg sent"); Serial.flush();
 }
 
 // ─── Joiner: handle join response ───────────────────────────
 
 void handleJoinResp(const uint8_t* payload, uint16_t len,
                     const otMessageInfo& info) {
-  // payload: enc(dataset_tlvs || nonce) || mac(16)
-  if (len < 17) return;
+  // payload: enc(compact_dataset || nonce) || mac(16)
+  if (len != (68U + 16U)) return;
 
-  size_t encLen = len - 16;
-  uint8_t dec[256], expMac[16];
+  const size_t encLen = 68U;
+  uint8_t dec[68], expMac[16];
   uint8_t iv[16] = {0};
   aesCtr(g_psk, iv, payload, dec, encLen);
   computeMac(g_psk, payload, encLen, expMac);
@@ -183,10 +194,17 @@ void handleJoinResp(const uint8_t* payload, uint16_t len,
   }
   Serial.println("join resp mac OK"); Serial.flush();
 
-  // Apply dataset TLVs
-  otOperationalDatasetTlvs tlv;
-  memcpy(&tlv, dec, sizeof(tlv));
-  g_thread.setActiveDatasetTlvs(tlv);
+  otOperationalDataset ds = {};
+  memcpy(&ds.mChannel, dec, 2);
+  memcpy(&ds.mPanId, dec + 2, 2);
+  memcpy(ds.mExtendedPanId.m8, dec + 4, 8);
+  memcpy(ds.mNetworkName.m8, dec + 12, 16);
+  memcpy(ds.mNetworkKey.m8, dec + 28, 16);
+  memcpy(ds.mPskc.m8, dec + 44, 16);
+  ds.mActiveTimestamp.mSeconds = 1ULL;
+  ds.mActiveTimestamp.mAuthoritative = true;
+  markCompactDatasetComponents(&ds);
+  g_thread.setActiveDataset(ds);
   g_joined = true;
   Serial.println("join dataset applied!"); Serial.flush();
 }
@@ -211,11 +229,14 @@ void onUdp(void*, const uint8_t* data, uint16_t len, const otMessageInfo& info) 
     return;
   }
 
-  // Try fragment reassembly for join response
   if (ROLE == DemoRole::JOINER && type == (uint8_t)JoinMsg::kJoinResp) {
+    if (len == (1U + 68U + 16U)) {
+      handleJoinResp(data + 1, len - 1, info);
+      return;
+    }
+    // Compatibility with older fragmented responses.
     uint8_t* full; uint16_t flen; uint8_t ftype;
     if (reassFrag(data, len, &ftype, &full, &flen)) {
-      // full = enc(payload) || mac(16)
       handleJoinResp(full, flen, info);
     }
     return;

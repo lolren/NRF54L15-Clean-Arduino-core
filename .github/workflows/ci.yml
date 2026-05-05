@@ -65,6 +65,16 @@ jobs:
             options: clean_ble=off,clean_cpu=cpu64,clean_power=low
           - sketch: hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples/Zigbee/ZigbeeRouter
             options: clean_ble=off,clean_cpu=cpu64,clean_power=low
+          - sketch: hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples/Thread/ThreadExperimentalJoinerPSKCommissioner
+            options: clean_thread=stage,clean_cpu=cpu64,clean_power=balanced
+          - sketch: hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples/Thread/ThreadExperimentalJoinerPSKJoiner
+            options: clean_thread=stage,clean_cpu=cpu64,clean_power=balanced
+          - sketch: hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples/Thread/ThreadExperimentalUdpSoak
+            options: clean_thread=stage,clean_cpu=cpu64,clean_power=balanced
+          - sketch: hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples/Matter/MatterOnOffLightTwoBoardDemo
+            options: clean_thread=stage,clean_cpu=cpu64,clean_power=balanced
+          - sketch: hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples/Matter/MatterCommissionAndControl
+            options: clean_thread=stage,clean_cpu=cpu64,clean_power=balanced
           - sketch: hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples/Peripherals/SaadcDifferentialProbe
             options: clean_ble=off,clean_cpu=cpu64,clean_power=balanced
           - sketch: hardware/nrf54l15clean/nrf54l15clean/examples/Peripherals/VbatReadViaAnalogRead

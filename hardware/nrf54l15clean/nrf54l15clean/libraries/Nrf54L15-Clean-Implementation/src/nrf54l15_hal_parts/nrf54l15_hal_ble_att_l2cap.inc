@@ -1340,6 +1340,10 @@ bool BleRadio::buildL2capSmpResponse(const uint8_t* l2capPayload,
       smpPairingRsp_[1] = kSmpIoCapNoInputNoOutput;
       smpPairingRsp_[2] = 0x00U;
       const uint8_t peerBonding = smp[3] & kSmpAuthReqBondingMask;
+      const bool peerRequestedMitm =
+          (smp[3] & kSmpAuthReqMitmMask) != 0U;
+      const bool peerRequestedSecureConnections =
+          (smp[3] & kSmpAuthReqSecureConnectionsMask) != 0U;
       smpPairingRsp_[3] = (peerBonding != 0U) ? 0x01U : 0x00U;
       smpBondingRequested_ = (peerBonding != 0U);
       smpPairingRsp_[4] = maxKeySize;
@@ -1353,6 +1357,12 @@ bool BleRadio::buildL2capSmpResponse(const uint8_t* l2capPayload,
       smpExpectInitiatorEncKey_ = ((smpPairingRsp_[5] & kSmpKeyDistEncKeyMask) != 0U);
       smpExpectInitiatorIdKey_ = ((smpPairingRsp_[5] & kSmpKeyDistIdKeyMask) != 0U);
       smpKeySize_ = maxKeySize;
+      if (peerRequestedSecureConnections) {
+        emitBleTrace("SMP_LESC_REQUEST_LEGACY_FALLBACK");
+      }
+      if (peerRequestedMitm) {
+        emitBleTrace("SMP_MITM_REQUEST_NO_IO_FALLBACK");
+      }
 
       // Precompute local confirm material here so confirm/random stages avoid
       // repeated AES work while servicing tight connection events.

@@ -130,13 +130,18 @@ bool Nrf54ThreadExperimental::stop() {
     commissionerStarted_ = false;
   }
 
-  if (instance_ != nullptr && udpOpened_) {
-    lastUdpError_ = otUdpClose(instance_, &udpSocket_);
-    if (lastUdpError_ != OT_ERROR_NONE) {
-      return false;
+  if (instance_ != nullptr) {
+    for (UdpSocketSlot& slot : udpSockets_) {
+      if (!slot.opened) {
+        continue;
+      }
+      lastUdpError_ = otUdpClose(instance_, &slot.socket);
+      if (lastUdpError_ != OT_ERROR_NONE) {
+        return false;
+      }
+      memset(&slot.socket, 0, sizeof(slot.socket));
+      slot.opened = false;
     }
-    memset(&udpSocket_, 0, sizeof(udpSocket_));
-    udpOpened_ = false;
   }
 
   if (instance_ != nullptr && threadEnabled_) {
@@ -286,16 +291,11 @@ void Nrf54ThreadExperimental::process() {
     (void)maybePromoteChildFirstFallback(elapsedMs);
   }
 
-  if (instance_ != nullptr && ip6Enabled_ && udpRequested_ && !udpOpened_) {
-    memset(&udpSocket_, 0, sizeof(udpSocket_));
-    lastUdpError_ =
-        otUdpOpen(instance_, &udpSocket_, handleUdpReceiveStatic, this);
-    if (lastUdpError_ == OT_ERROR_NONE) {
-      otSockAddr sockAddr = {};
-      sockAddr.mPort = udpPort_;
-      lastUdpError_ =
-          otUdpBind(instance_, &udpSocket_, &sockAddr, OT_NETIF_THREAD_INTERNAL);
-      udpOpened_ = (lastUdpError_ == OT_ERROR_NONE);
+  if (instance_ != nullptr && ip6Enabled_) {
+    for (UdpSocketSlot& slot : udpSockets_) {
+      if (slot.requested && !slot.opened) {
+        (void)openUdpSlot(&slot);
+      }
     }
   }
 #endif
@@ -625,10 +625,40 @@ bool Nrf54ThreadExperimental::stopJoiner() {
 bool Nrf54ThreadExperimental::openUdp(uint16_t port,
                                       UdpReceiveCallback callback,
                                       void* callbackContext) {
-  udpPort_ = port;
-  udpCallback_ = callback;
-  udpCallbackContext_ = callbackContext;
-  udpRequested_ = true;
+  if (port == 0U) {
+    lastUdpError_ = OT_ERROR_INVALID_ARGS;
+    return false;
+  }
+
+  UdpSocketSlot* slot = findUdpSlot(port);
+  if (slot == nullptr) {
+    slot = firstUdpSlot(false);
+  }
+  if (slot == nullptr) {
+    lastUdpError_ = OT_ERROR_NO_BUFS;
+    return false;
+  }
+
+  if (slot->opened && slot->port != port) {
+    lastUdpError_ = OT_ERROR_INVALID_STATE;
+    return false;
+  }
+
+  slot->port = port;
+  slot->callback = callback;
+  slot->callbackContext = callbackContext;
+  slot->requested = true;
+
+  if (slot->opened) {
+    lastUdpError_ = OT_ERROR_NONE;
+    return true;
+  }
+
+  if (instance_ != nullptr && ip6Enabled_) {
+    return openUdpSlot(slot);
+  }
+
+  lastUdpError_ = OT_ERROR_NONE;
   return true;
 }
 
@@ -643,8 +673,17 @@ bool Nrf54ThreadExperimental::sendUdp(const otIp6Address& peerAddr,
                                       uint16_t peerPort,
                                       const void* payload,
                                       uint16_t payloadLength) {
+  return sendUdpFrom(0U, peerAddr, peerPort, payload, payloadLength);
+}
+
+bool Nrf54ThreadExperimental::sendUdpFrom(uint16_t localPort,
+                                          const otIp6Address& peerAddr,
+                                          uint16_t peerPort,
+                                          const void* payload,
+                                          uint16_t payloadLength) {
 #if !defined(NRF54L15_CLEAN_OPENTHREAD_CORE_ENABLE) || \
     (NRF54L15_CLEAN_OPENTHREAD_CORE_ENABLE == 0)
+  (void)localPort;
   (void)peerAddr;
   (void)peerPort;
   (void)payload;
@@ -652,8 +691,22 @@ bool Nrf54ThreadExperimental::sendUdp(const otIp6Address& peerAddr,
   lastUdpError_ = OT_ERROR_INVALID_STATE;
   return false;
 #else
-  if (instance_ == nullptr || !udpOpened_ || payload == nullptr ||
+  if (instance_ == nullptr || payload == nullptr ||
       payloadLength == 0U) {
+    lastUdpError_ = OT_ERROR_INVALID_STATE;
+    return false;
+  }
+
+  UdpSocketSlot* slot = nullptr;
+  if (localPort != 0U) {
+    slot = findUdpSlot(localPort);
+  } else {
+    slot = findUdpSlot(peerPort);
+  }
+  if (slot == nullptr || !slot->opened) {
+    slot = firstUdpSlot(true);
+  }
+  if (slot == nullptr || !slot->opened) {
     lastUdpError_ = OT_ERROR_INVALID_STATE;
     return false;
   }
@@ -674,15 +727,49 @@ bool Nrf54ThreadExperimental::sendUdp(const otIp6Address& peerAddr,
   otMessageInfo messageInfo = {};
   messageInfo.mPeerAddr = peerAddr;
   messageInfo.mPeerPort = peerPort;
-  messageInfo.mSockPort = udpPort_;
+  messageInfo.mSockPort = slot->port;
   messageInfo.mHopLimit = 64U;
 
-  lastUdpError_ = otUdpSend(instance_, &udpSocket_, message, &messageInfo);
+  lastUdpError_ = otUdpSend(instance_, &slot->socket, message, &messageInfo);
   if (lastUdpError_ != OT_ERROR_NONE) {
     otMessageFree(message);
     return false;
   }
   return true;
+#endif
+}
+
+bool Nrf54ThreadExperimental::subscribeMulticast(
+    const otIp6Address& multicastAddr) {
+#if !defined(NRF54L15_CLEAN_OPENTHREAD_CORE_ENABLE) || \
+    (NRF54L15_CLEAN_OPENTHREAD_CORE_ENABLE == 0)
+  (void)multicastAddr;
+  lastError_ = OT_ERROR_INVALID_STATE;
+  return false;
+#else
+  if (instance_ == nullptr || !ip6Enabled_) {
+    lastError_ = OT_ERROR_INVALID_STATE;
+    return false;
+  }
+  lastError_ = otIp6SubscribeMulticastAddress(instance_, &multicastAddr);
+  return lastError_ == OT_ERROR_NONE || lastError_ == OT_ERROR_ALREADY;
+#endif
+}
+
+bool Nrf54ThreadExperimental::unsubscribeMulticast(
+    const otIp6Address& multicastAddr) {
+#if !defined(NRF54L15_CLEAN_OPENTHREAD_CORE_ENABLE) || \
+    (NRF54L15_CLEAN_OPENTHREAD_CORE_ENABLE == 0)
+  (void)multicastAddr;
+  lastError_ = OT_ERROR_INVALID_STATE;
+  return false;
+#else
+  if (instance_ == nullptr || !ip6Enabled_) {
+    lastError_ = OT_ERROR_INVALID_STATE;
+    return false;
+  }
+  lastError_ = otIp6UnsubscribeMulticastAddress(instance_, &multicastAddr);
+  return lastError_ == OT_ERROR_NONE || lastError_ == OT_ERROR_NOT_FOUND;
 #endif
 }
 
@@ -934,7 +1021,111 @@ bool Nrf54ThreadExperimental::attached() const {
          currentRole == Role::kLeader;
 }
 
-bool Nrf54ThreadExperimental::udpOpened() const { return udpOpened_; }
+bool Nrf54ThreadExperimental::udpOpened() const {
+  return firstUdpSlot(true) != nullptr;
+}
+
+bool Nrf54ThreadExperimental::udpOpened(uint16_t port) const {
+  const UdpSocketSlot* slot = findUdpSlot(port);
+  return slot != nullptr && slot->opened;
+}
+
+Nrf54ThreadExperimental::UdpSocketSlot*
+Nrf54ThreadExperimental::findUdpSlot(uint16_t port) {
+  if (port == 0U) {
+    return nullptr;
+  }
+  for (UdpSocketSlot& slot : udpSockets_) {
+    if (slot.requested && slot.port == port) {
+      return &slot;
+    }
+  }
+  return nullptr;
+}
+
+const Nrf54ThreadExperimental::UdpSocketSlot*
+Nrf54ThreadExperimental::findUdpSlot(uint16_t port) const {
+  if (port == 0U) {
+    return nullptr;
+  }
+  for (const UdpSocketSlot& slot : udpSockets_) {
+    if (slot.requested && slot.port == port) {
+      return &slot;
+    }
+  }
+  return nullptr;
+}
+
+Nrf54ThreadExperimental::UdpSocketSlot*
+Nrf54ThreadExperimental::firstUdpSlot(bool openedOnly) {
+  for (UdpSocketSlot& slot : udpSockets_) {
+    if (openedOnly) {
+      if (slot.opened) {
+        return &slot;
+      }
+    } else if (!slot.requested) {
+      return &slot;
+    }
+  }
+  return nullptr;
+}
+
+const Nrf54ThreadExperimental::UdpSocketSlot*
+Nrf54ThreadExperimental::firstUdpSlot(bool openedOnly) const {
+  for (const UdpSocketSlot& slot : udpSockets_) {
+    if (openedOnly) {
+      if (slot.opened) {
+        return &slot;
+      }
+    } else if (!slot.requested) {
+      return &slot;
+    }
+  }
+  return nullptr;
+}
+
+bool Nrf54ThreadExperimental::openUdpSlot(UdpSocketSlot* slot) {
+#if !defined(NRF54L15_CLEAN_OPENTHREAD_CORE_ENABLE) || \
+    (NRF54L15_CLEAN_OPENTHREAD_CORE_ENABLE == 0)
+  (void)slot;
+  lastUdpError_ = OT_ERROR_INVALID_STATE;
+  return false;
+#else
+  if (slot == nullptr || !slot->requested || slot->port == 0U) {
+    lastUdpError_ = OT_ERROR_INVALID_ARGS;
+    return false;
+  }
+  if (slot->opened) {
+    lastUdpError_ = OT_ERROR_NONE;
+    return true;
+  }
+  if (instance_ == nullptr || !ip6Enabled_) {
+    lastUdpError_ = OT_ERROR_INVALID_STATE;
+    return false;
+  }
+
+  memset(&slot->socket, 0, sizeof(slot->socket));
+  lastUdpError_ = otUdpOpen(instance_, &slot->socket,
+                            handleUdpReceiveStatic, this);
+  if (lastUdpError_ != OT_ERROR_NONE) {
+    return false;
+  }
+
+  otSockAddr sockAddr = {};
+  sockAddr.mPort = slot->port;
+  lastUdpError_ =
+      otUdpBind(instance_, &slot->socket, &sockAddr, OT_NETIF_THREAD_INTERNAL);
+  if (lastUdpError_ != OT_ERROR_NONE) {
+    (void)otUdpClose(instance_, &slot->socket);
+    memset(&slot->socket, 0, sizeof(slot->socket));
+    slot->opened = false;
+    return false;
+  }
+
+  slot->opened = true;
+  return true;
+#endif
+}
 
 Nrf54ThreadExperimental::Role Nrf54ThreadExperimental::role() const {
   if (instance_ == nullptr) {
@@ -1494,7 +1685,21 @@ void Nrf54ThreadExperimental::handleJoinerStatic(otError error,
 
 void Nrf54ThreadExperimental::handleUdpReceive(
     otMessage* message, const otMessageInfo* messageInfo) {
-  if (udpCallback_ == nullptr || message == nullptr || messageInfo == nullptr) {
+  if (message == nullptr || messageInfo == nullptr) {
+    return;
+  }
+
+  const UdpSocketSlot* slot = findUdpSlot(messageInfo->mSockPort);
+  if (slot == nullptr || slot->callback == nullptr) {
+    slot = nullptr;
+    for (const UdpSocketSlot& candidate : udpSockets_) {
+      if (candidate.opened && candidate.callback != nullptr) {
+        slot = &candidate;
+        break;
+      }
+    }
+  }
+  if (slot == nullptr || slot->callback == nullptr) {
     return;
   }
 
@@ -1508,7 +1713,7 @@ void Nrf54ThreadExperimental::handleUdpReceive(
     otMessageRead(message, 0, buffer, copyLength);
   }
 
-  udpCallback_(udpCallbackContext_, buffer, copyLength, *messageInfo);
+  slot->callback(slot->callbackContext, buffer, copyLength, *messageInfo);
 }
 
 void Nrf54ThreadExperimental::handleStateChanged(otChangedFlags flags) {

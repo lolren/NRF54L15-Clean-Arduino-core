@@ -58,6 +58,15 @@ constexpr uint32_t kIdentifyCommandId = 0x00U;
 
 constexpr uint32_t kReportIntervalMs = 3000U;
 constexpr uint32_t kCommandIntervalMs = 5000U;
+constexpr uint32_t kDiscoveryIntervalMs = 3000U;
+constexpr uint16_t kControllerDiscoveryPort = kMatterUdpPort + 1U;
+constexpr uint8_t kLightAnnouncePayload = 0xAAU;
+
+static const otIp6Address kMeshLocalAllNodes = {
+  .mFields = {
+    .m8 = {0xff, 0x03, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}
+  }
+};
 
 Nrf54ThreadExperimental gThread;
 bool gLightOn = false;
@@ -65,9 +74,12 @@ bool gIdentifying = false;
 uint32_t gIdentifyEndMs = 0U;
 uint32_t gLastReportMs = 0U;
 uint32_t gLastCommandMs = 0U;
+uint32_t gLastDiscoveryMs = 0U;
 uint8_t gCommandSequence = 0U;
 Nrf54ThreadExperimental::Role gLastRole =
     Nrf54ThreadExperimental::Role::kUnknown;
+otIp6Address gLightNodeAddr = {};
+bool gLightNodeKnown = false;
 
 // ─── CHIP Message Framing ───────────────────────────────────────
 
@@ -257,7 +269,19 @@ void handleReadRequest(const uint8_t* payload, uint16_t length) {
 
 void onUdpReceive(void*, const uint8_t* payload, uint16_t length,
                   const otMessageInfo& info) {
-  if (payload == nullptr || length < 20U) return;
+  if (payload == nullptr) return;
+
+  if (ROLE == DemoRole::CONTROLLER && length == 1U &&
+      payload[0] == kLightAnnouncePayload) {
+    memcpy(&gLightNodeAddr, &info.mPeerAddr, sizeof(gLightNodeAddr));
+    if (!gLightNodeKnown) {
+      Serial.println("matter_light discovered light node");
+    }
+    gLightNodeKnown = true;
+    return;
+  }
+
+  if (length < 20U) return;
 
   uint16_t protocolId = 0U;
   uint8_t opcode = 0U;
@@ -323,8 +347,23 @@ void printStatus() {
   Serial.print(gLightOn ? 1 : 0);
   Serial.print(" identifying=");
   Serial.print(gIdentifying ? 1 : 0);
+  Serial.print(" light_known=");
+  Serial.print(gLightNodeKnown ? 1 : 0);
   Serial.print(" my_role=");
   Serial.println(ROLE == DemoRole::LIGHT_NODE ? "light_node" : "controller");
+}
+
+void announceLightNode() {
+  if (ROLE != DemoRole::LIGHT_NODE || !gThread.udpOpened(kMatterUdpPort)) {
+    return;
+  }
+  if ((millis() - gLastDiscoveryMs) < kDiscoveryIntervalMs) {
+    return;
+  }
+  gLastDiscoveryMs = millis();
+  const uint8_t payload[1] = {kLightAnnouncePayload};
+  (void)gThread.sendUdp(kMeshLocalAllNodes, kControllerDiscoveryPort,
+                        payload, sizeof(payload));
 }
 
 }  // namespace
@@ -352,7 +391,11 @@ void setup() {
   otOperationalDataset dataset = {};
   Nrf54ThreadExperimental::buildDemoDataset(&dataset);
   gThread.setActiveDataset(dataset);
-  gThread.begin();
+  if (ROLE == DemoRole::LIGHT_NODE) {
+    gThread.beginAsRouter();
+  } else {
+    gThread.begin();
+  }
 
   Serial.print("matter_light thread_begin=");
   Serial.println(gThread.started() ? 1 : 0);
@@ -368,10 +411,11 @@ void setup() {
     }
     Serial.println("matter_light Listening for Matter commands on UDP port 5540...");
   } else {
-    // Controller: open a UDP socket for sending (any port)
-    const bool udpOk = gThread.openUdp(kMatterUdpPort + 1U, nullptr, nullptr);
+    const bool udpOk =
+        gThread.openUdp(kControllerDiscoveryPort, onUdpReceive, nullptr);
     Serial.print("matter_light controller_udp_open=");
     Serial.println(udpOk ? 1 : 0);
+    Serial.println("matter_light Waiting for light-node discovery...");
   }
 
   printStatus();
@@ -382,6 +426,7 @@ void setup() {
 void loop() {
   gThread.process();
   applyLed();
+  announceLightNode();
 
   // Check identify timeout
   if (gIdentifying && millis() >= gIdentifyEndMs) {
@@ -395,34 +440,31 @@ void loop() {
   }
 
   // ─── Controller: send commands to light node ──────────────
-  if (ROLE == DemoRole::LIGHT_NODE && gThread.attached()) {
+  if (ROLE == DemoRole::CONTROLLER && gThread.attached() && gLightNodeKnown) {
     if ((millis() - gLastCommandMs) >= kCommandIntervalMs) {
       gLastCommandMs = millis();
 
-      otIp6Address leaderAddr = {};
-      if (gThread.getLeaderRloc(&leaderAddr)) {
-        // Cycle through commands: ON -> OFF -> TOGGLE -> TOGGLE -> loop
-        const uint32_t clusterId = (gCommandSequence % 4U < 3U)
-                                       ? kOnOffClusterId
-                                       : kIdentifyClusterId;
-        const uint32_t commandId = [](uint8_t seq) -> uint32_t {
-          switch (seq % 4U) {
-            case 0:  return kOnCommandId;
-            case 1:  return kOffCommandId;
-            case 2:  return kToggleCommandId;
-            default: return kIdentifyCommandId;
-          }
-        }(gCommandSequence);
+      // Cycle through commands: ON -> OFF -> TOGGLE -> IDENTIFY -> loop
+      const uint32_t clusterId = (gCommandSequence % 4U < 3U)
+                                     ? kOnOffClusterId
+                                     : kIdentifyClusterId;
+      const uint32_t commandId = [](uint8_t seq) -> uint32_t {
+        switch (seq % 4U) {
+          case 0:  return kOnCommandId;
+          case 1:  return kOffCommandId;
+          case 2:  return kToggleCommandId;
+          default: return kIdentifyCommandId;
+        }
+      }(gCommandSequence);
 
-        Serial.print("matter_light sending cmd=0x");
-        Serial.print(commandId, HEX);
-        Serial.print(" to leader... ");
+      Serial.print("matter_light sending cmd=0x");
+      Serial.print(commandId, HEX);
+      Serial.print(" to light... ");
 
-        const bool sent = sendMatterCommand(leaderAddr, kMatterUdpPort,
-                                            clusterId, commandId);
-        Serial.println(sent ? "OK" : "FAIL");
-        gCommandSequence++;
-      }
+      const bool sent = sendMatterCommand(gLightNodeAddr, kMatterUdpPort,
+                                          clusterId, commandId);
+      Serial.println(sent ? "OK" : "FAIL");
+      gCommandSequence++;
     }
   }
 

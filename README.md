@@ -38,7 +38,7 @@ void loop() {}
 |---|---|---|
 | **Wireless** | BLE advertising, scanning, connections | ✅ |
 | | BLE 2M/coded PHY | ✅ |
-| | BLE SMP pairing (phone) | ✅ |
+| | BLE SMP legacy pairing (phone fallback) | ✅ |
 | | BLE Channel Sounding (phase ranging) | ✅ |
 | | BLE Channel Sounding (2-board, 57-62cm) | ✅ |
 | | Thread: leader, child, router | ✅ |
@@ -80,6 +80,7 @@ void loop() {}
 | **Thread attach** | Common two-board demo partition race is mitigated with child-first attach + deterministic leader fallback; still experimental and needs longer soak/reference-network validation |
 | **Thread UDP fragmentation** | Two-board staged UDP smoke validates checked single-frame payloads through 63 bytes; larger fragmented UDP payloads are still experimental |
 | **Standard Thread commissioning** | MeshCoP Joiner/Commissioner examples now compile and report support status, but the staged core still ships those roles disabled until DTLS/secure transport is enabled and tested |
+| **BLE LE Secure Connections** | Not implemented in the in-tree BLE controller; phones that allow fallback can pair through legacy Just Works, but SC-only centrals need the future P-256 path |
 | **CRACEN PK engine** | ECDSA hardware acceleration needs proprietary Nordic microcode |
 | **NIST fast reduction** | bnMul at 3 ms (bit-level long division); sub-word carry blocks optimization |
 | **ECDSA speed** | Software ECC at 21 s sign / 50 s verify — acceptable for demos, not production |
