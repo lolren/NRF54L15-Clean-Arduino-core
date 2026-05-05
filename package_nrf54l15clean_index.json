@@ -12,6 +12,55 @@
         {
           "name": "nRF54L15 Boards",
           "architecture": "nrf54l15clean",
+          "version": "0.6.75",
+          "category": "Arduino",
+          "url": "https://github.com/lolren/nrf54-arduino-core/releases/download/v0.6.75/nrf54l15clean-0.6.75-f40b246e618d.tar.bz2",
+          "archiveFileName": "nrf54l15clean-0.6.75-f40b246e618d.tar.bz2",
+          "checksum": "SHA-256:f40b246e618daa91db72032de4c81a19c80c099a22b1da9260a24a74d2ee6c10",
+          "size": "2399434",
+          "boards": [
+            {
+              "name": "XIAO nRF54L15 / Sense"
+            },
+            {
+              "name": "HOLYIOT-25008 nRF54L15 Module"
+            },
+            {
+              "name": "HOLYIOT-25007 nRF54L15 Module"
+            },
+            {
+              "name": "Generic nRF54L15 Module (36-pad)"
+            },
+            {
+              "name": "Nordic PCA10156 nRF54L15 DK"
+            }
+          ],
+          "help": {
+            "online": "https://github.com/lolren/nrf54-arduino-core"
+          },
+          "toolsDependencies": [
+            {
+              "packager": "arduino",
+              "name": "arm-none-eabi-gcc",
+              "version": "7-2017q4"
+            },
+            {
+              "packager": "arduino",
+              "name": "openocd",
+              "version": "0.11.0-arduino2"
+            },
+            {
+              "packager": "nrf54l15clean",
+              "name": "nrf54l15hosttools",
+              "version": "1.1.2"
+            }
+          ],
+          "discoveryDependencies": [],
+          "monitorDependencies": []
+        },
+        {
+          "name": "nRF54L15 Boards",
+          "architecture": "nrf54l15clean",
           "version": "0.6.74",
           "category": "Arduino",
           "url": "https://github.com/lolren/nrf54-arduino-core/releases/download/v0.6.74/nrf54l15clean-0.6.74-2495d6bfb8a5.tar.bz2",
@@ -699,50 +748,6 @@
           "archiveFileName": "nrf54l15clean-0.6.58-2efccc9b2e21.tar.bz2",
           "checksum": "SHA-256:2efccc9b2e213b035cd4abbbdde7c547cdbe7b8a20a2ec0ec50390ce5fd29239",
           "size": "2300252",
-          "boards": [
-            {
-              "name": "XIAO nRF54L15 / Sense"
-            },
-            {
-              "name": "HOLYIOT-25008 nRF54L15 Module"
-            },
-            {
-              "name": "HOLYIOT-25007 nRF54L15 Module"
-            },
-            {
-              "name": "Generic nRF54L15 Module (36-pad)"
-            }
-          ],
-          "toolsDependencies": [
-            {
-              "packager": "arduino",
-              "name": "arm-none-eabi-gcc",
-              "version": "7-2017q4"
-            },
-            {
-              "packager": "arduino",
-              "name": "openocd",
-              "version": "0.11.0-arduino2"
-            },
-            {
-              "packager": "nrf54l15clean",
-              "name": "nrf54l15hosttools",
-              "version": "1.1.2"
-            }
-          ],
-          "help": {
-            "online": "https://github.com/lolren/nrf54-arduino-core"
-          }
-        },
-        {
-          "name": "nRF54L15 Boards",
-          "architecture": "nrf54l15clean",
-          "version": "0.6.57",
-          "category": "Contributed",
-          "url": "https://github.com/lolren/nrf54-arduino-core/releases/download/v0.6.57/nrf54l15clean-0.6.57-f36154b850a1.tar.bz2",
-          "archiveFileName": "nrf54l15clean-0.6.57-f36154b850a1.tar.bz2",
-          "checksum": "SHA-256:f36154b850a16486ea59dc9ae8cb15ebdd2dfc4383571d49bbdb79eaf2bb2fc1",
-          "size": "2299808",
           "boards": [
             {
               "name": "XIAO nRF54L15 / Sense"

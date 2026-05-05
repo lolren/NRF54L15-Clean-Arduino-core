@@ -34,7 +34,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--tool-version",
-        default="1.1.0",
+        default="1.1.2",
         help="Tool version to verify when --include-tools is set",
     )
     parser.add_argument(

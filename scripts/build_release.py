@@ -300,6 +300,26 @@ def merge_tool(index: dict, tool_entry: dict) -> dict:
     return index
 
 
+def merge_index_entries(base: dict, overlay: dict) -> dict:
+    """Merge platforms/tools from overlay into base, with overlay entries winning."""
+    for platform in overlay.get("packages", [{}])[0].get("platforms", []):
+        if isinstance(platform, dict) and platform.get("version"):
+            base = merge_platform(base, platform)
+    for tool in overlay.get("packages", [{}])[0].get("tools", []):
+        if isinstance(tool, dict) and tool.get("name") and tool.get("version"):
+            base = merge_tool(base, tool)
+    return base
+
+
+def find_tool_entry(index: dict, name: str, version: str) -> dict | None:
+    for tool in index.get("packages", [{}])[0].get("tools", []):
+        if not isinstance(tool, dict):
+            continue
+        if tool.get("name") == name and str(tool.get("version", "")) == version:
+            return json.loads(json.dumps(tool))
+    return None
+
+
 def prune_platforms(index: dict, keep: int) -> dict:
     if keep <= 0:
         return index
@@ -321,7 +341,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dist-dir", default=None, type=Path)
     parser.add_argument("--existing-index", default=None, type=Path)
     parser.add_argument("--archive-index", default=None, type=Path)
-    parser.add_argument("--stable-keep", default=12, type=int)
+    parser.add_argument("--stable-keep", default=16, type=int)
     parser.add_argument(
         "--host-tool-hosts",
         default="",
@@ -336,6 +356,14 @@ def parse_args() -> argparse.Namespace:
         "--skip-host-wheelhouse",
         action="store_true",
         help="Skip downloading offline pyOCD wheelhouses into host-tools archives",
+    )
+    parser.add_argument(
+        "--reuse-existing-hosttools",
+        action="store_true",
+        help=(
+            "Reuse an existing nrf54l15hosttools entry from the package index "
+            "instead of rebuilding/uploading host-tool archives."
+        ),
     )
     parser.add_argument(
         "--include-openthread-core",
@@ -518,67 +546,79 @@ def main() -> int:
         platform_ext,
     )
 
-    host_tools_src = root / "tools" / "board_manager" / HOST_TOOL_NAME
-    if not host_tools_src.is_dir():
-        raise SystemExit(f"Host-tools source directory not found: {host_tools_src}")
-
-    selected_hosts = parse_csv_list(args.host_tool_hosts)
-    host_targets = [entry for entry in HOST_TOOL_HOSTS if not selected_hosts or entry[0] in selected_hosts]
-    if not host_targets:
-        raise SystemExit("No host tool targets selected")
-
-    host_tool_python_versions = parse_csv_list(args.host_tool_python_versions)
-    if not host_tool_python_versions:
-        raise SystemExit("At least one host-tool Python version is required")
-
-    tool_systems = []
-    host_manifests = {}
-    tool_release_entries = []
-    for host, ext in host_targets:
-        temp_tool_archive_path = dist_dir / f".{HOST_TOOL_NAME}-{HOST_TOOL_VERSION}-{host}{ext}"
-        host_manifests[host] = build_host_tool_archive(
-            host_tools_src,
-            temp_tool_archive_path,
-            f"{HOST_TOOL_NAME}-{HOST_TOOL_VERSION}",
-            host=host,
-            python_versions=host_tool_python_versions,
-            skip_wheelhouse=args.skip_host_wheelhouse,
-        )
-        tool_archive_path, tool_archive_name, tool_archive_sha256, tool_archive_size = finalize_content_addressed_archive(
-            temp_tool_archive_path,
-            f"{HOST_TOOL_NAME}-{HOST_TOOL_VERSION}-{host}",
-            ext,
-        )
-        tool_systems.append(
-            make_tool_system_entry(
-                host=host,
-                archive_name=tool_archive_name,
-                archive_url=f"{release_base_url}/{tool_archive_name}",
-                archive_sha256=tool_archive_sha256,
-                archive_size=tool_archive_size,
-            )
-        )
-        tool_release_entries.append(
-            {
-                "name": HOST_TOOL_NAME,
-                "version": HOST_TOOL_VERSION,
-                "host": host,
-                "archiveFileName": tool_archive_name,
-                "archivePath": str(tool_archive_path),
-                "url": f"{release_base_url}/{tool_archive_name}",
-                "checksum": f"SHA-256:{tool_archive_sha256}",
-                "size": tool_archive_size,
-            }
-        )
-
-    tool_entry = {"name": HOST_TOOL_NAME, "version": HOST_TOOL_VERSION, "systems": tool_systems}
-
     full_index_path = args.archive_index.resolve() if args.archive_index else (root / f"package_{args.packager}_archive_index.json")
+    stable_fallback_index_path = args.existing_index.resolve() if args.existing_index else (root / f"package_{args.packager}_index.json")
     if full_index_path.is_file():
         existing_full = load_existing_index(full_index_path, packager=args.packager, repo_url=args.repo_url)
+        if stable_fallback_index_path != full_index_path and stable_fallback_index_path.is_file():
+            existing_stable = load_existing_index(
+                stable_fallback_index_path,
+                packager=args.packager,
+                repo_url=args.repo_url,
+            )
+            existing_full = merge_index_entries(existing_full, existing_stable)
     else:
-        fallback_index = args.existing_index.resolve() if args.existing_index else (root / f"package_{args.packager}_index.json")
-        existing_full = load_existing_index(fallback_index, packager=args.packager, repo_url=args.repo_url)
+        existing_full = load_existing_index(stable_fallback_index_path, packager=args.packager, repo_url=args.repo_url)
+
+    existing_tool_entry = None
+    if args.reuse_existing_hosttools:
+        existing_tool_entry = find_tool_entry(existing_full, HOST_TOOL_NAME, HOST_TOOL_VERSION)
+
+    tool_systems = list(existing_tool_entry.get("systems", [])) if existing_tool_entry else []
+    host_manifests = {}
+    tool_release_entries = []
+    if existing_tool_entry is None:
+        host_tools_src = root / "tools" / "board_manager" / HOST_TOOL_NAME
+        if not host_tools_src.is_dir():
+            raise SystemExit(f"Host-tools source directory not found: {host_tools_src}")
+
+        selected_hosts = parse_csv_list(args.host_tool_hosts)
+        host_targets = [entry for entry in HOST_TOOL_HOSTS if not selected_hosts or entry[0] in selected_hosts]
+        if not host_targets:
+            raise SystemExit("No host tool targets selected")
+
+        host_tool_python_versions = parse_csv_list(args.host_tool_python_versions)
+        if not host_tool_python_versions:
+            raise SystemExit("At least one host-tool Python version is required")
+
+        for host, ext in host_targets:
+            temp_tool_archive_path = dist_dir / f".{HOST_TOOL_NAME}-{HOST_TOOL_VERSION}-{host}{ext}"
+            host_manifests[host] = build_host_tool_archive(
+                host_tools_src,
+                temp_tool_archive_path,
+                f"{HOST_TOOL_NAME}-{HOST_TOOL_VERSION}",
+                host=host,
+                python_versions=host_tool_python_versions,
+                skip_wheelhouse=args.skip_host_wheelhouse,
+            )
+            tool_archive_path, tool_archive_name, tool_archive_sha256, tool_archive_size = finalize_content_addressed_archive(
+                temp_tool_archive_path,
+                f"{HOST_TOOL_NAME}-{HOST_TOOL_VERSION}-{host}",
+                ext,
+            )
+            tool_systems.append(
+                make_tool_system_entry(
+                    host=host,
+                    archive_name=tool_archive_name,
+                    archive_url=f"{release_base_url}/{tool_archive_name}",
+                    archive_sha256=tool_archive_sha256,
+                    archive_size=tool_archive_size,
+                )
+            )
+            tool_release_entries.append(
+                {
+                    "name": HOST_TOOL_NAME,
+                    "version": HOST_TOOL_VERSION,
+                    "host": host,
+                    "archiveFileName": tool_archive_name,
+                    "archivePath": str(tool_archive_path),
+                    "url": f"{release_base_url}/{tool_archive_name}",
+                    "checksum": f"SHA-256:{tool_archive_sha256}",
+                    "size": tool_archive_size,
+                }
+            )
+
+    tool_entry = {"name": HOST_TOOL_NAME, "version": HOST_TOOL_VERSION, "systems": tool_systems}
 
     platform_entry = make_platform_entry(
         platform_name=args.platform_name,
@@ -624,6 +664,9 @@ def main() -> int:
     print(f"platform sha256:  {archive_sha256}")
     print(f"platform size:    {archive_size}")
     for system in tool_systems:
+        if existing_tool_entry is not None:
+            print(f"tool reused:      {system['host']} -> {system['archiveFileName']}")
+            continue
         print(f"tool archive:     {dist_dir / system['archiveFileName']}")
         manifest = host_manifests.get(system["host"], {})
         if manifest.get("python_versions"):
