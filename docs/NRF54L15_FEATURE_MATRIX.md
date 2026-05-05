@@ -246,7 +246,7 @@ fresh compile/install/hardware pass.
 | [ ] | BLE pair/bond smoke | Repeated cross-host evidence. |
 | [ ] | 802.15.4 two-board smoke | Zigbee or Thread radio pair evidence. |
 | [ ] | Thread staged UDP smoke | Two-board `ThreadExperimentalUdpHello` evidence. |
-| [ ] | Matter staged compile smoke | Stage examples compile. |
+| [x] | Matter staged compile smoke | All Matter example folders compile for XIAO with `clean_thread=stage,clean_matter=stage`; loose stale sketch removed. |
 | [ ] | Matter real commission smoke | Commissioner/Home Assistant evidence. |
 | [ ] | Low-power current smoke | Measured current for selected board/profile. |
 | [ ] | VPR lifecycle smoke | VPR restart/hibernate probe evidence. |

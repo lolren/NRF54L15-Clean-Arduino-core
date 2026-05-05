@@ -202,11 +202,6 @@ void digitalToggle(uint8_t pin);
 // Analog I/O
 int analogRead(uint8_t pin);
 
-// LED pin helpers (inline functions placed after digitalWrite declaration)
-#ifdef LED_STATE_ON
-inline void ledOn(uint8_t pin) { digitalWrite(pin, LED_STATE_ON); }
-inline void ledOff(uint8_t pin) { digitalWrite(pin, 1 - LED_STATE_ON); }
-#endif
 void analogReference(uint8_t mode);
 void analogReadResolution(uint8_t bits);
 void analogWriteResolution(uint8_t bits);
@@ -274,6 +269,12 @@ void loop(void);
 
 // Include pin definitions for the active variant
 #include "pins_arduino.h"
+
+// LED pin helpers need the variant macros from pins_arduino.h.
+#ifdef LED_STATE_ON
+inline void ledOn(uint8_t pin) { digitalWrite(pin, LED_STATE_ON); }
+inline void ledOff(uint8_t pin) { digitalWrite(pin, 1 - LED_STATE_ON); }
+#endif
 
 #ifdef __cplusplus
 
