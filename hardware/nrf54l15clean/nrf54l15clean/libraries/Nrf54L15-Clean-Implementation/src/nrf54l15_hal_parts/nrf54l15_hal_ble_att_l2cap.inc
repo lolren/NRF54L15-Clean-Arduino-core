@@ -21,6 +21,93 @@ void BleRadio::clearPreparedWriteState() {
   connectionPreparedWriteMask_ = 0U;
 }
 
+void BleRadio::clearIncomingL2capReassembly() {
+  connectionRxL2capReassemblyActive_ = false;
+  connectionRxL2capReassemblyExpectedLength_ = 0U;
+  connectionRxL2capReassemblyReceivedLength_ = 0U;
+  memset(connectionRxL2capReassemblyBuffer_, 0,
+         sizeof(connectionRxL2capReassemblyBuffer_));
+}
+
+bool BleRadio::assembleIncomingL2capPayload(uint8_t llid,
+                                            const uint8_t* l2capPayload,
+                                            uint8_t l2capPayloadLength,
+                                            bool packetIsNew,
+                                            const uint8_t** outPayload,
+                                            uint8_t* outPayloadLength) {
+  if (l2capPayload == nullptr || outPayload == nullptr ||
+      outPayloadLength == nullptr || l2capPayloadLength == 0U) {
+    return false;
+  }
+
+  *outPayload = nullptr;
+  *outPayloadLength = 0U;
+
+  if (llid == kBlePduDataStartOrComplete) {
+    if (l2capPayloadLength < kBleL2capHeaderLen) {
+      clearIncomingL2capReassembly();
+      return false;
+    }
+
+    if (connectionRxL2capReassemblyActive_) {
+      clearIncomingL2capReassembly();
+    }
+
+    const uint16_t declaredLength = readLe16(&l2capPayload[0]);
+    const uint16_t totalLength =
+        static_cast<uint16_t>(kBleL2capHeaderLen + declaredLength);
+    if (totalLength <= l2capPayloadLength) {
+      *outPayload = l2capPayload;
+      *outPayloadLength = static_cast<uint8_t>(totalLength);
+      return true;
+    }
+
+    if (!packetIsNew || totalLength > sizeof(connectionRxL2capReassemblyBuffer_)) {
+      return false;
+    }
+
+    memcpy(connectionRxL2capReassemblyBuffer_, l2capPayload, l2capPayloadLength);
+    connectionRxL2capReassemblyActive_ = true;
+    connectionRxL2capReassemblyExpectedLength_ = totalLength;
+    connectionRxL2capReassemblyReceivedLength_ = l2capPayloadLength;
+    emitBleTrace("L2CAP_FRAG_START");
+    return false;
+  }
+
+  if (llid != 0x01U || !connectionRxL2capReassemblyActive_) {
+    return false;
+  }
+
+  if (!packetIsNew) {
+    return false;
+  }
+
+  const uint16_t received = connectionRxL2capReassemblyReceivedLength_;
+  const uint16_t expected = connectionRxL2capReassemblyExpectedLength_;
+  if ((received >= expected) || (received < kBleL2capHeaderLen)) {
+    clearIncomingL2capReassembly();
+    return false;
+  }
+
+  const uint16_t remaining = static_cast<uint16_t>(expected - received);
+  const uint16_t copyLength = minU16(remaining, l2capPayloadLength);
+  memcpy(&connectionRxL2capReassemblyBuffer_[received], l2capPayload, copyLength);
+  connectionRxL2capReassemblyReceivedLength_ =
+      static_cast<uint16_t>(received + copyLength);
+  emitBleTrace("L2CAP_FRAG_CONT");
+  if (connectionRxL2capReassemblyReceivedLength_ < expected) {
+    return false;
+  }
+
+  *outPayload = connectionRxL2capReassemblyBuffer_;
+  *outPayloadLength = static_cast<uint8_t>(expected);
+  connectionRxL2capReassemblyActive_ = false;
+  connectionRxL2capReassemblyExpectedLength_ = 0U;
+  connectionRxL2capReassemblyReceivedLength_ = 0U;
+  emitBleTrace("L2CAP_FRAG_DONE");
+  return true;
+}
+
 bool BleRadio::applyCccdState(uint16_t handle, uint16_t cccd) {
   if (handle == kHandleGattServiceChangedCccd) {
     if ((cccd & ~0x0002U) != 0U) {
@@ -1056,6 +1143,8 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
             (handle == kHandleGattServiceChangedCccd) ||
             (handle == kHandleBatteryLevelCccd) ||
             (findCustomCharacteristicByCccdHandle(handle) != nullptr);
+        const bool isCustomValueHandle =
+            (findCustomCharacteristicByValueHandle(handle) != nullptr);
         if (isCccdHandle && valueLen == 2U) {
           const uint16_t cccd = readLe16(&attRequest[3]);
           if (applyCccdState(handle, cccd)) {
@@ -1063,6 +1152,18 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
                 connectionPreparedWriteHandle_ == handle) {
               clearPreparedWriteState();
             }
+          }
+        } else if (isCustomValueHandle) {
+          if (connectionPreparedWriteActive_ &&
+              connectionPreparedWriteHandle_ == handle) {
+            clearPreparedWriteState();
+          }
+          if (!enqueueDeferredGattWrite(&BleRadio::deferredCustomGattPeerWriteCallback,
+                                        this, handle, value,
+                                        static_cast<uint8_t>(valueLen), false)) {
+            uint8_t ignoredError = kAttErrWriteNotPermitted;
+            writeCustomGattCharacteristic(handle, value, valueLen, false,
+                                         &ignoredError);
           }
         } else {
           uint8_t ignoredError = kAttErrWriteNotPermitted;
@@ -1099,33 +1200,40 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
   }
 }
 
-bool BleRadio::buildL2capResponse(const uint8_t* l2capPayload,
+bool BleRadio::buildL2capResponse(uint8_t llid, const uint8_t* l2capPayload,
                                   uint8_t l2capPayloadLength,
-                                  uint8_t* outPayload,
+                                  bool packetIsNew, uint8_t* outPayload,
                                   uint8_t* outPayloadLength) {
-  if (l2capPayload == nullptr || l2capPayloadLength < kBleL2capHeaderLen) {
+  const uint8_t* assembledPayload = nullptr;
+  uint8_t assembledLength = 0U;
+  if (!assembleIncomingL2capPayload(llid, l2capPayload, l2capPayloadLength,
+                                    packetIsNew, &assembledPayload,
+                                    &assembledLength)) {
     return false;
   }
 
-  const uint16_t cid = readLe16(&l2capPayload[2]);
+  if (assembledPayload == nullptr || assembledLength < kBleL2capHeaderLen) {
+    return false;
+  }
+
+  const uint16_t cid = readLe16(&assembledPayload[2]);
   const bool smpPairingHandshakeActive =
-      (smpPairingState_ == kSmpPairingStateRspSent) ||
-      (smpPairingState_ == kSmpPairingStateConfirmSent);
+      (smpPairingState_ != kSmpPairingStateIdle) && !connectionEncSessionValid_;
   if (cid == kBleL2capCidAtt) {
     // During SMP confirm exchange, prioritize security-channel traffic and keep
     // ATT off the data path to reduce retransmission churn.
     if (smpPairingHandshakeActive) {
       return false;
     }
-    return buildL2capAttResponse(l2capPayload, l2capPayloadLength, outPayload,
+    return buildL2capAttResponse(assembledPayload, assembledLength, outPayload,
                                  outPayloadLength);
   }
   if (cid == kBleL2capCidLeSignaling) {
-    return buildL2capSignalingResponse(l2capPayload, l2capPayloadLength,
+    return buildL2capSignalingResponse(assembledPayload, assembledLength,
                                        outPayload, outPayloadLength);
   }
   if (cid == kBleL2capCidSmp) {
-    return buildL2capSmpResponse(l2capPayload, l2capPayloadLength,
+    return buildL2capSmpResponse(assembledPayload, assembledLength,
                                  outPayload, outPayloadLength);
   }
   return false;
@@ -1287,26 +1395,36 @@ bool BleRadio::buildL2capSmpResponse(const uint8_t* l2capPayload,
   const uint8_t smpCode = smp[0];
 
   auto buildSmpResponse = [&](const uint8_t* smpData, uint8_t smpDataLen) -> bool {
-    if (smpData == nullptr || smpDataLen == 0U) {
-      return false;
-    }
-    if ((kBleL2capHeaderLen + smpDataLen) > kBleDataPduMaxPayload) {
-      return false;
-    }
-    writeLe16(&outPayload[0], smpDataLen);
-    writeLe16(&outPayload[2], kBleL2capCidSmp);
-    memcpy(&outPayload[kBleL2capHeaderLen], smpData, smpDataLen);
-    *outPayloadLength = static_cast<uint8_t>(kBleL2capHeaderLen + smpDataLen);
-    return true;
+    return buildSmpL2capResponse(smpData, smpDataLen, outPayload,
+                                 outPayloadLength);
   };
   auto buildSmpPairingFailed = [&](uint8_t reason) -> bool {
+    latchSecureConnectionsDebugState();
     clearConnectionSecurityState();
     uint8_t failed[2] = {kSmpCodePairingFailed, reason};
     emitBleTrace("SMP_PAIRING_FAILED");
     return buildSmpResponse(failed, sizeof(failed));
   };
+  auto prepareLocalPairingRandom = [&]() -> bool {
+    const uint32_t seed = micros() ^ connectionAccessAddress_ ^
+                          static_cast<uint32_t>(connectionEventCounter_ << 16U);
+    if (smpPrefetchedLocalRandomValid_) {
+      memcpy(smpLocalRandom_, smpPrefetchedLocalRandom_, sizeof(smpLocalRandom_));
+      smpPrefetchedLocalRandomValid_ = false;
+      ++encDebug_.encRandomPrefetchUseCount;
+      return true;
+    }
+    if (fillBleSecurityRandomBytes(smpLocalRandom_, sizeof(smpLocalRandom_),
+                                   seed, kBleSecurityRandomSpinLimit)) {
+      ++encDebug_.encRandomHardwareCount;
+      return true;
+    }
+    ++encDebug_.encRandomFallbackCount;
+    return true;
+  };
 
   if (smpCode == kSmpCodePairingFailed) {
+    latchSecureConnectionsDebugState();
     clearConnectionSecurityState();
     emitBleTrace("SMP_PAIRING_FAILED_RX");
     return false;
@@ -1316,6 +1434,14 @@ bool BleRadio::buildL2capSmpResponse(const uint8_t* l2capPayload,
     case kSmpCodePairingRequest: {
       if (smpLength != kSmpPairingRequestLen) {
         return buildSmpPairingFailed(kSmpReasonInvalidParameters);
+      }
+      if (!smpLocalInitiator_ && smpPairingState_ != kSmpPairingStateIdle) {
+        if (memcmp(smpPairingReq_, smp, kSmpPairingRequestLen) == 0 &&
+            smpPairingState_ >= kSmpPairingStateRspSent) {
+          emitBleTrace("SMP_PAIRING_REQUEST_RETRY");
+          return buildSmpResponse(smpPairingRsp_, kSmpPairingResponseLen);
+        }
+        return buildSmpPairingFailed(kSmpReasonUnspecified);
       }
 
       const uint8_t oobFlag = smp[2];
@@ -1336,6 +1462,7 @@ bool BleRadio::buildL2capSmpResponse(const uint8_t* l2capPayload,
         emitBleTrace("BOND_REPLACED");
       }
       memcpy(smpPairingReq_, smp, kSmpPairingRequestLen);
+      smpLocalInitiator_ = false;
       smpPairingRsp_[0] = kSmpCodePairingResponse;
       smpPairingRsp_[1] = kSmpIoCapNoInputNoOutput;
       smpPairingRsp_[2] = 0x00U;
@@ -1347,18 +1474,41 @@ bool BleRadio::buildL2capSmpResponse(const uint8_t* l2capPayload,
       smpPairingRsp_[3] = (peerBonding != 0U) ? 0x01U : 0x00U;
       smpBondingRequested_ = (peerBonding != 0U);
       smpPairingRsp_[4] = maxKeySize;
-      smpPairingRsp_[5] = smpBondingRequested_
-                              ? static_cast<uint8_t>(
-                                    smp[5] &
-                                    static_cast<uint8_t>(kSmpKeyDistEncKeyMask |
-                                                         kSmpKeyDistIdKeyMask))
-                              : 0x00U;
-      smpPairingRsp_[6] = 0x00U;
-      smpExpectInitiatorEncKey_ = ((smpPairingRsp_[5] & kSmpKeyDistEncKeyMask) != 0U);
+      uint8_t initiatorKeyDist = 0x00U;
+      uint8_t responderKeyDist = 0x00U;
+      if (smpBondingRequested_) {
+        initiatorKeyDist = static_cast<uint8_t>(
+            smp[5] &
+            static_cast<uint8_t>(kSmpKeyDistEncKeyMask |
+                                 kSmpKeyDistIdKeyMask |
+                                 kSmpKeyDistSignKeyMask));
+        responderKeyDist = static_cast<uint8_t>(
+            smp[6] &
+            static_cast<uint8_t>(kSmpKeyDistEncKeyMask |
+                                 kSmpKeyDistIdKeyMask |
+                                 kSmpKeyDistSignKeyMask));
+      }
+      if (peerRequestedSecureConnections) {
+        smpSecureConnectionsActive_ = true;
+        smpPairingRsp_[3] |= kSmpAuthReqSecureConnectionsMask;
+        initiatorKeyDist &= static_cast<uint8_t>(kSmpKeyDistIdKeyMask |
+                                                 kSmpKeyDistSignKeyMask);
+        responderKeyDist &= static_cast<uint8_t>(kSmpKeyDistIdKeyMask |
+                                                 kSmpKeyDistSignKeyMask);
+      }
+      smpPairingRsp_[5] = initiatorKeyDist;
+      smpPairingRsp_[6] = responderKeyDist;
+      smpExpectInitiatorEncKey_ = peerRequestedSecureConnections
+                                      ? false
+                                      : ((smpPairingRsp_[5] &
+                                          kSmpKeyDistEncKeyMask) != 0U);
       smpExpectInitiatorIdKey_ = ((smpPairingRsp_[5] & kSmpKeyDistIdKeyMask) != 0U);
       smpKeySize_ = maxKeySize;
       if (peerRequestedSecureConnections) {
-        emitBleTrace("SMP_LESC_REQUEST_LEGACY_FALLBACK");
+        if (!ensureSecureConnectionsLocalKeypair()) {
+          return buildSmpPairingFailed(kSmpReasonUnspecified);
+        }
+        emitBleTrace("SMP_SC_REQUEST_RX");
       }
       if (peerRequestedMitm) {
         emitBleTrace("SMP_MITM_REQUEST_NO_IO_FALLBACK");
@@ -1366,42 +1516,127 @@ bool BleRadio::buildL2capSmpResponse(const uint8_t* l2capPayload,
 
       // Precompute local confirm material here so confirm/random stages avoid
       // repeated AES work while servicing tight connection events.
-      const uint32_t seed = micros() ^ connectionAccessAddress_ ^
-                            static_cast<uint32_t>(connectionEventCounter_ << 16U);
-      if (smpPrefetchedLocalRandomValid_) {
-        memcpy(smpLocalRandom_, smpPrefetchedLocalRandom_, sizeof(smpLocalRandom_));
-        smpPrefetchedLocalRandomValid_ = false;
-        ++encDebug_.encRandomPrefetchUseCount;
-      } else if (fillBleSecurityRandomBytes(smpLocalRandom_,
-                                            sizeof(smpLocalRandom_), seed,
-                                            kBleSecurityRandomSpinLimit)) {
-        ++encDebug_.encRandomHardwareCount;
-      } else {
-        ++encDebug_.encRandomFallbackCount;
-      }
-      const uint8_t tk[16] = {0};
-      const uint8_t iat = connectionPeerAddressRandom_ ? 0x01U : 0x00U;
-      const uint8_t rat =
-          (addressType_ == BleAddressType::kRandomStatic) ? 0x01U : 0x00U;
-      if (!smpC1(tk, smpLocalRandom_, smpPairingReq_, smpPairingRsp_, iat,
-                 connectionPeerAddress_, rat, address_, smpLocalConfirm_)) {
+      if (!prepareLocalPairingRandom()) {
         return buildSmpPairingFailed(kSmpReasonUnspecified);
+      }
+      if (!peerRequestedSecureConnections) {
+        const uint8_t tk[16] = {0};
+        const uint8_t iat = connectionPeerAddressRandom_ ? 0x01U : 0x00U;
+        const uint8_t rat =
+            (addressType_ == BleAddressType::kRandomStatic) ? 0x01U : 0x00U;
+        if (!smpC1(tk, smpLocalRandom_, smpPairingReq_, smpPairingRsp_, iat,
+                   connectionPeerAddress_, rat, address_, smpLocalConfirm_)) {
+          return buildSmpPairingFailed(kSmpReasonUnspecified);
+        }
       }
 
       smpPairingState_ = kSmpPairingStateRspSent;
       emitBleTrace("SMP_PAIRING_REQUEST_RX");
+      emitBleTrace("SMP_PAIRING_RESPONSE_TX");
       return buildSmpResponse(smpPairingRsp_, kSmpPairingResponseLen);
+    }
+
+    case kSmpCodePairingPublicKey: {
+      if (smpLength != kSmpPairingPublicKeyLen) {
+        return buildSmpPairingFailed(kSmpReasonInvalidParameters);
+      }
+      if (!smpSecureConnectionsActive_ ||
+          smpPairingState_ != kSmpPairingStateRspSent) {
+        return buildSmpPairingFailed(kSmpReasonUnspecified);
+      }
+
+      uint8_t peerPublicKeyWire[65] = {0};
+      peerPublicKeyWire[0] = 0x04U;
+      memcpy(&peerPublicKeyWire[1], &smp[1], 64U);
+      uint8_t peerPublicKeyInternalLe[65] = {0};
+      bool wireBigEndian = false;
+      Secp256r1Point peerPoint{};
+      if (!decodeSecureConnectionsPublicKeyToInternalLe(
+              peerPublicKeyWire, peerPublicKeyInternalLe, &wireBigEndian,
+              &peerPoint)) {
+        emitBleTrace("SMP_SC_PUBKEY_INVALID");
+        return buildSmpPairingFailed(kSmpReasonDhKeyCheckFailed);
+      }
+
+      memcpy(smpSecureConnectionsPeerPublicKey_, peerPublicKeyInternalLe,
+             sizeof(smpSecureConnectionsPeerPublicKey_));
+      smpSecureConnectionsWireFormatBigEndian_ = wireBigEndian;
+      smpSecureConnectionsPeerPublicKeyValid_ = true;
+      smpSecureConnectionsDhKeyReady_ = false;
+      smpSecureConnectionsLocalConfirmReady_ = false;
+      smpSecureConnectionsCheckValuesReady_ = false;
+      smpSecureConnectionsReceivedDhKeyCheckValid_ = false;
+      smpSecureConnectionsDeferredDhKeyCheck_ = false;
+      memset(smpSecureConnectionsReceivedDhKeyCheck_, 0,
+             sizeof(smpSecureConnectionsReceivedDhKeyCheck_));
+
+      if (memcmp(&smpSecureConnectionsPeerPublicKey_[1],
+                 &smpSecureConnectionsPublicKey_[1], 32U) == 0) {
+        emitBleTrace("SMP_SC_PUBKEY_REJECTED");
+        return buildSmpPairingFailed(kSmpReasonUnspecified);
+      }
+
+      emitBleTrace("SMP_SC_PUBKEY_RX");
+      if (smpLocalInitiator_) {
+        smpSecureConnectionsDeferredConfirm_ =
+            secureConnectionsInitiatorTransmitsConfirm();
+        if (!smpSecureConnectionsPublicKeySent_) {
+          smpSecureConnectionsDeferredPublicKey_ = true;
+        }
+        return false;
+      }
+
+      smpSecureConnectionsDeferredPublicKey_ = true;
+      smpSecureConnectionsDeferredConfirm_ =
+          !secureConnectionsInitiatorTransmitsConfirm();
+      return false;
     }
 
     case kSmpCodePairingConfirm: {
       if (smpLength != kSmpPairingConfirmLen) {
         return buildSmpPairingFailed(kSmpReasonInvalidParameters);
       }
-      if (smpPairingState_ != kSmpPairingStateRspSent) {
+      const bool expectingResponderConfirm =
+          smpLocalInitiator_ &&
+          (smpPairingState_ == kSmpPairingStateConfirmSent);
+      if (smpPairingState_ != kSmpPairingStateRspSent &&
+          !expectingResponderConfirm) {
         return buildSmpPairingFailed(kSmpReasonUnspecified);
       }
 
       memcpy(smpPeerConfirm_, &smp[1], sizeof(smpPeerConfirm_));
+      if (smpSecureConnectionsActive_) {
+        if (!smpSecureConnectionsPeerPublicKeyValid_ ||
+            !smpSecureConnectionsPublicKeySent_) {
+          return buildSmpPairingFailed(kSmpReasonUnspecified);
+        }
+        if (!computeSecureConnectionsLocalConfirm()) {
+          return buildSmpPairingFailed(kSmpReasonUnspecified);
+        }
+
+        emitBleTrace("SMP_SC_CONFIRM_RX");
+        if (smpLocalInitiator_) {
+          smpSecureConnectionsDeferredRandom_ = true;
+          return false;
+        }
+        if (smpSecureConnectionsConfirmSent_) {
+          smpPairingState_ = kSmpPairingStateConfirmSent;
+          return false;
+        }
+
+        smpSecureConnectionsDeferredConfirm_ = true;
+        return false;
+      }
+
+      if (smpLocalInitiator_) {
+        uint8_t localRandom[17] = {0};
+        localRandom[0] = kSmpCodePairingRandom;
+        memcpy(&localRandom[1], smpLocalRandom_, sizeof(smpLocalRandom_));
+        smpPairingState_ = kSmpPairingStateRandomSent;
+        emitBleTrace("SMP_CONFIRM_RX");
+        return buildSmpResponse(localRandom, sizeof(localRandom));
+      }
+
       uint8_t localConfirm[17] = {0};
       localConfirm[0] = kSmpCodePairingConfirm;
       memcpy(&localConfirm[1], smpLocalConfirm_, sizeof(smpLocalConfirm_));
@@ -1414,11 +1649,68 @@ bool BleRadio::buildL2capSmpResponse(const uint8_t* l2capPayload,
       if (smpLength != kSmpPairingRandomLen) {
         return buildSmpPairingFailed(kSmpReasonInvalidParameters);
       }
-      if (smpPairingState_ != kSmpPairingStateConfirmSent) {
+      if (!smpLocalInitiator_ &&
+          smpSecureConnectionsActive_ &&
+          smpSecureConnectionsRandomSent_ &&
+          (smpPairingState_ == kSmpPairingStateRandomSent) &&
+          (memcmp(smpPeerRandom_, &smp[1], sizeof(smpPeerRandom_)) == 0)) {
+        uint8_t localRandom[17] = {0};
+        localRandom[0] = kSmpCodePairingRandom;
+        memcpy(&localRandom[1], smpLocalRandom_, sizeof(smpLocalRandom_));
+        emitBleTrace("SMP_SC_RANDOM_RETRY");
+        emitBleTrace("SMP_SC_RANDOM_TX");
+        return buildSmpResponse(localRandom, sizeof(localRandom));
+      }
+      const bool expectingResponderRandom =
+          smpLocalInitiator_ &&
+          (smpPairingState_ == kSmpPairingStateRandomSent);
+      if (smpPairingState_ != kSmpPairingStateConfirmSent &&
+          !expectingResponderRandom) {
         return buildSmpPairingFailed(kSmpReasonUnspecified);
       }
 
       memcpy(smpPeerRandom_, &smp[1], sizeof(smpPeerRandom_));
+      if (smpSecureConnectionsActive_) {
+        const bool requireLocalConfirmSent =
+            !smpLocalInitiator_ || secureConnectionsInitiatorTransmitsConfirm();
+        if (requireLocalConfirmSent && !smpSecureConnectionsConfirmSent_) {
+          return buildSmpPairingFailed(kSmpReasonUnspecified);
+        }
+
+        if (smpLocalInitiator_ || secureConnectionsResponderVerifiesRandom()) {
+          uint8_t expectedRemoteConfirm[16] = {0};
+          if (!bleSecureConnectionsF4(&smpSecureConnectionsPeerPublicKey_[1],
+                                      &smpSecureConnectionsPublicKey_[1],
+                                      smpPeerRandom_, 0U,
+                                      expectedRemoteConfirm)) {
+            return buildSmpPairingFailed(kSmpReasonUnspecified);
+          }
+          if (memcmp(expectedRemoteConfirm, smpPeerConfirm_,
+                     sizeof(smpPeerConfirm_)) != 0) {
+            return buildSmpPairingFailed(kSmpReasonConfirmValueFailed);
+          }
+        }
+
+        emitBleTrace("SMP_SC_RANDOM_RX");
+        if (smpLocalInitiator_) {
+          smpSecureConnectionsDeferredDhKeyCheck_ = true;
+          return false;
+        }
+        if (smpSecureConnectionsRandomSent_) {
+          smpPairingState_ = kSmpPairingStateRandomSent;
+          return false;
+        }
+
+        uint8_t localRandom[17] = {0};
+        localRandom[0] = kSmpCodePairingRandom;
+        memcpy(&localRandom[1], smpLocalRandom_, sizeof(smpLocalRandom_));
+        smpSecureConnectionsRandomSent_ = true;
+        smpSecureConnectionsDeferredDhKeyCheck_ = true;
+        smpPairingState_ = kSmpPairingStateRandomSent;
+        emitBleTrace("SMP_SC_RANDOM_TX");
+        return buildSmpResponse(localRandom, sizeof(localRandom));
+      }
+
       const uint8_t tk[16] = {0};
       const uint8_t iat = connectionPeerAddressRandom_ ? 0x01U : 0x00U;
       const uint8_t rat =
@@ -1431,6 +1723,16 @@ bool BleRadio::buildL2capSmpResponse(const uint8_t* l2capPayload,
 
       if (memcmp(expectedRemoteConfirm, smpPeerConfirm_, sizeof(smpPeerConfirm_)) != 0) {
         return buildSmpPairingFailed(kSmpReasonConfirmValueFailed);
+      }
+
+      if (smpLocalInitiator_) {
+        if (!smpS1(tk, smpPeerRandom_, smpLocalRandom_, smpStk_)) {
+          return buildSmpPairingFailed(kSmpReasonUnspecified);
+        }
+        smpStkValid_ = true;
+        memcpy(encDebug_.encLastStk, smpStk_, sizeof(encDebug_.encLastStk));
+        emitBleTrace("SMP_RANDOM_RX");
+        return false;
       }
 
       // STK = s1(TK, Srand, Mrand) per BLE spec Vol 3 Part H §2.2.4.
@@ -1447,6 +1749,56 @@ bool BleRadio::buildL2capSmpResponse(const uint8_t* l2capPayload,
       smpPairingState_ = kSmpPairingStateRandomSent;
       emitBleTrace("SMP_RANDOM_RX");
       return buildSmpResponse(localRandom, sizeof(localRandom));
+    }
+
+    case kSmpCodeDhKeyCheck: {
+      if (smpLength != kSmpDhKeyCheckLen) {
+        return buildSmpPairingFailed(kSmpReasonInvalidParameters);
+      }
+      if (!smpSecureConnectionsActive_ || !smpSecureConnectionsRandomSent_) {
+        return buildSmpPairingFailed(kSmpReasonUnspecified);
+      }
+      memcpy(smpSecureConnectionsReceivedDhKeyCheck_, &smp[1],
+             sizeof(smpSecureConnectionsReceivedDhKeyCheck_));
+      smpSecureConnectionsReceivedDhKeyCheckValid_ = true;
+      if (!smpSecureConnectionsCheckValuesReady_) {
+        smpSecureConnectionsDeferredDhKeyCheck_ = true;
+        emitBleTrace("SMP_SC_DHKEY_CHECK_DEFERRED");
+        return false;
+      }
+      if (memcmp(&smp[1], smpSecureConnectionsPeerDhKeyCheck_,
+                 sizeof(smpSecureConnectionsPeerDhKeyCheck_)) != 0) {
+        return buildSmpPairingFailed(kSmpReasonDhKeyCheckFailed);
+      }
+      if (smpLocalInitiator_) {
+        smpSecureConnectionsDeferredDhKeyCheck_ = false;
+        smpSecureConnectionsReceivedDhKeyCheckValid_ = false;
+        if (smpBondingRequested_ && !smpExpectInitiatorIdKey_) {
+          BleBondRecord record{};
+          if (buildCurrentBondRecord(&record)) {
+            persistBondRecord(record);
+          }
+        }
+        emitBleTrace("SMP_SC_DHKEY_CHECK_RX");
+        return false;
+      }
+
+      uint8_t localDhKeyCheck[kSmpDhKeyCheckLen] = {0};
+      localDhKeyCheck[0] = kSmpCodeDhKeyCheck;
+      memcpy(&localDhKeyCheck[1], smpSecureConnectionsLocalDhKeyCheck_,
+             sizeof(smpSecureConnectionsLocalDhKeyCheck_));
+      smpSecureConnectionsDeferredDhKeyCheck_ = false;
+      smpSecureConnectionsReceivedDhKeyCheckValid_ = false;
+      smpSecureConnectionsDhKeyCheckSent_ = true;
+      if (smpBondingRequested_ && !smpExpectInitiatorIdKey_) {
+        BleBondRecord record{};
+        if (buildCurrentBondRecord(&record)) {
+          persistBondRecord(record);
+        }
+      }
+      emitBleTrace("SMP_SC_DHKEY_CHECK_RX");
+      emitBleTrace("SMP_SC_DHKEY_CHECK_TX");
+      return buildSmpResponse(localDhKeyCheck, sizeof(localDhKeyCheck));
     }
 
     case kSmpCodeEncryptionInformation:
@@ -1528,23 +1880,113 @@ bool BleRadio::buildL2capSmpResponse(const uint8_t* l2capPayload,
       if (smpLength != kSmpPairingResponseLen) {
         return buildSmpPairingFailed(kSmpReasonInvalidParameters);
       }
-      return buildSmpPairingFailed(kSmpReasonCommandNotSupported);
+      if (!smpLocalInitiator_) {
+        return buildSmpPairingFailed(kSmpReasonCommandNotSupported);
+      }
+      if (smpPairingState_ != kSmpPairingStateReqSent) {
+        if (memcmp(smpPairingRsp_, smp, kSmpPairingResponseLen) != 0) {
+          return buildSmpPairingFailed(kSmpReasonCommandNotSupported);
+        }
+        if (smpSecureConnectionsActive_) {
+          if (smpSecureConnectionsPublicKeySent_) {
+            return false;
+          }
+          smpSecureConnectionsWireFormatBigEndian_ = true;
+          uint8_t localPublicKey[kSmpPairingPublicKeyLen] = {0};
+          buildSecureConnectionsWirePublicKeyFromInternalLe(
+              smpSecureConnectionsPublicKey_,
+              smpSecureConnectionsWireFormatBigEndian_, localPublicKey);
+          localPublicKey[0] = kSmpCodePairingPublicKey;
+          smpSecureConnectionsPublicKeySent_ = true;
+          return buildSmpResponse(localPublicKey, sizeof(localPublicKey));
+        }
+        if (smpPairingState_ == kSmpPairingStateRandomSent) {
+          return false;
+        }
+        uint8_t localConfirm[17] = {0};
+        localConfirm[0] = kSmpCodePairingConfirm;
+        memcpy(&localConfirm[1], smpLocalConfirm_, sizeof(smpLocalConfirm_));
+        return buildSmpResponse(localConfirm, sizeof(localConfirm));
+      }
+      memcpy(smpPairingRsp_, smp, kSmpPairingResponseLen);
+      smpBondingRequested_ =
+          ((smpPairingReq_[3] & kSmpAuthReqBondingMask) != 0U) &&
+          ((smpPairingRsp_[3] & kSmpAuthReqBondingMask) != 0U);
+      smpSecureConnectionsActive_ =
+          ((smpPairingReq_[3] & kSmpAuthReqSecureConnectionsMask) != 0U) &&
+          ((smpPairingRsp_[3] & kSmpAuthReqSecureConnectionsMask) != 0U);
+      smpKeySize_ =
+          (smpPairingRsp_[4] < smpPairingReq_[4]) ? smpPairingRsp_[4]
+                                                  : smpPairingReq_[4];
+      smpExpectInitiatorEncKey_ = smpSecureConnectionsActive_
+                                      ? false
+                                      : ((smpPairingRsp_[6] &
+                                          kSmpKeyDistEncKeyMask) != 0U);
+      smpExpectInitiatorIdKey_ =
+          ((smpPairingRsp_[6] & kSmpKeyDistIdKeyMask) != 0U);
+      if (!prepareLocalPairingRandom()) {
+        return buildSmpPairingFailed(kSmpReasonUnspecified);
+      }
+      smpPairingState_ = kSmpPairingStateRspSent;
+      emitBleTrace("SMP_PAIRING_RESPONSE_RX");
+      if (smpSecureConnectionsActive_) {
+        smpSecureConnectionsWireFormatBigEndian_ = true;
+        uint8_t localPublicKey[kSmpPairingPublicKeyLen] = {0};
+        buildSecureConnectionsWirePublicKeyFromInternalLe(
+            smpSecureConnectionsPublicKey_,
+            smpSecureConnectionsWireFormatBigEndian_, localPublicKey);
+        localPublicKey[0] = kSmpCodePairingPublicKey;
+        smpSecureConnectionsPublicKeySent_ = true;
+        return buildSmpResponse(localPublicKey, sizeof(localPublicKey));
+      }
+
+      {
+        const uint8_t tk[16] = {0};
+        const uint8_t iat =
+            (addressType_ == BleAddressType::kRandomStatic) ? 0x01U : 0x00U;
+        const uint8_t rat = connectionPeerAddressRandom_ ? 0x01U : 0x00U;
+        if (!smpC1(tk, smpLocalRandom_, smpPairingReq_, smpPairingRsp_, iat,
+                   address_, rat, connectionPeerAddress_, smpLocalConfirm_)) {
+          return buildSmpPairingFailed(kSmpReasonUnspecified);
+        }
+        uint8_t localConfirm[17] = {0};
+        localConfirm[0] = kSmpCodePairingConfirm;
+        memcpy(&localConfirm[1], smpLocalConfirm_, sizeof(smpLocalConfirm_));
+        smpPairingState_ = kSmpPairingStateConfirmSent;
+        emitBleTrace("SMP_CONFIRM_TX");
+        return buildSmpResponse(localConfirm, sizeof(localConfirm));
+      }
 
     case kSmpCodeSecurityRequest:
       if (smpLength != 2U) {
         return buildSmpPairingFailed(kSmpReasonInvalidParameters);
       }
-      // Peripheral requests pairing → initiate as central
       if (smpPairingState_ == kSmpPairingStateIdle) {
-        uint8_t pairingReq[kSmpPairingRequestLen];
+        uint8_t pairingReq[kSmpPairingRequestLen] = {0};
+        const uint8_t peerAuthReq = smp[1];
         pairingReq[0] = kSmpCodePairingRequest;
         pairingReq[1] = kSmpIoCapNoInputNoOutput;
-        pairingReq[2] = 0x00U; // OOB not supported
-        pairingReq[3] = 0x01U; // Bonding requested
-        pairingReq[4] = 16U;   // Max encryption key size
-        pairingReq[5] = kSmpKeyDistEncKeyMask | kSmpKeyDistIdKeyMask;
-        pairingReq[6] = kSmpKeyDistEncKeyMask | kSmpKeyDistIdKeyMask;
-        smpBondingRequested_ = true;
+        pairingReq[2] = 0x00U;
+        pairingReq[3] =
+            ((peerAuthReq & kSmpAuthReqBondingMask) != 0U) ? 0x01U : 0x00U;
+        if ((peerAuthReq & kSmpAuthReqSecureConnectionsMask) != 0U) {
+          pairingReq[3] |= kSmpAuthReqSecureConnectionsMask;
+          pairingReq[5] = kSmpKeyDistIdKeyMask | kSmpKeyDistSignKeyMask;
+          pairingReq[6] = kSmpKeyDistIdKeyMask | kSmpKeyDistSignKeyMask;
+        } else {
+          pairingReq[5] = kSmpKeyDistEncKeyMask | kSmpKeyDistIdKeyMask;
+          pairingReq[6] = kSmpKeyDistEncKeyMask | kSmpKeyDistIdKeyMask;
+        }
+        pairingReq[4] = 16U;
+        memcpy(smpPairingReq_, pairingReq, sizeof(smpPairingReq_));
+        smpLocalInitiator_ = true;
+        smpBondingRequested_ =
+            ((pairingReq[3] & kSmpAuthReqBondingMask) != 0U);
+        smpSecureConnectionsActive_ =
+            ((pairingReq[3] & kSmpAuthReqSecureConnectionsMask) != 0U);
+        smpPairingState_ = kSmpPairingStateReqSent;
+        emitBleTrace("SMP_SECURITY_REQUEST_RX");
+        emitBleTrace("SMP_PAIRING_REQUEST_TX");
         return buildSmpResponse(pairingReq, kSmpPairingRequestLen);
       }
       return false;

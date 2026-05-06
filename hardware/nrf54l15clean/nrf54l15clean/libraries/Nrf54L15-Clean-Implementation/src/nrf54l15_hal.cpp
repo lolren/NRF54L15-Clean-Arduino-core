@@ -2,6 +2,7 @@
 #include "nrf54l15_hal_board_policy_internal.h"
 #include "nrf54l15_hal_support_internal.h"
 #include "nrf54l15_hal_timebase_internal.h"
+#include "matter_secp256r1.h"
 
 #include <Arduino.h>
 #include <string.h>
@@ -14,6 +15,12 @@ class I2sTx;
 class I2sRx;
 class I2sDuplex;
 class Pwm;
+
+static bool decodeSecureConnectionsPublicKeyToInternalLe(
+    const uint8_t wirePublicKey[65], uint8_t outInternalLe[65],
+    bool* outWireBigEndian, Secp256r1Point* outPoint);
+static void buildSecureConnectionsWirePublicKeyFromInternalLe(
+    const uint8_t internalLe[65], bool wireBigEndian, uint8_t outWireKey[65]);
 }
 
 namespace {
@@ -71,6 +78,26 @@ int32_t pwmIrqNumberForBase(uint32_t base) {
 #include "nrf54l15_hal_parts/nrf54l15_hal_ble_att_l2cap.inc"
 #include "nrf54l15_hal_parts/nrf54l15_hal_ble_ll_security.inc"
 #include "nrf54l15_hal_parts/nrf54l15_hal_ble_radio_tail.inc"
+
+namespace {
+
+constexpr uint32_t kBleSecp256r1CooperateSpinLimit = 0UL;
+
+}  // namespace
+
+extern "C" void nrf54l15_secp256r1_cooperate_hook(void) {
+  if (g_activeBleRadio != nullptr) {
+    ++g_activeBleRadio->smpSecureConnectionsCooperateHookCount_;
+    g_activeBleRadio->serviceBackgroundConnection(
+        kBleSecp256r1CooperateSpinLimit);
+  }
+  if (g_bleBackgroundRadio != nullptr &&
+      g_bleBackgroundRadio != g_activeBleRadio) {
+    ++g_bleBackgroundRadio->smpSecureConnectionsCooperateHookCount_;
+    g_bleBackgroundRadio->serviceBackgroundConnection(
+        kBleSecp256r1CooperateSpinLimit);
+  }
+}
 
 extern "C" void nrf54l15_pwm20_irq_service(void) {
   if (g_activePwm20 != nullptr) {

@@ -29,9 +29,11 @@ extern "C" void nrf54l15_clean_ble_yield_service(void) {
   g_bleIdleServiceActive = true;
 
   if (g_activeBleRadio != nullptr) {
+    g_activeBleRadio->serviceBackgroundConnection(0U);
     g_activeBleRadio->serviceDeferredApplicationWork();
   }
   if (g_bleBackgroundRadio != nullptr && g_bleBackgroundRadio != g_activeBleRadio) {
+    g_bleBackgroundRadio->serviceBackgroundConnection(0U);
     g_bleBackgroundRadio->serviceDeferredApplicationWork();
   }
   if (nrf54l15_bluefruit_compat_yield_service != nullptr) {

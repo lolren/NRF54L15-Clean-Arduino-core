@@ -14,6 +14,7 @@
 extern "C" void nrf54l15_clean_ble_idle_service(void);
 extern "C" void nrf54l15_clean_ble_yield_service(void);
 extern "C" uint32_t nrf54l15_clean_ble_idle_sleep_cap_us(void);
+extern "C" void nrf54l15_secp256r1_cooperate_hook(void);
 
 namespace xiao_nrf54l15 {
 
@@ -2175,6 +2176,43 @@ struct BleEncryptionDebugCounters {
   uint8_t reserved2;
 };
 
+struct BleSecureConnectionsDebugState {
+  uint8_t valid;
+  uint8_t active;
+  uint8_t localInitiator;
+  uint8_t wireFormatBigEndian;
+  uint8_t peerPublicKeyValid;
+  uint8_t publicKeySent;
+  uint8_t confirmSent;
+  uint8_t randomSent;
+  uint8_t dhKeyReady;
+  uint8_t localConfirmReady;
+  uint8_t checkValuesReady;
+  uint8_t dhKeyCheckSent;
+  uint8_t receivedDhKeyCheckValid;
+  uint8_t deferredPublicKey;
+  uint8_t deferredConfirm;
+  uint8_t deferredRandom;
+  uint8_t deferredDhKeyCheck;
+  uint8_t pendingTxValid;
+  uint8_t pairingState;
+  uint8_t reserved0;
+  uint8_t localRandom[16];
+  uint8_t peerRandom[16];
+  uint8_t localConfirm[16];
+  uint8_t peerConfirm[16];
+  uint8_t localDhKeyCheck[16];
+  uint8_t peerDhKeyCheck[16];
+  uint8_t receivedDhKeyCheck[16];
+  uint8_t localPublicKeyX[32];
+  uint8_t peerPublicKeyX[32];
+  uint32_t localKeypairTimeUs;
+  uint32_t dhKeyTimeUs;
+  uint32_t checkValuesTimeUs;
+  uint32_t cooperateHookCount;
+  uint32_t backgroundServiceCount;
+};
+
 struct BleBackgroundAdvertisingDebugCounters {
   uint32_t irqCompareCount;
   uint32_t serviceRunCount;
@@ -2411,6 +2449,7 @@ class BleRadio {
   bool getConnectionInfo(BleConnectionInfo* info) const;
   void getEncryptionDebugCounters(BleEncryptionDebugCounters* out) const;
   void clearEncryptionDebugCounters();
+  void getSecureConnectionsDebugState(BleSecureConnectionsDebugState* out) const;
   bool getDisconnectDebug(BleDisconnectDebug* out) const;
   void clearDisconnectDebug();
   bool hasBondRecord() const;
@@ -2463,6 +2502,7 @@ class BleRadio {
  private:
   friend void ::nrf54l15_clean_ble_idle_service(void);
   friend void ::nrf54l15_clean_ble_yield_service(void);
+  friend void ::nrf54l15_secp256r1_cooperate_hook(void);
   static constexpr uint16_t kCustomGattHandleStart = 0x0020U;
   static constexpr uint16_t kCustomGattHandleEnd = 0x00FFU;
 
@@ -2614,7 +2654,8 @@ class BleRadio {
                               bool* terminateInd);
   bool buildAttResponse(const uint8_t* attRequest, uint16_t requestLength,
                         uint8_t* outAttResponse, uint16_t* outAttResponseLength);
-  bool buildL2capResponse(const uint8_t* l2capPayload, uint8_t l2capPayloadLength,
+  bool buildL2capResponse(uint8_t llid, const uint8_t* l2capPayload,
+                          uint8_t l2capPayloadLength, bool packetIsNew,
                           uint8_t* outPayload, uint8_t* outPayloadLength);
   bool buildL2capAttResponse(const uint8_t* l2capPayload, uint8_t l2capPayloadLength,
                              uint8_t* outPayload, uint8_t* outPayloadLength);
@@ -2655,11 +2696,18 @@ class BleRadio {
   bool queueCentralAttMtuRequest();
   bool queuePeripheralConnParamUpdateRequest();
   bool queueCentralConnParamUpdateInd();
+  bool queueLlEncryptionRequest();
   void maybeQueueCentralLinkSetupRequest();
   bool applyPendingConnectionPhyUpdateAtInstant(uint16_t currentEventCounter);
   void applyPendingConnectionUpdateAtInstant(uint16_t currentEventCounter,
                                              uint32_t currentEventAnchorUs);
   void clearPreparedWriteState();
+  void clearIncomingL2capReassembly();
+  bool assembleIncomingL2capPayload(uint8_t llid, const uint8_t* l2capPayload,
+                                    uint8_t l2capPayloadLength,
+                                    bool packetIsNew,
+                                    const uint8_t** outPayload,
+                                    uint8_t* outPayloadLength);
   bool applyCccdState(uint16_t handle, uint16_t cccd);
   bool buildAttErrorResponse(uint8_t requestOpcode, uint16_t handle,
                              uint8_t errorCode, uint8_t* outAttResponse,
@@ -2669,6 +2717,20 @@ class BleRadio {
   void clearSmpPairingState();
   void clearEncryptionState();
   void clearConnectionSecurityState();
+  void captureSecureConnectionsDebugState(BleSecureConnectionsDebugState* out) const;
+  void latchSecureConnectionsDebugState();
+  bool ensureSecureConnectionsLocalKeypair();
+  bool computeSecureConnectionsDhKey();
+  bool computeSecureConnectionsLocalConfirm();
+  bool computeSecureConnectionsCheckValues();
+  bool secureConnectionsInitiatorTransmitsConfirm() const;
+  bool secureConnectionsResponderVerifiesRandom() const;
+  bool buildSmpL2capResponse(const uint8_t* smpPayload, uint8_t smpLength,
+                             uint8_t* outPayload,
+                             uint8_t* outPayloadLength) const;
+  bool queuePendingSmpL2capResponse(const uint8_t* smpPayload,
+                                    uint8_t smpLength);
+  void serviceSecureConnectionsWork();
   void prefetchConnectionSecurityMaterial(uint32_t spinLimit);
   bool isBondRecordUsable(const BleBondRecord& record) const;
   bool loadBondRecordFromPersistence();
@@ -2698,9 +2760,20 @@ class BleRadio {
   BleCustomCharacteristicState* findCustomCharacteristicByCccdHandle(uint16_t cccdHandle);
   const BleCustomCharacteristicState* findCustomCharacteristicByCccdHandle(
       uint16_t cccdHandle) const;
+  bool applyCustomGattCharacteristicValueWrite(uint16_t handle,
+                                               const uint8_t* value,
+                                               uint16_t valueLength,
+                                               bool withResponse,
+                                               uint8_t* outErrorCode,
+                                               bool allowDeferredCallback);
   bool writeCustomGattCharacteristic(uint16_t handle, const uint8_t* value,
                                      uint16_t valueLength, bool withResponse,
                                      uint8_t* outErrorCode);
+  static void deferredCustomGattPeerWriteCallback(uint16_t valueHandle,
+                                                  const uint8_t* value,
+                                                  uint8_t valueLength,
+                                                  bool withResponse,
+                                                  void* context);
   void emitBleTrace(const char* message) const;
   void rememberDisconnectReason(uint8_t reason, bool remote);
   bool prepareBackgroundAdvertisingEvent();
@@ -2905,6 +2978,10 @@ class BleRadio {
   uint16_t connectionPreparedWriteHandle_;
   uint8_t connectionPreparedWriteValue_[2];
   uint8_t connectionPreparedWriteMask_;
+  bool connectionRxL2capReassemblyActive_;
+  uint16_t connectionRxL2capReassemblyExpectedLength_;
+  uint16_t connectionRxL2capReassemblyReceivedLength_;
+  uint8_t connectionRxL2capReassemblyBuffer_[255];
   static constexpr uint8_t kDeferredConnectionEventDepth = 8U;
   bool backgroundAdvertisingEnabled_;
   bool backgroundAdvertisingArmed_;
@@ -3011,6 +3088,7 @@ class BleRadio {
   BleTraceCallback traceCallback_;
   void* traceCallbackContext_;
   bool smpBondingRequested_;
+  bool smpLocalInitiator_;
   bool smpExpectInitiatorEncKey_;
   bool smpExpectInitiatorIdKey_;
   bool smpPeerLtkValid_;
@@ -3024,6 +3102,35 @@ class BleRadio {
   uint8_t smpEncReqRand_[8];
   uint16_t smpEncReqEdiv_;
   uint8_t smpKeySize_;
+  bool smpSecureConnectionsActive_;
+  bool smpSecureConnectionsLocalKeyReady_;
+  bool smpSecureConnectionsPeerPublicKeyValid_;
+  bool smpSecureConnectionsDhKeyReady_;
+  bool smpSecureConnectionsLocalConfirmReady_;
+  bool smpSecureConnectionsCheckValuesReady_;
+  bool smpSecureConnectionsPublicKeySent_;
+  bool smpSecureConnectionsConfirmSent_;
+  bool smpSecureConnectionsRandomSent_;
+  bool smpSecureConnectionsDhKeyCheckSent_;
+  bool smpSecureConnectionsReceivedDhKeyCheckValid_;
+  bool smpSecureConnectionsWireFormatBigEndian_;
+  bool smpSecureConnectionsDeferredPublicKey_;
+  bool smpSecureConnectionsDeferredConfirm_;
+  bool smpSecureConnectionsDeferredRandom_;
+  bool smpSecureConnectionsDeferredDhKeyCheck_;
+  uint32_t smpSecureConnectionsLocalKeypairTimeUs_;
+  uint32_t smpSecureConnectionsDhKeyTimeUs_;
+  uint32_t smpSecureConnectionsCheckValuesTimeUs_;
+  uint32_t smpSecureConnectionsCooperateHookCount_;
+  uint32_t smpSecureConnectionsBackgroundServiceCount_;
+  uint8_t smpSecureConnectionsPrivateKey_[32];
+  uint8_t smpSecureConnectionsPublicKey_[65];
+  uint8_t smpSecureConnectionsPeerPublicKey_[65];
+  uint8_t smpSecureConnectionsDhKey_[32];
+  uint8_t smpSecureConnectionsMacKey_[16];
+  uint8_t smpSecureConnectionsLocalDhKeyCheck_[16];
+  uint8_t smpSecureConnectionsPeerDhKeyCheck_[16];
+  uint8_t smpSecureConnectionsReceivedDhKeyCheck_[16];
   uint8_t advCycleStartIndex_;
   uint8_t scanCycleStartIndex_;
   uint8_t gapDeviceName_[31];
@@ -3060,6 +3167,7 @@ class BleRadio {
   bool latestConnectionRssiValid_;
   bool connectionServiceBusy_;
   BleDisconnectDebug disconnectDebug_;
+  BleSecureConnectionsDebugState lastSecureConnectionsDebugState_;
   uint8_t lastObservedRxLlid_;
   uint8_t lastObservedRxLength_;
   uint8_t lastObservedRxOpcode_;

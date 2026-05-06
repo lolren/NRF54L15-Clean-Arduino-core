@@ -19,6 +19,7 @@
 #include <Preferences.h>
 #include <string.h>
 #include <stdio.h>
+#include "matter_secp256r1.h"
 #include "nrf54l15_hal.h"
 
 using namespace xiao_nrf54l15;
@@ -34,6 +35,10 @@ constexpr char kAdvName[] = "X54-PAIR";
 constexpr int8_t kTxPowerDbm = 0;
 constexpr uint32_t kStatusMs = 3000U;
 constexpr uint32_t kNotifyMs = 4000U;
+constexpr uint32_t kPairRetryMs = 3000U;
+constexpr uint32_t kConnectionPollUs = 450000UL;
+constexpr uint8_t kTraceBufferDepth = 48U;
+constexpr uint8_t kTraceBufferEntryLen = 40U;
 constexpr uint16_t kSvcUuid = 0x5A00U;
 constexpr uint16_t kNotifyUuid = 0x5A01U;
 constexpr uint16_t kWriteUuid = 0x5A02U;
@@ -50,16 +55,20 @@ uint32_t g_lastStatus = 0U;
 uint32_t g_lastNotify = 0U;
 uint32_t g_lastScan = 0U;
 uint32_t g_notifySeq = 0U;
+uint32_t g_lastSecurityRequestMs = 0U;
 bool g_prevConnected = false;
 bool g_prevEncrypted = false;
 bool g_centralSeen = false;
+char g_traceBuffer[kTraceBufferDepth][kTraceBufferEntryLen] = {};
+uint8_t g_traceBufferHead = 0U;
+uint8_t g_traceBufferCount = 0U;
 
 // ─── Bond persistence ─────────────────────────────────────────
 
 static constexpr char kNs[] = "ble_pair";
 static constexpr char kBondKey[] = "bond";
 
-bool loadBond(void*, BleBondRecord* out) {
+bool loadBond(BleBondRecord* out, void*) {
   if (g_prefs.getBytesLength(kBondKey) == sizeof(BleBondRecord)) {
     g_prefs.getBytes(kBondKey, out, sizeof(BleBondRecord));
     Serial.println("ble_pair bond-loaded");
@@ -68,7 +77,7 @@ bool loadBond(void*, BleBondRecord* out) {
   return false;
 }
 
-bool saveBond(void*, const BleBondRecord* rec) {
+bool saveBond(const BleBondRecord* rec, void*) {
   if (!rec) return false;
   g_prefs.putBytes(kBondKey, rec, sizeof(BleBondRecord));
   Serial.println("ble_pair bond-saved");
@@ -83,7 +92,7 @@ bool clearBondStored(void*) {
 
 // ─── Peripheral: GATT write handler ──────────────────────────
 
-void onGattWrite(void*, uint16_t h, const uint8_t* d, uint8_t n) {
+void onGattWrite(uint16_t h, const uint8_t* d, uint8_t n, bool, void*) {
   if (h != g_writeHandle || !d) return;
   Serial.print("ble_pair gatt-write val=");
   if (n == 1U) {
@@ -141,8 +150,219 @@ void printStatus() {
   Serial.println();
 }
 
+void printHexBytes(const uint8_t* data, size_t len) {
+  if (data == nullptr) {
+    return;
+  }
+  for (size_t i = 0; i < len; ++i) {
+    if (data[i] < 16U) {
+      Serial.print('0');
+    }
+    Serial.print(data[i], HEX);
+  }
+}
+
+void printHex64(uint64_t value) {
+  for (int i = 15; i >= 0; --i) {
+    const uint8_t nibble = static_cast<uint8_t>((value >> (i * 4)) & 0x0FULL);
+    Serial.print(static_cast<char>((nibble < 10U) ? ('0' + nibble)
+                                                  : ('A' + (nibble - 10U))));
+  }
+}
+
+void printScDebug() {
+  BleSecureConnectionsDebugState dbg{};
+  g_ble.getSecureConnectionsDebugState(&dbg);
+  Serial.print("sc_dbg active=");
+  Serial.print(dbg.active);
+  Serial.print(" local_init=");
+  Serial.print(dbg.localInitiator);
+  Serial.print(" peer_pub=");
+  Serial.print(dbg.peerPublicKeyValid);
+  Serial.print(" pub_tx=");
+  Serial.print(dbg.publicKeySent);
+  Serial.print(" conf_tx=");
+  Serial.print(dbg.confirmSent);
+  Serial.print(" rand_tx=");
+  Serial.print(dbg.randomSent);
+  Serial.print(" dh_ready=");
+  Serial.print(dbg.dhKeyReady);
+  Serial.print(" check_ready=");
+  Serial.print(dbg.checkValuesReady);
+  Serial.print(" dhcheck_tx=");
+  Serial.print(dbg.dhKeyCheckSent);
+  Serial.print(" dhcheck_rx=");
+  Serial.print(dbg.receivedDhKeyCheckValid);
+  Serial.print(" def_pub=");
+  Serial.print(dbg.deferredPublicKey);
+  Serial.print(" def_conf=");
+  Serial.print(dbg.deferredConfirm);
+  Serial.print(" def_rand=");
+  Serial.print(dbg.deferredRandom);
+  Serial.print(" def_dh=");
+  Serial.print(dbg.deferredDhKeyCheck);
+  Serial.print(" pend_tx=");
+  Serial.print(dbg.pendingTxValid);
+  Serial.print(" state=");
+  Serial.print(dbg.pairingState);
+  Serial.print(" key_us=");
+  Serial.print(dbg.localKeypairTimeUs);
+  Serial.print(" dh_us=");
+  Serial.print(dbg.dhKeyTimeUs);
+  Serial.print(" chk_us=");
+  Serial.print(dbg.checkValuesTimeUs);
+  Serial.print(" ldh=");
+  printHexBytes(dbg.localDhKeyCheck, sizeof(dbg.localDhKeyCheck));
+  Serial.print(" pdh=");
+  printHexBytes(dbg.peerDhKeyCheck, sizeof(dbg.peerDhKeyCheck));
+  Serial.print(" rdh=");
+  printHexBytes(dbg.receivedDhKeyCheck, sizeof(dbg.receivedDhKeyCheck));
+  Serial.println();
+}
+
+void printDisconnectDebug() {
+  BleDisconnectDebug dbg{};
+  if (!g_ble.getDisconnectDebug(&dbg)) {
+    Serial.println("disc_dbg none");
+    return;
+  }
+  Serial.print("disc_dbg seq=");
+  Serial.print(dbg.sequence);
+  Serial.print(" reason=");
+  Serial.print(dbg.reason);
+  Serial.print(" err=0x");
+  if (dbg.errorCode < 16U) Serial.print('0');
+  Serial.print(dbg.errorCode, HEX);
+  Serial.print(" ce=");
+  Serial.print(dbg.eventCounter);
+  Serial.print(" missed=");
+  Serial.print(dbg.missedEventCount);
+  Serial.print(" pend=");
+  Serial.print(dbg.pendingTxValid);
+  Serial.print(" pll=");
+  Serial.print(dbg.pendingTxLlid);
+  Serial.print(" plen=");
+  Serial.print(dbg.pendingTxLength);
+  Serial.print(" lasttx_op=0x");
+  if (dbg.lastTxOpcode < 16U) Serial.print('0');
+  Serial.print(dbg.lastTxOpcode, HEX);
+  Serial.print(" lastrx_op=0x");
+  if (dbg.lastRxOpcode < 16U) Serial.print('0');
+  Serial.print(dbg.lastRxOpcode, HEX);
+  Serial.print(" ack=");
+  Serial.print(dbg.lastPeerAckedLastTx);
+  Serial.println();
+}
+
+void appendTraceBuffer(const char* message) {
+  if (message == nullptr) {
+    return;
+  }
+  char* slot = g_traceBuffer[g_traceBufferHead];
+  size_t i = 0U;
+  for (; i < (kTraceBufferEntryLen - 1U) && message[i] != '\0'; ++i) {
+    slot[i] = message[i];
+  }
+  slot[i] = '\0';
+  g_traceBufferHead =
+      static_cast<uint8_t>((g_traceBufferHead + 1U) % kTraceBufferDepth);
+  if (g_traceBufferCount < kTraceBufferDepth) {
+    ++g_traceBufferCount;
+  }
+}
+
+void dumpTraceBuffer() {
+  Serial.print("trace_dump count=");
+  Serial.println(g_traceBufferCount);
+  const uint8_t start =
+      static_cast<uint8_t>((g_traceBufferHead + kTraceBufferDepth -
+                            g_traceBufferCount) %
+                           kTraceBufferDepth);
+  for (uint8_t i = 0U; i < g_traceBufferCount; ++i) {
+    const uint8_t index =
+        static_cast<uint8_t>((start + i) % kTraceBufferDepth);
+    Serial.print("trace[");
+    Serial.print(i);
+    Serial.print("]=");
+    Serial.println(g_traceBuffer[index]);
+  }
+}
+
+void onBleTrace(const char* message, void*) { appendTraceBuffer(message); }
+
+void printKeyProbe() {
+  Secp256r1Scalar priv{};
+  Secp256r1Point pub{};
+  Secp256r1::generateKeyPair(&priv, &pub);
+  Serial.print("keyprobe uid64=");
+  printHex64(hardwareUniqueId64());
+  Serial.print(" eui64=");
+  printHex64(zigbeeFactoryEui64());
+  Serial.print(" priv=");
+  printHexBytes(priv.bytes, sizeof(priv.bytes));
+  Serial.print(" pubx=");
+  printHexBytes(pub.x, sizeof(pub.x));
+  Serial.println();
+}
+
+uint16_t readLe16Local(const uint8_t* p) {
+  if (p == nullptr) {
+    return 0U;
+  }
+  return static_cast<uint16_t>(p[0]) |
+         static_cast<uint16_t>(static_cast<uint16_t>(p[1]) << 8U);
+}
+
+void logSmpEvent(const BleConnectionEvent& evt) {
+  bool printed = false;
+  if ((evt.llid == 0x02U) && (evt.payloadLength >= 5U) &&
+      (evt.payload != nullptr) &&
+      (readLe16Local(&evt.payload[2]) == 0x0006U)) {
+    Serial.print("smp_rx ce=");
+    Serial.print(evt.eventCounter);
+    Serial.print(" code=0x");
+    const uint8_t code = evt.payload[4];
+    if (code < 16U) Serial.print('0');
+    Serial.print(code, HEX);
+    Serial.print(" bytes=");
+    const uint8_t dumpLen =
+        (evt.payloadLength < 11U) ? evt.payloadLength : 11U;
+    for (uint8_t i = 4U; i < dumpLen; ++i) {
+      if (evt.payload[i] < 16U) Serial.print('0');
+      Serial.print(evt.payload[i], HEX);
+    }
+    printed = true;
+  }
+  if ((evt.txLlid == 0x02U) && (evt.txPayloadLength >= 5U) &&
+      (evt.txPayload != nullptr) &&
+      (readLe16Local(&evt.txPayload[2]) == 0x0006U)) {
+    if (printed) Serial.print(' ');
+    Serial.print("smp_tx ce=");
+    Serial.print(evt.eventCounter);
+    Serial.print(" code=0x");
+    const uint8_t code = evt.txPayload[4];
+    if (code < 16U) Serial.print('0');
+    Serial.print(code, HEX);
+    Serial.print(" bytes=");
+    const uint8_t dumpLen =
+        (evt.txPayloadLength < 11U) ? evt.txPayloadLength : 11U;
+    for (uint8_t i = 4U; i < dumpLen; ++i) {
+      if (evt.txPayload[i] < 16U) Serial.print('0');
+      Serial.print(evt.txPayload[i], HEX);
+    }
+    printed = true;
+  }
+  if (printed) {
+    Serial.println();
+  }
+}
+
 void handleCmd(const char* c) {
   if (strcmp(c,"status")==0) { printStatus(); return; }
+  if (strcmp(c,"sc")==0) { printScDebug(); return; }
+  if (strcmp(c,"disc")==0) { printDisconnectDebug(); return; }
+  if (strcmp(c,"trace")==0) { dumpTraceBuffer(); return; }
+  if (strcmp(c,"keyprobe")==0) { printKeyProbe(); return; }
   if (strcmp(c,"clear")==0) {
     g_ble.clearBondRecord(true);
     Serial.println("ble_pair bond-cleared");
@@ -197,6 +417,8 @@ void setup() {
     Serial.println("ble_pair FATAL: radio init failed");
     return;
   }
+  g_ble.setBackgroundConnectionServiceEnabled(true);
+  g_ble.setTraceCallback(onBleTrace, nullptr);
   g_ble.loadAddressFromFicr(true);
   g_ble.setBondPersistenceCallbacks(loadBond, saveBond, clearBondStored, nullptr);
 
@@ -222,7 +444,7 @@ void setup() {
     Serial.println("ble_pair gatt+adv: ready");
   }
   printStatus();
-  Serial.println("ble_pair cmd: status clear");
+  Serial.println("ble_pair cmd: status clear sc disc trace keyprobe");
 }
 
 // ─── Loop ───────────────────────────────────────────────────
@@ -245,8 +467,10 @@ void loop() {
         // If no bond, request pairing
         if (!g_ble.hasBondRecord()) {
           delay(50);
-          g_ble.sendSmpSecurityRequest();
-          Serial.println("ble_pair sent-smp-security-request");
+          const bool queued = g_ble.sendSmpSecurityRequest();
+          g_lastSecurityRequestMs = millis();
+          Serial.print("ble_pair sent-smp-security-request=");
+          Serial.println(queued ? "1" : "0");
         }
       } else {
         Serial.println("ble_pair disconnected");
@@ -266,9 +490,17 @@ void loop() {
       BleAdvInteraction adv;
       g_ble.advertiseInteractEvent(&adv, 350U, 350000UL, 700000UL);
     } else {
+      if (!encrypted && !g_ble.hasBondRecord() &&
+          (millis() - g_lastSecurityRequestMs) >= kPairRetryMs) {
+        const bool queued = g_ble.sendSmpSecurityRequest();
+        g_lastSecurityRequestMs = millis();
+        Serial.print("ble_pair retry-smp-security-request=");
+        Serial.println(queued ? "1" : "0");
+      }
       // Process connection events
       BleConnectionEvent evt;
-      while (g_ble.pollConnectionEvent(&evt, 0U)) {}
+      (void)g_ble.pollConnectionEvent(&evt, kConnectionPollUs);
+      logSmpEvent(evt);
 
       // Notify periodically when encrypted + subscribed
       if (encrypted && g_ble.isCustomGattCccdEnabled(g_notifyHandle) &&
@@ -326,7 +558,8 @@ void loop() {
     } else {
       // Process events
       BleConnectionEvent evt;
-      while (g_ble.pollConnectionEvent(&evt, 0U)) {}
+      (void)g_ble.pollConnectionEvent(&evt, kConnectionPollUs);
+      logSmpEvent(evt);
 
       // Once encrypted, subscribe to notifications
       static bool subbed = false;

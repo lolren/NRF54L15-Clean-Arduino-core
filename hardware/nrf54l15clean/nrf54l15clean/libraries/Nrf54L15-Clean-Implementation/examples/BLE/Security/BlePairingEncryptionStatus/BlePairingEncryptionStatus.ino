@@ -31,16 +31,29 @@ static BleRadio g_ble;
 static PowerManager g_power;
 static bool g_bleReady = false;
 // Set to true to enable verbose HAL-level trace messages on Serial.
-static constexpr bool kEnableBleTraceLogging = false;
+static constexpr bool kEnableBleTraceLogging = true;
 // Set to true to print one line per connection event (very noisy).
-static constexpr bool kLogEveryConnectionEvent = true;
+static constexpr bool kLogEveryConnectionEvent = false;
+static constexpr bool kPrintEncryptionDebugOnDisconnect = false;
+static constexpr bool kLogSmpPackets = true;
+static constexpr bool kDumpTraceBufferOnDisconnect = true;
+static constexpr uint8_t kTraceBufferDepth = 48U;
+static constexpr uint8_t kTraceBufferEntryLen = 40U;
 
 static bool g_prevConnected = false;
 static bool g_prevEncrypted = false;
 static bool g_connectionAnnounced = false;
 static uint32_t g_lastAdvLogMs = 0U;
 static uint32_t g_lastInitErrorLogMs = 0U;
+static uint32_t g_setupMs = 0U;
+static char g_traceBuffer[kTraceBufferDepth][kTraceBufferEntryLen] = {};
+static uint8_t g_traceBufferHead = 0U;
+static uint8_t g_traceBufferCount = 0U;
 static constexpr int8_t kTxPowerDbm = 0;
+static constexpr uint32_t kAdvertisingStartDelayMs = 4000UL;
+static constexpr bool kRestrictToAllowedPeer = true;
+static const uint8_t kAllowedPeerAddress[6] = {0xDF, 0x84, 0xE5,
+                                               0x21, 0x34, 0x68};
 
 static void printHexBytes(const uint8_t* data, size_t len) {
   if (data == nullptr) {
@@ -257,11 +270,178 @@ static void printEncDebug() {
   Serial.print("\r\n");
 }
 
+static void printScDebug() {
+  BleSecureConnectionsDebugState dbg{};
+  g_ble.getSecureConnectionsDebugState(&dbg);
+  if (dbg.valid == 0U) {
+    return;
+  }
+
+  Serial.print("sc_dbg active=");
+  Serial.print(dbg.active);
+  Serial.print(" local_init=");
+  Serial.print(dbg.localInitiator);
+  Serial.print(" wire_be=");
+  Serial.print(dbg.wireFormatBigEndian);
+  Serial.print(" peer_pub=");
+  Serial.print(dbg.peerPublicKeyValid);
+  Serial.print(" pub_tx=");
+  Serial.print(dbg.publicKeySent);
+  Serial.print(" conf_tx=");
+  Serial.print(dbg.confirmSent);
+  Serial.print(" rand_tx=");
+  Serial.print(dbg.randomSent);
+  Serial.print(" dh_ready=");
+  Serial.print(dbg.dhKeyReady);
+  Serial.print(" conf_ready=");
+  Serial.print(dbg.localConfirmReady);
+  Serial.print(" check_ready=");
+  Serial.print(dbg.checkValuesReady);
+  Serial.print(" dhcheck_tx=");
+  Serial.print(dbg.dhKeyCheckSent);
+  Serial.print(" dhcheck_rx=");
+  Serial.print(dbg.receivedDhKeyCheckValid);
+  Serial.print(" def_pub=");
+  Serial.print(dbg.deferredPublicKey);
+  Serial.print(" def_conf=");
+  Serial.print(dbg.deferredConfirm);
+  Serial.print(" def_rand=");
+  Serial.print(dbg.deferredRandom);
+  Serial.print(" def_dh=");
+  Serial.print(dbg.deferredDhKeyCheck);
+  Serial.print(" pend_tx=");
+  Serial.print(dbg.pendingTxValid);
+  Serial.print(" state=");
+  Serial.print(dbg.pairingState);
+  Serial.print(" lrand=");
+  printHexBytes(dbg.localRandom, sizeof(dbg.localRandom));
+  Serial.print(" prand=");
+  printHexBytes(dbg.peerRandom, sizeof(dbg.peerRandom));
+  Serial.print(" lconf=");
+  printHexBytes(dbg.localConfirm, sizeof(dbg.localConfirm));
+  Serial.print(" pconf=");
+  printHexBytes(dbg.peerConfirm, sizeof(dbg.peerConfirm));
+  Serial.print(" ldh=");
+  printHexBytes(dbg.localDhKeyCheck, sizeof(dbg.localDhKeyCheck));
+  Serial.print(" pdh=");
+  printHexBytes(dbg.peerDhKeyCheck, sizeof(dbg.peerDhKeyCheck));
+  Serial.print(" rdh=");
+  printHexBytes(dbg.receivedDhKeyCheck, sizeof(dbg.receivedDhKeyCheck));
+  Serial.print(" lpubx=");
+  printHexBytes(dbg.localPublicKeyX, sizeof(dbg.localPublicKeyX));
+  Serial.print(" ppubx=");
+  printHexBytes(dbg.peerPublicKeyX, sizeof(dbg.peerPublicKeyX));
+  Serial.print(" key_us=");
+  Serial.print(dbg.localKeypairTimeUs);
+  Serial.print(" dh_us=");
+  Serial.print(dbg.dhKeyTimeUs);
+  Serial.print(" chk_us=");
+  Serial.print(dbg.checkValuesTimeUs);
+  Serial.print(" hook=");
+  Serial.print(dbg.cooperateHookCount);
+  Serial.print(" bgsvc=");
+  Serial.print(dbg.backgroundServiceCount);
+  Serial.print("\r\n");
+}
+
+static void printDisconnectDebug() {
+  BleDisconnectDebug dbg{};
+  if (!g_ble.getDisconnectDebug(&dbg)) {
+    return;
+  }
+
+  Serial.print("disc_dbg seq=");
+  Serial.print(dbg.sequence);
+  Serial.print(" reason=");
+  Serial.print(dbg.reason);
+  Serial.print(" err=0x");
+  if (dbg.errorCode < 16U) {
+    Serial.print('0');
+  }
+  Serial.print(dbg.errorCode, HEX);
+  Serial.print(" ce=");
+  Serial.print(dbg.eventCounter);
+  Serial.print(" missed=");
+  Serial.print(dbg.missedEventCount);
+  Serial.print(" pend=");
+  Serial.print(dbg.pendingTxValid);
+  Serial.print(" pll=");
+  Serial.print(dbg.pendingTxLlid);
+  Serial.print(" plen=");
+  Serial.print(dbg.pendingTxLength);
+  Serial.print(" lasttx_llid=");
+  Serial.print(dbg.lastTxLlid);
+  Serial.print(" lasttx_len=");
+  Serial.print(dbg.lastTxLength);
+  Serial.print(" lasttx_op=0x");
+  if (dbg.lastTxOpcode < 16U) {
+    Serial.print('0');
+  }
+  Serial.print(dbg.lastTxOpcode, HEX);
+  Serial.print(" lastrx_llid=");
+  Serial.print(dbg.lastRxLlid);
+  Serial.print(" lastrx_len=");
+  Serial.print(dbg.lastRxLength);
+  Serial.print(" lastrx_op=0x");
+  if (dbg.lastRxOpcode < 16U) {
+    Serial.print('0');
+  }
+  Serial.print(dbg.lastRxOpcode, HEX);
+  Serial.print(" new=");
+  Serial.print(dbg.lastPacketIsNew);
+  Serial.print(" ack=");
+  Serial.print(dbg.lastPeerAckedLastTx);
+  Serial.print("\r\n");
+}
+
+static void appendTraceBuffer(const char* message) {
+  if (message == nullptr) {
+    return;
+  }
+
+  char* slot = g_traceBuffer[g_traceBufferHead];
+  size_t i = 0U;
+  for (; i < (kTraceBufferEntryLen - 1U) && message[i] != '\0'; ++i) {
+    slot[i] = message[i];
+  }
+  slot[i] = '\0';
+
+  g_traceBufferHead =
+      static_cast<uint8_t>((g_traceBufferHead + 1U) % kTraceBufferDepth);
+  if (g_traceBufferCount < kTraceBufferDepth) {
+    ++g_traceBufferCount;
+  }
+}
+
+static void dumpTraceBuffer() {
+  if (g_traceBufferCount == 0U) {
+    return;
+  }
+
+  Serial.print("trace_dump count=");
+  Serial.print(g_traceBufferCount);
+  Serial.print("\r\n");
+  const uint8_t start =
+      static_cast<uint8_t>((g_traceBufferHead + kTraceBufferDepth -
+                            g_traceBufferCount) %
+                           kTraceBufferDepth);
+  for (uint8_t i = 0U; i < g_traceBufferCount; ++i) {
+    const uint8_t index =
+        static_cast<uint8_t>((start + i) % kTraceBufferDepth);
+    Serial.print("trace[");
+    Serial.print(i);
+    Serial.print("]=");
+    Serial.print(g_traceBuffer[index]);
+    Serial.print("\r\n");
+  }
+}
+
 static void onBleTrace(const char* message, void* context) {
   (void)context;
   if (message == nullptr) {
     return;
   }
+  appendTraceBuffer(message);
   Serial.print("[trace] ");
   Serial.print(message);
   Serial.print("\r\n");
@@ -283,9 +463,85 @@ static void printAddress(const uint8_t* addr) {
   }
 }
 
+static bool addressesEqual(const uint8_t* lhs, const uint8_t* rhs) {
+  if (lhs == nullptr || rhs == nullptr) {
+    return false;
+  }
+  return memcmp(lhs, rhs, 6U) == 0;
+}
+
+static uint16_t readLe16Local(const uint8_t* p) {
+  if (p == nullptr) {
+    return 0U;
+  }
+  return static_cast<uint16_t>(p[0]) |
+         static_cast<uint16_t>(static_cast<uint16_t>(p[1]) << 8U);
+}
+
+static void logSmpEvent(const BleConnectionEvent& evt) {
+  if (!evt.eventStarted) {
+    return;
+  }
+
+  bool printed = false;
+  if ((evt.llid == 0x02U) && (evt.payloadLength >= 5U) &&
+      (evt.payload != nullptr) &&
+      (readLe16Local(&evt.payload[2]) == 0x0006U)) {
+    Serial.print("smp_rx ce=");
+    Serial.print(evt.eventCounter);
+    Serial.print(" code=0x");
+    const uint8_t code = evt.payload[4];
+    if (code < 16U) {
+      Serial.print('0');
+    }
+    Serial.print(code, HEX);
+    const uint8_t dumpLen =
+        (evt.payloadLength < 11U) ? evt.payloadLength : 11U;
+    Serial.print(" bytes=");
+    for (uint8_t i = 4U; i < dumpLen; ++i) {
+      if (evt.payload[i] < 16U) {
+        Serial.print('0');
+      }
+      Serial.print(evt.payload[i], HEX);
+    }
+    printed = true;
+  }
+
+  if ((evt.txLlid == 0x02U) && (evt.txPayloadLength >= 5U) &&
+      (evt.txPayload != nullptr) &&
+      (readLe16Local(&evt.txPayload[2]) == 0x0006U)) {
+    if (printed) {
+      Serial.print(" ");
+    }
+    Serial.print("smp_tx ce=");
+    Serial.print(evt.eventCounter);
+    Serial.print(" code=0x");
+    const uint8_t code = evt.txPayload[4];
+    if (code < 16U) {
+      Serial.print('0');
+    }
+    Serial.print(code, HEX);
+    const uint8_t dumpLen =
+        (evt.txPayloadLength < 11U) ? evt.txPayloadLength : 11U;
+    Serial.print(" bytes=");
+    for (uint8_t i = 4U; i < dumpLen; ++i) {
+      if (evt.txPayload[i] < 16U) {
+        Serial.print('0');
+      }
+      Serial.print(evt.txPayload[i], HEX);
+    }
+    printed = true;
+  }
+
+  if (printed) {
+    Serial.print("\r\n");
+  }
+}
+
 void setup() {
   Serial.begin(115200);
   delay(350);
+  g_setupMs = millis();
 
   Serial.print("\r\nBlePairingEncryptionStatus start\r\n");
 
@@ -298,7 +554,7 @@ void setup() {
   }
 
   static const uint8_t kAddress[6] = {0x51, 0x00, 0x15, 0x54, 0xDE, 0xC0};
-  static constexpr bool kUseFixedAddress = false;  // Factory-derived BLE address is more reliable on phones.
+  static constexpr bool kUseFixedAddress = true;
   bool ok = g_ble.begin(kTxPowerDbm);
   if (!ok) {
     Serial.print("BLE step failed: begin\r\n");
@@ -337,6 +593,17 @@ void setup() {
   Serial.print("BLE init: ");
   Serial.print(ok ? "OK" : "FAIL");
   Serial.print("\r\n");
+  char addressText[24] = {0};
+  BleAddressType addressType = BleAddressType::kPublic;
+  if (g_ble.getDeviceAddressString(addressText, sizeof(addressText),
+                                   &addressType)) {
+    Serial.print("BLE addr: ");
+    Serial.print(addressText);
+    Serial.print(" type=");
+    Serial.print((addressType == BleAddressType::kRandomStatic) ? "random"
+                                                                : "public");
+    Serial.print("\r\n");
+  }
   Serial.print("Pair from phone and watch encryption state transitions.\r\n");
 }
 
@@ -352,12 +619,25 @@ void loop() {
   }
 
   if (!g_ble.isConnected()) {
+    if ((millis() - g_setupMs) < kAdvertisingStartDelayMs) {
+      delay(1);
+      return;
+    }
     if (g_prevConnected) {
       g_prevConnected = false;
       g_prevEncrypted = false;
       g_connectionAnnounced = false;
       Serial.print("disconnected\r\n");
-      printEncDebug();
+      if (kDumpTraceBufferOnDisconnect) {
+        dumpTraceBuffer();
+      }
+      printDisconnectDebug();
+      printScDebug();
+      if (kPrintEncryptionDebugOnDisconnect) {
+        printEncDebug();
+      }
+      Serial.flush();
+      delay(20);
     }
 
     BleAdvInteraction adv{};
@@ -383,6 +663,15 @@ void loop() {
   if (!g_connectionAnnounced && ran && evt.eventStarted) {
     BleConnectionInfo info{};
     if (g_ble.getConnectionInfo(&info)) {
+      if (kRestrictToAllowedPeer &&
+          !addressesEqual(info.peerAddress, kAllowedPeerAddress)) {
+        Serial.print("reject peer=");
+        printAddress(info.peerAddress);
+        Serial.print("\r\n");
+        g_ble.disconnect();
+        delay(1);
+        return;
+      }
       Serial.print("connected peer=");
       printAddress(info.peerAddress);
       Serial.print(" int=");
@@ -404,6 +693,10 @@ void loop() {
       Serial.print(evt.eventCounter);
     }
     Serial.print("\r\n");
+  }
+
+  if (kEnableBleTraceLogging || kLogSmpPackets) {
+    logSmpEvent(evt);
   }
 
   if (kLogEveryConnectionEvent && ran && evt.eventStarted) {
@@ -472,7 +765,16 @@ void loop() {
 
   if (ran && evt.terminateInd) {
     Serial.print("link terminated\r\n");
-    printEncDebug();
+    if (kDumpTraceBufferOnDisconnect) {
+      dumpTraceBuffer();
+    }
+    printDisconnectDebug();
+    printScDebug();
+    if (kPrintEncryptionDebugOnDisconnect) {
+      printEncDebug();
+    }
+    Serial.flush();
+    delay(20);
     g_prevConnected = false;
     g_prevEncrypted = false;
     g_connectionAnnounced = false;

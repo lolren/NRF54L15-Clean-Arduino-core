@@ -496,7 +496,8 @@ bool Ccm::encryptBlePacket(const uint8_t key[16], const uint8_t iv[8],
 
   alignas(4) uint8_t inputPayloadScratch[kBleDataPduMaxPayload + kBleMicLen] = {};
   alignas(4) uint8_t outputPayloadScratch[kBleDataPduMaxPayload + kBleMicLen] = {};
-  alignas(4) uint8_t adataScratch[1] = {header};
+  alignas(4) uint8_t adataScratch[1] = {
+      static_cast<uint8_t>(header & 0xE3U)};
   alignas(4) uint8_t adataOutScratch[1] = {};
   alignas(4) NRF_VDMADESCRIPTOR_Type inJobs[5] = {};
   alignas(4) NRF_VDMADESCRIPTOR_Type outJobs[5] = {};
@@ -619,7 +620,8 @@ bool Ccm::decryptBlePacket(const uint8_t key[16], const uint8_t iv[8],
 
   alignas(4) uint8_t inputPayloadScratch[kBleDataPduMaxPayload + kBleMicLen] = {};
   alignas(4) uint8_t outputPayloadScratch[kBleDataPduMaxPayload + kBleMicLen] = {};
-  alignas(4) uint8_t adataScratch[1] = {header};
+  alignas(4) uint8_t adataScratch[1] = {
+      static_cast<uint8_t>(header & 0xE3U)};
   alignas(4) uint8_t adataOutScratch[1] = {};
   alignas(4) NRF_VDMADESCRIPTOR_Type inJobs[5] = {};
   alignas(4) NRF_VDMADESCRIPTOR_Type outJobs[5] = {};

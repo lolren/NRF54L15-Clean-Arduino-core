@@ -121,13 +121,11 @@
             (connectionPendingTxLength_ >= (kBleL2capHeaderLen + 2U)) &&
             (connectionPendingTxPayload_[5] == kAttOpWriteReq));
   };
-  auto codedCustomAttWriteNeedsDeferredResponse = [&]() {
-    if ((connectionCurrentRxPhy_ & kBlePhyCoded) == 0U) {
-      return false;
-    }
+  auto customAttWriteNeedsDeferredL2capHandling = [&]() {
     if ((llid != kBlePduDataStartOrComplete) ||
         (rxL2capCid != kBleL2capCidAtt) ||
-        (rxAttOpcode != kAttOpWriteReq) ||
+        ((rxAttOpcode != kAttOpWriteReq) &&
+         (rxAttOpcode != kAttOpWriteCmd)) ||
         (rxLength < (kBleL2capHeaderLen + 3U))) {
       return false;
     }
@@ -140,10 +138,16 @@
         (findCustomCharacteristicByCccdHandle(handle) != nullptr);
     const bool isCustomValueHandle =
         (findCustomCharacteristicByValueHandle(handle) != nullptr);
-    return !isCccdHandle && isCustomValueHandle;
+    if (isCccdHandle || !isCustomValueHandle) {
+      return false;
+    }
+    if (rxAttOpcode == kAttOpWriteCmd) {
+      return true;
+    }
+    return ((connectionCurrentRxPhy_ & kBlePhyCoded) != 0U);
   };
   const bool currentRxNeedsDeferredCustomWriteResponse =
-      codedCustomAttWriteNeedsDeferredResponse();
+      customAttWriteNeedsDeferredL2capHandling();
   // Several controllers retransmit the same LL control request until they see
   // a matching control response (not just an empty ACK). Build and transmit LL
   // control responses in this event whenever SN/NESN allows a fresh TX payload.
@@ -160,14 +164,16 @@
     }
   }
   if (packetIsNew && !terminateInd &&
-      (llid == kBlePduDataStartOrComplete) &&
-      (rxLength >= kBleL2capHeaderLen) &&
+      (((llid == kBlePduDataStartOrComplete) &&
+        (rxLength >= kBleL2capHeaderLen)) ||
+       ((llid == 0x01U) && (rxLength > 0U))) &&
       canSendNewPayloadThisEvent &&
       !encryptionProcedureBusy &&
       !currentRxNeedsDeferredCustomWriteResponse &&
       !deferEncryptedDataDecrypt) {
     l2capHandledImmediate = true;
-    if (buildL2capResponse(&rxPacket_[2], rxLength, connectionTxPayload_,
+    if (buildL2capResponse(llid, &rxPacket_[2], rxLength, packetIsNew,
+                           connectionTxPayload_,
                            &immediateL2capResponseLength) &&
         immediateL2capResponseLength > 0U) {
       immediateL2capResponseValid = true;
@@ -288,7 +294,8 @@
   }
   if (rxL2capCanUseImmediateResponse) {
     l2capHandledImmediate = true;
-    if (buildL2capResponse(&rxPacket_[2], rxLength, connectionTxPayload_,
+    if (buildL2capResponse(llid, &rxPacket_[2], rxLength, packetIsNew,
+                           connectionTxPayload_,
                            &immediateL2capResponseLength) &&
         immediateL2capResponseLength > 0U) {
       immediateL2capResponseValid = true;
@@ -297,14 +304,15 @@
     }
   }
 
-  // If we decrypted LL_START_ENC_REQ (it arrived encrypted), some controllers
-  // expect LL_START_ENC_RSP to be encrypted as well. Enable TX encryption
-  // immediately for this response in that case.
+  // As the responder, LL_START_ENC_RSP is the first PDU we transmit with link
+  // encryption enabled. The initiator's LL_START_ENC_REQ itself is plain, so
+  // arming TX encryption only after this response sends the final handshake
+  // packet in clear and stalls the procedure. Enable TX encryption
+  // immediately for the LL_START_ENC_RSP transmission.
   if (immediateLlControlResponseValid &&
       (llid == kBlePduLlControl) &&
       (rxLength >= 1U) &&
-      (rxPacket_[2] == kBleLlCtrlStartEncReq) &&
-      rxWasDecrypted) {
+      (rxPacket_[2] == kBleLlCtrlStartEncReq)) {
     connectionEncTxEnabled_ = true;
     connectionEncEnableTxOnNextEvent_ = false;
   }
@@ -437,8 +445,7 @@
 
   const bool txHasFollowingPayload =
       txPayloadIsNewPlain &&
-      (connectionPendingTxValid_ ||
-       (connectionCustomNotificationQueueCount_ > 0U));
+      connectionPendingTxValid_;
   txPacket_[0] = static_cast<uint8_t>((txLlid & 0x03U) |
                                       ((connectionExpectedRxSn_ & 0x01U) << 2U) |
                                       ((connectionTxSn_ & 0x01U) << 3U) |
@@ -461,6 +468,11 @@
       (txLength >= 1U) &&
       (txPlainPayloadForCurrentTx[0] == kBleLlCtrlStartEncRsp);
   const bool txIsEmptyAckPlain = (txLlid == 0x01U) && (txLength == 0U);
+  const bool txIsSmpPlain =
+      txPayloadIsNewPlain &&
+      (txLlid == kBlePduDataStartOrComplete) &&
+      (txLength >= (kBleL2capHeaderLen + 1U)) &&
+      (readLe16(&txPlainPayloadForCurrentTx[2]) == kBleL2capCidSmp);
 
   const bool sessionEncryptionActive = connectionEncTxEnabled_ && connectionEncSessionValid_;
   const bool encryptCurrentTx = sessionEncryptionActive &&
@@ -468,7 +480,9 @@
   uint8_t txLengthOnAir = txLength;
   uint64_t txCounterUsedForCurrentTx = 0ULL;
   bool txCounterUsedValid = false;
-  if (!txCanUseFreshPayload && sessionEncryptionActive && connectionLastTxWasEncrypted_) {
+  if (!txPayloadIsNewPlain &&
+      sessionEncryptionActive &&
+      connectionLastTxWasEncrypted_) {
     txLengthOnAir = connectionLastTxEncryptedLength_;
     txPacket_[1] = txLengthOnAir;
     if (txLengthOnAir > 0U) {
@@ -579,9 +593,20 @@
       ((rxLength > 0U) || txHasFollowingPayload);
   const bool allowQueuedDataBurstFollowup =
       allowPlainFollowupTurnaround && txHasFollowingPayload;
+  const bool allowQueuedSmpFollowupTurnaround =
+      !terminateInd &&
+      !connectionEncSessionValid_ &&
+      !connectionEncRxEnabled_ &&
+      !connectionEncTxEnabled_ &&
+      !connectionEncStartReqPending_ &&
+      !connectionEncStartReqTxPending_ &&
+      !connectionEncAwaitingStartRsp_ &&
+      !connectionEncKeyDerivationPending_ &&
+      txIsSmpPlain;
   const bool doPostTxRxTurnaround =
       !terminateInd &&
       (allowPlainFollowupTurnaround ||
+       allowQueuedSmpFollowupTurnaround ||
        (connectionEncStartReqPending_ && txIsEncRspPlain) ||
        txIsStartEncReqPlain);
 
@@ -647,9 +672,14 @@
       // listener observes only RX completion events.
       radio_->EVENTS_END = 0U;
       radio_->EVENTS_PHYEND = 0U;
+      // The DISABLED event here belongs to the follow-up RX window, not to the
+      // completed TX packet. Treat TX as successful once PHYEND is seen and let
+      // the follow-up loop own the later RX->DISABLED transition.
+      txOk = true;
+    } else {
+      txOk = waitRadioDisabledBudgeted(radio_, kBleConnTxDisableWaitUs,
+                                       spinLimit / 2U + 1U);
     }
-    txOk = waitRadioDisabledBudgeted(radio_, kBleConnTxDisableWaitUs,
-                                     spinLimit / 2U + 1U);
   }
   if (!txOk) {
     radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
@@ -662,21 +692,28 @@
                                txPayloadIsNewPlain ? &connectionTxPayload_[0]
                                                    : &connectionLastTxPlainPayload_[0]);
   }
+  bool followRxAlreadyDone = false;
   if (!doPostTxRxTurnaround || !txOk) {
     radio_->SHORTS = 0U;
   } else {
+    followRxAlreadyDone =
+        (radio_->EVENTS_CRCOK != 0U) || (radio_->EVENTS_CRCERROR != 0U);
     // Clear TX completion events and remove DISABLED->RX shortcut so RX disable
     // completes cleanly once the follow-up listen window ends.
     radio_->EVENTS_DISABLED = 0U;
-    radio_->EVENTS_CRCOK = 0U;
-    radio_->EVENTS_CRCERROR = 0U;
+    if (!followRxAlreadyDone) {
+      radio_->EVENTS_CRCOK = 0U;
+      radio_->EVENTS_CRCERROR = 0U;
+    }
     radio_->SHORTS = bleRadioShortsRxListen();
 
     // Defensive fallback: if shortcut path did not enter RX, arm RX manually.
-    const uint32_t state =
-        (radio_->STATE & RADIO_STATE_STATE_Msk) >> RADIO_STATE_STATE_Pos;
-    if (state == RADIO_STATE_STATE_Disabled) {
-      radio_->TASKS_RXEN = RADIO_TASKS_RXEN_TASKS_RXEN_Trigger;
+    if (!followRxAlreadyDone) {
+      const uint32_t state =
+          (radio_->STATE & RADIO_STATE_STATE_Msk) >> RADIO_STATE_STATE_Pos;
+      if (state == RADIO_STATE_STATE_Disabled) {
+        radio_->TASKS_RXEN = RADIO_TASKS_RXEN_TASKS_RXEN_Trigger;
+      }
     }
   }
   if (!txOk) {
@@ -690,12 +727,6 @@
     const uint8_t opcode = connectionLastTxPlainPayload_[0];
     if (opcode == kBleLlCtrlEncRsp) {
       ++encDebug_.mainEncRspTxOk;
-      // Some centrals do not send LL_START_ENC_REQ in the same event as
-      // LL_ENC_RSP. Arm a next-event fallback so the procedure still advances
-      // when the immediate follow-up listener sees nothing.
-      if (connectionEncStartReqPending_) {
-        connectionEncStartReqTxPending_ = true;
-      }
     } else if (opcode == kBleLlCtrlStartEncReq) {
       connectionEncStartReqTxPending_ = false;
       connectionEncAwaitingStartRsp_ = true;
@@ -785,6 +816,7 @@
     encDebug_.connLastFollowupListenBudgetUs = followListenUs;
     const uint32_t followStartUs = bleTimingUs();
     uint8_t followPackets = 0U;
+    bool usePreservedFollowPacket = followRxAlreadyDone;
     while (!terminateInd) {
       const uint32_t followNowUs = bleTimingUs();
       const uint32_t elapsedUs =
@@ -795,8 +827,14 @@
       const uint32_t remainingUs = followListenUs - elapsedUs;
 
       uint32_t followRxEndTimestampUs = 0U;
-      const bool followEndSeen = waitRadioRxDoneBudgeted(
-          radio_, remainingUs, spinLimit / 2U + 1U, &followRxEndTimestampUs);
+      const bool processingPreservedFollowPacket = usePreservedFollowPacket;
+      const bool followEndSeen =
+          processingPreservedFollowPacket
+              ? true
+              : waitRadioRxDoneBudgeted(radio_, remainingUs,
+                                        spinLimit / 2U + 1U,
+                                        &followRxEndTimestampUs);
+      usePreservedFollowPacket = false;
       if (!followEndSeen) {
         ++encDebug_.connFollowupRxTimeoutCount;
         radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
@@ -928,6 +966,25 @@
                 (followTxCounter + 1ULL) & kBleEncPacketCounterMask;
             ++encDebug_.encTxPacketCount;
             ++encDebug_.followupStartEncRspTxOk;
+          }
+          if (!terminateInd) {
+            // Same-event follow-up traffic can legitimately continue after an
+            // immediate response, for example SMP Pairing Response followed by
+            // Pairing Public Key. Restore the RX buffer and re-arm listening.
+            clearRadioCoreEvents(radio_);
+            radio_->PACKETPTR =
+                static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&rxPacket_[0]));
+            radio_->EVENTS_DISABLED = 0U;
+            radio_->EVENTS_CRCOK = 0U;
+            radio_->EVENTS_CRCERROR = 0U;
+            radio_->SHORTS = bleRadioShortsRxListen();
+
+            const uint32_t followState =
+                (radio_->STATE & RADIO_STATE_STATE_Msk) >>
+                RADIO_STATE_STATE_Pos;
+            if (followState == RADIO_STATE_STATE_Disabled) {
+              radio_->TASKS_RXEN = RADIO_TASKS_RXEN_TASKS_RXEN_Trigger;
+            }
           }
         }
         lastTxOkForEncEnable = txFollowOk;
@@ -1186,16 +1243,14 @@
 
         if (allowPlainFollowupTurnaround && !terminateInd) {
           auto followNeedsDeferredCustomWriteResponse = [&]() {
-            if ((connectionCurrentRxPhy_ & kBlePhyCoded) == 0U) {
-              return false;
-            }
             if ((llidFollow != kBlePduDataStartOrComplete) ||
                 (rxLengthFollow < (kBleL2capHeaderLen + 3U))) {
               return false;
             }
             const uint16_t followCid = readLe16(&rxPacket_[4]);
             if ((followCid != kBleL2capCidAtt) ||
-                (rxPacket_[2 + kBleL2capHeaderLen] != kAttOpWriteReq)) {
+                ((rxPacket_[2 + kBleL2capHeaderLen] != kAttOpWriteReq) &&
+                 (rxPacket_[2 + kBleL2capHeaderLen] != kAttOpWriteCmd))) {
               return false;
             }
             const uint16_t handle =
@@ -1206,14 +1261,27 @@
                 (findCustomCharacteristicByCccdHandle(handle) != nullptr);
             const bool isCustomValueHandle =
                 (findCustomCharacteristicByValueHandle(handle) != nullptr);
-            return !isCccdHandle && isCustomValueHandle;
+            if (isCccdHandle || !isCustomValueHandle) {
+              return false;
+            }
+            if (rxPacket_[2 + kBleL2capHeaderLen] == kAttOpWriteCmd) {
+              return true;
+            }
+            return ((connectionCurrentRxPhy_ & kBlePhyCoded) != 0U);
           };
           const bool followCanDisplacePendingServerPush =
               connectionPendingTxValid_ &&
               pendingTxIsAttServerPushPdu();
+          const bool followCarriesSmp =
+              (((llidFollow == kBlePduDataStartOrComplete) &&
+                (rxLengthFollow >= kBleL2capHeaderLen) &&
+                (readLe16(&rxPacket_[4]) == kBleL2capCidSmp)) ||
+               ((llidFollow == 0x01U) &&
+                connectionRxL2capReassemblyActive_));
           if (packetIsNewFollow &&
               (!connectionPendingTxValid_ ||
-               followCanDisplacePendingServerPush)) {
+               followCanDisplacePendingServerPush ||
+               followCarriesSmp)) {
             if ((llidFollow == kBlePduLlControl) && (rxLengthFollow >= 1U)) {
               uint8_t responseLength = 0U;
               bool followTerminate = false;
@@ -1238,28 +1306,40 @@
               if (followTerminate) {
                 terminateInd = true;
               }
-            } else if ((llidFollow == kBlePduDataStartOrComplete) &&
-                       (rxLengthFollow >= kBleL2capHeaderLen)) {
+            } else if ((((llidFollow == kBlePduDataStartOrComplete) &&
+                         (rxLengthFollow >= kBleL2capHeaderLen)) ||
+                        ((llidFollow == 0x01U) && (rxLengthFollow > 0U)))) {
               uint8_t responseLength = 0U;
               uint8_t followResponsePayload[kBleDataPduMaxPayload] = {0};
               uint8_t* responsePayload =
-                  (followCanDisplacePendingServerPush ||
+                  ((connectionPendingTxValid_ && !followCanDisplacePendingServerPush) ||
+                   followCanDisplacePendingServerPush ||
                    followNeedsDeferredCustomWriteResponse())
                       ? followResponsePayload
                       : connectionPendingTxPayload_;
-              if (buildL2capResponse(&rxPacket_[2], rxLengthFollow,
-                                     responsePayload,
+                if (buildL2capResponse(llidFollow, &rxPacket_[2], rxLengthFollow,
+                                     packetIsNewFollow, responsePayload,
                                      &responseLength) &&
                   responseLength > 0U) {
-                if (responsePayload == followResponsePayload) {
+                if ((responsePayload == followResponsePayload) &&
+                    (!connectionPendingTxValid_ ||
+                     followCanDisplacePendingServerPush)) {
                   memcpy(connectionPendingTxPayload_, followResponsePayload,
                          responseLength);
+                  connectionPendingTxLlid_ = kBlePduDataStartOrComplete;
+                  connectionPendingTxLength_ = responseLength;
+                  connectionPendingTxValid_ = true;
+                } else if (responsePayload != followResponsePayload) {
+                  connectionPendingTxLlid_ = kBlePduDataStartOrComplete;
+                  connectionPendingTxLength_ = responseLength;
+                  connectionPendingTxValid_ = true;
                 }
-                connectionPendingTxLlid_ = kBlePduDataStartOrComplete;
-                connectionPendingTxLength_ = responseLength;
-                connectionPendingTxValid_ = true;
               }
             }
+          }
+
+          if (processingPreservedFollowPacket) {
+            break;
           }
 
           if (!terminateInd) {
@@ -1336,14 +1416,30 @@
               }
             };
 
+            queueCustomFollowupPayload();
+
+            const bool pendingTxIsRetryableL2capResponseReadyFollow =
+                connectionPendingTxValid_ &&
+                (connectionPendingTxLlid_ == kBlePduDataStartOrComplete) &&
+                (connectionPendingTxLength_ >= kBleL2capHeaderLen) &&
+                ((readLe16(&connectionPendingTxPayload_[2]) ==
+                  kBleL2capCidAtt) ||
+                 (readLe16(&connectionPendingTxPayload_[2]) ==
+                  kBleL2capCidSmp) ||
+                 (readLe16(&connectionPendingTxPayload_[2]) ==
+                  kBleL2capCidLeSignaling));
+            if (!peerAckedLastTxFollowMutable &&
+                connectionTxHistoryValid_ &&
+                packetIsNewFollow &&
+                pendingTxIsRetryableL2capResponseReadyFollow) {
+              peerAckedLastTxFollowMutable = true;
+            }
+
             const bool txFollowCanUseFreshPayload =
                 !connectionTxHistoryValid_ || peerAckedLastTxFollowMutable;
             uint8_t txFollowLlid = 0x01U;
             uint8_t txFollowLength = 0U;
             if (txFollowCanUseFreshPayload) {
-              if (allowQueuedDataBurstFollowup) {
-                queueCustomFollowupPayload();
-              }
               if (connectionPendingTxValid_) {
                 txFollowLlid = connectionPendingTxLlid_;
                 txFollowLength = connectionPendingTxLength_;
@@ -1376,5 +1472,4 @@
 
             const bool txFollowHasMoreData =
                 txFollowCanUseFreshPayload &&
-                (connectionPendingTxValid_ ||
-                 (connectionCustomNotificationQueueCount_ > 0U));
+                connectionPendingTxValid_;

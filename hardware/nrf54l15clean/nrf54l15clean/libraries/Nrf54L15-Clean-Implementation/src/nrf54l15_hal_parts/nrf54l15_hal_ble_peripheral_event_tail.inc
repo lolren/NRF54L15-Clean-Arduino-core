@@ -247,22 +247,10 @@
   uint8_t deferredLength = 0U;
 
   if (!terminateInd) {
-    // Interop fallback: some hosts stall after LL_ENC_RSP instead of issuing
-    // the initiator-side LL_START_ENC_REQ. Queue a single next-event
-    // LL_START_ENC_REQ so the host can complete the procedure with
-    // LL_START_ENC_RSP, but do not emit any extra terminal response after that.
-    if (connectionEncSessionValid_ &&
-        connectionEncStartReqPending_ &&
-        connectionEncStartReqTxPending_ &&
-        !connectionEncAwaitingStartRsp_ &&
-        !connectionPendingTxValid_) {
-      connectionTxPayload_[0] = kBleLlCtrlStartEncReq;
-      deferredLlid = kBlePduLlControl;
-      deferredLength = 1U;
-    } else if (packetIsNew &&
-               !llControlHandledImmediate &&
-               llid == kBlePduLlControl &&
-               rxLength >= 1U) {
+    if (packetIsNew &&
+        !llControlHandledImmediate &&
+        llid == kBlePduLlControl &&
+        rxLength >= 1U) {
       uint8_t responseLength = 0U;
       if (buildLlControlResponse(&rxPacket_[2], rxLength, currentEventCounter,
                                  connectionTxPayload_, &responseLength,
@@ -274,11 +262,12 @@
     } else if (packetIsNew &&
                !l2capHandledImmediate &&
                !encryptionProcedureBusy &&
-               llid == kBlePduDataStartOrComplete &&
-               rxLength >= kBleL2capHeaderLen) {
+               (((llid == kBlePduDataStartOrComplete) &&
+                 (rxLength >= kBleL2capHeaderLen)) ||
+                ((llid == 0x01U) && (rxLength > 0U)))) {
       uint8_t responseLength = 0U;
-      if (buildL2capResponse(&rxPacket_[2], rxLength, connectionTxPayload_,
-                             &responseLength) &&
+      if (buildL2capResponse(llid, &rxPacket_[2], rxLength, packetIsNew,
+                             connectionTxPayload_, &responseLength) &&
           responseLength > 0U) {
         deferredLlid = kBlePduDataStartOrComplete;
           deferredLength = responseLength;
@@ -290,9 +279,8 @@
     }
 
     // Peripheral-initiated SMP Security Request: ask the central to start
-    // LE legacy pairing so that an STK is established before it sends
-    // LL_ENC_REQ.  Only sent when no key is already available and no SMP
-    // handshake is in progress.
+    // LE Secure Connections Just Works pairing. Only sent when no key is
+    // already available and no SMP handshake is in progress.
     if ((deferredLength == 0U) &&
         !connectionPendingTxValid_ &&
         !encryptionProcedureBusy &&
@@ -306,7 +294,8 @@
       writeLe16(&connectionTxPayload_[0], 2U);           // L2CAP length = 2
       writeLe16(&connectionTxPayload_[2], kBleL2capCidSmp);
       connectionTxPayload_[4] = kSmpCodeSecurityRequest; // opcode 0x0B
-      connectionTxPayload_[5] = 0x01U;                   // AuthReq: Bonding, no MITM
+      connectionTxPayload_[5] =
+          static_cast<uint8_t>(0x01U | kSmpAuthReqSecureConnectionsMask);
       deferredLlid = kBlePduDataStartOrComplete;
       deferredLength = 6U;
       connectionSmpSecurityRequestPending_ = false;
@@ -469,17 +458,63 @@
 
 bool BleRadio::pollConnectionEvent(BleConnectionEvent* event,
                                    uint32_t spinLimit) {
-  if (event != nullptr) {
-    resetConnectionEventStruct(event);
-    if (dequeueConnectionEvent(event)) {
-      rememberLatestConnectionRssi(*event);
+  if (!bleRunningInIsr()) {
+    serviceDeferredApplicationWork();
+  }
+
+  auto dequeueQueuedEvent = [&](BleConnectionEvent* outEvent) {
+    if (outEvent == nullptr) {
+      return false;
+    }
+
+    resetConnectionEventStruct(outEvent);
+    if (!dequeueConnectionEvent(outEvent)) {
+      return false;
+    }
+
+    rememberLatestConnectionRssi(*outEvent);
+    if (!bleRunningInIsr()) {
+      serviceDeferredApplicationWork();
+    }
+    return true;
+  };
+
+  if (dequeueQueuedEvent(event)) {
+    return true;
+  }
+
+  if (!bleRunningInIsr()) {
+    // Non-ISR callers share the BLE idle/yield hooks with the same radio.
+    // Drive connection progress through the queued service path here as well,
+    // otherwise sketch polling can race a concurrent idle-service poll and
+    // advance the same connection event twice under sustained duplex traffic.
+    const uint8_t queuedBefore = queuedConnectionEventCount_;
+    serviceBackgroundConnection(spinLimit);
+    if (dequeueQueuedEvent(event)) {
       return true;
     }
+    if (event == nullptr && queuedConnectionEventCount_ != queuedBefore) {
+      BleConnectionEvent discarded{};
+      if (dequeueConnectionEvent(&discarded)) {
+        rememberLatestConnectionRssi(discarded);
+        if (!bleRunningInIsr()) {
+          serviceDeferredApplicationWork();
+        }
+        return true;
+      }
+    }
+    if (!bleRunningInIsr()) {
+      serviceDeferredApplicationWork();
+    }
+    return false;
   }
 
   const bool ran = pollConnectionEventInternal(event, spinLimit);
   if (ran && event != nullptr) {
     rememberLatestConnectionRssi(*event);
+  }
+  if (!bleRunningInIsr()) {
+    serviceDeferredApplicationWork();
   }
   return ran;
 }

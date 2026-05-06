@@ -964,6 +964,126 @@ void BleRadio::maybeQueueCentralLinkSetupRequest() {
   if (!connected_ || connectionPendingTxValid_) {
     return;
   }
+
+  if (connectionRole_ == BleConnectionRole::kCentral) {
+    if (connectionEncSessionValid_ &&
+        connectionEncStartReqTxPending_ &&
+        !connectionEncAwaitingStartRsp_) {
+      connectionPendingTxPayload_[0] = kBleLlCtrlStartEncReq;
+      connectionPendingTxLlid_ = kBlePduLlControl;
+      connectionPendingTxLength_ = 1U;
+      connectionPendingTxValid_ = true;
+      emitBleTrace("LL_START_ENC_REQ_QUEUED");
+      return;
+    }
+
+    const bool secureConnectionsComplete =
+        smpSecureConnectionsActive_ &&
+        smpLocalInitiator_ &&
+        smpSecureConnectionsDhKeyCheckSent_ &&
+        !smpSecureConnectionsDeferredDhKeyCheck_ &&
+        !smpSecureConnectionsReceivedDhKeyCheckValid_;
+    const bool centralEncryptionReady =
+        smpStkValid_ &&
+        !connectionEncSessionValid_ &&
+        !connectionEncRxEnabled_ &&
+        !connectionEncTxEnabled_ &&
+        !connectionEncKeyDerivationPending_ &&
+        !connectionEncStartReqPending_ &&
+        !connectionEncStartReqTxPending_ &&
+        !connectionEncAwaitingStartRsp_ &&
+        (!smpSecureConnectionsActive_ || secureConnectionsComplete);
+    if (centralEncryptionReady) {
+      const uint32_t seed =
+          micros() ^ connectionAccessAddress_ ^
+          static_cast<uint32_t>(connectionEventCounter_ << 16U) ^
+          connectionCrcInit_;
+      memset(connectionEncSkd_, 0, sizeof(connectionEncSkd_));
+      memset(connectionEncIv_, 0, sizeof(connectionEncIv_));
+      if (connectionPrefetchedEncMaterialValid_) {
+        memcpy(&connectionEncSkd_[0], connectionPrefetchedSkds_,
+               sizeof(connectionPrefetchedSkds_));
+        memcpy(&connectionEncIv_[0], connectionPrefetchedIvs_,
+               sizeof(connectionPrefetchedIvs_));
+        connectionPrefetchedEncMaterialValid_ = false;
+        ++encDebug_.encRandomPrefetchUseCount;
+      } else {
+        if (fillBleSecurityRandomBytes(&connectionEncSkd_[0], 8U, seed,
+                                       kBleSecurityRandomSpinLimit)) {
+          ++encDebug_.encRandomHardwareCount;
+        } else {
+          ++encDebug_.encRandomFallbackCount;
+        }
+        if (fillBleSecurityRandomBytes(&connectionEncIv_[0], 4U,
+                                       seed ^ 0x6BA38B4FUL,
+                                       kBleSecurityRandomSpinLimit)) {
+          ++encDebug_.encRandomHardwareCount;
+        } else {
+          ++encDebug_.encRandomFallbackCount;
+        }
+      }
+
+      memcpy(encDebug_.encLastSkdm, &connectionEncSkd_[0],
+             sizeof(encDebug_.encLastSkdm));
+      memcpy(encDebug_.encLastIvm, &connectionEncIv_[0],
+             sizeof(encDebug_.encLastIvm));
+      memset(connectionEncSessionKey_, 0, sizeof(connectionEncSessionKey_));
+      memset(connectionEncSessionKeyAlt_, 0, sizeof(connectionEncSessionKeyAlt_));
+      connectionEncAltKeyValid_ = false;
+      connectionEncSessionValid_ = true;
+      connectionEncRxEnabled_ = false;
+      connectionEncTxEnabled_ = false;
+      connectionEncStartReqPending_ = false;
+      connectionEncStartReqTxPending_ = false;
+      connectionEncAwaitingStartRsp_ = false;
+      connectionEncEnableTxOnNextEvent_ = false;
+      connectionEncKeyDerivationPending_ = false;
+      connectionEncRxCounter_ = 0ULL;
+      connectionEncTxCounter_ = 0ULL;
+      connectionEncRxDirection_ = 0U;
+      connectionEncTxDirection_ = 1U;
+      connectionLastTxWasEncrypted_ = false;
+      connectionLastTxEncryptedLength_ = 0U;
+      memset(connectionLastTxEncryptedPayload_, 0,
+             sizeof(connectionLastTxEncryptedPayload_));
+      connectionEncPrecomputedEmptyValid_ = false;
+      connectionEncPrecomputedCounter_ = 0ULL;
+      memset(connectionEncPrecomputedPayload_, 0,
+             sizeof(connectionEncPrecomputedPayload_));
+      connectionEncPrecomputedStartRspValid_ = false;
+      memset(connectionEncPrecomputedStartRsp_, 0,
+             sizeof(connectionEncPrecomputedStartRsp_));
+      connectionEncPrecomputedStartRspTxValid_ = false;
+      connectionEncPrecomputedStartRspTxCounter_ = 0ULL;
+      memset(connectionEncPrecomputedStartRspTx_, 0,
+             sizeof(connectionEncPrecomputedStartRspTx_));
+      encDebug_.encLastRxDir = connectionEncRxDirection_;
+      encDebug_.encLastTxDir = connectionEncTxDirection_;
+
+      connectionPendingTxPayload_[0] = kBleLlCtrlEncReq;
+      memcpy(&connectionPendingTxPayload_[1], smpEncReqRand_,
+             sizeof(smpEncReqRand_));
+      writeLe16(&connectionPendingTxPayload_[9], smpEncReqEdiv_);
+      memcpy(&connectionPendingTxPayload_[11], &connectionEncSkd_[0], 8U);
+      memcpy(&connectionPendingTxPayload_[19], &connectionEncIv_[0], 4U);
+      connectionPendingTxLlid_ = kBlePduLlControl;
+      connectionPendingTxLength_ = 23U;
+      connectionPendingTxValid_ = true;
+      if (smpPairingState_ != kSmpPairingStateIdle) {
+        smpPairingState_ = kSmpPairingStateIdle;
+      }
+      emitBleTrace("LL_ENC_REQ_QUEUED");
+      return;
+    }
+  }
+
+  // Keep the early connection free of optional LL/ATT setup chatter while an
+  // SMP handshake is in flight. Secure pairing PDUs are latency-sensitive and
+  // some hosts retry or abort if we interleave too much opportunistic traffic.
+  if ((smpPairingState_ != kSmpPairingStateIdle) ||
+      connectionSmpSecurityRequestPending_) {
+    return;
+  }
   const uint32_t nowMs = millis();
   const bool setupDelayElapsed =
       (connectionCentralLinkSetupNotBeforeMs_ == 0U) ||
@@ -1168,9 +1288,12 @@ void BleRadio::setCustomGattWriteCallback(BleGattWriteCallback callback, void* c
   bleExitCritical(irqState);
 }
 
-bool BleRadio::writeCustomGattCharacteristic(uint16_t handle, const uint8_t* value,
-                                             uint16_t valueLength, bool withResponse,
-                                             uint8_t* outErrorCode) {
+bool BleRadio::applyCustomGattCharacteristicValueWrite(uint16_t handle,
+                                                       const uint8_t* value,
+                                                       uint16_t valueLength,
+                                                       bool withResponse,
+                                                       uint8_t* outErrorCode,
+                                                       bool allowDeferredCallback) {
   if (outErrorCode != nullptr) {
     *outErrorCode = kAttErrWriteNotPermitted;
   }
@@ -1202,8 +1325,12 @@ bool BleRadio::writeCustomGattCharacteristic(uint16_t handle, const uint8_t* val
     }
     BleCustomWriteHandlerState* handler =
         findCustomGattWriteHandler(valueTarget->valueHandle);
+    const bool deferWriteCallback =
+        allowDeferredCallback &&
+        (bleRunningInIsr() ||
+         (connected_ && connectionRole_ != BleConnectionRole::kNone));
     if (handler != nullptr && handler->callback != nullptr) {
-      if (bleRunningInIsr()) {
+      if (deferWriteCallback) {
         enqueueDeferredGattWrite(handler->callback, handler->context,
                                  valueTarget->valueHandle, valueTarget->value,
                                  valueTarget->valueLength, withResponse);
@@ -1213,7 +1340,7 @@ bool BleRadio::writeCustomGattCharacteristic(uint16_t handle, const uint8_t* val
                           handler->context);
       }
     } else if (customGattWriteCallback_ != nullptr) {
-      if (bleRunningInIsr()) {
+      if (deferWriteCallback) {
         enqueueDeferredGattWrite(customGattWriteCallback_, customGattWriteContext_,
                                  valueTarget->valueHandle, valueTarget->value,
                                  valueTarget->valueLength, withResponse);
@@ -1223,6 +1350,17 @@ bool BleRadio::writeCustomGattCharacteristic(uint16_t handle, const uint8_t* val
                                  customGattWriteContext_);
       }
     }
+    return true;
+  }
+
+  return false;
+}
+
+bool BleRadio::writeCustomGattCharacteristic(uint16_t handle, const uint8_t* value,
+                                             uint16_t valueLength, bool withResponse,
+                                             uint8_t* outErrorCode) {
+  if (applyCustomGattCharacteristicValueWrite(handle, value, valueLength,
+                                              withResponse, outErrorCode, true)) {
     return true;
   }
 
@@ -1275,6 +1413,20 @@ bool BleRadio::writeCustomGattCharacteristic(uint16_t handle, const uint8_t* val
                                       (cccdTarget->cccdValue & 0x0002U) != 0U);
   }
   return true;
+}
+
+void BleRadio::deferredCustomGattPeerWriteCallback(uint16_t valueHandle,
+                                                   const uint8_t* value,
+                                                   uint8_t valueLength,
+                                                   bool withResponse,
+                                                   void* context) {
+  if (context == nullptr) {
+    return;
+  }
+  BleRadio* radio = static_cast<BleRadio*>(context);
+  uint8_t ignoredError = kAttErrWriteNotPermitted;
+  (void)radio->applyCustomGattCharacteristicValueWrite(
+      valueHandle, value, valueLength, withResponse, &ignoredError, false);
 }
 
 void BleRadio::clearCustomGattConnectionState() {

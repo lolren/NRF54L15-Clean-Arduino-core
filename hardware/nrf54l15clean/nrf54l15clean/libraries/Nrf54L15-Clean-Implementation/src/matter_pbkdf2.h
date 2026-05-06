@@ -11,7 +11,10 @@ namespace xiao_nrf54l15 {
 class MatterPbkdf2 {
  public:
   static constexpr size_t kHashSize = 32U;
-  static constexpr size_t kMaxSaltSize = 64U;
+  // Matter SPAKE2+ verifier derivation uses salt || w0 || context, which is
+  // currently 80 bytes. Keep some headroom so the PBKDF2 helper does not
+  // reject valid Matter inputs.
+  static constexpr size_t kMaxSaltSize = 128U;
   static constexpr size_t kMaxPasswordSize = 128U;
 
   // Derive key using PBKDF2-HMAC-SHA256

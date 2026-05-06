@@ -195,6 +195,256 @@ bool smpS1(const uint8_t tk[16], const uint8_t r1[16], const uint8_t r2[16], uin
   return aesEncryptLe(tk, plaintext, out);
 }
 
+static void reverseCopy(const uint8_t* in, size_t len, uint8_t* out) {
+  if (in == nullptr || out == nullptr) {
+    return;
+  }
+
+  for (size_t i = 0; i < len; ++i) {
+    out[i] = in[len - 1U - i];
+  }
+}
+
+static void reverseInPlace(uint8_t* data, size_t len) {
+  if (data == nullptr || len <= 1U) {
+    return;
+  }
+
+  for (size_t i = 0; i < (len / 2U); ++i) {
+    const uint8_t tmp = data[i];
+    data[i] = data[len - 1U - i];
+    data[len - 1U - i] = tmp;
+  }
+}
+
+static void xorBlock16(const uint8_t* a, const uint8_t* b, uint8_t out[16]) {
+  if (a == nullptr || b == nullptr || out == nullptr) {
+    return;
+  }
+
+  for (size_t i = 0; i < 16U; ++i) {
+    out[i] = static_cast<uint8_t>(a[i] ^ b[i]);
+  }
+}
+
+static void leftShiftBlock16(const uint8_t in[16], uint8_t out[16]) {
+  if (in == nullptr || out == nullptr) {
+    return;
+  }
+
+  uint8_t carry = 0U;
+  for (size_t i = 16U; i-- > 0U;) {
+    const uint8_t nextCarry = static_cast<uint8_t>((in[i] >> 7U) & 0x01U);
+    out[i] = static_cast<uint8_t>((in[i] << 1U) | carry);
+    carry = nextCarry;
+  }
+}
+
+static void padCmacFinalBlock(const uint8_t* input, size_t inputLen,
+                              uint8_t out[16]) {
+  if (out == nullptr) {
+    return;
+  }
+
+  memset(out, 0, 16U);
+  if (input != nullptr && inputLen > 0U) {
+    memcpy(out, input, inputLen);
+  }
+  out[inputLen] = 0x80U;
+}
+
+static void generateAesCmacSubkeys(const uint8_t keyBe[16],
+                                   uint8_t outK1[16],
+                                   uint8_t outK2[16]) {
+  if (keyBe == nullptr || outK1 == nullptr || outK2 == nullptr) {
+    return;
+  }
+
+  static constexpr uint8_t kCmacRb = 0x87U;
+  const uint8_t zero[16] = {0};
+  uint8_t l[16] = {0};
+  aesEncryptBlockBe(keyBe, zero, l);
+
+  leftShiftBlock16(l, outK1);
+  if ((l[0] & 0x80U) != 0U) {
+    outK1[15] ^= kCmacRb;
+  }
+
+  leftShiftBlock16(outK1, outK2);
+  if ((outK1[0] & 0x80U) != 0U) {
+    outK2[15] ^= kCmacRb;
+  }
+}
+
+static bool aesCmacBe(const uint8_t keyBe[16], const uint8_t* message,
+                      size_t messageLen, uint8_t out[16]) {
+  if (keyBe == nullptr || out == nullptr) {
+    return false;
+  }
+  if (messageLen > 0U && message == nullptr) {
+    return false;
+  }
+
+  uint8_t k1[16] = {0};
+  uint8_t k2[16] = {0};
+  uint8_t x[16] = {0};
+  uint8_t y[16] = {0};
+  uint8_t mLast[16] = {0};
+  generateAesCmacSubkeys(keyBe, k1, k2);
+
+  const size_t blockCount =
+      (messageLen == 0U) ? 1U : ((messageLen + 15U) / 16U);
+  const bool lastBlockComplete =
+      (messageLen != 0U) && ((messageLen % 16U) == 0U);
+
+  if (lastBlockComplete) {
+    xorBlock16(&message[(blockCount - 1U) * 16U], k1, mLast);
+  } else {
+    const size_t tailLen = (messageLen == 0U) ? 0U : (messageLen % 16U);
+    padCmacFinalBlock((messageLen == 0U) ? nullptr
+                                         : &message[(blockCount - 1U) * 16U],
+                      tailLen, mLast);
+    xorBlock16(mLast, k2, mLast);
+  }
+
+  for (size_t block = 0U; block + 1U < blockCount; ++block) {
+    xorBlock16(x, &message[block * 16U], y);
+    aesEncryptBlockBe(keyBe, y, x);
+  }
+
+  xorBlock16(x, mLast, y);
+  aesEncryptBlockBe(keyBe, y, out);
+  return true;
+}
+
+static bool bleSecureConnectionsF4(const uint8_t u[32], const uint8_t v[32],
+                                   const uint8_t x[16], uint8_t z,
+                                   uint8_t out[16]) {
+  if (u == nullptr || v == nullptr || x == nullptr || out == nullptr) {
+    return false;
+  }
+
+  uint8_t keyBe[16] = {0};
+  uint8_t message[65] = {0};
+  reverseCopy(u, 32U, &message[0]);
+  reverseCopy(v, 32U, &message[32]);
+  message[64] = z;
+  reverseCopy(x, 16U, keyBe);
+
+  if (!aesCmacBe(keyBe, message, sizeof(message), out)) {
+    return false;
+  }
+
+  reverseInPlace(out, 16U);
+  return true;
+}
+
+static bool bleSecureConnectionsF5(const uint8_t w[32], const uint8_t n1[16],
+                                   const uint8_t n2[16], uint8_t a1Type,
+                                   const uint8_t a1[6], uint8_t a2Type,
+                                   const uint8_t a2[6], uint8_t outMacKey[16],
+                                   uint8_t outLtk[16]) {
+  if (w == nullptr || n1 == nullptr || n2 == nullptr || a1 == nullptr ||
+      a2 == nullptr || outMacKey == nullptr || outLtk == nullptr) {
+    return false;
+  }
+
+  static const uint8_t kSaltBe[16] = {
+      0x6cU, 0x88U, 0x83U, 0x91U, 0xaaU, 0xf5U, 0xa5U, 0x38U,
+      0x60U, 0x37U, 0x0bU, 0xdbU, 0x5aU, 0x60U, 0x83U, 0xbeU,
+  };
+  uint8_t wBe[32] = {0};
+  uint8_t t[16] = {0};
+  uint8_t message[53] = {
+      0x00U, 0x62U, 0x74U, 0x6cU, 0x65U,
+  };
+
+  reverseCopy(w, 32U, wBe);
+  if (!aesCmacBe(kSaltBe, wBe, sizeof(wBe), t)) {
+    return false;
+  }
+
+  reverseCopy(n1, 16U, &message[5]);
+  reverseCopy(n2, 16U, &message[21]);
+  message[37] = a1Type;
+  reverseCopy(a1, 6U, &message[38]);
+  message[44] = a2Type;
+  reverseCopy(a2, 6U, &message[45]);
+  message[51] = 0x01U;
+  message[52] = 0x00U;
+
+  if (!aesCmacBe(t, message, sizeof(message), outMacKey)) {
+    return false;
+  }
+  reverseInPlace(outMacKey, 16U);
+
+  message[0] = 0x01U;
+  if (!aesCmacBe(t, message, sizeof(message), outLtk)) {
+    return false;
+  }
+  reverseInPlace(outLtk, 16U);
+  return true;
+}
+
+static bool bleSecureConnectionsF6(const uint8_t w[16], const uint8_t n1[16],
+                                   const uint8_t n2[16], const uint8_t r[16],
+                                   const uint8_t ioCap[3], uint8_t a1Type,
+                                   const uint8_t a1[6], uint8_t a2Type,
+                                   const uint8_t a2[6], uint8_t out[16]) {
+  if (w == nullptr || n1 == nullptr || n2 == nullptr || r == nullptr ||
+      ioCap == nullptr || a1 == nullptr || a2 == nullptr || out == nullptr) {
+    return false;
+  }
+
+  uint8_t keyBe[16] = {0};
+  uint8_t message[65] = {0};
+  reverseCopy(n1, 16U, &message[0]);
+  reverseCopy(n2, 16U, &message[16]);
+  reverseCopy(r, 16U, &message[32]);
+  reverseCopy(ioCap, 3U, &message[48]);
+  message[51] = a1Type;
+  reverseCopy(a1, 6U, &message[52]);
+  message[58] = a2Type;
+  reverseCopy(a2, 6U, &message[59]);
+  reverseCopy(w, 16U, keyBe);
+
+  if (!aesCmacBe(keyBe, message, sizeof(message), out)) {
+    return false;
+  }
+
+  reverseInPlace(out, 16U);
+  return true;
+}
+
+static bool bleSecureConnectionsG2(const uint8_t u[32], const uint8_t v[32],
+                                   const uint8_t x[16], const uint8_t y[16],
+                                   uint32_t* outPasskey) {
+  if (u == nullptr || v == nullptr || x == nullptr || y == nullptr ||
+      outPasskey == nullptr) {
+    return false;
+  }
+
+  uint8_t keyBe[16] = {0};
+  uint8_t message[80] = {0};
+  uint8_t result[16] = {0};
+  reverseCopy(u, 32U, &message[0]);
+  reverseCopy(v, 32U, &message[32]);
+  reverseCopy(y, 16U, &message[64]);
+  reverseCopy(x, 16U, keyBe);
+
+  if (!aesCmacBe(keyBe, message, sizeof(message), result)) {
+    return false;
+  }
+
+  const uint32_t raw =
+      (static_cast<uint32_t>(result[12]) << 24U) |
+      (static_cast<uint32_t>(result[13]) << 16U) |
+      (static_cast<uint32_t>(result[14]) << 8U) |
+      static_cast<uint32_t>(result[15]);
+  *outPasskey = raw % 1000000UL;
+  return true;
+}
+
 void buildBleCcmNonce(const uint8_t iv[8], uint64_t counter, uint8_t direction,
                       uint8_t nonce[13]) {
   if (iv == nullptr || nonce == nullptr) {

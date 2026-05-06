@@ -2,9 +2,53 @@
 #include <Arduino.h>
 #include <string.h>
 
+#include "nrf54l15_hal.h"
+
+extern "C" void nrf54l15_secp256r1_cooperate_hook(void)
+    __attribute__((weak));
+extern "C" void nrf54l15_secp256r1_cooperate_hook(void) {}
+
 namespace xiao_nrf54l15 {
 
 namespace {
+
+static inline void maybeCooperateWithBle(uint32_t counter) {
+  (void)counter;
+  nrf54l15_secp256r1_cooperate_hook();
+}
+
+static uint64_t mixEntropy64(uint64_t state, uint64_t value) {
+  state ^= value + 0x9E3779B97F4A7C15ULL + (state << 6U) + (state >> 2U);
+  return state;
+}
+
+static uint64_t fallbackEccEntropySeed(size_t extra) {
+  uint64_t seed = 0xD1B54A32D192ED03ULL;
+  seed = mixEntropy64(seed, hardwareUniqueId64());
+  seed = mixEntropy64(seed, zigbeeFactoryEui64());
+  seed = mixEntropy64(seed, static_cast<uint64_t>(micros()));
+  seed = mixEntropy64(seed, static_cast<uint64_t>(millis()) << 32U);
+  seed = mixEntropy64(seed, static_cast<uint64_t>(extra));
+  seed = mixEntropy64(seed,
+                      static_cast<uint64_t>(
+                          reinterpret_cast<uintptr_t>(&seed)));
+  if (seed == 0ULL) {
+    seed = 0xA0761D6478BD642FULL;
+  }
+  return seed;
+}
+
+static uint64_t nextFallbackEntropyWord(uint64_t* state) {
+  if (state == nullptr) {
+    return 0ULL;
+  }
+  uint64_t x = *state;
+  x ^= x >> 12U;
+  x ^= x << 25U;
+  x ^= x >> 27U;
+  *state = x;
+  return x * 0x2545F4914F6CDD1DULL;
+}
 
 constexpr size_t kBnWordCount = 8U;
 constexpr size_t kBarrettWordCount = kBnWordCount + 1U;
@@ -237,18 +281,108 @@ void Secp256r1::bnModSub(const BigNum256& a, const BigNum256& b, BigNum256* out)
 }
 
 void Secp256r1::bnModInv(const BigNum256& a, BigNum256* out) {
-  BigNum256 p=primeP();
-  static const uint32_t kPminus2[8]={
-    0xFFFFFFFDU,0xFFFFFFFFU,0xFFFFFFFFU,0x00000000U,
-    0x00000000U,0x00000000U,0x00000001U,0xFFFFFFFFU};
-  BigNum256 result, base=a;
-  bnSetOne(&result);
-  bool started=false;
-  for(int wi=7;wi>=0;wi--)for(int bi=31;bi>=0;bi--){
-    if(started) bnModSqr(result,&result);
-    if((kPminus2[wi]>>bi)&1U){if(!started){result=base;started=true;}else bnModMul(result,base,&result);}
+  if (!out) {
+    return;
   }
-  *out=result;
+
+  BigNum256 u = a;
+  if (bnIsZero(u)) {
+    bnSetZero(out);
+    return;
+  }
+
+  const BigNum256 p = primeP();
+  BigNum256 v = p;
+  BigNum256 x1 = {};
+  BigNum256 x2 = {};
+  bnSetOne(&x1);
+  bnSetZero(&x2);
+  uint32_t coopCounter = 0U;
+
+  auto isEven = [](const BigNum256& value) -> bool {
+    return (value.w[0] & 0x1U) == 0U;
+  };
+  auto shiftRight1 = [](BigNum256* value) {
+    if (value == nullptr) {
+      return;
+    }
+    uint32_t carry = 0U;
+    for (size_t i = kBnWordCount; i-- > 0U;) {
+      const uint32_t nextCarry = value->w[i] & 0x1U;
+      value->w[i] = (value->w[i] >> 1U) | (carry << 31U);
+      carry = nextCarry;
+    }
+  };
+  auto addPrimeAndShiftRight1 = [&](BigNum256* value) {
+    if (value == nullptr) {
+      return;
+    }
+    uint32_t acc[kBarrettWordCount] = {0};
+    uint64_t carry = 0U;
+    for (size_t i = 0; i < kBnWordCount; ++i) {
+      const uint64_t sum =
+          static_cast<uint64_t>(value->w[i]) + static_cast<uint64_t>(p.w[i]) + carry;
+      acc[i] = static_cast<uint32_t>(sum);
+      carry = sum >> 32U;
+    }
+    acc[kBnWordCount] = static_cast<uint32_t>(carry);
+
+    uint32_t shiftCarry = 0U;
+    for (size_t i = kBarrettWordCount; i-- > 0U;) {
+      const uint32_t nextCarry = acc[i] & 0x1U;
+      acc[i] = (acc[i] >> 1U) | (shiftCarry << 31U);
+      shiftCarry = nextCarry;
+    }
+    memcpy(value->w, acc, sizeof(value->w));
+  };
+  auto subModPrime = [&](const BigNum256& lhs, const BigNum256& rhs, BigNum256* result) {
+    if (result == nullptr) {
+      return;
+    }
+    if (bnCompare(lhs, rhs) >= 0) {
+      bnSub(lhs, rhs, result);
+      return;
+    }
+    BigNum256 temp = {};
+    bnSub(p, rhs, &temp);
+    bnAdd(temp, lhs, result);
+  };
+
+  while (!bnIsOne(u) && !bnIsOne(v)) {
+    maybeCooperateWithBle(coopCounter++);
+
+    while (isEven(u)) {
+      shiftRight1(&u);
+      if (isEven(x1)) {
+        shiftRight1(&x1);
+      } else {
+        addPrimeAndShiftRight1(&x1);
+      }
+    }
+
+    while (isEven(v)) {
+      shiftRight1(&v);
+      if (isEven(x2)) {
+        shiftRight1(&x2);
+      } else {
+        addPrimeAndShiftRight1(&x2);
+      }
+    }
+
+    if (bnCompare(u, v) >= 0) {
+      bnSub(u, v, &u);
+      BigNum256 next = {};
+      subModPrime(x1, x2, &next);
+      x1 = next;
+    } else {
+      bnSub(v, u, &v);
+      BigNum256 next = {};
+      subModPrime(x2, x1, &next);
+      x2 = next;
+    }
+  }
+
+  *out = bnIsOne(u) ? x1 : x2;
 }
 
 // ─── Scalar arithmetic mod n ───────────────────────────────────────────────
@@ -480,30 +614,76 @@ bool Secp256r1::scalarMultiply(const Secp256r1Scalar& k, const Secp256r1Point& P
   if(!outR)return false;
   BigNum256 kBn; bnFromBytes(k.bytes,&kBn);
   if(bnIsZero(kBn)||isInfinity(P)){setInfinity(outR);return true;}
-  
-  // Convert base point to Jacobian
+  uint32_t coopCounter = 0U;
+
+  constexpr size_t kWindowTableSize = 15U;
   BigNum256 Qx, Qy;
   pointFromAffine(P, &Qx, &Qy);
-  
-  // Double-and-add using Jacobian coordinates
-  Secp256r1Jacobian R; memset(&R, 0, sizeof(R)); // infinity
+
+  Secp256r1Jacobian preJac[kWindowTableSize];
+  BigNum256 preX[kWindowTableSize];
+  BigNum256 preY[kWindowTableSize];
+  BigNum256 prefixZ[kWindowTableSize];
+
+  affineToJacobian(Qx, Qy, &preJac[0]);
+  memcpy(prefixZ[0].w, preJac[0].Z, sizeof(preJac[0].Z));
+  for (size_t i = 1; i < kWindowTableSize; ++i) {
+    maybeCooperateWithBle(coopCounter++);
+    jacobianAddMixed(preJac[i - 1U], Qx, Qy, &preJac[i]);
+    BigNum256 zi = {};
+    memcpy(zi.w, preJac[i].Z, sizeof(preJac[i].Z));
+    bnModMul(prefixZ[i - 1U], zi, &prefixZ[i]);
+  }
+
+  BigNum256 invProduct = {};
+  bnModInv(prefixZ[kWindowTableSize - 1U], &invProduct);
+  for (size_t i = kWindowTableSize; i-- > 0U;) {
+    BigNum256 ziInv = {};
+    if (i == 0U) {
+      ziInv = invProduct;
+    } else {
+      bnModMul(invProduct, prefixZ[i - 1U], &ziInv);
+      BigNum256 zi = {};
+      memcpy(zi.w, preJac[i].Z, sizeof(preJac[i].Z));
+      bnModMul(invProduct, zi, &invProduct);
+    }
+
+    BigNum256 Xi = {}, Yi = {};
+    BigNum256 ziInv2 = {}, ziInv3 = {};
+    memcpy(Xi.w, preJac[i].X, sizeof(preJac[i].X));
+    memcpy(Yi.w, preJac[i].Y, sizeof(preJac[i].Y));
+    bnModSqr(ziInv, &ziInv2);
+    bnModMul(ziInv2, ziInv, &ziInv3);
+    bnModMul(Xi, ziInv2, &preX[i]);
+    bnModMul(Yi, ziInv3, &preY[i]);
+  }
+
+  Secp256r1Jacobian R;
+  memset(&R, 0, sizeof(R));
   bool started = false;
-  
-  for(int wi=7;wi>=0;wi--)for(int bi=31;bi>=0;bi--){
-    if(started){ jacobianDouble(R, &R); }
-    if((kBn.w[wi]>>bi)&1U){
-      if(!started){
-        affineToJacobian(Qx, Qy, &R);
-        started = true;
-      } else {
-        jacobianAddMixed(R, Qx, Qy, &R);
+  for (int wi = 7; wi >= 0; --wi) {
+    for (int ni = 7; ni >= 0; --ni) {
+      const int nibble = static_cast<int>((kBn.w[wi] >> (ni * 4)) & 0xFU);
+      if (started) {
+        for (int d = 0; d < 4; ++d) {
+          maybeCooperateWithBle(coopCounter++);
+          jacobianDouble(R, &R);
+        }
+      }
+      if (nibble != 0) {
+        if (!started) {
+          affineToJacobian(preX[nibble - 1], preY[nibble - 1], &R);
+          started = true;
+        } else {
+          maybeCooperateWithBle(coopCounter++);
+          jacobianAddMixed(R, preX[nibble - 1], preY[nibble - 1], &R);
+        }
       }
     }
   }
-  
+
   if (!started) { setInfinity(outR); return true; }
-  
-  // Convert back to affine
+
   BigNum256 outX, outY;
   jacobianToAffine(R, &outX, &outY);
   pointToAffine(outX, outY, outR);
@@ -549,6 +729,7 @@ static const uint32_t kPreG[15][2][8] = {
 bool Secp256r1::scalarMultiplyBase(const Secp256r1Scalar& k, Secp256r1Point* outR) {
   BigNum256 kBn; bnFromBytes(k.bytes,&kBn);
   if(bnIsZero(kBn)){setInfinity(outR);return true;}
+  uint32_t coopCounter = 0U;
   
   // 4-bit windowed: process scalar as 64 nibbles from MSB to LSB
   Secp256r1Jacobian R; memset(&R,0,sizeof(R));
@@ -556,13 +737,13 @@ bool Secp256r1::scalarMultiplyBase(const Secp256r1Scalar& k, Secp256r1Point* out
   for(int wi=7;wi>=0;wi--){
     for(int ni=7;ni>=0;ni--){
       int nibble=(int)((kBn.w[wi]>>(ni*4))&0xFU);
-      if(started){for(int d=0;d<4;d++)jacobianDouble(R,&R);}
+      if(started){for(int d=0;d<4;d++){maybeCooperateWithBle(coopCounter++);jacobianDouble(R,&R);}}
       if(nibble!=0){
         const uint32_t*px=kPreG[nibble-1][0];
         const uint32_t*py=kPreG[nibble-1][1];
         BigNum256 x,y; memcpy(x.w,px,32); memcpy(y.w,py,32);
         if(!started){affineToJacobian(x,y,&R);started=true;}
-        else{jacobianAddMixed(R,x,y,&R);}
+        else{maybeCooperateWithBle(coopCounter++);jacobianAddMixed(R,x,y,&R);}
       }
     }
   }
@@ -606,14 +787,101 @@ void Secp256r1::getOrder(Secp256r1Scalar* outN) { if(outN){BigNum256 n=orderN();
 
 bool Secp256r1::modInverseN(const Secp256r1Scalar& a, Secp256r1Scalar* outInv) {
   if(!outInv)return false;
-  BigNum256 aBn; bnFromBytes(a.bytes,&aBn); if(bnIsZero(aBn)){memset(outInv->bytes,0,32);return false;}
-  static const uint32_t kNminus2[8]={0xFC63254FU,0xF3B9CAC2U,0xA7179E84U,0xBCE6FAADU,0xFFFFFFFFU,0xFFFFFFFFU,0x00000000U,0xFFFFFFFFU};
-  BigNum256 result; bnSetOne(&result); bool started=false;
-  for(int wi=7;wi>=0;wi--)for(int bi=31;bi>=0;bi--){
-    if(started)bnModMulN(result,result,&result);
-    if((kNminus2[wi]>>bi)&1U){if(!started){result=aBn;started=true;}else bnModMulN(result,aBn,&result);}
+  BigNum256 u = {};
+  bnFromBytes(a.bytes,&u);
+  if(bnIsZero(u)){memset(outInv->bytes,0,32);return false;}
+
+  const BigNum256 n = orderN();
+  BigNum256 v = n;
+  BigNum256 x1 = {};
+  BigNum256 x2 = {};
+  bnSetOne(&x1);
+  bnSetZero(&x2);
+
+  auto isEven = [](const BigNum256& value) -> bool {
+    return (value.w[0] & 0x1U) == 0U;
+  };
+  auto shiftRight1 = [](BigNum256* value) {
+    if (value == nullptr) {
+      return;
+    }
+    uint32_t carry = 0U;
+    for (size_t i = kBnWordCount; i-- > 0U;) {
+      const uint32_t nextCarry = value->w[i] & 0x1U;
+      value->w[i] = (value->w[i] >> 1U) | (carry << 31U);
+      carry = nextCarry;
+    }
+  };
+  auto addOrderAndShiftRight1 = [&](BigNum256* value) {
+    if (value == nullptr) {
+      return;
+    }
+    uint32_t acc[kBarrettWordCount] = {0};
+    uint64_t carry = 0U;
+    for (size_t i = 0; i < kBnWordCount; ++i) {
+      const uint64_t sum =
+          static_cast<uint64_t>(value->w[i]) + static_cast<uint64_t>(n.w[i]) + carry;
+      acc[i] = static_cast<uint32_t>(sum);
+      carry = sum >> 32U;
+    }
+    acc[kBnWordCount] = static_cast<uint32_t>(carry);
+
+    uint32_t shiftCarry = 0U;
+    for (size_t i = kBarrettWordCount; i-- > 0U;) {
+      const uint32_t nextCarry = acc[i] & 0x1U;
+      acc[i] = (acc[i] >> 1U) | (shiftCarry << 31U);
+      shiftCarry = nextCarry;
+    }
+    memcpy(value->w, acc, sizeof(value->w));
+  };
+  auto subModOrder = [&](const BigNum256& lhs, const BigNum256& rhs, BigNum256* out) {
+    if (out == nullptr) {
+      return;
+    }
+    if (bnCompare(lhs, rhs) >= 0) {
+      bnSub(lhs, rhs, out);
+      return;
+    }
+    BigNum256 temp = {};
+    bnSub(n, rhs, &temp);
+    bnAdd(temp, lhs, out);
+  };
+
+  while (!bnIsOne(u) && !bnIsOne(v)) {
+    while (isEven(u)) {
+      shiftRight1(&u);
+      if (isEven(x1)) {
+        shiftRight1(&x1);
+      } else {
+        addOrderAndShiftRight1(&x1);
+      }
+    }
+
+    while (isEven(v)) {
+      shiftRight1(&v);
+      if (isEven(x2)) {
+        shiftRight1(&x2);
+      } else {
+        addOrderAndShiftRight1(&x2);
+      }
+    }
+
+    if (bnCompare(u, v) >= 0) {
+      bnSub(u, v, &u);
+      BigNum256 nextX1 = {};
+      subModOrder(x1, x2, &nextX1);
+      x1 = nextX1;
+    } else {
+      bnSub(v, u, &v);
+      BigNum256 nextX2 = {};
+      subModOrder(x2, x1, &nextX2);
+      x2 = nextX2;
+    }
   }
-  bnToBytes(result,outInv->bytes); return true;
+
+  const BigNum256& result = bnIsOne(u) ? x1 : x2;
+  bnToBytes(result,outInv->bytes);
+  return true;
 }
 
 // ─── Random generation ────────────────────────────────────────────────────
@@ -626,15 +894,50 @@ void Secp256r1::generateRandomScalar(Secp256r1Scalar* outScalar) {
 }
 
 void Secp256r1::randomBytes(uint8_t* out, size_t len) {
-  if(!out)return;
-  static uint64_t state=0x5A3C9E27F4B18D06ULL;
-  for(size_t i=0;i<len;i++){state=state*6364136223846793005ULL+1442695040888963407ULL;out[i]=(uint8_t)(state>>32);}
+  if (!out || len == 0U) {
+    return;
+  }
+
+  static uint64_t fallbackState = 0ULL;
+  if (fallbackState == 0ULL) {
+    fallbackState = fallbackEccEntropySeed(len);
+  } else {
+    fallbackState = mixEntropy64(fallbackState, static_cast<uint64_t>(len));
+    fallbackState = mixEntropy64(fallbackState,
+                                 static_cast<uint64_t>(micros()));
+  }
+
+  CracenRng rng;
+  const bool haveHardwareEntropy = rng.fill(out, len, 500000UL);
+  if (!haveHardwareEntropy) {
+    memset(out, 0, len);
+  }
+
+  size_t produced = 0U;
+  while (produced < len) {
+    const uint64_t word = nextFallbackEntropyWord(&fallbackState);
+    for (uint8_t i = 0U; i < 8U && produced < len; ++i) {
+      out[produced] ^= static_cast<uint8_t>(word >> (i * 8U));
+      ++produced;
+    }
+  }
 }
 
 uint32_t Secp256r1::randomWord() {
-  static uint64_t state=0; if(!state)state=(uint64_t)micros()^((uint64_t)millis()<<32);
-  state=state*6364136223846793005ULL+1442695040888963407ULL;
-  return (uint32_t)(state>>32);
+  static uint64_t fallbackState = 0ULL;
+  if (fallbackState == 0ULL) {
+    fallbackState = fallbackEccEntropySeed(4U);
+  }
+  fallbackState = mixEntropy64(fallbackState, static_cast<uint64_t>(micros()));
+  const uint32_t mixedWord =
+      static_cast<uint32_t>(nextFallbackEntropyWord(&fallbackState) >> 32U);
+
+  uint32_t hardwareWord = 0U;
+  CracenRng rng;
+  if (rng.randomWord(&hardwareWord, 500000UL)) {
+    return hardwareWord ^ mixedWord;
+  }
+  return mixedWord;
 }
 
 // ─── ECDSA ─────────────────────────────────────────────────────────────────

@@ -291,6 +291,79 @@ void BleRadio::clearEncryptionDebugCounters() {
   bleExitCritical(irqState);
 }
 
+void BleRadio::captureSecureConnectionsDebugState(
+    BleSecureConnectionsDebugState* out) const {
+  if (out == nullptr) {
+    return;
+  }
+
+  memset(out, 0, sizeof(*out));
+  out->valid = 1U;
+  out->active = smpSecureConnectionsActive_ ? 1U : 0U;
+  out->localInitiator = smpLocalInitiator_ ? 1U : 0U;
+  out->wireFormatBigEndian = smpSecureConnectionsWireFormatBigEndian_ ? 1U : 0U;
+  out->peerPublicKeyValid = smpSecureConnectionsPeerPublicKeyValid_ ? 1U : 0U;
+  out->publicKeySent = smpSecureConnectionsPublicKeySent_ ? 1U : 0U;
+  out->confirmSent = smpSecureConnectionsConfirmSent_ ? 1U : 0U;
+  out->randomSent = smpSecureConnectionsRandomSent_ ? 1U : 0U;
+  out->dhKeyReady = smpSecureConnectionsDhKeyReady_ ? 1U : 0U;
+  out->localConfirmReady = smpSecureConnectionsLocalConfirmReady_ ? 1U : 0U;
+  out->checkValuesReady = smpSecureConnectionsCheckValuesReady_ ? 1U : 0U;
+  out->dhKeyCheckSent = smpSecureConnectionsDhKeyCheckSent_ ? 1U : 0U;
+  out->receivedDhKeyCheckValid =
+      smpSecureConnectionsReceivedDhKeyCheckValid_ ? 1U : 0U;
+  out->deferredPublicKey = smpSecureConnectionsDeferredPublicKey_ ? 1U : 0U;
+  out->deferredConfirm = smpSecureConnectionsDeferredConfirm_ ? 1U : 0U;
+  out->deferredRandom = smpSecureConnectionsDeferredRandom_ ? 1U : 0U;
+  out->deferredDhKeyCheck =
+      smpSecureConnectionsDeferredDhKeyCheck_ ? 1U : 0U;
+  out->pendingTxValid = connectionPendingTxValid_ ? 1U : 0U;
+  out->pairingState = smpPairingState_;
+  memcpy(out->localRandom, smpLocalRandom_, sizeof(out->localRandom));
+  memcpy(out->peerRandom, smpPeerRandom_, sizeof(out->peerRandom));
+  memcpy(out->localConfirm, smpLocalConfirm_, sizeof(out->localConfirm));
+  memcpy(out->peerConfirm, smpPeerConfirm_, sizeof(out->peerConfirm));
+  memcpy(out->localDhKeyCheck, smpSecureConnectionsLocalDhKeyCheck_,
+         sizeof(out->localDhKeyCheck));
+  memcpy(out->peerDhKeyCheck, smpSecureConnectionsPeerDhKeyCheck_,
+         sizeof(out->peerDhKeyCheck));
+  memcpy(out->receivedDhKeyCheck, smpSecureConnectionsReceivedDhKeyCheck_,
+         sizeof(out->receivedDhKeyCheck));
+  memcpy(out->localPublicKeyX, &smpSecureConnectionsPublicKey_[1],
+         sizeof(out->localPublicKeyX));
+  memcpy(out->peerPublicKeyX, &smpSecureConnectionsPeerPublicKey_[1],
+         sizeof(out->peerPublicKeyX));
+  out->localKeypairTimeUs = smpSecureConnectionsLocalKeypairTimeUs_;
+  out->dhKeyTimeUs = smpSecureConnectionsDhKeyTimeUs_;
+  out->checkValuesTimeUs = smpSecureConnectionsCheckValuesTimeUs_;
+  out->cooperateHookCount = smpSecureConnectionsCooperateHookCount_;
+  out->backgroundServiceCount = smpSecureConnectionsBackgroundServiceCount_;
+}
+
+void BleRadio::latchSecureConnectionsDebugState() {
+  captureSecureConnectionsDebugState(&lastSecureConnectionsDebugState_);
+}
+
+void BleRadio::getSecureConnectionsDebugState(
+    BleSecureConnectionsDebugState* out) const {
+  if (out == nullptr) {
+    return;
+  }
+
+  const uint32_t irqState = bleEnterCritical();
+  BleSecureConnectionsDebugState current{};
+  captureSecureConnectionsDebugState(&current);
+  const bool useCurrent =
+      smpSecureConnectionsPeerPublicKeyValid_ ||
+      smpSecureConnectionsPublicKeySent_ ||
+      smpSecureConnectionsLocalConfirmReady_ ||
+      smpSecureConnectionsConfirmSent_ ||
+      smpSecureConnectionsRandomSent_ ||
+      (smpPairingState_ != 0U);
+  *out = useCurrent ? current : lastSecureConnectionsDebugState_;
+  bleExitCritical(irqState);
+}
+
 bool BleRadio::getDisconnectDebug(BleDisconnectDebug* out) const {
   if (out == nullptr || disconnectDebug_.valid == 0U) {
     return false;
@@ -551,6 +624,7 @@ void BleRadio::serviceBackgroundConnection(uint32_t spinLimit) {
     return;
   }
 
+  ++smpSecureConnectionsBackgroundServiceCount_;
   connectionServiceBusy_ = true;
   BleConnectionEvent event{};
   resetConnectionEventStruct(&event);
@@ -781,8 +855,27 @@ void BleRadio::serviceDeferredApplicationWork() {
     return;
   }
 
-  dispatchDeferredGattWrites();
-  dispatchDeferredTraces();
+  serviceSecureConnectionsWork();
+  bool postponeNonCriticalWork = false;
+  if (connected_) {
+    const uint32_t nowUs = bleTimingUs();
+    uint32_t intervalUs =
+        (connectionIntervalUnits_ > 0U)
+            ? (static_cast<uint32_t>(connectionIntervalUnits_) * 1250UL)
+            : 1250UL;
+    uint32_t guardUs = intervalUs / 3U;
+    if (guardUs < 3000U) {
+      guardUs = 3000U;
+    } else if (guardUs > 12000U) {
+      guardUs = 12000U;
+    }
+    postponeNonCriticalWork = timeReachedUs(nowUs + guardUs, connectionNextEventUs_);
+  }
+
+  if (!postponeNonCriticalWork) {
+    dispatchDeferredGattWrites();
+    dispatchDeferredTraces();
+  }
 
   const uint32_t irqState = bleEnterCritical();
   if (!backgroundServicesActive() && g_bleBackgroundRadio == this &&
