@@ -120,6 +120,14 @@ arduino-cli compile --fqbn nrf54l15clean:nrf54l15clean:xiao_nrf54l15 MySketch
 arduino-cli upload -p /dev/ttyACM0 --fqbn nrf54l15clean:nrf54l15clean:xiao_nrf54l15 MySketch
 ```
 
+If `arduino-cli core install nrf54l15clean:nrf54l15clean` says `Platform
+'nrf54l15clean:nrf54l15clean' not found` right after the custom index is
+downloaded, check for a sketchbook override at
+`~/Arduino/hardware/nrf54l15clean` on Linux/macOS or
+`%USERPROFILE%\\Documents\\Arduino\\hardware\\nrf54l15clean` on Windows. A
+manual core copy in the sketchbook takes precedence over Boards Manager and
+makes the packaged core appear unmanaged until that folder is moved or removed.
+
 ### Linux udev (for upload)
 ```bash
 # From the installed package:

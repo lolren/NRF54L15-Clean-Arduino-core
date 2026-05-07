@@ -350,9 +350,116 @@ def normalize_uid(requested_uid: str | None) -> str | None:
     return cleaned
 
 
-def infer_uid_from_port(port: str | None) -> str | None:
+def bundled_import_path(host_tools_path: Path | None) -> Path | None:
+    site_dir = bundled_pyocd_site_path(pyocd_tool_root(host_tools_path))
+    return site_dir if site_dir is not None and site_dir.is_dir() else None
+
+
+def import_serial_list_ports(host_tools_path: Path | None = None):
+    try:
+        from serial.tools import list_ports
+
+        return list_ports
+    except ModuleNotFoundError:
+        pass
+
+    site_dir = bundled_import_path(host_tools_path)
+    if site_dir is None:
+        return None
+
+    site_dir_str = str(site_dir)
+    if site_dir_str not in sys.path:
+        sys.path.insert(0, site_dir_str)
+
+    try:
+        from serial.tools import list_ports
+
+        return list_ports
+    except ModuleNotFoundError:
+        return None
+
+
+def normalized_port_name(port: str | None) -> str:
+    if not port:
+        return ""
+    cleaned = port.strip()
+    if cleaned.startswith("\\\\.\\"):
+        cleaned = cleaned[4:]
+    return cleaned.casefold()
+
+
+def serial_from_hwid(hwid: str | None) -> str | None:
+    if not hwid:
+        return None
+
+    match = re.search(r"\bSER=([A-Za-z0-9._-]+)\b", hwid)
+    if not match:
+        return None
+    return normalize_uid(match.group(1))
+
+
+def port_uid_from_list_ports(port: str | None, host_tools_path: Path | None = None) -> str | None:
     if not port:
         return None
+
+    list_ports = import_serial_list_ports(host_tools_path)
+    if list_ports is None:
+        return None
+
+    wanted = normalized_port_name(port)
+    for info in list_ports.comports():
+        devices = [
+            normalized_port_name(getattr(info, "device", None)),
+            normalized_port_name(getattr(info, "name", None)),
+        ]
+        if wanted not in devices:
+            continue
+
+        serial_value = normalize_uid(getattr(info, "serial_number", None))
+        if serial_value is not None:
+            return serial_value
+
+        serial_value = serial_from_hwid(getattr(info, "hwid", None))
+        if serial_value is not None:
+            return serial_value
+
+    return None
+
+
+def matching_cmsis_dap_serial_ports(host_tools_path: Path | None = None) -> list[str]:
+    list_ports = import_serial_list_ports(host_tools_path)
+    if list_ports is None:
+        return []
+
+    matches: list[str] = []
+    vid = int(CMSIS_DAP_VENDOR_ID, 16)
+    pid = int(CMSIS_DAP_PRODUCT_ID, 16)
+    for info in list_ports.comports():
+        info_vid = getattr(info, "vid", None)
+        info_pid = getattr(info, "pid", None)
+        if info_vid == vid and info_pid == pid:
+            device = getattr(info, "device", None)
+            if device:
+                matches.append(str(device))
+            continue
+
+        hwid = (getattr(info, "hwid", None) or "").lower()
+        if f"vid:pid={CMSIS_DAP_VENDOR_ID.lower()}:{CMSIS_DAP_PRODUCT_ID.lower()}" in hwid:
+            device = getattr(info, "device", None)
+            if device:
+                matches.append(str(device))
+
+    return matches
+
+
+def infer_uid_from_port(port: str | None, host_tools_path: Path | None = None) -> str | None:
+    if not port:
+        return None
+
+    inferred = port_uid_from_list_ports(port, host_tools_path)
+    if inferred is not None:
+        return inferred
+
     if not sys.platform.startswith("linux"):
         return None
 
@@ -1173,7 +1280,7 @@ def main() -> int:
     requested_runner = args.runner.strip().lower()
     host_tools_path = normalize_tools_path(args.host_tools_path)
     explicit_uid = normalize_uid(args.uid)
-    inferred_uid = infer_uid_from_port(args.port) if explicit_uid is None else None
+    inferred_uid = infer_uid_from_port(args.port, host_tools_path) if explicit_uid is None else None
     selected_uid = explicit_uid if explicit_uid is not None else inferred_uid
     allow_inferred_uid_fallback = explicit_uid is None and inferred_uid is not None
     uf2_path = derived_uf2_path(args.hex, args.uf2)
@@ -1199,6 +1306,24 @@ def main() -> int:
             args.uf2_timeout,
         )
     if runner == "pyocd":
+        if (
+            sys.platform.startswith("win")
+            and explicit_uid is None
+            and selected_uid is None
+            and len(matching_cmsis_dap_serial_ports(host_tools_path)) > 1
+        ):
+            print(
+                "ERROR: Multiple CMSIS-DAP probes are connected, but the selected COM "
+                "port did not expose a unique probe serial number.",
+                file=sys.stderr,
+            )
+            print(
+                "HINT: Replug the board or switch to UF2 upload once, then retry. "
+                "The uploader needs the board's unique USB serial to avoid pyocd's "
+                "interactive probe picker.",
+                file=sys.stderr,
+            )
+            return 8
         if preflight_linux_probe_access(args.port, host_tools_path):
             return 7
         if detect_pyocd_command(host_tools_path) is None:
