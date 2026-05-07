@@ -39,7 +39,6 @@ DEFAULT_PLATFORM_PACKAGE_EXCLUDES = (
     "libraries/Nrf54L15-Clean-Implementation/third_party/openthread-core",
     "libraries/Nrf54L15-Clean-Implementation/src/openthread_core_stage",
     "libraries/Nrf54L15-Clean-Implementation/src/openthread_core_stage_bridge.cpp",
-    "libraries/Nrf54L15-Clean-Implementation/src/openthread-core-user-config.h",
 )
 
 

@@ -24,8 +24,8 @@ struct ZigbeeCommissioningPolicy {
   uint32_t associationResponseTimeoutMs = 4000UL;
   uint32_t associationPollListenMs = 120UL;
   uint32_t associationPollRetryDelayMs = 40UL;
-  uint32_t transportKeyTimeoutMs = 4000UL;
-  uint32_t updateDeviceTimeoutMs = 4000UL;
+  uint32_t transportKeyTimeoutMs = 12000UL;
+  uint32_t updateDeviceTimeoutMs = 12000UL;
   uint32_t coordinatorRealignmentTimeoutMs = 400UL;
   uint32_t nwkRejoinResponseTimeoutMs = 1500UL;
   uint32_t deviceAnnounceRetryDelayMs = 1000UL;
@@ -147,6 +147,7 @@ struct ZigbeeEndDeviceCommonState {
   bool deviceAnnouncePending = false;
   bool endDeviceTimeoutPending = false;
   bool endDeviceTimeoutNegotiated = false;
+  bool parentPollShortSourceToggle = false;
   ZigbeePreconfiguredKeyMode preconfiguredKeyMode =
       ZigbeePreconfiguredKeyMode::kNone;
   ZigbeeCommissioningState state = ZigbeeCommissioningState::kIdle;
@@ -225,7 +226,12 @@ class ZigbeeCommissioning {
   static ZigbeeAcceptedLeaveDisposition applyAcceptedLeaveRequest(
       ZigbeeEndDeviceCommonState* state, uint8_t leaveFlags);
   static bool usesParentPolling(const ZigbeeEndDeviceCommonState& state);
+  static bool waitingForJoinSecurityMaterial(
+      const ZigbeeEndDeviceCommonState& state);
   static bool shouldPollParent(const ZigbeeEndDeviceCommonState& state);
+  static bool shouldUseShortSourceParentPoll(
+      const ZigbeeEndDeviceCommonState& state);
+  static bool selectShortSourceParentPoll(ZigbeeEndDeviceCommonState* state);
   static bool shouldRequestEndDeviceTimeout(
       const ZigbeeEndDeviceCommonState& state);
   static void markDeviceAnnouncePending(

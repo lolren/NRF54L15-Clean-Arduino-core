@@ -1615,12 +1615,48 @@ bool ZigbeeCommissioning::usesParentPolling(
   return state.logicalType == ZigbeeLogicalType::kEndDevice;
 }
 
+bool ZigbeeCommissioning::waitingForJoinSecurityMaterial(
+    const ZigbeeEndDeviceCommonState& state) {
+  return state.state == ZigbeeCommissioningState::kWaitingTransportKey ||
+         state.state == ZigbeeCommissioningState::kWaitingUpdateDevice;
+}
+
 bool ZigbeeCommissioning::shouldPollParent(
     const ZigbeeEndDeviceCommonState& state) {
   return usesParentPolling(state) &&
-         (state.joined ||
-         state.state == ZigbeeCommissioningState::kWaitingTransportKey ||
-         state.state == ZigbeeCommissioningState::kWaitingUpdateDevice);
+         (state.joined || waitingForJoinSecurityMaterial(state));
+}
+
+bool ZigbeeCommissioning::shouldUseShortSourceParentPoll(
+    const ZigbeeEndDeviceCommonState& state) {
+  return usesParentPolling(state) && state.joined &&
+         state.haveActiveNetworkKey && state.localShort != 0U &&
+         state.localShort != state.defaultShort;
+}
+
+bool ZigbeeCommissioning::selectShortSourceParentPoll(
+    ZigbeeEndDeviceCommonState* state) {
+  if (state == nullptr || !usesParentPolling(*state) || state->localShort == 0U ||
+      state->localShort == state->defaultShort) {
+    if (state != nullptr) {
+      state->parentPollShortSourceToggle = false;
+    }
+    return false;
+  }
+
+  if (shouldUseShortSourceParentPoll(*state)) {
+    state->parentPollShortSourceToggle = false;
+    return true;
+  }
+
+  if (!waitingForJoinSecurityMaterial(*state)) {
+    state->parentPollShortSourceToggle = false;
+    return false;
+  }
+
+  const bool useShortSource = state->parentPollShortSourceToggle;
+  state->parentPollShortSourceToggle = !state->parentPollShortSourceToggle;
+  return useShortSource;
 }
 
 bool ZigbeeCommissioning::shouldRequestEndDeviceTimeout(

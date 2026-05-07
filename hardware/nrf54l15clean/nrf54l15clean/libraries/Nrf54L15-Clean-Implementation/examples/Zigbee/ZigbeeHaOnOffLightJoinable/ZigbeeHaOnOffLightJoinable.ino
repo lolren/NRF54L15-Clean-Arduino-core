@@ -1442,7 +1442,8 @@ void pollCoordinator() {
   } else {
     g_transportCoordinatorPollToggle = false;
   }
-  const bool useShortSource = (g_localShort != 0U && g_localShort != kTempShort);
+  const bool useShortSource =
+      ZigbeeCommissioning::selectShortSourceParentPoll(&g_network);
   const bool built =
       useShortSource
           ? ZigbeeCodec::buildDataRequestShort(g_macSequence++, g_panId,

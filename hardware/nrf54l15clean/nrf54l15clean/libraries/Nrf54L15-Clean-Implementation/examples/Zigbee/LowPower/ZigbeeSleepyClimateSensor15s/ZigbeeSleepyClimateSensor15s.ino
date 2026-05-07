@@ -1527,7 +1527,7 @@ void pollCoordinator() {
   uint8_t request[127] = {0U};
   uint8_t requestLength = 0U;
   const bool joinedPoll =
-      g_joined || (g_localShort != 0U && g_localShort != kTempShort);
+      ZigbeeCommissioning::selectShortSourceParentPoll(&g_network);
   const bool built =
       joinedPoll
           ? ZigbeeCodec::buildDataRequestShort(g_macSequence++, g_panId,
