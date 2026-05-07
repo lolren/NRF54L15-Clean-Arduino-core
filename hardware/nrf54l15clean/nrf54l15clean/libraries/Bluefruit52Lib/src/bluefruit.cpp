@@ -4440,6 +4440,23 @@ static void applyPeripheralConnHint(BLEPeriph& periph, uint16_t mtu_max,
   periph.setConnSupervisionTimeout(500U);
 }
 
+static uint16_t preferredBleDataLengthFromMtu(uint16_t mtu_max) {
+  uint16_t requested_mtu = mtu_max;
+  if (requested_mtu < 23U) {
+    requested_mtu = 23U;
+  } else if (requested_mtu > 247U) {
+    requested_mtu = 247U;
+  }
+
+  uint16_t payload_length = static_cast<uint16_t>(requested_mtu + 4U);
+  if (payload_length < 27U) {
+    payload_length = 27U;
+  } else if (payload_length > 251U) {
+    payload_length = 251U;
+  }
+  return payload_length;
+}
+
 void AdafruitBluefruit::configPrphConn(uint16_t mtu_max, uint16_t event_len,
                                        uint8_t hvn_qsize, uint8_t wrcmd_qsize) {
   (void)hvn_qsize;
@@ -4451,6 +4468,9 @@ void AdafruitBluefruit::configPrphConn(uint16_t mtu_max, uint16_t event_len,
     requested_mtu = 247U;
   }
   periph_requested_mtu_ = requested_mtu;
+  manager().radio().setPeripheralPreferredAttMtu(requested_mtu);
+  manager().radio().setPeripheralPreferredDataLength(
+      preferredBleDataLengthFromMtu(requested_mtu));
   applyPeripheralConnHint(Periph, mtu_max, event_len);
 }
 
@@ -4478,6 +4498,9 @@ void AdafruitBluefruit::configCentralConn(uint16_t mtu_max, uint16_t event_len,
   central_conn_interval_ = interval_units;
   central_supervision_timeout_ = 200U;
   central_requested_mtu_ = requested_mtu;
+  manager().radio().setCentralPreferredAttMtu(requested_mtu);
+  manager().radio().setCentralPreferredDataLength(
+      preferredBleDataLengthFromMtu(requested_mtu));
   central_request_mtu_ = (requested_mtu > 23U);
   central_request_data_length_ =
       (requested_mtu > 23U) || (event_len >= 6U);

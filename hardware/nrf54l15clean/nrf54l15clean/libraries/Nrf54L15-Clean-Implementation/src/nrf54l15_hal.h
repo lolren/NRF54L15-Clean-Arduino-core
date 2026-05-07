@@ -2438,6 +2438,10 @@ class BleRadio {
   bool requestPreferredPhy(uint8_t txPhys, uint8_t rxPhys);
   bool requestDataLengthUpdate();
   bool requestAttMtuExchange(uint16_t mtu);
+  void setPeripheralPreferredDataLength(uint16_t payloadLength);
+  void setCentralPreferredDataLength(uint16_t payloadLength);
+  void setPeripheralPreferredAttMtu(uint16_t mtu);
+  void setCentralPreferredAttMtu(uint16_t mtu);
   bool isConnected() const;
   BleConnectionRole connectionRole() const;
   bool isConnectionEncrypted() const;
@@ -2671,7 +2675,9 @@ class BleRadio {
   uint16_t currentRxDataPduPayloadLength() const;
   uint16_t currentMaxAttPayloadLength() const;
   uint16_t currentDataLengthMaxTimeUs() const;
+  uint16_t preferredDataLengthForRole(BleConnectionRole role) const;
   uint16_t localMaxDataPduPayloadLength() const;
+  uint16_t preferredAttMtuForRole(BleConnectionRole role) const;
   uint16_t localPreferredAttMtu() const;
   uint8_t supportedBlePhys(uint8_t phys) const;
   uint8_t symmetricBlePhys(uint8_t txPhys, uint8_t rxPhys) const;
@@ -2920,6 +2926,10 @@ class BleRadio {
   uint8_t connectionSyncAttemptsRemaining_;
   uint8_t connectionCurrentTxPhy_;
   uint8_t connectionCurrentRxPhy_;
+  uint16_t peripheralPreferredDataPduPayloadLength_;
+  uint16_t centralPreferredDataPduPayloadLength_;
+  uint16_t peripheralPreferredAttMtu_;
+  uint16_t centralPreferredAttMtu_;
   uint8_t connectionPreferredTxPhyMask_;
   uint8_t connectionPreferredRxPhyMask_;
   bool connectionPhyRequestPending_;

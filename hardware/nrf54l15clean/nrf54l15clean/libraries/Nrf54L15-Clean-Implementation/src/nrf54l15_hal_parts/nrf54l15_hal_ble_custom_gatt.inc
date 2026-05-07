@@ -591,8 +591,24 @@ uint16_t BleRadio::currentDataLengthMaxTimeUs() const {
   return maximumDataLengthTimeUsForPhy(phy);
 }
 
+uint16_t BleRadio::preferredDataLengthForRole(BleConnectionRole role) const {
+  uint16_t effective = static_cast<uint16_t>(kBleDataPduMaxPayload);
+  if (role == BleConnectionRole::kPeripheral) {
+    effective = peripheralPreferredDataPduPayloadLength_;
+  } else if (role == BleConnectionRole::kCentral) {
+    effective = centralPreferredDataPduPayloadLength_;
+  }
+  if (effective < kBleDefaultDataPduMaxPayload) {
+    effective = kBleDefaultDataPduMaxPayload;
+  } else if (effective > kBleDataPduMaxPayload) {
+    effective = kBleDataPduMaxPayload;
+  }
+  return effective;
+}
+
 uint16_t BleRadio::localMaxDataPduPayloadLength() const {
-  return static_cast<uint16_t>(kBleDataPduMaxPayload);
+  return connected_ ? preferredDataLengthForRole(connectionRole_)
+                    : static_cast<uint16_t>(kBleDataPduMaxPayload);
 }
 
 uint8_t BleRadio::supportedBlePhys(uint8_t phys) const {
@@ -717,8 +733,24 @@ uint16_t BleRadio::currentMaxAttPayloadLength() const {
              : 0U;
 }
 
+uint16_t BleRadio::preferredAttMtuForRole(BleConnectionRole role) const {
+  uint16_t mtu = kBleServerPreferredMtu;
+  if (role == BleConnectionRole::kPeripheral) {
+    mtu = peripheralPreferredAttMtu_;
+  } else if (role == BleConnectionRole::kCentral) {
+    mtu = centralPreferredAttMtu_;
+  }
+  if (mtu < kBleDefaultAttMtu) {
+    mtu = kBleDefaultAttMtu;
+  } else if (mtu > kBleServerPreferredMtu) {
+    mtu = kBleServerPreferredMtu;
+  }
+  return mtu;
+}
+
 uint16_t BleRadio::localPreferredAttMtu() const {
-  return kBleServerPreferredMtu;
+  return connected_ ? preferredAttMtuForRole(connectionRole_)
+                    : kBleServerPreferredMtu;
 }
 
 void BleRadio::updateConnectionDataLengthFromPeer(uint16_t peerMaxRxOctets,

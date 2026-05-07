@@ -87,6 +87,18 @@ void loop() {}
 
 ---
 
+## BLE bandwidth note
+
+Bluefruit `BANDWIDTH_*` profiles now cap negotiated ATT MTU and Data Length per
+role instead of always behaving like `MAX`.
+
+- `NORMAL` now stays at `MTU=23` / `DataLength=27` even if the peer is `MAX`.
+- `MAX` to `MAX` still negotiates `MTU=247` / `DataLength=251`.
+- `requestDataLengthUpdate()` now follows the active role's bandwidth cap, not
+  just the raw silicon maximum.
+
+---
+
 ## 📦 Installation
 
 ### Arduino IDE

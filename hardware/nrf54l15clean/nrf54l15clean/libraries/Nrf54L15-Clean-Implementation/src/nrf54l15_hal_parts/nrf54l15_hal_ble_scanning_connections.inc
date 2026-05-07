@@ -1299,7 +1299,8 @@ bool BleRadio::startConnectionFromConnectInd(const uint8_t* payload, uint8_t len
   connectionConnParamUpdatePending_ = false;
   connectionConnParamUpdateInFlight_ = false;
   connectionConnParamUpdateIdentifier_ = 1U;
-  connectionRequestedAttMtu_ = localPreferredAttMtu();
+  connectionRequestedAttMtu_ =
+      preferredAttMtuForRole(BleConnectionRole::kPeripheral);
   connectionAttMtu_ = kBleDefaultAttMtu;
   connectionCentralLinkSetupNotBeforeMs_ = millis() + 1000UL;
   connectionLastTxLlid_ = 0x01U;
@@ -1454,7 +1455,8 @@ bool BleRadio::startCentralConnection(const uint8_t peerAddress[6],
   connectionConnParamUpdatePending_ = false;
   connectionConnParamUpdateInFlight_ = false;
   connectionConnParamUpdateIdentifier_ = 1U;
-  connectionRequestedAttMtu_ = localPreferredAttMtu();
+  connectionRequestedAttMtu_ =
+      preferredAttMtuForRole(BleConnectionRole::kCentral);
   connectionAttMtu_ = kBleDefaultAttMtu;
   connectionCentralLinkSetupNotBeforeMs_ = millis() + 1000UL;
   connectionLastTxLlid_ = 0x01U;

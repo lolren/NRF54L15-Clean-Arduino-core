@@ -219,6 +219,50 @@ bool BleRadio::requestAttMtuExchange(uint16_t mtu) {
   return true;
 }
 
+void BleRadio::setPeripheralPreferredDataLength(uint16_t payloadLength) {
+  if (payloadLength < kBleDefaultDataPduMaxPayload) {
+    payloadLength = kBleDefaultDataPduMaxPayload;
+  } else if (payloadLength > kBleDataPduMaxPayload) {
+    payloadLength = kBleDataPduMaxPayload;
+  }
+  peripheralPreferredDataPduPayloadLength_ = payloadLength;
+}
+
+void BleRadio::setCentralPreferredDataLength(uint16_t payloadLength) {
+  if (payloadLength < kBleDefaultDataPduMaxPayload) {
+    payloadLength = kBleDefaultDataPduMaxPayload;
+  } else if (payloadLength > kBleDataPduMaxPayload) {
+    payloadLength = kBleDataPduMaxPayload;
+  }
+  centralPreferredDataPduPayloadLength_ = payloadLength;
+}
+
+void BleRadio::setPeripheralPreferredAttMtu(uint16_t mtu) {
+  if (mtu < kBleDefaultAttMtu) {
+    mtu = kBleDefaultAttMtu;
+  } else if (mtu > kBleServerPreferredMtu) {
+    mtu = kBleServerPreferredMtu;
+  }
+  peripheralPreferredAttMtu_ = mtu;
+  if (connected_ && (connectionRole_ == BleConnectionRole::kPeripheral) &&
+      !connectionAttMtuExchangeComplete_) {
+    connectionRequestedAttMtu_ = mtu;
+  }
+}
+
+void BleRadio::setCentralPreferredAttMtu(uint16_t mtu) {
+  if (mtu < kBleDefaultAttMtu) {
+    mtu = kBleDefaultAttMtu;
+  } else if (mtu > kBleServerPreferredMtu) {
+    mtu = kBleServerPreferredMtu;
+  }
+  centralPreferredAttMtu_ = mtu;
+  if (connected_ && (connectionRole_ == BleConnectionRole::kCentral) &&
+      !connectionAttMtuExchangeComplete_) {
+    connectionRequestedAttMtu_ = mtu;
+  }
+}
+
 bool BleRadio::isConnected() const { return connected_; }
 
 BleConnectionRole BleRadio::connectionRole() const {

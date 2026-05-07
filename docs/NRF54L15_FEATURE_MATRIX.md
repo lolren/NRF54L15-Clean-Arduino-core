@@ -2,7 +2,7 @@
 
 Status baseline:
 
-- Repository release line: `0.6.79`
+- Repository release line: `0.6.80`
 - Audit date: `2026-04-28`
 - Silicon source: `Nordic_nRF54L15_Datasheet_v1.0.pdf`
 - Core source: `hardware/nrf54l15clean/nrf54l15clean`
@@ -122,7 +122,8 @@ This section tracks user-facing Arduino behavior.
 | [x] | Central initiate/minimal client | Implemented baseline. | Multi-role and broader client discovery/write/notify stress. |
 | [x] | Dynamic 16-bit custom GATT | Implemented. | 128-bit dynamic service editing/descriptors/multi-service mutation remain open. |
 | [x] | Notifications/indications | Implemented. | More throughput and retransmission stress. |
-| [x] | ATT MTU exchange | Implemented enough for Bluefruit compatibility paths. | More interop/edge-case testing. |
+| [x] | ATT MTU exchange | Implemented enough for Bluefruit compatibility paths, and Bluefruit role-specific bandwidth caps now hold negotiated MTU instead of always collapsing to `247`. | More interop/edge-case testing. |
+| [x] | Data Length update / bandwidth caps | Implemented, with Bluefruit role-specific bandwidth caps now holding negotiated DLE instead of always collapsing to `251`. | More host/phone interop and explicit mixed-profile tests. |
 | [x] | PHY request/get API | Implemented for `1M`, `2M`, and coded PHY request paths. | More central/peripheral combinations and fallback behavior tests. |
 | [ ] | Pairing/bonding production stability | Partial | Existing code and persistence exist, but repeated cross-host stability remains the top BLE security gap. |
 | [ ] | Full Bluetooth controller conformance | Partial | This core is a clean register-level stack, not Zephyr/NCS controller parity. |
