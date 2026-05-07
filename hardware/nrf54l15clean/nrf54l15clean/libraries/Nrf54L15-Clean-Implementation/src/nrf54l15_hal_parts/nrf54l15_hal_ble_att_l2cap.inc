@@ -339,11 +339,11 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
       }
 
       const uint16_t clientRxMtu = readLe16(&attRequest[1]);
-      uint16_t serverRxMtu = connectionRequestedAttMtu_;
+      // The ATT server response must reflect the local server RX capability,
+      // not any client-side MTU request that may be pending on this link.
+      uint16_t serverRxMtu = localPreferredAttMtu();
       if (serverRxMtu < kBleDefaultAttMtu) {
         serverRxMtu = kBleDefaultAttMtu;
-      } else if (serverRxMtu > localPreferredAttMtu()) {
-        serverRxMtu = localPreferredAttMtu();
       }
       const uint16_t negotiatedMtu = minU16(clientRxMtu, serverRxMtu);
       connectionAttMtu_ = (negotiatedMtu >= 23U) ? negotiatedMtu : 23U;

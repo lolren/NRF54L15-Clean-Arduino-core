@@ -4555,6 +4555,15 @@ void AdafruitBluefruit::configCentralBandwidth(uint8_t bw) {
 }
 
 bool AdafruitBluefruit::begin(uint8_t prph_count, uint8_t central_count) {
+  // Keep the radio-side responder defaults aligned with Bluefruit's API
+  // defaults even when the sketch never calls configPrphBandwidth() or
+  // configCentralBandwidth() explicitly.
+  manager().radio().setPeripheralPreferredAttMtu(periph_requested_mtu_);
+  manager().radio().setPeripheralPreferredDataLength(
+      preferredBleDataLengthFromMtu(periph_requested_mtu_));
+  manager().radio().setCentralPreferredAttMtu(central_requested_mtu_);
+  manager().radio().setCentralPreferredDataLength(
+      preferredBleDataLengthFromMtu(central_requested_mtu_));
   return manager().begin(prph_count, central_count);
 }
 
