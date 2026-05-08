@@ -665,6 +665,12 @@ def matching_cmsis_dap_serial_ports(host_tools_path: Path | None = None) -> list
     return matches
 
 
+def windows_multi_probe_guard_details(host_tools_path: Path | None = None) -> tuple[list[str], list[str]]:
+    cmsis_ports = matching_cmsis_dap_serial_ports(host_tools_path)
+    probe_uids = list_connected_pyocd_probe_uids(host_tools_path)
+    return cmsis_ports, probe_uids
+
+
 def infer_uid_from_port(port: str | None, host_tools_path: Path | None = None) -> str | None:
     if not port:
         return None
@@ -1530,21 +1536,51 @@ def main() -> int:
             args.uf2_timeout,
         )
     if runner == "pyocd":
+        windows_cmsis_ports: list[str] = []
+        windows_probe_uids: list[str] = []
+        if sys.platform.startswith("win"):
+            windows_cmsis_ports, windows_probe_uids = windows_multi_probe_guard_details(host_tools_path)
         if (
             sys.platform.startswith("win")
             and explicit_uid is None
             and selected_uid is None
-            and len(matching_cmsis_dap_serial_ports(host_tools_path)) > 1
+            and (len(windows_cmsis_ports) > 1 or len(windows_probe_uids) > 1)
         ):
             print(
                 "ERROR: Multiple CMSIS-DAP probes are connected, but the selected COM "
-                "port did not expose a unique probe serial number.",
+                "port could not be resolved to a unique probe UID.",
+                file=sys.stderr,
+            )
+            if windows_cmsis_ports:
+                print(
+                    "Visible CMSIS-DAP ports: " + ", ".join(windows_cmsis_ports),
+                    file=sys.stderr,
+                )
+            if windows_probe_uids:
+                print(
+                    "pyOCD probes: " + ", ".join(windows_probe_uids),
+                    file=sys.stderr,
+                )
+            print(
+                "HINT: The uploader could not map the selected COM port to one of the "
+                "visible pyOCD probes, so it is stopping before pyOCD falls back to its "
+                "interactive picker.",
+                file=sys.stderr,
+            )
+            return 8
+        if (
+            sys.platform.startswith("win")
+            and selected_uid is not None
+            and len(windows_probe_uids) > 1
+            and selected_uid not in windows_probe_uids
+        ):
+            print(
+                "ERROR: The selected COM port resolved to probe UID "
+                f"{selected_uid}, but pyOCD does not currently see that probe.",
                 file=sys.stderr,
             )
             print(
-                "HINT: Replug the board or switch to UF2 upload once, then retry. "
-                "The uploader needs the board's unique USB serial to avoid pyocd's "
-                "interactive probe picker.",
+                "pyOCD probes: " + ", ".join(windows_probe_uids),
                 file=sys.stderr,
             )
             return 8
