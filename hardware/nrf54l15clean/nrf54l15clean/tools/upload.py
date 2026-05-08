@@ -449,6 +449,40 @@ def serial_from_plain_value(value: str | None) -> str | None:
     return candidate
 
 
+def uid_tokens_for_match(value: str | None) -> list[str]:
+    if not value:
+        return []
+
+    primary = normalize_token(value)
+    tokens: list[str] = []
+    if len(primary) >= 6:
+        tokens.append(primary)
+
+    for match in re.finditer(r"[A-Fa-f0-9]{6,}", value):
+        token = normalize_token(match.group(0))
+        if token and token not in tokens:
+            tokens.append(token)
+    return tokens
+
+
+def uid_candidate_matches_connected(candidate: str, connected_uid: str) -> bool:
+    candidate_tokens = uid_tokens_for_match(candidate)
+    connected_tokens = uid_tokens_for_match(connected_uid)
+    if not candidate_tokens or not connected_tokens:
+        return False
+
+    for candidate_token in candidate_tokens:
+        for connected_token in connected_tokens:
+            if candidate_token == connected_token:
+                return True
+            if len(candidate_token) >= len(connected_token):
+                if candidate_token.endswith(connected_token):
+                    return True
+            elif connected_token.endswith(candidate_token):
+                return True
+    return False
+
+
 def select_unique_connected_probe_uid(
     candidates: list[str],
     host_tools_path: Path | None = None,
@@ -464,7 +498,13 @@ def select_unique_connected_probe_uid(
 
     connected_uids = list_connected_pyocd_probe_uids(host_tools_path)
     if connected_uids:
-        matches = [uid for uid in unique_candidates if uid in connected_uids]
+        matches: list[str] = []
+        for connected_uid in connected_uids:
+            if any(
+                uid_candidate_matches_connected(candidate, connected_uid)
+                for candidate in unique_candidates
+            ) and connected_uid not in matches:
+                matches.append(connected_uid)
         if len(matches) == 1:
             return matches[0]
         return None
@@ -472,6 +512,39 @@ def select_unique_connected_probe_uid(
     if len(unique_candidates) == 1:
         return unique_candidates[0]
     return None
+
+
+def windows_port_is_present(port: str | None, host_tools_path: Path | None = None) -> bool:
+    if not port or not sys.platform.startswith("win"):
+        return False
+
+    wanted = normalized_port_name(port)
+    if not wanted:
+        return False
+
+    list_ports = import_serial_list_ports(host_tools_path)
+    if list_ports is not None:
+        for info in list_ports.comports():
+            devices = [
+                normalized_port_name(getattr(info, "device", None)),
+                normalized_port_name(getattr(info, "name", None)),
+            ]
+            if wanted in devices:
+                return True
+
+    script = r"""
+$port = $args[0]
+try {
+  $serial = Get-CimInstance Win32_SerialPort -ErrorAction Stop |
+    Where-Object { $_.DeviceID -ieq $port } |
+    Select-Object -First 1
+  if ($serial) {
+    exit 0
+  }
+} catch {}
+exit 1
+"""
+    return run_windows_powershell(script, port).returncode == 0
 
 
 def run_windows_powershell(script: str, *script_args: str) -> subprocess.CompletedProcess[str]:
@@ -544,13 +617,24 @@ function Get-InstanceIdFromPort($portName) {
   return $null
 }
 
+function Emit-Candidate($prefix, $value) {
+  if ($null -eq $value) {
+    return
+  }
+  $text = $value.ToString().Trim()
+  if ($text) {
+    Write-Output ($prefix + $text)
+  }
+}
+
 function Emit-ParentChain($instanceId, $visited) {
   for ($depth = 0; $depth -lt 8 -and $instanceId; $depth++) {
     $trimmed = $instanceId.Trim()
     if (-not $visited.Add($trimmed)) {
       break
     }
-    Write-Output $trimmed
+    Emit-Candidate 'INSTANCE:' $trimmed
+    Emit-Candidate 'SERIAL:' (Get-DevicePropValue $trimmed 'DEVPKEY_Device_SerialNumber')
     $parent = Get-DevicePropValue $trimmed 'DEVPKEY_Device_Parent'
     if (-not $parent -or $parent -eq $trimmed) {
       break
@@ -570,8 +654,8 @@ Emit-ParentChain $instanceId $visited
 $containerId = Get-DevicePropValue $instanceId 'DEVPKEY_Device_ContainerId'
 if ($containerId) {
   try {
-    Get-PnpDevice -PresentOnly -ErrorAction Stop | ForEach-Object {
-      $siblingId = $_.InstanceId
+    Get-CimInstance Win32_PnPEntity -ErrorAction Stop | ForEach-Object {
+      $siblingId = $_.PNPDeviceID
       if (-not $siblingId) {
         return
       }
@@ -580,7 +664,20 @@ if ($containerId) {
         Emit-ParentChain $siblingId $visited
       }
     }
-  } catch {}
+  } catch {
+    try {
+      Get-PnpDevice -PresentOnly -ErrorAction Stop | ForEach-Object {
+        $siblingId = $_.InstanceId
+        if (-not $siblingId) {
+          return
+        }
+        $siblingContainer = Get-DevicePropValue $siblingId 'DEVPKEY_Device_ContainerId'
+        if ($siblingContainer -and $siblingContainer -eq $containerId) {
+          Emit-ParentChain $siblingId $visited
+        }
+      }
+    } catch {}
+  }
 }
 
 if ($visited.Count -gt 0) {
@@ -595,9 +692,17 @@ exit 1
 
     candidates: list[str] = []
     for line in (result.stdout or "").splitlines():
-        serial_value = serial_from_instance_id(line)
-        if serial_value is None:
-            serial_value = serial_from_plain_value(line)
+        entry = line.strip()
+        if not entry:
+            continue
+        if entry.startswith("INSTANCE:"):
+            serial_value = serial_from_instance_id(entry.split(":", 1)[1].strip())
+        elif entry.startswith("SERIAL:"):
+            serial_value = serial_from_plain_value(entry.split(":", 1)[1].strip())
+        else:
+            serial_value = serial_from_instance_id(entry)
+            if serial_value is None:
+                serial_value = serial_from_plain_value(entry)
         if serial_value is not None:
             candidates.append(serial_value)
     return select_unique_connected_probe_uid(candidates, host_tools_path)
@@ -1538,8 +1643,25 @@ def main() -> int:
     if runner == "pyocd":
         windows_cmsis_ports: list[str] = []
         windows_probe_uids: list[str] = []
+        windows_port_present = True
         if sys.platform.startswith("win"):
             windows_cmsis_ports, windows_probe_uids = windows_multi_probe_guard_details(host_tools_path)
+            windows_port_present = windows_port_is_present(args.port, host_tools_path)
+        if (
+            sys.platform.startswith("win")
+            and args.port
+            and not windows_port_present
+        ):
+            print(
+                f"ERROR: Selected COM port {args.port} is not currently present.",
+                file=sys.stderr,
+            )
+            if windows_cmsis_ports:
+                print(
+                    "Visible CMSIS-DAP ports: " + ", ".join(windows_cmsis_ports),
+                    file=sys.stderr,
+                )
+            return 8
         if (
             sys.platform.startswith("win")
             and explicit_uid is None
@@ -1571,7 +1693,7 @@ def main() -> int:
         if (
             sys.platform.startswith("win")
             and selected_uid is not None
-            and len(windows_probe_uids) > 1
+            and len(windows_probe_uids) >= 1
             and selected_uid not in windows_probe_uids
         ):
             print(
