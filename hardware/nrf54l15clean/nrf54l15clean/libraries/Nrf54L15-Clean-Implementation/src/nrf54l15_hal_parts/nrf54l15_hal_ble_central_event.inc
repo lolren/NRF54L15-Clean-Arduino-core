@@ -588,17 +588,28 @@ bool BleRadio::pollCentralConnectionEvent(BleConnectionEvent* event,
       }
     }
   }
+  const bool legacyPlainLinkFlow =
+      !connectionEncSessionValid_ &&
+      !connectionEncRxEnabled_ &&
+      !connectionEncTxEnabled_ &&
+      !connectionEncStartReqPending_ &&
+      !connectionEncStartReqTxPending_ &&
+      !connectionEncAwaitingStartRsp_ &&
+      !connectionEncKeyDerivationPending_ &&
+      (smpPairingState_ == kSmpPairingStateIdle);
   bool implicitEmptyAck = false;
   const bool lastTxWasEmptyAck =
       connectionTxHistoryValid_ &&
       (connectionLastTxLlid_ == 0x01U) &&
       (connectionLastTxLength_ == 0U);
   const bool lastTxHadAttPayload =
+      legacyPlainLinkFlow &&
       connectionTxHistoryValid_ &&
       (connectionLastTxLlid_ == kBlePduDataStartOrComplete) &&
       (connectionLastTxPlainLength_ >= (kBleL2capHeaderLen + 1U)) &&
       (readLe16(&connectionLastTxPlainPayload_[2]) == kBleL2capCidAtt);
   const bool peerAdvancedToNewAttServerProgress =
+      legacyPlainLinkFlow &&
       packetIsNew &&
       (llid == kBlePduDataStartOrComplete) &&
       (rxLength >= (kBleL2capHeaderLen + 1U)) &&
@@ -607,9 +618,8 @@ bool BleRadio::pollCentralConnectionEvent(BleConnectionEvent* event,
        (rxPacket_[2 + kBleL2capHeaderLen] == kAttOpHandleValueNtf) ||
        (rxPacket_[2 + kBleL2capHeaderLen] == kAttOpHandleValueInd));
   // Some peers keep NESN stale while they continue pushing notifications or a
-  // server response. Treat that higher-layer progress as an implicit ACK so
-  // the central can advance SN and deliver the next queued ATT request, both
-  // before and after link-layer encryption comes up.
+  // server response. Keep the 0.6.48 heuristic on plain links only; encrypted
+  // traffic uses its own follow-up path.
   if (!peerAckedLastTx &&
       connectionTxHistoryValid_ &&
       packetIsNew &&

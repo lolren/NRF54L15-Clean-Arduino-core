@@ -121,12 +121,27 @@
             (connectionPendingTxLength_ >= (kBleL2capHeaderLen + 2U)) &&
             (connectionPendingTxPayload_[5] == kAttOpWriteReq));
   };
+  const bool legacyPlainLinkFlow =
+      !connectionEncSessionValid_ &&
+      !connectionEncRxEnabled_ &&
+      !connectionEncTxEnabled_ &&
+      !connectionEncStartReqPending_ &&
+      !connectionEncStartReqTxPending_ &&
+      !connectionEncAwaitingStartRsp_ &&
+      !connectionEncKeyDerivationPending_ &&
+      (smpPairingState_ == kSmpPairingStateIdle);
   auto customAttWriteNeedsDeferredL2capHandling = [&]() {
     if ((llid != kBlePduDataStartOrComplete) ||
         (rxL2capCid != kBleL2capCidAtt) ||
-        ((rxAttOpcode != kAttOpWriteReq) &&
-         (rxAttOpcode != kAttOpWriteCmd)) ||
         (rxLength < (kBleL2capHeaderLen + 3U))) {
+      return false;
+    }
+    if (legacyPlainLinkFlow) {
+      if (rxAttOpcode != kAttOpWriteReq) {
+        return false;
+      }
+    } else if ((rxAttOpcode != kAttOpWriteReq) &&
+               (rxAttOpcode != kAttOpWriteCmd)) {
       return false;
     }
 
@@ -141,7 +156,7 @@
     if (isCccdHandle || !isCustomValueHandle) {
       return false;
     }
-    if (rxAttOpcode == kAttOpWriteCmd) {
+    if (!legacyPlainLinkFlow && (rxAttOpcode == kAttOpWriteCmd)) {
       return true;
     }
     return ((connectionCurrentRxPhy_ & kBlePhyCoded) != 0U);
@@ -164,9 +179,12 @@
     }
   }
   if (packetIsNew && !terminateInd &&
-      (((llid == kBlePduDataStartOrComplete) &&
-        (rxLength >= kBleL2capHeaderLen)) ||
-       ((llid == 0x01U) && (rxLength > 0U))) &&
+      (legacyPlainLinkFlow
+           ? ((llid == kBlePduDataStartOrComplete) &&
+              (rxLength >= kBleL2capHeaderLen))
+           : ((((llid == kBlePduDataStartOrComplete) &&
+                (rxLength >= kBleL2capHeaderLen)) ||
+               ((llid == 0x01U) && (rxLength > 0U))))) &&
       canSendNewPayloadThisEvent &&
       !encryptionProcedureBusy &&
       !currentRxNeedsDeferredCustomWriteResponse &&
@@ -667,7 +685,7 @@
       waitRadioEndBudgeted(radio_, txEndBudgetUs, spinLimit / 2U + 1U);
   bool txOk = false;
   if (txEndSeen) {
-    if (doPostTxRxTurnaround) {
+    if (doPostTxRxTurnaround && !legacyPlainLinkFlow) {
       // Clear TX END/PHYEND immediately after TX completion so the follow-up
       // listener observes only RX completion events.
       radio_->EVENTS_END = 0U;
@@ -697,7 +715,8 @@
     radio_->SHORTS = 0U;
   } else {
     followRxAlreadyDone =
-        (radio_->EVENTS_CRCOK != 0U) || (radio_->EVENTS_CRCERROR != 0U);
+        !legacyPlainLinkFlow &&
+        (((radio_->EVENTS_CRCOK != 0U) || (radio_->EVENTS_CRCERROR != 0U)));
     // Clear TX completion events and remove DISABLED->RX shortcut so RX disable
     // completes cleanly once the follow-up listen window ends.
     radio_->EVENTS_DISABLED = 0U;
@@ -816,7 +835,8 @@
     encDebug_.connLastFollowupListenBudgetUs = followListenUs;
     const uint32_t followStartUs = bleTimingUs();
     uint8_t followPackets = 0U;
-    bool usePreservedFollowPacket = followRxAlreadyDone;
+    bool usePreservedFollowPacket =
+        !legacyPlainLinkFlow && followRxAlreadyDone;
     while (!terminateInd) {
       const uint32_t followNowUs = bleTimingUs();
       const uint32_t elapsedUs =
@@ -967,7 +987,7 @@
             ++encDebug_.encTxPacketCount;
             ++encDebug_.followupStartEncRspTxOk;
           }
-          if (!terminateInd) {
+          if (!terminateInd && !legacyPlainLinkFlow) {
             // Same-event follow-up traffic can legitimately continue after an
             // immediate response, for example SMP Pairing Response followed by
             // Pairing Public Key. Restore the RX buffer and re-arm listening.
@@ -1248,9 +1268,13 @@
               return false;
             }
             const uint16_t followCid = readLe16(&rxPacket_[4]);
+            const uint8_t followAttOpcode =
+                rxPacket_[2 + kBleL2capHeaderLen];
             if ((followCid != kBleL2capCidAtt) ||
-                ((rxPacket_[2 + kBleL2capHeaderLen] != kAttOpWriteReq) &&
-                 (rxPacket_[2 + kBleL2capHeaderLen] != kAttOpWriteCmd))) {
+                (legacyPlainLinkFlow
+                     ? (followAttOpcode != kAttOpWriteReq)
+                     : ((followAttOpcode != kAttOpWriteReq) &&
+                        (followAttOpcode != kAttOpWriteCmd)))) {
               return false;
             }
             const uint16_t handle =
@@ -1264,7 +1288,8 @@
             if (isCccdHandle || !isCustomValueHandle) {
               return false;
             }
-            if (rxPacket_[2 + kBleL2capHeaderLen] == kAttOpWriteCmd) {
+            if (!legacyPlainLinkFlow &&
+                (followAttOpcode == kAttOpWriteCmd)) {
               return true;
             }
             return ((connectionCurrentRxPhy_ & kBlePhyCoded) != 0U);
@@ -1273,6 +1298,7 @@
               connectionPendingTxValid_ &&
               pendingTxIsAttServerPushPdu();
           const bool followCarriesSmp =
+              !legacyPlainLinkFlow &&
               (((llidFollow == kBlePduDataStartOrComplete) &&
                 (rxLengthFollow >= kBleL2capHeaderLen) &&
                 (readLe16(&rxPacket_[4]) == kBleL2capCidSmp)) ||
@@ -1306,18 +1332,26 @@
               if (followTerminate) {
                 terminateInd = true;
               }
-            } else if ((((llidFollow == kBlePduDataStartOrComplete) &&
-                         (rxLengthFollow >= kBleL2capHeaderLen)) ||
-                        ((llidFollow == 0x01U) && (rxLengthFollow > 0U)))) {
+            } else if (legacyPlainLinkFlow
+                           ? ((llidFollow == kBlePduDataStartOrComplete) &&
+                              (rxLengthFollow >= kBleL2capHeaderLen))
+                           : ((((llidFollow == kBlePduDataStartOrComplete) &&
+                                (rxLengthFollow >= kBleL2capHeaderLen)) ||
+                               ((llidFollow == 0x01U) &&
+                                (rxLengthFollow > 0U))))) {
               uint8_t responseLength = 0U;
               uint8_t followResponsePayload[kBleDataPduMaxPayload] = {0};
               uint8_t* responsePayload =
-                  ((connectionPendingTxValid_ && !followCanDisplacePendingServerPush) ||
-                   followCanDisplacePendingServerPush ||
-                   followNeedsDeferredCustomWriteResponse())
+                  (legacyPlainLinkFlow
+                       ? (followCanDisplacePendingServerPush ||
+                          followNeedsDeferredCustomWriteResponse())
+                       : ((connectionPendingTxValid_ &&
+                           !followCanDisplacePendingServerPush) ||
+                          followCanDisplacePendingServerPush ||
+                          followNeedsDeferredCustomWriteResponse()))
                       ? followResponsePayload
                       : connectionPendingTxPayload_;
-                if (buildL2capResponse(llidFollow, &rxPacket_[2], rxLengthFollow,
+              if (buildL2capResponse(llidFollow, &rxPacket_[2], rxLengthFollow,
                                      packetIsNewFollow, responsePayload,
                                      &responseLength) &&
                   responseLength > 0U) {

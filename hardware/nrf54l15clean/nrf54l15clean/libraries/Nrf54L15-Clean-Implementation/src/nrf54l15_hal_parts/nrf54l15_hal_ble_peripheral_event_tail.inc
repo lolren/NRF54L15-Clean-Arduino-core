@@ -243,6 +243,15 @@
       bleConnectionPayloadProtocolOpcode(llid, &rxPacket_[2], rxLength), nesn, sn,
       packetIsNew, peerAckedLastTx);
 
+  const bool legacyPlainLinkFlow =
+      !connectionEncSessionValid_ &&
+      !connectionEncRxEnabled_ &&
+      !connectionEncTxEnabled_ &&
+      !connectionEncStartReqPending_ &&
+      !connectionEncStartReqTxPending_ &&
+      !connectionEncAwaitingStartRsp_ &&
+      !connectionEncKeyDerivationPending_ &&
+      (smpPairingState_ == kSmpPairingStateIdle);
   uint8_t deferredLlid = 0x01U;
   uint8_t deferredLength = 0U;
 
@@ -262,15 +271,18 @@
     } else if (packetIsNew &&
                !l2capHandledImmediate &&
                !encryptionProcedureBusy &&
-               (((llid == kBlePduDataStartOrComplete) &&
-                 (rxLength >= kBleL2capHeaderLen)) ||
-                ((llid == 0x01U) && (rxLength > 0U)))) {
+               (legacyPlainLinkFlow
+                    ? ((llid == kBlePduDataStartOrComplete) &&
+                       (rxLength >= kBleL2capHeaderLen))
+                    : ((((llid == kBlePduDataStartOrComplete) &&
+                         (rxLength >= kBleL2capHeaderLen)) ||
+                        ((llid == 0x01U) && (rxLength > 0U)))))) {
       uint8_t responseLength = 0U;
       if (buildL2capResponse(llid, &rxPacket_[2], rxLength, packetIsNew,
                              connectionTxPayload_, &responseLength) &&
           responseLength > 0U) {
         deferredLlid = kBlePduDataStartOrComplete;
-          deferredLength = responseLength;
+        deferredLength = responseLength;
       }
     }
 
@@ -461,6 +473,15 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event,
   if (!bleRunningInIsr()) {
     serviceDeferredApplicationWork();
   }
+  const bool securityFlowActive =
+      connectionEncSessionValid_ ||
+      connectionEncRxEnabled_ ||
+      connectionEncTxEnabled_ ||
+      connectionEncStartReqPending_ ||
+      connectionEncStartReqTxPending_ ||
+      connectionEncAwaitingStartRsp_ ||
+      connectionEncKeyDerivationPending_ ||
+      (smpPairingState_ != kSmpPairingStateIdle);
 
   auto dequeueQueuedEvent = [&](BleConnectionEvent* outEvent) {
     if (outEvent == nullptr) {
@@ -484,6 +505,14 @@ bool BleRadio::pollConnectionEvent(BleConnectionEvent* event,
   }
 
   if (!bleRunningInIsr()) {
+    if (!securityFlowActive) {
+      const bool ran = pollConnectionEventInternal(event, spinLimit);
+      if (ran && event != nullptr) {
+        rememberLatestConnectionRssi(*event);
+      }
+      serviceDeferredApplicationWork();
+      return ran;
+    }
     // Non-ISR callers share the BLE idle/yield hooks with the same radio.
     // Drive connection progress through the queued service path here as well,
     // otherwise sketch polling can race a concurrent idle-service poll and
