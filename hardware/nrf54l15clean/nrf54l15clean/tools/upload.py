@@ -237,6 +237,31 @@ def detect_pyocd_command(host_tools_path: Path | None = None) -> list[str] | Non
     return None
 
 
+def list_connected_pyocd_probe_uids(host_tools_path: Path | None = None) -> list[str]:
+    pyocd_cmd = detect_pyocd_command(host_tools_path)
+    if pyocd_cmd is None:
+        return []
+
+    result = run([*pyocd_cmd, "list", "-p", "-H"], timeout=10.0)
+    if result.returncode != 0:
+        return []
+
+    uids: list[str] = []
+    for raw_line in (result.stdout or "").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or set(line) == {"-"}:
+            continue
+
+        parts = [part.strip() for part in re.split(r"\s{2,}", line) if part.strip()]
+        if len(parts) < 3 or not parts[0].isdigit():
+            continue
+
+        uid = normalize_uid(parts[-2])
+        if uid is not None and uid not in uids:
+            uids.append(uid)
+    return uids
+
+
 def host_setup_hint(host_tools_path: Path | None = None, purpose: str = "python") -> str:
     tool_root = pyocd_tool_root(host_tools_path)
     tools_dir = tool_root / "setup"
@@ -398,6 +423,186 @@ def serial_from_hwid(hwid: str | None) -> str | None:
     return normalize_uid(match.group(1))
 
 
+def serial_from_instance_id(instance_id: str | None) -> str | None:
+    if not instance_id:
+        return None
+
+    parts = [part.strip() for part in instance_id.split("\\") if part.strip()]
+    if len(parts) < 2:
+        return None
+
+    candidate = parts[-1]
+    if "&" in candidate:
+        return None
+    if not re.fullmatch(r"[A-Za-z0-9._-]{6,}", candidate):
+        return None
+    return normalize_uid(candidate)
+
+
+def serial_from_plain_value(value: str | None) -> str | None:
+    if not value:
+        return None
+
+    candidate = normalize_uid(value)
+    if candidate is None or not re.fullmatch(r"[A-Za-z0-9._-]{6,}", candidate):
+        return None
+    return candidate
+
+
+def select_unique_connected_probe_uid(
+    candidates: list[str],
+    host_tools_path: Path | None = None,
+) -> str | None:
+    unique_candidates: list[str] = []
+    for candidate in candidates:
+        normalized = serial_from_plain_value(candidate)
+        if normalized is not None and normalized not in unique_candidates:
+            unique_candidates.append(normalized)
+
+    if not unique_candidates:
+        return None
+
+    connected_uids = list_connected_pyocd_probe_uids(host_tools_path)
+    if connected_uids:
+        matches = [uid for uid in unique_candidates if uid in connected_uids]
+        if len(matches) == 1:
+            return matches[0]
+        return None
+
+    if len(unique_candidates) == 1:
+        return unique_candidates[0]
+    return None
+
+
+def run_windows_powershell(script: str, *script_args: str) -> subprocess.CompletedProcess[str]:
+    shell = (
+        shutil.which("powershell")
+        or shutil.which("powershell.exe")
+        or shutil.which("pwsh")
+    )
+    if shell is None:
+        return subprocess.CompletedProcess(
+            args=["powershell", *script_args],
+            returncode=127,
+            stdout="",
+            stderr="powershell not found",
+        )
+
+    cmd = [
+        shell,
+        "-NoProfile",
+        "-NonInteractive",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        script,
+        *script_args,
+    ]
+    return run(cmd, timeout=10.0)
+
+
+def port_uid_from_windows_parent_chain(
+    port: str | None,
+    host_tools_path: Path | None = None,
+) -> str | None:
+    if not port or not sys.platform.startswith("win"):
+        return None
+
+    script = r"""
+$port = $args[0]
+function Get-DevicePropValue($instanceId, $keyName) {
+  try {
+    $prop = Get-PnpDeviceProperty -InstanceId $instanceId `
+      -KeyName $keyName -ErrorAction Stop |
+      Select-Object -ExpandProperty Data -First 1
+    if ($prop) {
+      return $prop.ToString().Trim()
+    }
+  } catch {}
+  return $null
+}
+
+function Get-InstanceIdFromPort($portName) {
+  try {
+    $serial = Get-CimInstance Win32_SerialPort -ErrorAction Stop |
+      Where-Object { $_.DeviceID -ieq $portName } |
+      Select-Object -First 1
+    if ($serial -and $serial.PNPDeviceID) {
+      return $serial.PNPDeviceID
+    }
+  } catch {}
+
+  try {
+    $escaped = [Regex]::Escape("(" + $portName + ")")
+    $entity = Get-CimInstance Win32_PnPEntity -ErrorAction Stop |
+      Where-Object { $_.Name -match $escaped } |
+      Select-Object -First 1
+    if ($entity -and $entity.PNPDeviceID) {
+      return $entity.PNPDeviceID
+    }
+  } catch {}
+  return $null
+}
+
+function Emit-ParentChain($instanceId, $visited) {
+  for ($depth = 0; $depth -lt 8 -and $instanceId; $depth++) {
+    $trimmed = $instanceId.Trim()
+    if (-not $visited.Add($trimmed)) {
+      break
+    }
+    Write-Output $trimmed
+    $parent = Get-DevicePropValue $trimmed 'DEVPKEY_Device_Parent'
+    if (-not $parent -or $parent -eq $trimmed) {
+      break
+    }
+    $instanceId = $parent
+  }
+}
+
+$instanceId = Get-InstanceIdFromPort $port
+if (-not $instanceId) {
+  exit 1
+}
+
+$visited = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+Emit-ParentChain $instanceId $visited
+
+$containerId = Get-DevicePropValue $instanceId 'DEVPKEY_Device_ContainerId'
+if ($containerId) {
+  try {
+    Get-PnpDevice -PresentOnly -ErrorAction Stop | ForEach-Object {
+      $siblingId = $_.InstanceId
+      if (-not $siblingId) {
+        return
+      }
+      $siblingContainer = Get-DevicePropValue $siblingId 'DEVPKEY_Device_ContainerId'
+      if ($siblingContainer -and $siblingContainer -eq $containerId) {
+        Emit-ParentChain $siblingId $visited
+      }
+    }
+  } catch {}
+}
+
+if ($visited.Count -gt 0) {
+  exit 0
+}
+exit 1
+"""
+
+    result = run_windows_powershell(script, port)
+    if result.returncode != 0:
+        return None
+
+    candidates: list[str] = []
+    for line in (result.stdout or "").splitlines():
+        serial_value = serial_from_instance_id(line)
+        if serial_value is None:
+            serial_value = serial_from_plain_value(line)
+        if serial_value is not None:
+            candidates.append(serial_value)
+    return select_unique_connected_probe_uid(candidates, host_tools_path)
+
+
 def port_uid_from_list_ports(port: str | None, host_tools_path: Path | None = None) -> str | None:
     if not port:
         return None
@@ -415,13 +620,21 @@ def port_uid_from_list_ports(port: str | None, host_tools_path: Path | None = No
         if wanted not in devices:
             continue
 
+        candidates: list[str] = []
+
         serial_value = normalize_uid(getattr(info, "serial_number", None))
         if serial_value is not None:
-            return serial_value
+            candidates.append(serial_value)
 
         serial_value = serial_from_hwid(getattr(info, "hwid", None))
         if serial_value is not None:
-            return serial_value
+            candidates.append(serial_value)
+
+        selected = select_unique_connected_probe_uid(candidates, host_tools_path)
+        if selected is not None:
+            return selected
+        if candidates:
+            return None
 
     return None
 
@@ -460,17 +673,27 @@ def infer_uid_from_port(port: str | None, host_tools_path: Path | None = None) -
     if inferred is not None:
         return inferred
 
+    inferred = port_uid_from_windows_parent_chain(port, host_tools_path)
+    if inferred is not None:
+        return inferred
+
     if not sys.platform.startswith("linux"):
         return None
 
     if tool_available("udevadm"):
         info = run(["udevadm", "info", "-q", "property", "-n", port])
         if info.returncode == 0:
+            candidates: list[str] = []
             for line in (info.stdout or "").splitlines():
                 if line.startswith("ID_SERIAL_SHORT="):
                     value = line.split("=", 1)[1].strip()
                     if value:
-                        return value
+                        candidates.append(value)
+            selected = select_unique_connected_probe_uid(candidates, host_tools_path)
+            if selected is not None:
+                return selected
+            if candidates:
+                return None
 
     try:
         target_path = Path(port).resolve(strict=True)
@@ -481,6 +704,7 @@ def infer_uid_from_port(port: str | None, host_tools_path: Path | None = None) -
     if not by_id_dir.is_dir():
         return None
 
+    candidates: list[str] = []
     for entry in by_id_dir.iterdir():
         try:
             if entry.resolve(strict=True) != target_path:
@@ -490,9 +714,9 @@ def infer_uid_from_port(port: str | None, host_tools_path: Path | None = None) -
 
         match = re.search(r"_([0-9A-Fa-f]+)-if\d+$", entry.name)
         if match:
-            return match.group(1)
+            candidates.append(match.group(1))
 
-    return None
+    return select_unique_connected_probe_uid(candidates, host_tools_path)
 
 
 def explicit_uf2_drive(path: str | None) -> Path | None:

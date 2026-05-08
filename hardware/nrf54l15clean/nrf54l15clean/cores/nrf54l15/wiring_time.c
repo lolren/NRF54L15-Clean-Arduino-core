@@ -732,6 +732,22 @@ void delay(unsigned long ms)
     const uint64_t targetUs = readLowPowerCounterUs() + ((uint64_t)ms * 1000ULL);
     delayUntilLowPowerCounterUs(targetUs);
 #else
+    if (ms == 0UL) {
+        nrf54l15_clean_idle_service();
+        return;
+    }
+
+    if (nrf54l15_clean_ble_idle_sleep_cap_us != 0U) {
+        // BLE-connected sketches can quantize delay() to the connection
+        // interval if we re-enter the background event pump here.
+        const uint64_t targetUs =
+            readGrtcCounterUs(NRF_GRTC) + ((uint64_t)ms * 1000ULL);
+        while ((int64_t)(targetUs - readGrtcCounterUs(NRF_GRTC)) > 0) {
+            __NOP();
+        }
+        return;
+    }
+
     const unsigned long start = millis();
     while ((millis() - start) < ms) {
         nrf54l15_clean_idle_service();

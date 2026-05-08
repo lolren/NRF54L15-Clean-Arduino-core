@@ -243,15 +243,6 @@
       bleConnectionPayloadProtocolOpcode(llid, &rxPacket_[2], rxLength), nesn, sn,
       packetIsNew, peerAckedLastTx);
 
-  const bool legacyPlainLinkFlow =
-      !connectionEncSessionValid_ &&
-      !connectionEncRxEnabled_ &&
-      !connectionEncTxEnabled_ &&
-      !connectionEncStartReqPending_ &&
-      !connectionEncStartReqTxPending_ &&
-      !connectionEncAwaitingStartRsp_ &&
-      !connectionEncKeyDerivationPending_ &&
-      (smpPairingState_ == kSmpPairingStateIdle);
   uint8_t deferredLlid = 0x01U;
   uint8_t deferredLength = 0U;
 
