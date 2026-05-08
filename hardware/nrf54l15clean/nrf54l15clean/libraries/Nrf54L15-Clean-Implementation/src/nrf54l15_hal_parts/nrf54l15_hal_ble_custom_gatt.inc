@@ -412,7 +412,7 @@ void BleRadio::filterCustomGattNotificationQueue(uint8_t characteristicIndex,
 
 bool BleRadio::notifyCustomGattCharacteristic(uint16_t valueHandle, bool indicate) {
   const uint32_t irqState = bleEnterCritical();
-  if (!connected_) {
+  if (!connected_ || applicationAttBlockedBySecurity()) {
     bleExitCritical(irqState);
     return false;
   }
@@ -480,11 +480,8 @@ bool BleRadio::notifyCustomGattCharacteristic(uint16_t valueHandle, bool indicat
           (connectionCustomIndicationAwaitingHandle_ == 0U);
       const uint16_t requiredAttMtu =
           static_cast<uint16_t>(3U + queuedNow.valueLength);
-      const uint16_t requiredDataLength =
-          static_cast<uint16_t>(7U + queuedNow.valueLength);
       const bool payloadFitsCurrentLink =
-          (currentAttMtu() >= requiredAttMtu) &&
-          (currentTxDataPduPayloadLength() >= requiredDataLength);
+          (currentAttMtu() >= requiredAttMtu);
       if (pendingModeEnabled &&
           (!queuedNow.indication || indicationFlowReady) &&
           payloadFitsCurrentLink) {
@@ -503,6 +500,7 @@ bool BleRadio::notifyCustomGattCharacteristic(uint16_t valueHandle, bool indicat
         connectionPendingTxLlid_ = kBlePduDataStartOrComplete;
         connectionPendingTxLength_ =
             static_cast<uint8_t>(7U + queuedNow.valueLength);
+        connectionPendingTxOffset_ = 0U;
         connectionPendingTxValid_ = true;
         if (queuedNow.indication) {
           connectionCustomIndicationAwaitingHandle_ =
@@ -795,7 +793,8 @@ void BleRadio::updateConnectionDataLengthFromPeer(uint16_t peerMaxRxOctets,
 
 bool BleRadio::queuePhyUpdateRequest() {
   if (!connected_ || connectionPendingTxValid_ ||
-      !connectionPhyRequestPending_ || connectionPhyRequestInFlight_) {
+      !connectionPhyRequestPending_ || connectionPhyRequestInFlight_ ||
+      applicationAttBlockedBySecurity()) {
     return false;
   }
 
@@ -805,6 +804,7 @@ bool BleRadio::queuePhyUpdateRequest() {
   connectionPendingTxPayload_[0] = kBleLlCtrlPhyReq;
   connectionPendingTxPayload_[1] = symmetricPhys;
   connectionPendingTxPayload_[2] = symmetricPhys;
+  connectionPendingTxOffset_ = 0U;
   connectionPendingTxValid_ = true;
   connectionPhyRequestInFlight_ = true;
   emitBleTrace("LL_PHY_REQ_TX");
@@ -814,7 +814,8 @@ bool BleRadio::queuePhyUpdateRequest() {
 bool BleRadio::queueCentralDataLengthRequest() {
   if (!connected_ || connectionPendingTxValid_ ||
       !connectionDataLengthUpdatePending_ ||
-      connectionDataLengthUpdateInFlight_) {
+      connectionDataLengthUpdateInFlight_ ||
+      applicationAttBlockedBySecurity()) {
     return false;
   }
 
@@ -827,6 +828,7 @@ bool BleRadio::queueCentralDataLengthRequest() {
   writeLe16(&connectionPendingTxPayload_[3], maxTimeUs);
   writeLe16(&connectionPendingTxPayload_[5], maxPayload);
   writeLe16(&connectionPendingTxPayload_[7], maxTimeUs);
+  connectionPendingTxOffset_ = 0U;
   connectionPendingTxValid_ = true;
   connectionDataLengthUpdateInFlight_ = true;
   emitBleTrace("LL_LENGTH_REQ_TX");
@@ -836,7 +838,8 @@ bool BleRadio::queueCentralDataLengthRequest() {
 bool BleRadio::queueCentralAttMtuRequest() {
   if (!connected_ || connectionPendingTxValid_ ||
       !connectionAttMtuExchangePending_ ||
-      connectionAttMtuExchangeInFlight_) {
+      connectionAttMtuExchangeInFlight_ ||
+      applicationAttBlockedBySecurity()) {
     return false;
   }
 
@@ -853,6 +856,7 @@ bool BleRadio::queueCentralAttMtuRequest() {
   writeLe16(&connectionPendingTxPayload_[2], kBleL2capCidAtt);
   connectionPendingTxPayload_[4] = kAttOpExchangeMtuReq;
   writeLe16(&connectionPendingTxPayload_[5], mtu);
+  connectionPendingTxOffset_ = 0U;
   connectionPendingTxValid_ = true;
   connectionAttMtuExchangeInFlight_ = true;
   emitBleTrace("ATT_MTU_REQ_TX");
@@ -943,6 +947,7 @@ bool BleRadio::queuePeripheralConnParamUpdateRequest() {
   writeLe16(&connectionPendingTxPayload_[14], timeout);
   connectionPendingTxLlid_ = kBlePduDataStartOrComplete;
   connectionPendingTxLength_ = 16U;
+  connectionPendingTxOffset_ = 0U;
   connectionPendingTxValid_ = true;
   connectionConnParamUpdateInFlight_ = true;
   emitBleTrace("CONN_PARAM_REQ_TX");
@@ -978,6 +983,7 @@ bool BleRadio::queueCentralConnParamUpdateInd() {
   writeLe16(&connectionPendingTxPayload_[10], instant);
   connectionPendingTxLlid_ = kBlePduLlControl;
   connectionPendingTxLength_ = 12U;
+  connectionPendingTxOffset_ = 0U;
   connectionPendingTxValid_ = true;
 
   connectionPendingWinSize_ = kConnUpdateWinSize;
@@ -992,18 +998,120 @@ bool BleRadio::queueCentralConnParamUpdateInd() {
   return true;
 }
 
+bool BleRadio::queueCentralEncryptionRequest(uint32_t notBeforeMs) {
+  if (!connected_ || connectionPendingTxValid_ || !smpStkValid_ ||
+      connectionEncSessionValid_ || connectionEncRxEnabled_ ||
+      connectionEncTxEnabled_ || connectionEncKeyDerivationPending_ ||
+      connectionEncStartReqPending_ || connectionEncStartReqTxPending_ ||
+      connectionEncAwaitingStartRsp_) {
+    return false;
+  }
+
+  const uint32_t seed =
+      micros() ^ connectionAccessAddress_ ^
+      static_cast<uint32_t>(connectionEventCounter_ << 16U) ^
+      connectionCrcInit_;
+  memset(connectionEncSkd_, 0, sizeof(connectionEncSkd_));
+  memset(connectionEncIv_, 0, sizeof(connectionEncIv_));
+  if (connectionPrefetchedEncMaterialValid_) {
+    memcpy(&connectionEncSkd_[0], connectionPrefetchedSkds_,
+           sizeof(connectionPrefetchedSkds_));
+    memcpy(&connectionEncIv_[0], connectionPrefetchedIvs_,
+           sizeof(connectionPrefetchedIvs_));
+    connectionPrefetchedEncMaterialValid_ = false;
+    ++encDebug_.encRandomPrefetchUseCount;
+  } else {
+    if (fillBleSecurityRandomBytes(&connectionEncSkd_[0], 8U, seed,
+                                   kBleSecurityRandomSpinLimit)) {
+      ++encDebug_.encRandomHardwareCount;
+    } else {
+      ++encDebug_.encRandomFallbackCount;
+    }
+    if (fillBleSecurityRandomBytes(&connectionEncIv_[0], 4U,
+                                   seed ^ 0x6BA38B4FUL,
+                                   kBleSecurityRandomSpinLimit)) {
+      ++encDebug_.encRandomHardwareCount;
+    } else {
+      ++encDebug_.encRandomFallbackCount;
+    }
+  }
+
+  memcpy(encDebug_.encLastSkdm, &connectionEncSkd_[0],
+         sizeof(encDebug_.encLastSkdm));
+  memcpy(encDebug_.encLastIvm, &connectionEncIv_[0],
+         sizeof(encDebug_.encLastIvm));
+  memset(connectionEncSessionKey_, 0, sizeof(connectionEncSessionKey_));
+  memset(connectionEncSessionKeyAlt_, 0, sizeof(connectionEncSessionKeyAlt_));
+  connectionEncAltKeyValid_ = false;
+  connectionEncSessionValid_ = true;
+  connectionEncRxEnabled_ = false;
+  connectionEncTxEnabled_ = false;
+  connectionEncStartReqPending_ = false;
+  connectionEncStartReqTxPending_ = false;
+  connectionEncAwaitingStartRsp_ = false;
+  connectionEncEnableTxOnNextEvent_ = false;
+  connectionEncKeyDerivationPending_ = false;
+  connectionEncRxCounter_ = 0ULL;
+  connectionEncTxCounter_ = 0ULL;
+  connectionEncRxDirection_ = 0U;
+  connectionEncTxDirection_ = 1U;
+  connectionLastTxWasEncrypted_ = false;
+  connectionLastTxEncryptedLength_ = 0U;
+  memset(connectionLastTxEncryptedPayload_, 0,
+         sizeof(connectionLastTxEncryptedPayload_));
+  connectionEncPrecomputedEmptyValid_ = false;
+  connectionEncPrecomputedCounter_ = 0ULL;
+  memset(connectionEncPrecomputedPayload_, 0,
+         sizeof(connectionEncPrecomputedPayload_));
+  connectionEncPrecomputedStartRspValid_ = false;
+  memset(connectionEncPrecomputedStartRsp_, 0,
+         sizeof(connectionEncPrecomputedStartRsp_));
+  connectionEncPrecomputedStartRspTxValid_ = false;
+  connectionEncPrecomputedStartRspTxCounter_ = 0ULL;
+  memset(connectionEncPrecomputedStartRspTx_, 0,
+         sizeof(connectionEncPrecomputedStartRspTx_));
+  encDebug_.encLastRxDir = connectionEncRxDirection_;
+  encDebug_.encLastTxDir = connectionEncTxDirection_;
+
+  connectionPendingTxPayload_[0] = kBleLlCtrlEncReq;
+  memcpy(&connectionPendingTxPayload_[1], smpEncReqRand_,
+         sizeof(smpEncReqRand_));
+  writeLe16(&connectionPendingTxPayload_[9], smpEncReqEdiv_);
+  memcpy(&connectionPendingTxPayload_[11], &connectionEncSkd_[0], 8U);
+  memcpy(&connectionPendingTxPayload_[19], &connectionEncIv_[0], 4U);
+  connectionPendingTxLlid_ = kBlePduLlControl;
+  connectionPendingTxLength_ = 23U;
+  connectionPendingTxOffset_ = 0U;
+  connectionPendingTxNotBeforeMs_ = notBeforeMs;
+  connectionPendingTxValid_ = true;
+  if (smpPairingState_ != kSmpPairingStateIdle) {
+    smpPairingState_ = kSmpPairingStateIdle;
+  }
+  emitBleTrace("LL_ENC_REQ_QUEUED");
+  return true;
+}
+
 void BleRadio::maybeQueueCentralLinkSetupRequest() {
   if (!connected_ || connectionPendingTxValid_) {
     return;
   }
 
+  const uint32_t nowMs = millis();
+  const bool setupDelayElapsed =
+      (connectionCentralLinkSetupNotBeforeMs_ == 0U) ||
+      (static_cast<int32_t>(nowMs - connectionCentralLinkSetupNotBeforeMs_) >= 0);
+
   if (connectionRole_ == BleConnectionRole::kCentral) {
     if (connectionEncSessionValid_ &&
         connectionEncStartReqTxPending_ &&
         !connectionEncAwaitingStartRsp_) {
+      if (!setupDelayElapsed) {
+        return;
+      }
       connectionPendingTxPayload_[0] = kBleLlCtrlStartEncReq;
       connectionPendingTxLlid_ = kBlePduLlControl;
       connectionPendingTxLength_ = 1U;
+      connectionPendingTxOffset_ = 0U;
       connectionPendingTxValid_ = true;
       emitBleTrace("LL_START_ENC_REQ_QUEUED");
       return;
@@ -1024,87 +1132,10 @@ void BleRadio::maybeQueueCentralLinkSetupRequest() {
         !connectionEncStartReqPending_ &&
         !connectionEncStartReqTxPending_ &&
         !connectionEncAwaitingStartRsp_ &&
-        (!smpSecureConnectionsActive_ || secureConnectionsComplete);
+        (!smpSecureConnectionsActive_ || secureConnectionsComplete) &&
+        (bondKeyPrimedForConnection_ || setupDelayElapsed);
     if (centralEncryptionReady) {
-      const uint32_t seed =
-          micros() ^ connectionAccessAddress_ ^
-          static_cast<uint32_t>(connectionEventCounter_ << 16U) ^
-          connectionCrcInit_;
-      memset(connectionEncSkd_, 0, sizeof(connectionEncSkd_));
-      memset(connectionEncIv_, 0, sizeof(connectionEncIv_));
-      if (connectionPrefetchedEncMaterialValid_) {
-        memcpy(&connectionEncSkd_[0], connectionPrefetchedSkds_,
-               sizeof(connectionPrefetchedSkds_));
-        memcpy(&connectionEncIv_[0], connectionPrefetchedIvs_,
-               sizeof(connectionPrefetchedIvs_));
-        connectionPrefetchedEncMaterialValid_ = false;
-        ++encDebug_.encRandomPrefetchUseCount;
-      } else {
-        if (fillBleSecurityRandomBytes(&connectionEncSkd_[0], 8U, seed,
-                                       kBleSecurityRandomSpinLimit)) {
-          ++encDebug_.encRandomHardwareCount;
-        } else {
-          ++encDebug_.encRandomFallbackCount;
-        }
-        if (fillBleSecurityRandomBytes(&connectionEncIv_[0], 4U,
-                                       seed ^ 0x6BA38B4FUL,
-                                       kBleSecurityRandomSpinLimit)) {
-          ++encDebug_.encRandomHardwareCount;
-        } else {
-          ++encDebug_.encRandomFallbackCount;
-        }
-      }
-
-      memcpy(encDebug_.encLastSkdm, &connectionEncSkd_[0],
-             sizeof(encDebug_.encLastSkdm));
-      memcpy(encDebug_.encLastIvm, &connectionEncIv_[0],
-             sizeof(encDebug_.encLastIvm));
-      memset(connectionEncSessionKey_, 0, sizeof(connectionEncSessionKey_));
-      memset(connectionEncSessionKeyAlt_, 0, sizeof(connectionEncSessionKeyAlt_));
-      connectionEncAltKeyValid_ = false;
-      connectionEncSessionValid_ = true;
-      connectionEncRxEnabled_ = false;
-      connectionEncTxEnabled_ = false;
-      connectionEncStartReqPending_ = false;
-      connectionEncStartReqTxPending_ = false;
-      connectionEncAwaitingStartRsp_ = false;
-      connectionEncEnableTxOnNextEvent_ = false;
-      connectionEncKeyDerivationPending_ = false;
-      connectionEncRxCounter_ = 0ULL;
-      connectionEncTxCounter_ = 0ULL;
-      connectionEncRxDirection_ = 0U;
-      connectionEncTxDirection_ = 1U;
-      connectionLastTxWasEncrypted_ = false;
-      connectionLastTxEncryptedLength_ = 0U;
-      memset(connectionLastTxEncryptedPayload_, 0,
-             sizeof(connectionLastTxEncryptedPayload_));
-      connectionEncPrecomputedEmptyValid_ = false;
-      connectionEncPrecomputedCounter_ = 0ULL;
-      memset(connectionEncPrecomputedPayload_, 0,
-             sizeof(connectionEncPrecomputedPayload_));
-      connectionEncPrecomputedStartRspValid_ = false;
-      memset(connectionEncPrecomputedStartRsp_, 0,
-             sizeof(connectionEncPrecomputedStartRsp_));
-      connectionEncPrecomputedStartRspTxValid_ = false;
-      connectionEncPrecomputedStartRspTxCounter_ = 0ULL;
-      memset(connectionEncPrecomputedStartRspTx_, 0,
-             sizeof(connectionEncPrecomputedStartRspTx_));
-      encDebug_.encLastRxDir = connectionEncRxDirection_;
-      encDebug_.encLastTxDir = connectionEncTxDirection_;
-
-      connectionPendingTxPayload_[0] = kBleLlCtrlEncReq;
-      memcpy(&connectionPendingTxPayload_[1], smpEncReqRand_,
-             sizeof(smpEncReqRand_));
-      writeLe16(&connectionPendingTxPayload_[9], smpEncReqEdiv_);
-      memcpy(&connectionPendingTxPayload_[11], &connectionEncSkd_[0], 8U);
-      memcpy(&connectionPendingTxPayload_[19], &connectionEncIv_[0], 4U);
-      connectionPendingTxLlid_ = kBlePduLlControl;
-      connectionPendingTxLength_ = 23U;
-      connectionPendingTxValid_ = true;
-      if (smpPairingState_ != kSmpPairingStateIdle) {
-        smpPairingState_ = kSmpPairingStateIdle;
-      }
-      emitBleTrace("LL_ENC_REQ_QUEUED");
+      (void)queueCentralEncryptionRequest();
       return;
     }
   }
@@ -1116,12 +1147,10 @@ void BleRadio::maybeQueueCentralLinkSetupRequest() {
       connectionSmpSecurityRequestPending_) {
     return;
   }
-  const uint32_t nowMs = millis();
-  const bool setupDelayElapsed =
-      (connectionCentralLinkSetupNotBeforeMs_ == 0U) ||
-      (static_cast<int32_t>(nowMs - connectionCentralLinkSetupNotBeforeMs_) >= 0);
-
-  if (connectionPhyRequestPending_ &&
+  if (applicationAttBlockedBySecurity()) {
+    return;
+  }
+	  if (connectionPhyRequestPending_ &&
       !connectionPhyRequestInFlight_) {
     (void)queuePhyUpdateRequest();
     return;

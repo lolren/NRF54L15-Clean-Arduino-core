@@ -29,6 +29,33 @@ void BleRadio::clearIncomingL2capReassembly() {
          sizeof(connectionRxL2capReassemblyBuffer_));
 }
 
+void BleRadio::populateEventFromLastAssembledL2cap(
+    BleConnectionEvent* event) const {
+  if (event == nullptr || !connectionLastAssembledL2capValid_ ||
+      connectionLastAssembledL2capLength_ < kBleL2capHeaderLen) {
+    return;
+  }
+
+  const uint16_t declaredLength =
+      readLe16(&connectionLastAssembledL2capPayload_[0]);
+  const uint16_t totalLength =
+      static_cast<uint16_t>(kBleL2capHeaderLen + declaredLength);
+  if (declaredLength == 0U ||
+      totalLength > connectionLastAssembledL2capLength_) {
+    return;
+  }
+
+  const uint16_t cid = readLe16(&connectionLastAssembledL2capPayload_[2]);
+  if (cid != kBleL2capCidAtt) {
+    return;
+  }
+
+  event->attPacket = true;
+  event->attOpcode = connectionLastAssembledL2capPayload_[kBleL2capHeaderLen];
+  event->payloadLength = static_cast<uint8_t>(totalLength);
+  event->payload = &connectionLastAssembledL2capPayload_[0];
+}
+
 bool BleRadio::assembleIncomingL2capPayload(uint8_t llid,
                                             const uint8_t* l2capPayload,
                                             uint8_t l2capPayloadLength,
@@ -42,6 +69,19 @@ bool BleRadio::assembleIncomingL2capPayload(uint8_t llid,
 
   *outPayload = nullptr;
   *outPayloadLength = 0U;
+  connectionLastAssembledL2capValid_ = false;
+  connectionLastAssembledL2capLength_ = 0U;
+
+  auto rememberAssembledPayload = [&](const uint8_t* payload,
+                                      uint16_t payloadLength) {
+    if (payload == nullptr ||
+        payloadLength > sizeof(connectionLastAssembledL2capPayload_)) {
+      return;
+    }
+    memcpy(connectionLastAssembledL2capPayload_, payload, payloadLength);
+    connectionLastAssembledL2capLength_ = static_cast<uint8_t>(payloadLength);
+    connectionLastAssembledL2capValid_ = true;
+  };
 
   if (llid == kBlePduDataStartOrComplete) {
     if (l2capPayloadLength < kBleL2capHeaderLen) {
@@ -49,16 +89,30 @@ bool BleRadio::assembleIncomingL2capPayload(uint8_t llid,
       return false;
     }
 
-    if (connectionRxL2capReassemblyActive_) {
-      clearIncomingL2capReassembly();
-    }
-
     const uint16_t declaredLength = readLe16(&l2capPayload[0]);
     const uint16_t totalLength =
         static_cast<uint16_t>(kBleL2capHeaderLen + declaredLength);
+
+    if (connectionRxL2capReassemblyActive_) {
+      const bool duplicateActiveStart =
+          (connectionRxL2capReassemblyExpectedLength_ == totalLength) &&
+          (connectionRxL2capReassemblyReceivedLength_ >= l2capPayloadLength) &&
+          (memcmp(connectionRxL2capReassemblyBuffer_, l2capPayload,
+                  l2capPayloadLength) == 0);
+      if (duplicateActiveStart) {
+        emitBleTrace("L2CAP_FRAG_DUP_START");
+        return false;
+      }
+      if (!packetIsNew) {
+        return false;
+      }
+      clearIncomingL2capReassembly();
+    }
+
     if (totalLength <= l2capPayloadLength) {
       *outPayload = l2capPayload;
       *outPayloadLength = static_cast<uint8_t>(totalLength);
+      rememberAssembledPayload(l2capPayload, totalLength);
       return true;
     }
 
@@ -88,9 +142,15 @@ bool BleRadio::assembleIncomingL2capPayload(uint8_t llid,
     clearIncomingL2capReassembly();
     return false;
   }
-
   const uint16_t remaining = static_cast<uint16_t>(expected - received);
-  const uint16_t copyLength = minU16(remaining, l2capPayloadLength);
+  if (l2capPayloadLength > remaining) {
+    // A continuation PDU cannot carry bytes past the declared L2CAP SDU.
+    // Treat this as a retransmitted/stale fragment and keep waiting for the
+    // correctly sized tail instead of corrupting the assembled packet.
+    emitBleTrace("L2CAP_FRAG_OVERRUN");
+    return false;
+  }
+  const uint16_t copyLength = l2capPayloadLength;
   memcpy(&connectionRxL2capReassemblyBuffer_[received], l2capPayload, copyLength);
   connectionRxL2capReassemblyReceivedLength_ =
       static_cast<uint16_t>(received + copyLength);
@@ -101,6 +161,7 @@ bool BleRadio::assembleIncomingL2capPayload(uint8_t llid,
 
   *outPayload = connectionRxL2capReassemblyBuffer_;
   *outPayloadLength = static_cast<uint8_t>(expected);
+  rememberAssembledPayload(connectionRxL2capReassemblyBuffer_, expected);
   connectionRxL2capReassemblyActive_ = false;
   connectionRxL2capReassemblyExpectedLength_ = 0U;
   connectionRxL2capReassemblyReceivedLength_ = 0U;
@@ -1491,10 +1552,10 @@ bool BleRadio::buildL2capSmpResponse(const uint8_t* l2capPayload,
       if (peerRequestedSecureConnections) {
         smpSecureConnectionsActive_ = true;
         smpPairingRsp_[3] |= kSmpAuthReqSecureConnectionsMask;
-        initiatorKeyDist &= static_cast<uint8_t>(kSmpKeyDistIdKeyMask |
-                                                 kSmpKeyDistSignKeyMask);
-        responderKeyDist &= static_cast<uint8_t>(kSmpKeyDistIdKeyMask |
-                                                 kSmpKeyDistSignKeyMask);
+        // LE SC derives the LTK with F5; the EncKey distribution bit is legacy
+        // only. Keep ID-key exchange so peer stacks complete a normal bond.
+        initiatorKeyDist &= kSmpKeyDistIdKeyMask;
+        responderKeyDist &= kSmpKeyDistIdKeyMask;
       }
       smpPairingRsp_[5] = initiatorKeyDist;
       smpPairingRsp_[6] = responderKeyDist;
@@ -1554,6 +1615,9 @@ bool BleRadio::buildL2capSmpResponse(const uint8_t* l2capPayload,
       if (!decodeSecureConnectionsPublicKeyToInternalLe(
               peerPublicKeyWire, peerPublicKeyInternalLe, &wireBigEndian,
               &peerPoint)) {
+        memcpy((void*)g_ble_sc_invalid_pubkey, peerPublicKeyWire,
+               sizeof(peerPublicKeyWire));
+        g_ble_sc_invalid_pubkey_valid = 1U;
         emitBleTrace("SMP_SC_PUBKEY_INVALID");
         return buildSmpPairingFailed(kSmpReasonDhKeyCheckFailed);
       }
@@ -1773,12 +1837,35 @@ bool BleRadio::buildL2capSmpResponse(const uint8_t* l2capPayload,
       if (smpLocalInitiator_) {
         smpSecureConnectionsDeferredDhKeyCheck_ = false;
         smpSecureConnectionsReceivedDhKeyCheckValid_ = false;
+        {
+          const uint8_t localKeyDist =
+              smpLocalInitiator_ ? smpPairingRsp_[5] : smpPairingRsp_[6];
+          if (smpBondingRequested_ &&
+              ((localKeyDist & kSmpKeyDistIdKeyMask) != 0U)) {
+            smpLocalIdentityInfoPending_ = true;
+            smpLocalIdentityAddressPending_ = true;
+          }
+        }
         if (smpBondingRequested_ && !smpExpectInitiatorIdKey_) {
           BleBondRecord record{};
           if (buildCurrentBondRecord(&record)) {
             persistBondRecord(record);
           }
         }
+	        if (!smpExpectInitiatorIdKey_ &&
+	            !smpLocalIdentityInfoPending_ &&
+	            !smpLocalIdentityAddressPending_ &&
+	            ((smpPairingRsp_[6] & kSmpKeyDistIdKeyMask) == 0U)) {
+	          smpPairingState_ = kSmpPairingStateIdle;
+	        }
+        // The responder has now sent a valid DHKey Check, so queue LL_ENC_REQ
+        // here instead of waiting for a later empty packet to re-enter the
+        // central setup scheduler. Use a real post-DHKey delay; otherwise the
+        // no-trace build can race the responder before it has fully left SMP.
+        const uint32_t encReqEarliestMs =
+            millis() + kBleScFreshEncryptionStartDelayMs;
+        connectionCentralLinkSetupNotBeforeMs_ = encReqEarliestMs;
+        (void)queueCentralEncryptionRequest(encReqEarliestMs);
         emitBleTrace("SMP_SC_DHKEY_CHECK_RX");
         return false;
       }
@@ -1790,11 +1877,26 @@ bool BleRadio::buildL2capSmpResponse(const uint8_t* l2capPayload,
       smpSecureConnectionsDeferredDhKeyCheck_ = false;
       smpSecureConnectionsReceivedDhKeyCheckValid_ = false;
       smpSecureConnectionsDhKeyCheckSent_ = true;
+      {
+        const uint8_t localKeyDist =
+            smpLocalInitiator_ ? smpPairingRsp_[5] : smpPairingRsp_[6];
+        if (smpBondingRequested_ &&
+            ((localKeyDist & kSmpKeyDistIdKeyMask) != 0U)) {
+          smpLocalIdentityInfoPending_ = true;
+          smpLocalIdentityAddressPending_ = true;
+        }
+      }
       if (smpBondingRequested_ && !smpExpectInitiatorIdKey_) {
         BleBondRecord record{};
         if (buildCurrentBondRecord(&record)) {
           persistBondRecord(record);
         }
+      }
+      if (!smpExpectInitiatorIdKey_ &&
+          !smpLocalIdentityInfoPending_ &&
+          !smpLocalIdentityAddressPending_ &&
+          ((smpPairingRsp_[6] & kSmpKeyDistIdKeyMask) == 0U)) {
+        smpPairingState_ = kSmpPairingStateIdle;
       }
       emitBleTrace("SMP_SC_DHKEY_CHECK_RX");
       emitBleTrace("SMP_SC_DHKEY_CHECK_TX");
@@ -1867,11 +1969,16 @@ bool BleRadio::buildL2capSmpResponse(const uint8_t* l2capPayload,
       memcpy(smpPeerIdentityAddress_, &smp[2], sizeof(smpPeerIdentityAddress_));
       smpPeerIdentityAddressRandom_ = (smp[1] != 0U);
       smpPeerIdentityAddressValid_ = true;
+      smpExpectInitiatorIdKey_ = false;
       {
         BleBondRecord record{};
         if (buildCurrentBondRecord(&record)) {
           persistBondRecord(record);
         }
+      }
+      if (!smpLocalIdentityInfoPending_ &&
+          !smpLocalIdentityAddressPending_) {
+        smpPairingState_ = kSmpPairingStateIdle;
       }
       emitBleTrace("SMP_ID_ADDR_RX");
       return false;
@@ -1971,8 +2078,8 @@ bool BleRadio::buildL2capSmpResponse(const uint8_t* l2capPayload,
             ((peerAuthReq & kSmpAuthReqBondingMask) != 0U) ? 0x01U : 0x00U;
         if ((peerAuthReq & kSmpAuthReqSecureConnectionsMask) != 0U) {
           pairingReq[3] |= kSmpAuthReqSecureConnectionsMask;
-          pairingReq[5] = kSmpKeyDistIdKeyMask | kSmpKeyDistSignKeyMask;
-          pairingReq[6] = kSmpKeyDistIdKeyMask | kSmpKeyDistSignKeyMask;
+          pairingReq[5] = kSmpKeyDistIdKeyMask;
+          pairingReq[6] = kSmpKeyDistIdKeyMask;
         } else {
           pairingReq[5] = kSmpKeyDistEncKeyMask | kSmpKeyDistIdKeyMask;
           pairingReq[6] = kSmpKeyDistEncKeyMask | kSmpKeyDistIdKeyMask;

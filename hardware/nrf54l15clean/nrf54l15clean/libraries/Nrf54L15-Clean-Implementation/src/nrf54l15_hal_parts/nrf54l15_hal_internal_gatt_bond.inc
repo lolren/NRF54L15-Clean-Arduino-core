@@ -423,7 +423,9 @@ uint8_t bleConnectionPayloadProtocolOpcode(uint8_t llid, const uint8_t* payload,
         (length > kBleL2capHeaderLen)
             ? static_cast<uint8_t>(length - kBleL2capHeaderLen)
             : 0U;
-    if ((cid == kBleL2capCidAtt) && (l2capLen > 0U) && (availableAttLen > 0U)) {
+    if (((cid == kBleL2capCidAtt) || (cid == kBleL2capCidLeSignaling) ||
+         (cid == kBleL2capCidSmp)) &&
+        (l2capLen > 0U) && (availableAttLen > 0U)) {
       return payload[kBleL2capHeaderLen];
     }
   }

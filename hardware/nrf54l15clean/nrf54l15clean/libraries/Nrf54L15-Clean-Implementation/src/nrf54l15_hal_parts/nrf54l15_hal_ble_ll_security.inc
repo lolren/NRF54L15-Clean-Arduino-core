@@ -226,18 +226,16 @@ bool BleRadio::buildLlControlResponse(const uint8_t* payload, uint8_t length,
         connectionEncSessionValid_ = true;
         connectionEncRxEnabled_ = false;
         connectionEncTxEnabled_ = false;
-        // Peripheral role sequence per Core LLCP:
-        // after LL_ENC_RSP, wait for initiator LL_START_ENC_REQ and answer with
-        // LL_START_ENC_RSP.
-        connectionEncStartReqPending_ = true;
+        // Peripheral role sequence: after LL_ENC_RSP, wait for the central's
+        // LL_START_ENC_REQ and answer with LL_START_ENC_RSP. The responder
+        // must not start its own encryption-start procedure.
+        connectionEncStartReqPending_ = false;
         connectionEncStartReqTxPending_ = false;
         connectionEncAwaitingStartRsp_ = false;
         connectionEncEnableTxOnNextEvent_ = false;
         connectionEncRxCounter_ = 0ULL;
         connectionEncTxCounter_ = 0ULL;
-        connectionPendingTxValid_ = false;
-        connectionPendingTxLlid_ = 0x01U;
-        connectionPendingTxLength_ = 0U;
+        clearPendingTxPayload();
         connectionLastTxWasEncrypted_ = false;
         connectionLastTxEncryptedLength_ = 0U;
         memset(connectionLastTxEncryptedPayload_, 0, sizeof(connectionLastTxEncryptedPayload_));
@@ -259,7 +257,7 @@ bool BleRadio::buildLlControlResponse(const uint8_t* payload, uint8_t length,
         return true;
       }
 
-    case kBleLlCtrlStartEncReq:
+    case kBleLlCtrlStartEncReq: {
       if (length != 1U) {
         return rejectMalformedRequest();
       }
@@ -269,9 +267,16 @@ bool BleRadio::buildLlControlResponse(const uint8_t* payload, uint8_t length,
       if (connectionEncTxEnabled_) {
         return rejectProcedureCollision();
       }
+      const bool peripheralAwaitingCentralStart =
+          (connectionRole_ == BleConnectionRole::kPeripheral) &&
+          connectionEncSessionValid_ &&
+          !connectionEncRxEnabled_ &&
+          !connectionEncTxEnabled_ &&
+          !connectionEncKeyDerivationPending_;
       if (!connectionEncStartReqPending_ &&
           !connectionEncStartReqTxPending_ &&
-          !connectionEncAwaitingStartRsp_) {
+          !connectionEncAwaitingStartRsp_ &&
+          !peripheralAwaitingCentralStart) {
         return rejectCommandDisallowed();
       }
       connectionEncStartReqPending_ = false;
@@ -283,6 +288,7 @@ bool BleRadio::buildLlControlResponse(const uint8_t* payload, uint8_t length,
       *outLength = 1U;
       emitBleTrace("LL_START_ENC_REQ_ACCEPTED");
       return true;
+    }
 
     case kBleLlCtrlPauseEncReq:
       if (length != 1U) {
@@ -486,6 +492,7 @@ bool BleRadio::buildLlControlResponse(const uint8_t* payload, uint8_t length,
       connectionEncStartReqTxPending_ = true;
       connectionEncAwaitingStartRsp_ = false;
       connectionEncEnableTxOnNextEvent_ = false;
+      connectionCentralLinkSetupNotBeforeMs_ = millis() + 500UL;
       emitBleTrace("LL_ENC_RSP_RX");
       return false;
 
@@ -499,8 +506,12 @@ bool BleRadio::buildLlControlResponse(const uint8_t* payload, uint8_t length,
         connectionEncTxEnabled_ = true;
         connectionEncEnableTxOnNextEvent_ = false;
         connectionEncPrecomputedStartRspValid_ = false;
-        connectionEncPrecomputedStartRspTxValid_ = false;
         emitBleTrace("LL_START_ENC_RSP_RX");
+        if (connectionRole_ == BleConnectionRole::kPeripheral) {
+          outPayload[0] = kBleLlCtrlStartEncRsp;
+          *outLength = 1U;
+          return true;
+        }
       }
       return false;
 
@@ -844,7 +855,7 @@ bool BleRadio::computeSecureConnectionsLocalConfirm() {
 
 namespace {
 
-constexpr uint32_t kBleDeferredSmpResponseSpinLimit = 0UL;
+constexpr uint32_t kBleDeferredSmpResponseSpinLimit = 45000UL;
 
 constexpr uint8_t kSmpIoCapDisplayOnly = 0x00U;
 constexpr uint8_t kSmpIoCapDisplayYesNo = 0x01U;
@@ -1063,6 +1074,7 @@ bool BleRadio::queuePendingSmpL2capResponse(const uint8_t* smpPayload,
 
   connectionPendingTxLlid_ = kBlePduDataStartOrComplete;
   connectionPendingTxLength_ = payloadLength;
+  connectionPendingTxOffset_ = 0U;
   connectionPendingTxValid_ = true;
   return true;
 }
@@ -1134,6 +1146,19 @@ void BleRadio::serviceSecureConnectionsWork() {
         if (queuePendingSmpL2capResponse(localDhKeyCheck,
                                          sizeof(localDhKeyCheck))) {
           smpSecureConnectionsDhKeyCheckSent_ = true;
+          const uint8_t localKeyDist =
+              smpLocalInitiator_ ? smpPairingRsp_[5] : smpPairingRsp_[6];
+          if (smpBondingRequested_ &&
+              ((localKeyDist & kSmpKeyDistIdKeyMask) != 0U)) {
+            smpLocalIdentityInfoPending_ = true;
+            smpLocalIdentityAddressPending_ = true;
+          }
+          if (!smpExpectInitiatorIdKey_ &&
+              !smpLocalIdentityInfoPending_ &&
+              !smpLocalIdentityAddressPending_ &&
+              ((smpPairingRsp_[6] & kSmpKeyDistIdKeyMask) == 0U)) {
+            smpPairingState_ = kSmpPairingStateIdle;
+          }
           emitBleTrace("SMP_SC_DHKEY_CHECK_TX");
           serviceBackgroundConnection(kBleDeferredSmpResponseSpinLimit);
         }
@@ -1165,15 +1190,68 @@ void BleRadio::serviceSecureConnectionsWork() {
         smpSecureConnectionsDeferredDhKeyCheck_ = false;
         smpSecureConnectionsReceivedDhKeyCheckValid_ = false;
         smpSecureConnectionsDhKeyCheckSent_ = true;
+        const uint8_t localKeyDist =
+            smpLocalInitiator_ ? smpPairingRsp_[5] : smpPairingRsp_[6];
+        if (smpBondingRequested_ &&
+            ((localKeyDist & kSmpKeyDistIdKeyMask) != 0U)) {
+          smpLocalIdentityInfoPending_ = true;
+          smpLocalIdentityAddressPending_ = true;
+        }
         if (smpBondingRequested_ && !smpExpectInitiatorIdKey_) {
           BleBondRecord record{};
           if (buildCurrentBondRecord(&record)) {
             persistBondRecord(record);
           }
         }
+        if (!smpExpectInitiatorIdKey_ &&
+            !smpLocalIdentityInfoPending_ &&
+            !smpLocalIdentityAddressPending_ &&
+            ((smpPairingRsp_[6] & kSmpKeyDistIdKeyMask) == 0U)) {
+          smpPairingState_ = kSmpPairingStateIdle;
+        }
         emitBleTrace("SMP_SC_DHKEY_CHECK_TX");
         serviceBackgroundConnection(kBleDeferredSmpResponseSpinLimit);
       }
+    }
+  }
+
+  if (smpBondingRequested_ && smpSecureConnectionsActive_ &&
+      connectionEncSessionValid_ && connectionEncRxEnabled_ &&
+      connectionEncTxEnabled_) {
+    if (smpLocalIdentityInfoPending_) {
+      uint8_t identityInfo[kSmpIdentityInformationLen] = {0};
+      identityInfo[0] = kSmpCodeIdentityInformation;
+      const uint64_t uid = hardwareUniqueId64();
+      const uint64_t eui = zigbeeFactoryEui64();
+      for (uint8_t i = 0U; i < 8U; ++i) {
+        identityInfo[1U + i] =
+            static_cast<uint8_t>((uid >> (8U * i)) & 0xFFU);
+        identityInfo[9U + i] =
+            static_cast<uint8_t>((eui >> (8U * i)) & 0xFFU);
+      }
+      if (queuePendingSmpL2capResponse(identityInfo, sizeof(identityInfo))) {
+        smpLocalIdentityInfoPending_ = false;
+        emitBleTrace("SMP_ID_INFO_TX");
+        serviceBackgroundConnection(kBleDeferredSmpResponseSpinLimit);
+      }
+      return;
+    }
+
+    if (smpLocalIdentityAddressPending_) {
+      uint8_t identityAddress[kSmpIdentityAddressInformationLen] = {0};
+      identityAddress[0] = kSmpCodeIdentityAddressInformation;
+      identityAddress[1] =
+          (addressType_ == BleAddressType::kRandomStatic) ? 0x01U : 0x00U;
+      memcpy(&identityAddress[2], address_, sizeof(address_));
+      if (queuePendingSmpL2capResponse(identityAddress, sizeof(identityAddress))) {
+        smpLocalIdentityAddressPending_ = false;
+        if (!smpExpectInitiatorIdKey_) {
+          smpPairingState_ = kSmpPairingStateIdle;
+        }
+        emitBleTrace("SMP_ID_ADDR_TX");
+        serviceBackgroundConnection(kBleDeferredSmpResponseSpinLimit);
+      }
+      return;
     }
   }
 }
@@ -1192,6 +1270,8 @@ void BleRadio::clearSmpPairingState() {
   smpLocalInitiator_ = false;
   smpExpectInitiatorEncKey_ = false;
   smpExpectInitiatorIdKey_ = false;
+  smpLocalIdentityInfoPending_ = false;
+  smpLocalIdentityAddressPending_ = false;
   smpPeerLtkValid_ = false;
   smpPeerLtkAwaitMasterId_ = false;
   smpPeerIrkValid_ = false;
@@ -1414,6 +1494,9 @@ bool BleRadio::persistBondRecord(const BleBondRecord& record) {
     memcpy(&bondRecord_, &record, sizeof(bondRecord_));
     bondRecordValid_ = true;
     bondStorageLoaded_ = true;
+    if (connected_ && connectionEncSessionValid_) {
+      connectionSecuritySettleUntilMs_ = millis() + 1000UL;
+    }
     emitBleTrace("BOND_SAVED");
   }
   return (retentionOk || flashOk) && callbackOk;
@@ -1491,6 +1574,7 @@ bool BleRadio::primeBondForCurrentPeer() {
 
   memcpy(smpStk_, bondRecord_.ltk, sizeof(smpStk_));
   smpStkValid_ = true;
+  memcpy(encDebug_.encLastStk, smpStk_, sizeof(encDebug_.encLastStk));
   memcpy(smpPeerLtk_, bondRecord_.ltk, sizeof(smpPeerLtk_));
   smpPeerLtkValid_ = true;
   smpPeerLtkAwaitMasterId_ = false;
@@ -1679,11 +1763,13 @@ void BleRadio::restoreAdvertisingLinkDefaults() {
   connectionAttMtu_ = kBleDefaultAttMtu;
   connectionLastTxLlid_ = 0x01U;
   connectionLastTxLength_ = 0U;
+  connectionLastTxMoreData_ = false;
   connectionLastTxPlainLlid_ = 0x01U;
   connectionLastTxPlainLength_ = 0U;
   memset(connectionLastTxPlainPayload_, 0, sizeof(connectionLastTxPlainPayload_));
   connectionPendingTxLlid_ = 0x01U;
   connectionPendingTxLength_ = 0U;
+  connectionPendingTxOffset_ = 0U;
   connectionPendingTxValid_ = false;
   memset(connectionPendingTxPayload_, 0, sizeof(connectionPendingTxPayload_));
   connectionUpdatePending_ = false;

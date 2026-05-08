@@ -6,6 +6,14 @@
             if (txFollowLength > 0U) {
               memcpy(&txPacket_[2], connectionLastTxPlainPayload_, txFollowLength);
             }
+            const bool txFollowIsSmpPairingResponse =
+                (txFollowLlid == kBlePduDataStartOrComplete) &&
+                plainPayloadIsSmpOpcode(connectionLastTxPlainPayload_,
+                                        txFollowLength,
+                                        kSmpCodePairingResponse);
+            if (txFollowIsSmpPairingResponse) {
+              emitBleTrace("SMP_PAIR_RSP_FOLLOW_TRY");
+            }
 
             clearRadioCoreEvents(radio_);
             {
@@ -51,6 +59,9 @@
                                             spinLimit / 2U + 1U);
             }
             if (!txFollowOk) {
+              if (txFollowIsSmpPairingResponse) {
+                emitBleTrace("SMP_PAIR_RSP_FOLLOW_FAIL");
+              }
               radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
               waitRadioDisabledBudgeted(radio_, kBleConnTxDisableWaitUs,
                                         spinLimit / 2U + 1U);
@@ -59,6 +70,13 @@
             }
 
             connectionTxHistoryValid_ = true;
+            connectionLastTxSn_ =
+                static_cast<uint8_t>((txPacket_[0] >> 3U) & 0x01U);
+            blePeriphTxTracePushPacket(txFollowLlid, txFollowLength,
+                                       &connectionLastTxPlainPayload_[0]);
+            if (txFollowIsSmpPairingResponse) {
+              emitBleTrace("SMP_PAIR_RSP_FOLLOW_OK");
+            }
             radio_->EVENTS_DISABLED = 0U;
             radio_->EVENTS_CRCOK = 0U;
             radio_->EVENTS_CRCERROR = 0U;
@@ -247,7 +265,15 @@
   uint8_t deferredLength = 0U;
 
   if (!terminateInd) {
-    if (packetIsNew &&
+    if (connectionEncSessionValid_ &&
+        connectionEncStartReqPending_ &&
+        connectionEncStartReqTxPending_ &&
+        !connectionEncAwaitingStartRsp_ &&
+        !connectionPendingTxValid_) {
+      connectionTxPayload_[0] = kBleLlCtrlStartEncReq;
+      deferredLlid = kBlePduLlControl;
+      deferredLength = 1U;
+    } else if (packetIsNew &&
         !llControlHandledImmediate &&
         llid == kBlePduLlControl &&
         rxLength >= 1U) {
@@ -353,11 +379,8 @@
             (connectionCustomIndicationAwaitingHandle_ == 0U);
         const uint16_t requiredAttMtu =
             static_cast<uint16_t>(3U + queuedCustom.valueLength);
-        const uint16_t requiredDataLength =
-            static_cast<uint16_t>(7U + queuedCustom.valueLength);
         const bool payloadFitsCurrentLink =
-            (currentAttMtu() >= requiredAttMtu) &&
-            (currentTxDataPduPayloadLength() >= requiredDataLength);
+            (currentAttMtu() >= requiredAttMtu);
         const bool canTransmit =
             modeEnabled && payloadFitsCurrentLink &&
             (!queuedCustom.indication || indicationFlowReady);
@@ -411,6 +434,7 @@
       connectionPendingTxLlid_ = deferredLlid;
       connectionPendingTxLength_ = deferredLength;
       memcpy(connectionPendingTxPayload_, connectionTxPayload_, deferredLength);
+      connectionPendingTxOffset_ = 0U;
       connectionPendingTxValid_ = true;
     }
   }
@@ -425,6 +449,7 @@
         (txLength > 0U) ? &connectionLastTxPlainPayload_[0] : nullptr;
     event->emptyAckTransmitted = txOk && (txLlid == 0x01U) && (txLength == 0U);
     event->terminateInd = terminateInd;
+    populateEventFromLastAssembledL2cap(event);
   }
 
   if (connectionEncEnableTxOnNextEvent_ && lastTxOkForEncEnable && !terminateInd) {
@@ -448,9 +473,7 @@
       emitBleTrace("TERMINATE_INTERNAL");
     }
     recordDisconnectDebug(disconnectReason, disconnectErrorCode);
-    connectionPendingTxLlid_ = 0x01U;
-    connectionPendingTxLength_ = 0U;
-    connectionPendingTxValid_ = false;
+    clearPendingTxPayload();
     connected_ = false;
     restoreAdvertisingLinkDefaults();
   }

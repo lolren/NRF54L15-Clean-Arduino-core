@@ -46,9 +46,104 @@ bool BleRadio::initiateConnection(const uint8_t peerAddress[6],
   return false;
 }
 
+void BleRadio::clearPendingTxPayload() {
+  connectionPendingTxLlid_ = 0x01U;
+  connectionPendingTxLength_ = 0U;
+  connectionPendingTxOffset_ = 0U;
+  connectionPendingTxValid_ = false;
+  connectionPendingTxNotBeforeMs_ = 0U;
+}
+
+bool BleRadio::applicationAttBlockedBySecurity() const {
+  if (!connected_) {
+    return false;
+  }
+
+  const bool encryptionProcedureBusy =
+      connectionEncSessionValid_ &&
+      (!connectionEncRxEnabled_ ||
+       !connectionEncTxEnabled_ ||
+       connectionEncKeyDerivationPending_ ||
+       connectionEncStartReqPending_ ||
+       connectionEncStartReqTxPending_ ||
+       connectionEncAwaitingStartRsp_ ||
+       connectionEncEnableTxOnNextEvent_);
+  const bool smpProcedureBusy =
+      (smpPairingState_ != kSmpPairingStateIdle) ||
+      connectionSmpSecurityRequestPending_ ||
+      smpExpectInitiatorEncKey_ ||
+      smpExpectInitiatorIdKey_ ||
+      smpLocalIdentityInfoPending_ ||
+      smpLocalIdentityAddressPending_ ||
+      smpPeerLtkAwaitMasterId_ ||
+      smpSecureConnectionsDeferredPublicKey_ ||
+      smpSecureConnectionsDeferredConfirm_ ||
+      smpSecureConnectionsDeferredRandom_ ||
+      smpSecureConnectionsDeferredDhKeyCheck_ ||
+      smpSecureConnectionsReceivedDhKeyCheckValid_;
+  const bool securitySettleBusy =
+      (connectionSecuritySettleUntilMs_ != 0U) &&
+      (static_cast<int32_t>(millis() - connectionSecuritySettleUntilMs_) < 0);
+
+  return encryptionProcedureBusy || smpProcedureBusy || securitySettleBusy;
+}
+
+bool BleRadio::takePendingTxPayload(uint8_t* outLlid, uint8_t* outLength,
+                                    uint8_t* outPayload) {
+  if (outLlid == nullptr || outLength == nullptr || outPayload == nullptr ||
+      !connectionPendingTxValid_) {
+    return false;
+  }
+  if ((connectionPendingTxNotBeforeMs_ != 0U) &&
+      (static_cast<int32_t>(millis() - connectionPendingTxNotBeforeMs_) < 0)) {
+    return false;
+  }
+  connectionPendingTxNotBeforeMs_ = 0U;
+
+  uint16_t maxPayloadLength = currentTxDataPduPayloadLength();
+  if (maxPayloadLength == 0U) {
+    maxPayloadLength = kBleDefaultDataPduMaxPayload;
+  } else if (maxPayloadLength > kBleDataPduMaxPayload) {
+    maxPayloadLength = kBleDataPduMaxPayload;
+  }
+
+  uint8_t offset = connectionPendingTxOffset_;
+  if (offset >= connectionPendingTxLength_) {
+    offset = 0U;
+    connectionPendingTxOffset_ = 0U;
+  }
+
+  const bool l2capFragmentable =
+      (connectionPendingTxLlid_ == kBlePduDataStartOrComplete) &&
+      ((connectionPendingTxLength_ > maxPayloadLength) || (offset > 0U));
+  uint8_t txLlid = connectionPendingTxLlid_;
+  uint8_t txLength = static_cast<uint8_t>(connectionPendingTxLength_ - offset);
+  if (l2capFragmentable) {
+    txLlid = (offset == 0U) ? kBlePduDataStartOrComplete : 0x01U;
+    if (txLength > maxPayloadLength) {
+      txLength = static_cast<uint8_t>(maxPayloadLength);
+    }
+  }
+
+  if (txLength > 0U) {
+    memcpy(outPayload, &connectionPendingTxPayload_[offset], txLength);
+  }
+  *outLlid = txLlid;
+  *outLength = txLength;
+
+  const uint16_t nextOffset = static_cast<uint16_t>(offset + txLength);
+  if (l2capFragmentable && (nextOffset < connectionPendingTxLength_)) {
+    connectionPendingTxOffset_ = static_cast<uint8_t>(nextOffset);
+  } else {
+    clearPendingTxPayload();
+  }
+
+  return true;
+}
+
 bool BleRadio::queueAttRequest(const uint8_t* attPayload, uint8_t attPayloadLength) {
   if (!connected_ || attPayload == nullptr || attPayloadLength == 0U ||
-      connectionPendingTxValid_) {
+      connectionPendingTxValid_ || applicationAttBlockedBySecurity()) {
     return false;
   }
   if (attPayloadLength > currentAttMtu()) {
@@ -57,8 +152,7 @@ bool BleRadio::queueAttRequest(const uint8_t* attPayload, uint8_t attPayloadLeng
 
   const uint16_t totalLength =
       static_cast<uint16_t>(kBleL2capHeaderLen + attPayloadLength);
-  if (totalLength > sizeof(connectionPendingTxPayload_) ||
-      totalLength > currentTxDataPduPayloadLength()) {
+  if (totalLength > sizeof(connectionPendingTxPayload_)) {
     return false;
   }
 
@@ -67,6 +161,7 @@ bool BleRadio::queueAttRequest(const uint8_t* attPayload, uint8_t attPayloadLeng
   memcpy(&connectionPendingTxPayload_[4], attPayload, attPayloadLength);
   connectionPendingTxLlid_ = kBlePduDataStartOrComplete;
   connectionPendingTxLength_ = static_cast<uint8_t>(totalLength);
+  connectionPendingTxOffset_ = 0U;
   connectionPendingTxValid_ = true;
   return true;
 }
@@ -156,6 +251,15 @@ bool BleRadio::requestPreferredPhy(uint8_t txPhys, uint8_t rxPhys) {
   if (!setPreferredPhyOptions(txPhys, rxPhys)) {
     return false;
   }
+  const uint8_t requestedPhy = selectPreferredBlePhy(preferredSymmetricBlePhys());
+  if ((requestedPhy != kBlePhyNone) &&
+      (connectionCurrentTxPhy_ == requestedPhy) &&
+      (connectionCurrentRxPhy_ == requestedPhy) &&
+      !connectionPhyRequestInFlight_ &&
+      !connectionPhyUpdatePending_) {
+    connectionPhyRequestPending_ = false;
+    return true;
+  }
   connectionPhyRequestPending_ = true;
   connectionPhyRequestInFlight_ = false;
   if (!connectionPendingTxValid_) {
@@ -196,6 +300,14 @@ bool BleRadio::requestDataLengthUpdate() {
   if (!connected_) {
     return false;
   }
+  const uint16_t requested = localMaxDataPduPayloadLength();
+  if ((currentTxDataPduPayloadLength() >= requested) &&
+      (currentRxDataPduPayloadLength() >= requested) &&
+      !connectionDataLengthUpdateInFlight_) {
+    connectionDataLengthUpdatePending_ = false;
+    connectionDataLengthUpdateComplete_ = true;
+    return true;
+  }
   connectionDataLengthUpdatePending_ = true;
   connectionDataLengthUpdateInFlight_ = false;
   connectionDataLengthUpdateComplete_ = false;
@@ -210,6 +322,12 @@ bool BleRadio::requestAttMtuExchange(uint16_t mtu) {
     return false;
   }
   connectionRequestedAttMtu_ = minU16(mtu, localPreferredAttMtu());
+  if ((currentAttMtu() >= connectionRequestedAttMtu_) &&
+      !connectionAttMtuExchangeInFlight_) {
+    connectionAttMtuExchangePending_ = false;
+    connectionAttMtuExchangeComplete_ = true;
+    return true;
+  }
   connectionAttMtuExchangePending_ = true;
   connectionAttMtuExchangeInFlight_ = false;
   connectionAttMtuExchangeComplete_ = false;
@@ -439,6 +557,7 @@ bool BleRadio::clearBondRecord(bool clearPersistentStorage) {
   bondRecordValid_ = false;
   bondStorageLoaded_ = true;
   bondKeyPrimedForConnection_ = false;
+  connectionSecuritySettleUntilMs_ = 0U;
   if (clearPersistentStorage) {
     return clearPersistentBondRecord();
   }
@@ -700,15 +819,14 @@ bool BleRadio::disconnectWithReason(BleDisconnectReason reason, uint8_t errorCod
   connectionRole_ = BleConnectionRole::kNone;
   connectionLastTxLlid_ = 0x01U;
   connectionLastTxLength_ = 0U;
+  connectionLastTxMoreData_ = false;
   connectionLastTxSn_ = 0U;
   connectionTxHistoryValid_ = false;
   connectionFreshTxAllowed_ = true;
   connectionLastTxPlainLlid_ = 0x01U;
   connectionLastTxPlainLength_ = 0U;
   memset(connectionLastTxPlainPayload_, 0, sizeof(connectionLastTxPlainPayload_));
-  connectionPendingTxLlid_ = 0x01U;
-  connectionPendingTxLength_ = 0U;
-  connectionPendingTxValid_ = false;
+  clearPendingTxPayload();
   memset(connectionPendingTxPayload_, 0, sizeof(connectionPendingTxPayload_));
   connectionAttMtu_ = kBleDefaultAttMtu;
   connectionUseChSel2_ = false;

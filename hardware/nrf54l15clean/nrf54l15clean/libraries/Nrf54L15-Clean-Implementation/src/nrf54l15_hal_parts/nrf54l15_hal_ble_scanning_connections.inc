@@ -1305,13 +1305,16 @@ bool BleRadio::startConnectionFromConnectInd(const uint8_t* payload, uint8_t len
   connectionCentralLinkSetupNotBeforeMs_ = millis() + 1000UL;
   connectionLastTxLlid_ = 0x01U;
   connectionLastTxLength_ = 0U;
+  connectionLastTxMoreData_ = false;
   connectionLastTxSn_ = 0U;
   connectionLastTxPlainLlid_ = 0x01U;
   connectionLastTxPlainLength_ = 0U;
   memset(connectionLastTxPlainPayload_, 0, sizeof(connectionLastTxPlainPayload_));
   connectionPendingTxLlid_ = 0x01U;
   connectionPendingTxLength_ = 0U;
+  connectionPendingTxOffset_ = 0U;
   connectionPendingTxValid_ = false;
+  connectionPendingTxNotBeforeMs_ = 0U;
   memset(connectionPendingTxPayload_, 0, sizeof(connectionPendingTxPayload_));
   connectionUpdatePending_ = false;
   connectionUpdateInstant_ = 0U;
@@ -1347,6 +1350,7 @@ bool BleRadio::startConnectionFromConnectInd(const uint8_t* payload, uint8_t len
   clearQueuedConnectionEvents();
   clearCustomGattConnectionState();
   clearConnectionSecurityState();
+  connectionSecuritySettleUntilMs_ = 0U;
   smpPrefetchedLocalRandomValid_ = false;
   memset(smpPrefetchedLocalRandom_, 0, sizeof(smpPrefetchedLocalRandom_));
   connectionPrefetchedEncMaterialValid_ = false;
@@ -1461,12 +1465,15 @@ bool BleRadio::startCentralConnection(const uint8_t peerAddress[6],
   connectionCentralLinkSetupNotBeforeMs_ = millis() + 1000UL;
   connectionLastTxLlid_ = 0x01U;
   connectionLastTxLength_ = 0U;
+  connectionLastTxMoreData_ = false;
   connectionLastTxPlainLlid_ = 0x01U;
   connectionLastTxPlainLength_ = 0U;
   memset(connectionLastTxPlainPayload_, 0, sizeof(connectionLastTxPlainPayload_));
   connectionPendingTxLlid_ = 0x01U;
   connectionPendingTxLength_ = 0U;
+  connectionPendingTxOffset_ = 0U;
   connectionPendingTxValid_ = false;
+  connectionPendingTxNotBeforeMs_ = 0U;
   memset(connectionPendingTxPayload_, 0, sizeof(connectionPendingTxPayload_));
   connectionUpdatePending_ = false;
   connectionUpdateInstant_ = 0U;
@@ -1497,6 +1504,10 @@ bool BleRadio::startCentralConnection(const uint8_t peerAddress[6],
   clearQueuedConnectionEvents();
   clearCustomGattConnectionState();
   clearConnectionSecurityState();
+  connectionSecuritySettleUntilMs_ = 0U;
+  if (primeBondForCurrentPeer()) {
+    emitBleTrace("BOND_PRIMED");
+  }
   memset(connectionTxPayload_, 0, sizeof(connectionTxPayload_));
 
   radio_->BASE0 = bleAccessAddressBase(connectionAccessAddress_);

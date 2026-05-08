@@ -108,14 +108,7 @@ bool BleRadio::pollCentralConnectionEvent(BleConnectionEvent* event,
   uint8_t txLength = 0U;
   if (canSendNewPayloadThisEvent || promotePendingTxAfterEmptyAck) {
     if (connectionPendingTxValid_) {
-      txLlid = connectionPendingTxLlid_;
-      txLength = connectionPendingTxLength_;
-      if (txLength > 0U) {
-        memcpy(connectionTxPayload_, connectionPendingTxPayload_, txLength);
-      }
-      connectionPendingTxLlid_ = 0x01U;
-      connectionPendingTxLength_ = 0U;
-      connectionPendingTxValid_ = false;
+      (void)takePendingTxPayload(&txLlid, &txLength, connectionTxPayload_);
     }
     connectionLastTxLlid_ = txLlid;
     connectionLastTxLength_ = txLength;
@@ -133,10 +126,16 @@ bool BleRadio::pollCentralConnectionEvent(BleConnectionEvent* event,
     }
   }
 
+  const bool txPayloadIsNew =
+      canSendNewPayloadThisEvent || promotePendingTxAfterEmptyAck;
   const bool txHasFollowingPayload =
-      (canSendNewPayloadThisEvent || promotePendingTxAfterEmptyAck) &&
-      (connectionPendingTxValid_ ||
-       (connectionCustomNotificationQueueCount_ > 0U));
+      txPayloadIsNew
+          ? (connectionPendingTxValid_ ||
+             (connectionCustomNotificationQueueCount_ > 0U))
+          : connectionLastTxMoreData_;
+  if (txPayloadIsNew) {
+    connectionLastTxMoreData_ = txHasFollowingPayload;
+  }
   txPacket_[0] = static_cast<uint8_t>((txLlid & 0x03U) |
                                       ((connectionExpectedRxSn_ & 0x01U) << 2U) |
                                       ((connectionTxSn_ & 0x01U) << 3U) |
@@ -151,7 +150,8 @@ bool BleRadio::pollCentralConnectionEvent(BleConnectionEvent* event,
     if (txLength > 0U) {
       memcpy(&txPacket_[2], connectionLastTxEncryptedPayload_, txLength);
     }
-  } else if (connectionEncSessionValid_ && connectionEncTxEnabled_) {
+  } else if (connectionEncSessionValid_ && connectionEncTxEnabled_ &&
+             (txLength > 0U)) {
     uint8_t encryptedLen = 0U;
     if (bleCcmEncryptPayload(connectionEncSessionKey_, connectionEncIv_,
                              txEncryptedCounter, connectionEncTxDirection_,
@@ -514,11 +514,10 @@ bool BleRadio::pollCentralConnectionEvent(BleConnectionEvent* event,
       connectionEncRxEnabled_ &&
       !connectionEncAwaitingStartRsp_) {
     if (rxLengthRaw < kBleMicLen) {
-      const bool allowPostStartPlainZeroLen =
+      const bool allowEncryptedEmptyPdu =
           (rxLengthRaw == 0U) &&
-          (connectionEncRxCounter_ <= 3ULL) &&
           ((llid == kBlePduDataStartOrComplete) || (llid == 0x01U));
-      if (!allowPostStartPlainZeroLen) {
+      if (!allowEncryptedEmptyPdu) {
         terminateInd = true;
         ++encDebug_.encRxShortPduCount;
         emitBleTrace("ENC_RX_SHORT_PDU");
@@ -671,21 +670,30 @@ bool BleRadio::pollCentralConnectionEvent(BleConnectionEvent* event,
       const uint8_t availableAttLen = (rxLength > kBleL2capHeaderLen)
                                           ? static_cast<uint8_t>(rxLength - kBleL2capHeaderLen)
                                           : 0U;
-      if (cid == kBleL2capCidAtt && l2capLen > 0U && availableAttLen > 0U) {
+      const bool l2capComplete =
+          (static_cast<uint16_t>(kBleL2capHeaderLen + l2capLen) <= rxLength);
+      if (cid == kBleL2capCidAtt && l2capLen > 0U && availableAttLen > 0U &&
+          l2capComplete) {
         event->attPacket = true;
         event->attOpcode = rxPacket_[2 + kBleL2capHeaderLen];
       }
     }
   }
 
-  const bool rxHasL2cap =
+  const bool rxHasL2capStart =
       packetIsNew &&
       (llid == kBlePduDataStartOrComplete) &&
       (rxLength >= kBleL2capHeaderLen);
-  const uint16_t rxL2capLen = rxHasL2cap ? readLe16(&rxPacket_[2]) : 0U;
-  const uint16_t rxL2capCid = rxHasL2cap ? readLe16(&rxPacket_[4]) : 0U;
+  const bool rxHasL2capContinuation =
+      packetIsNew &&
+      (llid == 0x01U) &&
+      (rxLength > 0U) &&
+      connectionRxL2capReassemblyActive_;
+  const bool rxHasL2cap = rxHasL2capStart || rxHasL2capContinuation;
+  const uint16_t rxL2capLen = rxHasL2capStart ? readLe16(&rxPacket_[2]) : 0U;
+  const uint16_t rxL2capCid = rxHasL2capStart ? readLe16(&rxPacket_[4]) : 0U;
   const uint8_t rxAttOpcode =
-      (rxHasL2cap && rxLength > kBleL2capHeaderLen)
+      (rxHasL2capStart && rxLength > kBleL2capHeaderLen)
           ? rxPacket_[2 + kBleL2capHeaderLen]
           : 0U;
 
@@ -717,6 +725,7 @@ bool BleRadio::pollCentralConnectionEvent(BleConnectionEvent* event,
           !connectionPendingTxValid_) {
         connectionPendingTxLlid_ = kBlePduLlControl;
         connectionPendingTxLength_ = responseLength;
+        connectionPendingTxOffset_ = 0U;
         connectionPendingTxValid_ = true;
       }
       if (responseTerminate) {
@@ -754,6 +763,7 @@ bool BleRadio::pollCentralConnectionEvent(BleConnectionEvent* event,
         responseLength > 0U) {
       connectionPendingTxLlid_ = kBlePduDataStartOrComplete;
       connectionPendingTxLength_ = responseLength;
+      connectionPendingTxOffset_ = 0U;
       connectionPendingTxValid_ = true;
     }
   }
@@ -768,6 +778,7 @@ bool BleRadio::pollCentralConnectionEvent(BleConnectionEvent* event,
       connectionPendingTxPayload_[4] = kAttOpHandleValueCfm;
       connectionPendingTxLlid_ = kBlePduDataStartOrComplete;
       connectionPendingTxLength_ = 5U;
+      connectionPendingTxOffset_ = 0U;
       connectionPendingTxValid_ = true;
   }
 
@@ -849,26 +860,14 @@ bool BleRadio::pollCentralConnectionEvent(BleConnectionEvent* event,
       uint8_t txFollowLlid = 0x01U;
       uint8_t txFollowLength = 0U;
       if (pendingTxIsHandleValueCfm()) {
-        txFollowLlid = connectionPendingTxLlid_;
-        txFollowLength = connectionPendingTxLength_;
-        if (txFollowLength > 0U) {
-          memcpy(connectionTxPayload_, connectionPendingTxPayload_, txFollowLength);
-        }
-        connectionPendingTxLlid_ = 0x01U;
-        connectionPendingTxLength_ = 0U;
-        connectionPendingTxValid_ = false;
+        (void)takePendingTxPayload(&txFollowLlid, &txFollowLength,
+                                   connectionTxPayload_);
       } else if (!followMustAckPeerServerPush &&
                  !currentFollowupPeerMoreData &&
                  connectionFreshTxAllowed_ &&
                  connectionPendingTxValid_) {
-        txFollowLlid = connectionPendingTxLlid_;
-        txFollowLength = connectionPendingTxLength_;
-        if (txFollowLength > 0U) {
-          memcpy(connectionTxPayload_, connectionPendingTxPayload_, txFollowLength);
-        }
-        connectionPendingTxLlid_ = 0x01U;
-        connectionPendingTxLength_ = 0U;
-        connectionPendingTxValid_ = false;
+        (void)takePendingTxPayload(&txFollowLlid, &txFollowLength,
+                                   connectionTxPayload_);
       }
 
       connectionLastTxLlid_ = txFollowLlid;
@@ -881,10 +880,9 @@ bool BleRadio::pollCentralConnectionEvent(BleConnectionEvent* event,
       }
 
       const bool txFollowHasFollowingPayload =
-          (txFollowLlid == 0x01U) &&
-          (txFollowLength == 0U) &&
-          (connectionPendingTxValid_ ||
-           (connectionCustomNotificationQueueCount_ > 0U));
+          connectionPendingTxValid_ ||
+          (connectionCustomNotificationQueueCount_ > 0U);
+      connectionLastTxMoreData_ = txFollowHasFollowingPayload;
       txPacket_[0] = static_cast<uint8_t>((txFollowLlid & 0x03U) |
                                           ((connectionExpectedRxSn_ & 0x01U) << 2U) |
                                           ((connectionTxSn_ & 0x01U) << 3U) |
@@ -892,30 +890,16 @@ bool BleRadio::pollCentralConnectionEvent(BleConnectionEvent* event,
       bool encryptFollowTx = false;
       uint64_t followTxCounter = connectionEncTxCounter_;
       uint8_t txFollowLengthOnAir = txFollowLength;
-      const bool txFollowIsEmptyAck =
-          (txFollowLlid == 0x01U) &&
-          (txFollowLength == 0U);
       if (connectionEncSessionValid_ &&
-          connectionEncTxEnabled_) {
+          connectionEncTxEnabled_ &&
+          (txFollowLength > 0U)) {
         uint8_t encryptedLength = 0U;
-        if (txFollowIsEmptyAck &&
-            connectionEncPrecomputedEmptyValid_ &&
-            (connectionEncPrecomputedCounter_ == followTxCounter)) {
-          encryptedLength = kBleMicLen;
-          memcpy(connectionLastTxEncryptedPayload_, connectionEncPrecomputedPayload_,
-                 kBleMicLen);
-          encryptFollowTx = true;
-        } else {
-          encryptFollowTx =
-              bleCcmEncryptPayload(connectionEncSessionKey_, connectionEncIv_,
-                                   followTxCounter, connectionEncTxDirection_,
-                                   txPacket_[0],
-                                   (txFollowLength > 0U) ? connectionTxPayload_
-                                                         : nullptr,
-                                   txFollowLength,
-                                   connectionLastTxEncryptedPayload_,
-                                   &encryptedLength);
-        }
+        encryptFollowTx =
+            bleCcmEncryptPayload(connectionEncSessionKey_, connectionEncIv_,
+                                 followTxCounter, connectionEncTxDirection_,
+                                 txPacket_[0], connectionTxPayload_, txFollowLength,
+                                 connectionLastTxEncryptedPayload_,
+                                 &encryptedLength);
         if (!encryptFollowTx) {
           terminateInd = true;
           break;
@@ -1208,16 +1192,23 @@ bool BleRadio::pollCentralConnectionEvent(BleConnectionEvent* event,
           bleConnectionPayloadProtocolOpcode(llidFollow, &rxPacket_[2], rxLengthFollow),
           nesnFollow, snFollow, packetIsNewFollow, peerAckedLastTxFollow);
 
-      const bool rxHasL2capFollow =
+      const bool rxHasL2capStartFollow =
           packetIsNewFollow &&
           (llidFollow == kBlePduDataStartOrComplete) &&
           (rxLengthFollow >= kBleL2capHeaderLen);
+      const bool rxHasL2capContinuationFollow =
+          packetIsNewFollow &&
+          (llidFollow == 0x01U) &&
+          (rxLengthFollow > 0U) &&
+          connectionRxL2capReassemblyActive_;
+      const bool rxHasL2capFollow =
+          rxHasL2capStartFollow || rxHasL2capContinuationFollow;
       const uint16_t rxL2capLenFollow =
-          rxHasL2capFollow ? readLe16(&rxPacket_[2]) : 0U;
+          rxHasL2capStartFollow ? readLe16(&rxPacket_[2]) : 0U;
       const uint16_t rxL2capCidFollow =
-          rxHasL2capFollow ? readLe16(&rxPacket_[4]) : 0U;
+          rxHasL2capStartFollow ? readLe16(&rxPacket_[4]) : 0U;
       const uint8_t rxAttOpcodeFollow =
-          (rxHasL2capFollow && rxLengthFollow > kBleL2capHeaderLen)
+          (rxHasL2capStartFollow && rxLengthFollow > kBleL2capHeaderLen)
               ? rxPacket_[2 + kBleL2capHeaderLen]
               : 0U;
 
@@ -1249,6 +1240,7 @@ bool BleRadio::pollCentralConnectionEvent(BleConnectionEvent* event,
               !connectionPendingTxValid_) {
             connectionPendingTxLlid_ = kBlePduLlControl;
             connectionPendingTxLength_ = responseLength;
+            connectionPendingTxOffset_ = 0U;
             connectionPendingTxValid_ = true;
           }
           if (responseTerminate) {
@@ -1288,6 +1280,7 @@ bool BleRadio::pollCentralConnectionEvent(BleConnectionEvent* event,
             responseLength > 0U) {
           connectionPendingTxLlid_ = kBlePduDataStartOrComplete;
           connectionPendingTxLength_ = responseLength;
+          connectionPendingTxOffset_ = 0U;
           connectionPendingTxValid_ = true;
         }
       }
@@ -1302,6 +1295,7 @@ bool BleRadio::pollCentralConnectionEvent(BleConnectionEvent* event,
         connectionPendingTxPayload_[4] = kAttOpHandleValueCfm;
         connectionPendingTxLlid_ = kBlePduDataStartOrComplete;
         connectionPendingTxLength_ = 5U;
+        connectionPendingTxOffset_ = 0U;
         connectionPendingTxValid_ = true;
       }
 
@@ -1347,6 +1341,7 @@ bool BleRadio::pollCentralConnectionEvent(BleConnectionEvent* event,
         (txLength > 0U) ? &connectionLastTxPlainPayload_[0] : nullptr;
     event->emptyAckTransmitted = (txLlid == 0x01U) && (txLength == 0U);
     event->terminateInd = terminateInd;
+    populateEventFromLastAssembledL2cap(event);
   }
 
   if (terminateInd) {

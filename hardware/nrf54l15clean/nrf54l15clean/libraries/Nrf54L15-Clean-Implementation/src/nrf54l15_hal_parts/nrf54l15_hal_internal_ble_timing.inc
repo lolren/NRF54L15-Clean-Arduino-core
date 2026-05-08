@@ -76,6 +76,8 @@ volatile uint8_t __attribute__((used)) g_ble_periph_tx_trace_llid[32] = {0};
 volatile uint8_t __attribute__((used)) g_ble_periph_tx_trace_len[32] = {0};
 volatile uint8_t __attribute__((used)) g_ble_periph_tx_trace_opcode[32] = {0};
 volatile uint16_t __attribute__((used)) g_ble_periph_tx_trace_cid[32] = {0};
+volatile uint8_t __attribute__((used)) g_ble_sc_invalid_pubkey_valid = 0U;
+volatile uint8_t __attribute__((used)) g_ble_sc_invalid_pubkey[65] = {0};
 volatile uint8_t __attribute__((used)) g_ble_periph_connect_win_size = 0U;
 volatile uint16_t __attribute__((used)) g_ble_periph_connect_win_offset = 0U;
 }
@@ -1166,6 +1168,7 @@ constexpr uint32_t kBleConnResyncPostAnchorMaxUs = 10000U;
 constexpr uint8_t kBleConnChannelMapPendingResyncEventsMax = 10U;
 constexpr uint8_t kBleConnChannelMapApplyResyncEvents = 5U;
 constexpr uint8_t kBleConnGenericMissResyncEvents = 4U;
+constexpr uint32_t kBleScFreshEncryptionStartDelayMs = 200U;
 
 constexpr uint8_t kSmpCodePairingRequest = 0x01U;
 constexpr uint8_t kSmpCodePairingResponse = 0x02U;

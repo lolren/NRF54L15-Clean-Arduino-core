@@ -81,7 +81,7 @@ int32_t pwmIrqNumberForBase(uint32_t base) {
 
 namespace {
 
-constexpr uint32_t kBleSecp256r1CooperateSpinLimit = 0UL;
+constexpr uint32_t kBleSecp256r1CooperateSpinLimit = 3000UL;
 
 }  // namespace
 

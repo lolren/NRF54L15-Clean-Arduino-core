@@ -43,6 +43,8 @@ extern volatile uint8_t g_ble_periph_tx_trace_llid[32];
 extern volatile uint8_t g_ble_periph_tx_trace_len[32];
 extern volatile uint8_t g_ble_periph_tx_trace_opcode[32];
 extern volatile uint16_t g_ble_periph_tx_trace_cid[32];
+extern volatile uint8_t g_ble_sc_invalid_pubkey_valid;
+extern volatile uint8_t g_ble_sc_invalid_pubkey[65];
 }
 
 constexpr char kAdvName[] = "X54-PAIR";
@@ -270,6 +272,15 @@ void printScDebug() {
   Serial.print(" rdh=");
   printHexBytes(dbg.receivedDhKeyCheck, sizeof(dbg.receivedDhKeyCheck));
   Serial.println();
+  if (g_ble_sc_invalid_pubkey_valid != 0U) {
+    Serial.print("sc_invalid_pubkey=");
+    for (uint8_t i = 0U; i < 65U; ++i) {
+      const uint8_t value = g_ble_sc_invalid_pubkey[i];
+      if (value < 16U) Serial.print('0');
+      Serial.print(value, HEX);
+    }
+    Serial.println();
+  }
 }
 
 void printDisconnectDebug() {
@@ -437,6 +448,14 @@ void printEncDiag() {
   Serial.print(dbg.encLastTxWasFresh);
   Serial.print(" tx_enc=");
   Serial.print(dbg.encLastTxWasEncrypted);
+  Serial.print(" tx_lag=");
+  Serial.print(dbg.txenLagLastUs);
+  Serial.print("/");
+  Serial.print(dbg.txenLagMaxUs);
+  Serial.print(" enc_rsp_lag=");
+  Serial.print(dbg.encRspTxenLagLastUs);
+  Serial.print("/");
+  Serial.print(dbg.encRspTxenLagMaxUs);
   Serial.println();
 }
 
@@ -582,6 +601,12 @@ void logSmpEvent(const BleConnectionEvent& evt) {
     const uint8_t opcode = evt.txPayload[0];
     if (opcode < 16U) Serial.print('0');
     Serial.print(opcode, HEX);
+    Serial.print(" sn=");
+    Serial.print(evt.txSn);
+    Serial.print(" nesn=");
+    Serial.print(evt.txNesn);
+    Serial.print(" len=");
+    Serial.print(evt.txPayloadLength);
     llPrinted = true;
   }
   if (llPrinted) {
@@ -590,6 +615,18 @@ void logSmpEvent(const BleConnectionEvent& evt) {
 
   auto isInterestingAttOpcode = [](uint8_t opcode) {
     return opcode == 0x01U ||  // Error Response
+           opcode == 0x02U ||  // Exchange MTU Request
+           opcode == 0x03U ||  // Exchange MTU Response
+           opcode == 0x04U ||  // Find Information Request
+           opcode == 0x05U ||  // Find Information Response
+           opcode == 0x06U ||  // Find By Type Value Request
+           opcode == 0x07U ||  // Find By Type Value Response
+           opcode == 0x08U ||  // Read By Type Request
+           opcode == 0x09U ||  // Read By Type Response
+           opcode == 0x0AU ||  // Read Request
+           opcode == 0x0BU ||  // Read Response
+           opcode == 0x10U ||  // Read By Group Type Request
+           opcode == 0x11U ||  // Read By Group Type Response
            opcode == 0x12U ||  // Write Request
            opcode == 0x13U ||  // Write Response
            opcode == 0x1BU ||  // Handle Value Notification
@@ -603,6 +640,18 @@ void logSmpEvent(const BleConnectionEvent& evt) {
     Serial.print(" op=0x");
     if (evt.attOpcode < 16U) Serial.print('0');
     Serial.print(evt.attOpcode, HEX);
+    Serial.print(" new=");
+    Serial.print(evt.packetIsNew ? 1 : 0);
+    Serial.print(" ack=");
+    Serial.print(evt.peerAckedLastTx ? 1 : 0);
+    Serial.print(" imp=");
+    Serial.print(evt.implicitEmptyAck ? 1 : 0);
+    Serial.print(" rxsn=");
+    Serial.print(evt.rxSn);
+    Serial.print(" rxnesn=");
+    Serial.print(evt.rxNesn);
+    Serial.print(" len=");
+    Serial.print(evt.payloadLength);
     attPrinted = true;
   }
   if ((evt.txLlid == 0x02U) &&
@@ -617,6 +666,16 @@ void logSmpEvent(const BleConnectionEvent& evt) {
       Serial.print(" op=0x");
       if (attOpcode < 16U) Serial.print('0');
       Serial.print(attOpcode, HEX);
+      Serial.print(" sent=");
+      Serial.print(evt.txPacketSent ? 1 : 0);
+      Serial.print(" fresh=");
+      Serial.print(evt.freshTxAllowed ? 1 : 0);
+      Serial.print(" txsn=");
+      Serial.print(evt.txSn);
+      Serial.print(" txnesn=");
+      Serial.print(evt.txNesn);
+      Serial.print(" len=");
+      Serial.print(evt.txPayloadLength);
       attPrinted = true;
     }
   }
@@ -630,6 +689,7 @@ void handleCmd(const char* c) {
   if (strcmp(c,"sc")==0) { printScDebug(); return; }
   if (strcmp(c,"enc")==0) { printEncDiag(); return; }
   if (strcmp(c,"disc")==0) { printDisconnectDebug(); return; }
+  if (strcmp(c,"ctrace")==0) { printControllerTraceRing(); return; }
   if (strcmp(c,"trace")==0) { dumpTraceBuffer(); return; }
   if (strcmp(c,"keyprobe")==0) { printKeyProbe(); return; }
   if (strcmp(c,"clear")==0) {
@@ -713,7 +773,7 @@ void setup() {
     Serial.println("ble_pair gatt+adv: ready");
   }
   printStatus();
-  Serial.println("ble_pair cmd: status clear sc enc disc trace keyprobe");
+  Serial.println("ble_pair cmd: status clear sc enc disc ctrace trace keyprobe");
 }
 
 // ─── Loop ───────────────────────────────────────────────────

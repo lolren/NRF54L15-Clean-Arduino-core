@@ -2671,6 +2671,11 @@ class BleRadio {
                              uint8_t l2capPayloadLength,
                              uint8_t* outPayload,
                              uint8_t* outPayloadLength);
+	  void clearPendingTxPayload();
+	  bool applicationAttBlockedBySecurity() const;
+	  bool queueCentralEncryptionRequest(uint32_t notBeforeMs = 0U);
+	  bool takePendingTxPayload(uint8_t* outLlid, uint8_t* outLength,
+	                            uint8_t* outPayload);
   uint16_t currentTxDataPduPayloadLength() const;
   uint16_t currentRxDataPduPayloadLength() const;
   uint16_t currentMaxAttPayloadLength() const;
@@ -2709,6 +2714,7 @@ class BleRadio {
                                              uint32_t currentEventAnchorUs);
   void clearPreparedWriteState();
   void clearIncomingL2capReassembly();
+  void populateEventFromLastAssembledL2cap(BleConnectionEvent* event) const;
   bool assembleIncomingL2capPayload(uint8_t llid, const uint8_t* l2capPayload,
                                     uint8_t l2capPayloadLength,
                                     bool packetIsNew,
@@ -2958,6 +2964,7 @@ class BleRadio {
   uint32_t connectionCentralLinkSetupNotBeforeMs_;
   uint8_t connectionLastTxLlid_;
   uint8_t connectionLastTxLength_;
+  bool connectionLastTxMoreData_;
   // Snapshot of the last transmitted plaintext payload (before any encryption),
   // so callers can safely inspect `BleConnectionEvent::txPayload` even though
   // `connectionTxPayload_` is reused later in the connection event.
@@ -2966,7 +2973,9 @@ class BleRadio {
   uint8_t connectionLastTxPlainPayload_[255];
   uint8_t connectionPendingTxLlid_;
   uint8_t connectionPendingTxLength_;
+  uint8_t connectionPendingTxOffset_;
   bool connectionPendingTxValid_;
+  uint32_t connectionPendingTxNotBeforeMs_;
   uint8_t connectionPendingTxPayload_[255];
   bool connectionUpdatePending_;
   uint16_t connectionUpdateInstant_;
@@ -2992,6 +3001,9 @@ class BleRadio {
   uint16_t connectionRxL2capReassemblyExpectedLength_;
   uint16_t connectionRxL2capReassemblyReceivedLength_;
   uint8_t connectionRxL2capReassemblyBuffer_[255];
+  bool connectionLastAssembledL2capValid_;
+  uint8_t connectionLastAssembledL2capLength_;
+  uint8_t connectionLastAssembledL2capPayload_[255];
   static constexpr uint8_t kDeferredConnectionEventDepth = 8U;
   bool backgroundAdvertisingEnabled_;
   bool backgroundAdvertisingArmed_;
@@ -3095,12 +3107,15 @@ class BleRadio {
   bool bondRecordValid_;
   bool bondStorageLoaded_;
   bool bondKeyPrimedForConnection_;
+  uint32_t connectionSecuritySettleUntilMs_;
   BleTraceCallback traceCallback_;
   void* traceCallbackContext_;
   bool smpBondingRequested_;
   bool smpLocalInitiator_;
   bool smpExpectInitiatorEncKey_;
   bool smpExpectInitiatorIdKey_;
+  bool smpLocalIdentityInfoPending_;
+  bool smpLocalIdentityAddressPending_;
   bool smpPeerLtkValid_;
   bool smpPeerLtkAwaitMasterId_;
   bool smpPeerIrkValid_;
