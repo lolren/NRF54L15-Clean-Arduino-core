@@ -259,7 +259,12 @@ char* getUserInput(void)
   uint8_t count=0;
   do
   {
-    count += Serial.readBytes(inputs+count, 64);
+    const size_t available = (size_t) Serial.available();
+    if ( available == 0 )
+    {
+      break;
+    }
+    count += Serial.readBytes(inputs+count, min((size_t) (64-count), available));
   } while( (count < 64) && Serial.available() );
 
   return inputs;

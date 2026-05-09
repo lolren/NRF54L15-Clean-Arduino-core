@@ -3438,6 +3438,10 @@ bool BLEClientCharacteristic::disableNotify() {
 }
 
 void BLEClientCharacteristic::handleNotify(const uint8_t* data, uint16_t len) {
+  if (pending_notify_callback_ && notify_callback_ != nullptr) {
+    dispatchPendingNotify();
+  }
+
   const uint8_t copyLen = min<uint16_t>(len, sizeof(last_value_));
   if (copyLen > 0U && data != nullptr) {
     memcpy(last_value_, data, copyLen);
@@ -3585,8 +3589,21 @@ size_t BLEClientUart::write(const uint8_t* buffer, size_t size) {
 
   size_t sent = 0U;
   while (sent < size) {
-    const uint8_t chunk = min<uint16_t>(BleRadio::kCustomGattMaxValueLength,
-                                        static_cast<uint16_t>(size - sent));
+    const uint16_t remaining =
+        min<uint16_t>(BleRadio::kCustomGattMaxValueLength,
+                      static_cast<uint16_t>(size - sent));
+    if (!linkValueFitsCurrentConnection(remaining)) {
+      (void)waitForLinkValueCapacity(remaining);
+    }
+    const uint16_t attPayloadMax =
+        (manager().radio().currentAttMtu() > 3U)
+            ? static_cast<uint16_t>(manager().radio().currentAttMtu() - 3U)
+            : 20U;
+    const uint8_t chunk =
+        static_cast<uint8_t>(min<uint16_t>(remaining, attPayloadMax));
+    if (chunk == 0U) {
+      break;
+    }
     if (!writeHandleSync(rxd_.value_handle_, &buffer[sent], chunk, true)) {
       break;
     }
@@ -4483,6 +4500,9 @@ size_t BLEUart::write(uint16_t conn_hdl, const uint8_t* content, size_t len) {
       break;
     }
 
+    if (!ScopedBluefruitUserCallback::active()) {
+      manager().idleService();
+    }
     yield();
   }
   return sent;

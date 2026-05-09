@@ -39,6 +39,7 @@ void loop() {}
 | **Wireless** | BLE advertising, scanning, connections | ✅ |
 | | BLE 2M/coded PHY | ✅ |
 | | BLE SMP legacy pairing (phone fallback) | ✅ |
+| | BLE LE Secure Connections (software P-256) | ✅ |
 | | BLE Channel Sounding (phase ranging) | ✅ |
 | | BLE Channel Sounding (2-board, 57-62cm) | ✅ |
 | | Thread: leader, child, router | ✅ |
@@ -80,7 +81,7 @@ void loop() {}
 | **Thread attach** | Common two-board demo partition race is mitigated with child-first attach + deterministic leader fallback; still experimental and needs longer soak/reference-network validation |
 | **Thread UDP fragmentation** | Two-board staged UDP smoke validates checked single-frame payloads through 63 bytes; larger fragmented UDP payloads are still experimental |
 | **Standard Thread commissioning** | MeshCoP Joiner/Commissioner examples now compile and report support status, but the staged core still ships those roles disabled until DTLS/secure transport is enabled and tested |
-| **BLE LE Secure Connections** | Faster software secp256r1 does not enable LESC by itself. The controller still only implements legacy SMP confirm/random/key-distribution, so SC-only centrals still need the missing LESC Public Key / DHKey Check / f4-f5-f6-g2 flow |
+| **BLE LE Secure Connections speed** | LESC is implemented in the clean BLE controller and tested with the two-board MTU/DLE/PHY regression sketch, but P-256 is software-only because CRACEN PKA still needs Nordic microcode |
 | **CRACEN PK engine** | Hardware ECDSA / P-256 acceleration still needs proprietary Nordic microcode |
 | **ECDSA speed** | Software ECC now uses Barrett reduction and measures about 0.84 s sign / 1.76 s verify on board — workable for demos, still much slower than dedicated hardware |
 | **OpenThread radio** | Radio/diag examples now compile with the staged core; PAL is still experimental and needs longer two-board soak before production use |

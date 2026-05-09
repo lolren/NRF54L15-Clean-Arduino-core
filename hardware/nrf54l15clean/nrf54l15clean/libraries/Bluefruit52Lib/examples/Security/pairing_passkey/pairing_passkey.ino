@@ -164,7 +164,8 @@ void loop()
     delay(2);
 
     uint8_t buf[64];
-    int count = Serial.readBytes(buf, sizeof(buf));
+    const size_t available = (size_t) Serial.available();
+    int count = Serial.readBytes(buf, min(sizeof(buf), available));
     bleuart.write( buf, count );
   }
 

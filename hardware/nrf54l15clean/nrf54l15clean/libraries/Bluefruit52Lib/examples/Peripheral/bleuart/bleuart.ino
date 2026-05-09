@@ -66,7 +66,8 @@ void loop() {
   while (Serial.available() > 0) {
     delay(2);
     uint8_t buffer[32] = {0};
-    const int count = Serial.readBytes(buffer, sizeof(buffer));
+    const size_t available = (size_t) Serial.available();
+    const int count = Serial.readBytes(buffer, min(sizeof(buffer), available));
     if (count > 0) {
       bleuart.write(buffer, static_cast<size_t>(count));
     }

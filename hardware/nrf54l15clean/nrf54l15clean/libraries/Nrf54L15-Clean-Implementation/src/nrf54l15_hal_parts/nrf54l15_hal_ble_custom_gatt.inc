@@ -1171,21 +1171,6 @@ void BleRadio::maybeQueueCentralLinkSetupRequest() {
       (static_cast<int32_t>(nowMs - connectionCentralLinkSetupNotBeforeMs_) >= 0);
 
   if (connectionRole_ == BleConnectionRole::kCentral) {
-    if (connectionEncSessionValid_ &&
-        connectionEncStartReqTxPending_ &&
-        !connectionEncAwaitingStartRsp_) {
-      if (!setupDelayElapsed) {
-        return;
-      }
-      connectionPendingTxPayload_[0] = kBleLlCtrlStartEncReq;
-      connectionPendingTxLlid_ = kBlePduLlControl;
-      connectionPendingTxLength_ = 1U;
-      connectionPendingTxOffset_ = 0U;
-      connectionPendingTxValid_ = true;
-      emitBleTrace("LL_START_ENC_REQ_QUEUED");
-      return;
-    }
-
     const bool secureConnectionsComplete =
         smpSecureConnectionsActive_ &&
         smpLocalInitiator_ &&

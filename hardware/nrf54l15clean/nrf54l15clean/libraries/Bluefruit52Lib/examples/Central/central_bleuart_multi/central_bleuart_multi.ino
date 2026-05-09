@@ -227,10 +227,11 @@ void bleuart_rx_callback(BLEClientUart& uart_svc)
     // default MTU with an extra byte for string terminator
     char buf[20+1] = { 0 };
     
-    if ( uart_svc.read(buf,sizeof(buf)-1) )
+    const int count = uart_svc.read(buf,sizeof(buf)-1);
+    if ( count > 0 )
     {
       logQueue.queuef("[From %s]: %s", peer->name, buf);
-      sendAll(buf);
+      sendAll(buf, (size_t) count);
     }
   }
 }
@@ -238,7 +239,7 @@ void bleuart_rx_callback(BLEClientUart& uart_svc)
 /**
  * Helper function to send a string to all connected peripherals
  */
-void sendAll(const char* str)
+void sendAll(const char* str, size_t len)
 {
   for(uint8_t id=0; id < BLE_MAX_CONNECTION; id++)
   {
@@ -246,7 +247,7 @@ void sendAll(const char* str)
 
     if ( peer->bleuart.discovered() )
     {
-      peer->bleuart.print(str);
+      peer->bleuart.write((uint8_t*) str, len);
     }
   }
 }
@@ -262,10 +263,16 @@ void loop()
     char buf[20+1] = { 0 };
     
     // Read from HW Serial (normally USB Serial) and send to all peripherals
-    if ( Serial.readBytes(buf, sizeof(buf)-1) )
+    if ( Serial.available() )
     {
-      logQueue.queuef("[Send to All]: %s", buf);
-      sendAll(buf);
+      delay(2);
+      const size_t available = (size_t) Serial.available();
+      const size_t len = Serial.readBytes(buf, min(sizeof(buf)-1, available));
+      if ( len > 0 )
+      {
+        logQueue.queuef("[Send to All]: %s", buf);
+        sendAll(buf, len);
+      }
     }
   }
 }

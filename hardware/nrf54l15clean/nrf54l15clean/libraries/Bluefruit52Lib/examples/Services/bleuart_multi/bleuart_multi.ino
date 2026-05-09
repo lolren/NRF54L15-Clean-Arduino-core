@@ -110,7 +110,8 @@ void loop()
   {
     // Delay to wait for enough input
     delay(2);
-    count = Serial.readBytes(buf, sizeof(buf));
+    const size_t available = (size_t) Serial.available();
+    count = Serial.readBytes(buf, min(sizeof(buf), available));
 
     printAll(buf, count);
   }

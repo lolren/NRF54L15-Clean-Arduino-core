@@ -246,7 +246,8 @@ def list_connected_pyocd_probe_uids(host_tools_path: Path | None = None) -> list
     if result.returncode != 0:
         return []
 
-    uids: list[str] = []
+    all_uids: list[str] = []
+    nrf54_uids: list[str] = []
     for raw_line in (result.stdout or "").splitlines():
         line = raw_line.strip()
         if not line or line.startswith("#") or set(line) == {"-"}:
@@ -257,9 +258,12 @@ def list_connected_pyocd_probe_uids(host_tools_path: Path | None = None) -> list
             continue
 
         uid = normalize_uid(parts[-2])
-        if uid is not None and uid not in uids:
-            uids.append(uid)
-    return uids
+        if uid is None or uid in all_uids:
+            continue
+        all_uids.append(uid)
+        if "nrf54" in line.casefold():
+            nrf54_uids.append(uid)
+    return nrf54_uids if nrf54_uids else all_uids
 
 
 def host_setup_hint(host_tools_path: Path | None = None, purpose: str = "python") -> str:
@@ -431,17 +435,27 @@ def serial_from_instance_id(instance_id: str | None) -> str | None:
     if len(parts) < 2:
         return None
 
-    candidate = parts[-1]
-    if "&" in candidate:
-        return None
-    if not re.fullmatch(r"[A-Za-z0-9._-]{6,}", candidate):
-        return None
-    return normalize_uid(candidate)
+    ignored_prefixes = ("VID_", "PID_", "MI_", "COL", "REV_", "USB", "HID")
+    for raw_part in reversed(parts):
+        candidates = [raw_part]
+        if "&" in raw_part:
+            candidates.append(raw_part.split("&", 1)[0])
+        for candidate in candidates:
+            candidate = candidate.strip()
+            if not candidate or candidate.upper().startswith(ignored_prefixes):
+                continue
+            if re.fullmatch(r"[A-Za-z0-9._-]{6,}", candidate):
+                return normalize_uid(candidate)
+    return None
 
 
 def serial_from_plain_value(value: str | None) -> str | None:
     if not value:
         return None
+
+    instance_serial = serial_from_instance_id(value)
+    if instance_serial is not None:
+        return instance_serial
 
     candidate = normalize_uid(value)
     if candidate is None or not re.fullmatch(r"[A-Za-z0-9._-]{6,}", candidate):
@@ -621,6 +635,12 @@ function Emit-Candidate($prefix, $value) {
   if ($null -eq $value) {
     return
   }
+  if ($value -is [System.Array]) {
+    foreach ($item in $value) {
+      Emit-Candidate $prefix $item
+    }
+    return
+  }
   $text = $value.ToString().Trim()
   if ($text) {
     Write-Output ($prefix + $text)
@@ -726,6 +746,12 @@ function Emit-Candidate($prefix, $value) {
   if ($null -eq $value) {
     return
   }
+  if ($value -is [System.Array]) {
+    foreach ($item in $value) {
+      Emit-Candidate $prefix $item
+    }
+    return
+  }
   $text = $value.ToString().Trim()
   if ($text) {
     Write-Output ($prefix + $text)
@@ -783,6 +809,7 @@ function Get-CandidateKeys {
 function Emit-KeyCandidates($key) {
   $instanceId = Get-EnumInstanceId $key
   Emit-Candidate 'INSTANCE:' $instanceId
+  Emit-Candidate 'INSTANCE:' (Get-KeyValue $key 'Parent')
   if ($instanceId) {
     $parts = $instanceId -split '\\'
     if ($parts.Length -gt 1) {
@@ -791,6 +818,10 @@ function Emit-KeyCandidates($key) {
   }
   Emit-Candidate 'SERIAL:' (Get-KeyValue $key 'SerialNumber')
   Emit-Candidate 'SERIAL:' (Get-KeyValue $key 'ParentIdPrefix')
+  Emit-Candidate 'INSTANCE:' (Get-KeyValue $key 'HardwareID')
+  Emit-Candidate 'INSTANCE:' (Get-KeyValue $key 'MatchingDeviceId')
+  Emit-Candidate 'INSTANCE:' (Get-KeyValue $key 'CompatibleIDs')
+  Emit-Candidate 'INSTANCE:' (Get-KeyValue $key 'LocationPaths')
 }
 
 $allKeys = @(Get-CandidateKeys)
@@ -1787,6 +1818,19 @@ def main() -> int:
             args.uf2_timeout,
         )
     if runner == "pyocd":
+        if detect_pyocd_command(host_tools_path) is None:
+            if install_pyocd(host_tools_path):
+                print("pyocd installation succeeded.")
+            else:
+                print("pyocd installation failed.", file=sys.stderr)
+                print(f"HINT: {host_setup_hint(host_tools_path, purpose='python')}", file=sys.stderr)
+        if explicit_uid is None and selected_uid is None:
+            # The first inference attempt happens before pyOCD auto-install so
+            # a stale Windows COM port can fail to match the visible probe list.
+            # Retry after pyOCD is available, before applying the multi-probe guard.
+            inferred_uid = infer_uid_from_port(args.port, host_tools_path)
+            selected_uid = inferred_uid
+            allow_inferred_uid_fallback = inferred_uid is not None
         windows_cmsis_ports: list[str] = []
         windows_probe_uids: list[str] = []
         windows_port_present = True
@@ -1800,26 +1844,37 @@ def main() -> int:
         ):
             if selected_uid is not None:
                 if windows_probe_uids and selected_uid not in windows_probe_uids:
+                    if len(windows_probe_uids) == 1 and len(windows_cmsis_ports) <= 1:
+                        fallback_uid = windows_probe_uids[0]
+                        print(
+                            f"WARNING: Selected COM port {args.port} maps to absent probe UID "
+                            f"{selected_uid}; using the only visible pyOCD probe {fallback_uid}.",
+                            file=sys.stderr,
+                        )
+                        selected_uid = fallback_uid
+                        allow_inferred_uid_fallback = False
+                    else:
+                        print(
+                            f"ERROR: Selected COM port {args.port} maps to probe UID "
+                            f"{selected_uid}, but that probe is not currently visible.",
+                            file=sys.stderr,
+                        )
+                        print(
+                            "pyOCD probes: " + ", ".join(windows_probe_uids),
+                            file=sys.stderr,
+                        )
+                        print(
+                            "HINT: Select the COM port that belongs to a connected board, "
+                            "or reconnect the board that owns the selected COM port.",
+                            file=sys.stderr,
+                        )
+                        return 8
+                if selected_uid is not None:
                     print(
-                        f"ERROR: Selected COM port {args.port} maps to probe UID "
-                        f"{selected_uid}, but that probe is not currently visible.",
+                        f"WARNING: Selected COM port {args.port} is not currently present; "
+                        f"continuing with resolved probe UID {selected_uid}.",
                         file=sys.stderr,
                     )
-                    print(
-                        "pyOCD probes: " + ", ".join(windows_probe_uids),
-                        file=sys.stderr,
-                    )
-                    print(
-                        "HINT: Select the COM port that belongs to a connected board, "
-                        "or reconnect the board that owns the selected COM port.",
-                        file=sys.stderr,
-                    )
-                    return 8
-                print(
-                    f"WARNING: Selected COM port {args.port} is not currently present; "
-                    f"continuing with resolved probe UID {selected_uid}.",
-                    file=sys.stderr,
-                )
             elif len(windows_probe_uids) == 1:
                 selected_uid = windows_probe_uids[0]
                 allow_inferred_uid_fallback = False
@@ -1902,12 +1957,6 @@ def main() -> int:
             return 8
         if preflight_linux_probe_access(args.port, host_tools_path):
             return 7
-        if detect_pyocd_command(host_tools_path) is None:
-            if install_pyocd(host_tools_path):
-                print("pyocd installation succeeded.")
-            else:
-                print("pyocd installation failed.", file=sys.stderr)
-                print(f"HINT: {host_setup_hint(host_tools_path, purpose='python')}", file=sys.stderr)
         rc = upload_pyocd(
             args.hex,
             args.target,

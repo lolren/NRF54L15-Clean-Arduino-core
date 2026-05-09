@@ -500,6 +500,7 @@ void Secp256r1::jacobianDouble(const Secp256r1Jacobian& P, Secp256r1Jacobian* ou
   BigNum256 three; bnSetOne(&three); three.w[0]=3;
   bnModSub(X1Sq, Z1q4, &M);   // X1^2 - Z1^4
   bnModMul(three, M, &M);      // 3*(X1^2 - Z1^4)
+  maybeCooperateWithBle(0U);
   
   // X3 = M^2 - 2*S
   BigNum256 X3, twoS;
@@ -507,6 +508,7 @@ void Secp256r1::jacobianDouble(const Secp256r1Jacobian& P, Secp256r1Jacobian* ou
   bnSetOne(&twoS); twoS.w[0]=2;
   bnModMul(twoS, S, &twoS);    // 2*S
   bnModSub(X3, twoS, &X3);
+  maybeCooperateWithBle(0U);
   
   // Y3 = M*(S - X3) - 8*Y1^4
   BigNum256 SX3, Y3, eightY4;
@@ -515,6 +517,7 @@ void Secp256r1::jacobianDouble(const Secp256r1Jacobian& P, Secp256r1Jacobian* ou
   BigNum256 eight; bnSetOne(&eight); eight.w[0]=8;
   bnModMul(eight, Y4, &eightY4);
   bnModSub(Y3, eightY4, &Y3);
+  maybeCooperateWithBle(0U);
   
   // Z3 = 2*Y1*Z1
   BigNum256 Z3;
@@ -553,6 +556,7 @@ void Secp256r1::jacobianAddMixed(const Secp256r1Jacobian& P, const BigNum256& Qx
   // R = S2 - S1
   BigNum256 RR;
   bnModSub(S2, S1, &RR);
+  maybeCooperateWithBle(0U);
   
   // If H == 0, handle doubling or infinity
   if (bnIsZero(H)) {
@@ -574,6 +578,7 @@ void Secp256r1::jacobianAddMixed(const Secp256r1Jacobian& P, const BigNum256& Qx
   bnModMul(twoU1HH, HH, &twoU1HH);
   bnModSub(RRsq, HHH, &X3);
   bnModSub(X3, twoU1HH, &X3);
+  maybeCooperateWithBle(0U);
   
   // Y3 = R*(U1*HH - X3) - S1*HHH
   BigNum256 U1HH, U1HH_X3, Y3, S1HHH;
@@ -582,6 +587,7 @@ void Secp256r1::jacobianAddMixed(const Secp256r1Jacobian& P, const BigNum256& Qx
   bnModMul(RR, U1HH_X3, &Y3);
   bnModMul(S1, HHH, &S1HHH);
   bnModSub(Y3, S1HHH, &Y3);
+  maybeCooperateWithBle(0U);
   
   // Z3 = Z1 * H
   BigNum256 Z3;

@@ -140,6 +140,14 @@ bool BleRadio::pollCentralConnectionEvent(BleConnectionEvent* event,
                                       ((connectionExpectedRxSn_ & 0x01U) << 2U) |
                                       ((connectionTxSn_ & 0x01U) << 3U) |
                                       (txHasFollowingPayload ? 0x10U : 0U));
+  const bool txIsStartEncRspPlain =
+      (txLlid == kBlePduLlControl) &&
+      (txLength >= 1U) &&
+      (connectionTxPayload_[0] == kBleLlCtrlStartEncRsp);
+  const bool txCompletesEncryptionStart =
+      connectionEncSessionValid_ &&
+      connectionEncEnableTxOnNextEvent_ &&
+      txIsStartEncRspPlain;
   const bool reuseEncryptedTx =
       !canSendNewPayloadThisEvent && connectionLastTxWasEncrypted_;
   bool txBuiltFreshEncrypted = false;
@@ -150,7 +158,8 @@ bool BleRadio::pollCentralConnectionEvent(BleConnectionEvent* event,
     if (txLength > 0U) {
       memcpy(&txPacket_[2], connectionLastTxEncryptedPayload_, txLength);
     }
-  } else if (connectionEncSessionValid_ && connectionEncTxEnabled_ &&
+  } else if (connectionEncSessionValid_ &&
+             (connectionEncTxEnabled_ || txCompletesEncryptionStart) &&
              (txLength > 0U)) {
     uint8_t encryptedLen = 0U;
     if (bleCcmEncryptPayload(connectionEncSessionKey_, connectionEncIv_,
@@ -247,6 +256,14 @@ bool BleRadio::pollCentralConnectionEvent(BleConnectionEvent* event,
       connectionEncRxEnabled_ = true;
       connectionEncEnableTxOnNextEvent_ = false;
       emitBleTrace("LL_START_ENC_REQ_TX");
+    } else if (opcode == kBleLlCtrlStartEncRsp) {
+      connectionEncStartReqPending_ = false;
+      connectionEncStartReqTxPending_ = false;
+      connectionEncAwaitingStartRsp_ = false;
+      connectionEncTxEnabled_ = true;
+      connectionEncEnableTxOnNextEvent_ = false;
+      ++encDebug_.mainStartEncRspTxOk;
+      emitBleTrace("LL_START_ENC_RSP_TX");
     }
   }
   connectionTxHistoryValid_ = true;
@@ -801,6 +818,9 @@ bool BleRadio::pollCentralConnectionEvent(BleConnectionEvent* event,
       (rxL2capCid == kBleL2capCidAtt) &&
       ((rxAttOpcode == kAttOpHandleValueNtf) ||
        (rxAttOpcode == kAttOpHandleValueInd));
+  const bool currentRxIsSmp =
+      rxHasL2cap &&
+      (rxL2capCid == kBleL2capCidSmp);
   const bool currentRxIsAttServerIndication =
       rxHasL2cap &&
       (rxL2capCid == kBleL2capCidAtt) &&
@@ -810,7 +830,8 @@ bool BleRadio::pollCentralConnectionEvent(BleConnectionEvent* event,
       connectionEncSessionValid_ &&
       connectionEncTxEnabled_ &&
       (currentRxIsAttServerPush ||
-       (currentRxIsAttServerResponse && currentRxPeerMoreData));
+       (currentRxIsAttServerResponse && currentRxPeerMoreData) ||
+       (currentRxIsSmp && (currentRxPeerMoreData || connectionPendingTxValid_)));
   uint8_t originalRxPayload[kBleDataPduMaxPayload] = {0};
   const bool restoreOriginalPacketAfterTurnaround =
       (rxLength > 0U) && (rxLength <= kBleDataPduMaxPayload);
@@ -977,10 +998,15 @@ bool BleRadio::pollCentralConnectionEvent(BleConnectionEvent* event,
           (txFollowLlid == kBlePduDataStartOrComplete) &&
           (txFollowLength >= (kBleL2capHeaderLen + 1U)) &&
           (readLe16(&connectionLastTxPlainPayload_[2]) == kBleL2capCidAtt);
+      const bool txFollowCarriesSmpPdu =
+          (txFollowLlid == kBlePduDataStartOrComplete) &&
+          (txFollowLength >= (kBleL2capHeaderLen + 1U)) &&
+          (readLe16(&connectionLastTxPlainPayload_[2]) == kBleL2capCidSmp);
       const bool waitForPostAckResponse =
           currentFollowupPeerMoreData ||
           txFollowHasFollowingPayload ||
-          txFollowCarriesAttRequest;
+          txFollowCarriesAttRequest ||
+          txFollowCarriesSmpPdu;
 
       radio_->EVENTS_DISABLED = 0U;
       if (!followRxAlreadyDone) {
@@ -1313,6 +1339,9 @@ bool BleRadio::pollCentralConnectionEvent(BleConnectionEvent* event,
           rxHasL2capFollow &&
           (rxL2capCidFollow == kBleL2capCidAtt) &&
           attOpcodeIsServerResponsePdu(rxAttOpcodeFollow);
+      const bool followRxIsSmp =
+          rxHasL2capFollow &&
+          (rxL2capCidFollow == kBleL2capCidSmp);
       followMustAckPeerServerPush = followRxIsAttServerIndication;
       currentFollowupPeerMoreData = (((hdrFollow >> 4U) & 0x01U) != 0U);
       keepTurningAround =
@@ -1320,6 +1349,7 @@ bool BleRadio::pollCentralConnectionEvent(BleConnectionEvent* event,
           (followRxIsAttServerPush ||
            pendingTxIsHandleValueCfm() ||
            (followRxIsAttServerResponse && currentFollowupPeerMoreData) ||
+           (followRxIsSmp && currentFollowupPeerMoreData) ||
            (connectionFreshTxAllowed_ && connectionPendingTxValid_));
     }
 

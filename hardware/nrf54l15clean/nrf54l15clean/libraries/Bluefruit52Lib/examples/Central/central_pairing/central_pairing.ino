@@ -378,7 +378,7 @@ void loop()
   BLEConnection* conn = Bluefruit.Connection(conn_handle);
 
   // skip if connection not exist or not connected
-  if ( !conn && conn->connected() ) return;
+  if ( !conn || !conn->connected() ) return;
 
   // In this example we only read & write when connection is secured
   if ( conn->secured() )
@@ -393,9 +393,12 @@ void loop()
         delay(2); // delay a bit for all characters to arrive
 
         char str[20+1] = { 0 };
-        Serial.readBytes(str, 20);
-
-        clientUart.print( str );
+        const size_t available = (size_t) Serial.available();
+        const size_t count = Serial.readBytes(str, min((size_t) 20, available));
+        if ( count > 0 )
+        {
+          clientUart.write( (uint8_t*) str, count );
+        }
       }
     }
   }

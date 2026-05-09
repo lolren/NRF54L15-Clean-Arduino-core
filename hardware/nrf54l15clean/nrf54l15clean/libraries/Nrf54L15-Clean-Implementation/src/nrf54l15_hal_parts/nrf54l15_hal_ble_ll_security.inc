@@ -226,10 +226,10 @@ bool BleRadio::buildLlControlResponse(const uint8_t* payload, uint8_t length,
         connectionEncSessionValid_ = true;
         connectionEncRxEnabled_ = false;
         connectionEncTxEnabled_ = false;
-        // Peripheral role sequence: after LL_ENC_RSP, wait for the central's
-        // LL_START_ENC_REQ and answer with LL_START_ENC_RSP. The responder
-        // must not start its own encryption-start procedure.
-        connectionEncStartReqPending_ = false;
+        // Peripheral role sequence follows the controller FSM used by Zephyr:
+        // after LL_ENC_RSP, the peripheral sends LL_START_ENC_REQ and waits
+        // for the central's encrypted LL_START_ENC_RSP.
+        connectionEncStartReqPending_ = true;
         connectionEncStartReqTxPending_ = false;
         connectionEncAwaitingStartRsp_ = false;
         connectionEncEnableTxOnNextEvent_ = false;
@@ -267,8 +267,7 @@ bool BleRadio::buildLlControlResponse(const uint8_t* payload, uint8_t length,
       if (connectionEncTxEnabled_) {
         return rejectProcedureCollision();
       }
-      const bool peripheralAwaitingCentralStart =
-          (connectionRole_ == BleConnectionRole::kPeripheral) &&
+      const bool linkAwaitingPeerStart =
           connectionEncSessionValid_ &&
           !connectionEncRxEnabled_ &&
           !connectionEncTxEnabled_ &&
@@ -276,7 +275,7 @@ bool BleRadio::buildLlControlResponse(const uint8_t* payload, uint8_t length,
       if (!connectionEncStartReqPending_ &&
           !connectionEncStartReqTxPending_ &&
           !connectionEncAwaitingStartRsp_ &&
-          !peripheralAwaitingCentralStart) {
+          !linkAwaitingPeerStart) {
         return rejectCommandDisallowed();
       }
       connectionEncStartReqPending_ = false;
@@ -488,11 +487,14 @@ bool BleRadio::buildLlControlResponse(const uint8_t* payload, uint8_t length,
       encDebug_.encLastSessionKeyValid = 1U;
       encDebug_.encLastSessionAltKeyValid = connectionEncAltKeyValid_ ? 1U : 0U;
       connectionEncKeyDerivationPending_ = false;
-      connectionEncStartReqPending_ = false;
-      connectionEncStartReqTxPending_ = true;
+      // The central must now wait for the peripheral's LL_START_ENC_REQ. The
+      // previous implementation queued LL_START_ENC_REQ from the central, which
+      // is the wrong side of the BLE encryption start procedure.
+      connectionEncStartReqPending_ = true;
+      connectionEncStartReqTxPending_ = false;
       connectionEncAwaitingStartRsp_ = false;
       connectionEncEnableTxOnNextEvent_ = false;
-      connectionCentralLinkSetupNotBeforeMs_ = millis() + 500UL;
+      connectionCentralLinkSetupNotBeforeMs_ = 0UL;
       emitBleTrace("LL_ENC_RSP_RX");
       return false;
 

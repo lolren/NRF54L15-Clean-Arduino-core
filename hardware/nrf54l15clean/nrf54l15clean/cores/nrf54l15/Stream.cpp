@@ -7,6 +7,8 @@
 
 #include <string.h>
 
+extern "C" void nrf54l15_clean_idle_service(void) __attribute__((weak));
+
 int Stream::timedRead() {
     int c;
     _startMillis = millis();
@@ -15,6 +17,10 @@ int Stream::timedRead() {
         if (c >= 0) {
             return c;
         }
+        if (nrf54l15_clean_idle_service != nullptr) {
+            nrf54l15_clean_idle_service();
+        }
+        yield();
     } while (millis() - _startMillis < _timeout);
     return -1;
 }
@@ -27,6 +33,10 @@ int Stream::timedPeek() {
         if (c >= 0) {
             return c;
         }
+        if (nrf54l15_clean_idle_service != nullptr) {
+            nrf54l15_clean_idle_service();
+        }
+        yield();
     } while (millis() - _startMillis < _timeout);
     return -1;
 }

@@ -167,18 +167,21 @@ void disconnect_callback(uint16_t conn_handle, uint8_t reason)
  */
 void bleuart_rx_callback(BLEClientUart& uart_svc)
 {
-  char line[96] = "[RX]: ";
-  size_t used = strlen(line);
-
   while ( uart_svc.available() )
   {
-    const int c = uart_svc.read();
-    if ( c < 0 ) break;
-    if ( used + 1 >= sizeof(line) ) break;
-    line[used++] = (char) c;
+    char line[96] = "[RX]: ";
+    size_t used = strlen(line);
+
+    while ( uart_svc.available() )
+    {
+      const int c = uart_svc.read();
+      if ( c < 0 ) break;
+      if ( used + 1 >= sizeof(line) ) break;
+      line[used++] = (char) c;
+    }
+    line[used] = 0;
+    logQueue.queue(line);
   }
-  line[used] = 0;
-  logQueue.queue(line);
 }
 
 void loop()
@@ -195,11 +198,14 @@ void loop()
       if ( Serial.available() )
       {
         delay(2); // delay a bit for all characters to arrive
-        
+
         char str[20+1] = { 0 };
-        Serial.readBytes(str, 20);
-        
-        clientUart.print( str );
+        const size_t available = (size_t) Serial.available();
+        const size_t count = Serial.readBytes(str, min((size_t) 20, available));
+        if ( count > 0 )
+        {
+          clientUart.write( (uint8_t*) str, count );
+        }
       }
     }
   }
