@@ -77,6 +77,8 @@ def normalize_exclude_path(path: str) -> str:
 
 
 def path_is_excluded(path: Path, source_dir: Path, excludes: tuple[str, ...]) -> bool:
+    if path.name == "__pycache__" or path.suffix in (".pyc", ".pyo"):
+        return True
     if not excludes:
         return False
     rel = "" if path == source_dir else path.relative_to(source_dir).as_posix()
