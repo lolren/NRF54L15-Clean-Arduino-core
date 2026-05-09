@@ -932,12 +932,12 @@ size_t HardwareSerial::write(const uint8_t* buffer, size_t size) {
         if (txIdle) {
             size_t sent = 0U;
             if (_dataMask == 0xFFU) {
-                sent = writeBlocking(buffer, size);
+                sent = writeBlocking(buffer, size, true);
             } else {
                 for (size_t i = 0U; i < size; ++i) {
                     _txBuffer[i] = static_cast<uint8_t>(buffer[i] & _dataMask);
                 }
-                sent = writeBlocking(_txBuffer, size);
+                sent = writeBlocking(_txBuffer, size, true);
             }
 
             return sent;

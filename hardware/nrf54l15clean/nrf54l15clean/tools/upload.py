@@ -575,6 +575,7 @@ def run_windows_powershell(script: str, *script_args: str) -> subprocess.Complet
             stderr="powershell not found",
         )
 
+    command = "& {\n" + script + "\n}"
     cmd = [
         shell,
         "-NoProfile",
@@ -582,7 +583,7 @@ def run_windows_powershell(script: str, *script_args: str) -> subprocess.Complet
         "-ExecutionPolicy",
         "Bypass",
         "-Command",
-        script,
+        command,
         *script_args,
     ]
     return run(cmd, timeout=10.0)
@@ -1005,6 +1006,94 @@ def infer_uid_from_port(port: str | None, host_tools_path: Path | None = None) -
             candidates.append(match.group(1))
 
     return select_unique_connected_probe_uid(candidates, host_tools_path)
+
+
+def validate_windows_selected_probe(
+    port: str | None,
+    explicit_uid: str | None,
+    selected_uid: str | None,
+    host_tools_path: Path | None = None,
+) -> tuple[int, str | None]:
+    if not sys.platform.startswith("win"):
+        return 0, selected_uid
+
+    windows_cmsis_ports, windows_probe_uids = windows_multi_probe_guard_details(host_tools_path)
+    windows_port_present = windows_port_is_present(port, host_tools_path)
+    if port and not windows_port_present:
+        if selected_uid is not None:
+            if windows_probe_uids and selected_uid not in windows_probe_uids:
+                print(
+                    f"ERROR: Selected COM port {port} maps to probe UID "
+                    f"{selected_uid}, but that probe is not currently visible.",
+                    file=sys.stderr,
+                )
+                print("pyOCD probes: " + ", ".join(windows_probe_uids), file=sys.stderr)
+                print(
+                    "HINT: Select the COM port that belongs to a connected board, "
+                    "or reconnect the board that owns the selected COM port.",
+                    file=sys.stderr,
+                )
+                return 8, selected_uid
+            print(
+                f"WARNING: Selected COM port {port} is not currently present; "
+                f"continuing with resolved probe UID {selected_uid}.",
+                file=sys.stderr,
+            )
+        else:
+            print(
+                f"ERROR: Selected COM port {port} is not currently present "
+                "and could not be resolved to a connected pyOCD probe UID.",
+                file=sys.stderr,
+            )
+            if windows_cmsis_ports:
+                print(
+                    "Visible CMSIS-DAP ports: " + ", ".join(windows_cmsis_ports),
+                    file=sys.stderr,
+                )
+            if windows_probe_uids:
+                print("pyOCD probes: " + ", ".join(windows_probe_uids), file=sys.stderr)
+            print(
+                "HINT: Select a present board port or pass the probe UID explicitly "
+                "so the upload cannot hit the wrong target.",
+                file=sys.stderr,
+            )
+            return 8, selected_uid
+
+    if (
+        explicit_uid is None
+        and selected_uid is None
+        and (len(windows_cmsis_ports) > 1 or len(windows_probe_uids) > 1)
+    ):
+        print(
+            "ERROR: Multiple CMSIS-DAP probes are connected, but the selected COM "
+            "port could not be resolved to a unique probe UID.",
+            file=sys.stderr,
+        )
+        if windows_cmsis_ports:
+            print(
+                "Visible CMSIS-DAP ports: " + ", ".join(windows_cmsis_ports),
+                file=sys.stderr,
+            )
+        if windows_probe_uids:
+            print("pyOCD probes: " + ", ".join(windows_probe_uids), file=sys.stderr)
+        print(
+            "HINT: The uploader could not map the selected COM port to one of the "
+            "visible pyOCD probes, so it is stopping before pyOCD falls back to its "
+            "interactive picker.",
+            file=sys.stderr,
+        )
+        return 8, selected_uid
+
+    if selected_uid is not None and windows_probe_uids and selected_uid not in windows_probe_uids:
+        print(
+            "ERROR: The selected COM port resolved to probe UID "
+            f"{selected_uid}, but pyOCD does not currently see that probe.",
+            file=sys.stderr,
+        )
+        print("pyOCD probes: " + ", ".join(windows_probe_uids), file=sys.stderr)
+        return 8, selected_uid
+
+    return 0, selected_uid
 
 
 def explicit_uf2_drive(path: str | None) -> Path | None:
@@ -1675,6 +1764,7 @@ def upload_openocd(
     openocd_script: str,
     openocd_speed: int,
     openocd_bin: str,
+    uid: str | None,
     retries: int,
     retry_delay: float,
     host_tools_path: Path | None = None,
@@ -1690,6 +1780,7 @@ def upload_openocd(
 
     print(f"Flashing {hex_path}")
     print("Runner: openocd")
+    print(f"Probe UID: {uid or 'auto-select'}")
     print(f"Retries: {retries}")
 
     retries = max(1, retries)
@@ -1702,9 +1793,10 @@ def upload_openocd(
             openocd_script,
             "-c",
             f"adapter speed {openocd_speed}",
-            "-c",
-            f'program "{hex_path}" verify reset exit',
         ]
+        if uid:
+            cmd.extend(["-c", f"cmsis_dap_serial {uid}"])
+        cmd.extend(["-c", f'program "{hex_path}" verify reset exit'])
         result = run(cmd)
         print_result(result)
         if result.returncode == 0:
@@ -1831,130 +1923,14 @@ def main() -> int:
             inferred_uid = infer_uid_from_port(args.port, host_tools_path)
             selected_uid = inferred_uid
             allow_inferred_uid_fallback = inferred_uid is not None
-        windows_cmsis_ports: list[str] = []
-        windows_probe_uids: list[str] = []
-        windows_port_present = True
-        if sys.platform.startswith("win"):
-            windows_cmsis_ports, windows_probe_uids = windows_multi_probe_guard_details(host_tools_path)
-            windows_port_present = windows_port_is_present(args.port, host_tools_path)
-        if (
-            sys.platform.startswith("win")
-            and args.port
-            and not windows_port_present
-        ):
-            if selected_uid is not None:
-                if windows_probe_uids and selected_uid not in windows_probe_uids:
-                    if len(windows_probe_uids) == 1 and len(windows_cmsis_ports) <= 1:
-                        fallback_uid = windows_probe_uids[0]
-                        print(
-                            f"WARNING: Selected COM port {args.port} maps to absent probe UID "
-                            f"{selected_uid}; using the only visible pyOCD probe {fallback_uid}.",
-                            file=sys.stderr,
-                        )
-                        selected_uid = fallback_uid
-                        allow_inferred_uid_fallback = False
-                    else:
-                        print(
-                            f"ERROR: Selected COM port {args.port} maps to probe UID "
-                            f"{selected_uid}, but that probe is not currently visible.",
-                            file=sys.stderr,
-                        )
-                        print(
-                            "pyOCD probes: " + ", ".join(windows_probe_uids),
-                            file=sys.stderr,
-                        )
-                        print(
-                            "HINT: Select the COM port that belongs to a connected board, "
-                            "or reconnect the board that owns the selected COM port.",
-                            file=sys.stderr,
-                        )
-                        return 8
-                if selected_uid is not None:
-                    print(
-                        f"WARNING: Selected COM port {args.port} is not currently present; "
-                        f"continuing with resolved probe UID {selected_uid}.",
-                        file=sys.stderr,
-                    )
-            elif len(windows_probe_uids) == 1:
-                selected_uid = windows_probe_uids[0]
-                allow_inferred_uid_fallback = False
-                print(
-                    f"WARNING: Selected COM port {args.port} is not currently present; "
-                    f"using the only visible pyOCD probe {selected_uid}.",
-                    file=sys.stderr,
-                )
-            elif len(windows_cmsis_ports) > 1 or len(windows_probe_uids) > 1:
-                print(
-                    f"ERROR: Selected COM port {args.port} is not currently present, "
-                    "and multiple CMSIS-DAP probes are connected.",
-                    file=sys.stderr,
-                )
-                if windows_cmsis_ports:
-                    print(
-                        "Visible CMSIS-DAP ports: " + ", ".join(windows_cmsis_ports),
-                        file=sys.stderr,
-                    )
-                if windows_probe_uids:
-                    print(
-                        "pyOCD probes: " + ", ".join(windows_probe_uids),
-                        file=sys.stderr,
-                    )
-                print(
-                    "HINT: Select a present board port, unplug the extra board, or pass "
-                    "the probe UID explicitly so the upload cannot hit the wrong target.",
-                    file=sys.stderr,
-                )
-                return 8
-            else:
-                print(
-                    f"WARNING: Selected COM port {args.port} is not currently present; "
-                    "continuing so pyOCD can report the actual probe state.",
-                    file=sys.stderr,
-                )
-        if (
-            sys.platform.startswith("win")
-            and explicit_uid is None
-            and selected_uid is None
-            and (len(windows_cmsis_ports) > 1 or len(windows_probe_uids) > 1)
-        ):
-            print(
-                "ERROR: Multiple CMSIS-DAP probes are connected, but the selected COM "
-                "port could not be resolved to a unique probe UID.",
-                file=sys.stderr,
-            )
-            if windows_cmsis_ports:
-                print(
-                    "Visible CMSIS-DAP ports: " + ", ".join(windows_cmsis_ports),
-                    file=sys.stderr,
-                )
-            if windows_probe_uids:
-                print(
-                    "pyOCD probes: " + ", ".join(windows_probe_uids),
-                    file=sys.stderr,
-                )
-            print(
-                "HINT: The uploader could not map the selected COM port to one of the "
-                "visible pyOCD probes, so it is stopping before pyOCD falls back to its "
-                "interactive picker.",
-                file=sys.stderr,
-            )
-            return 8
-        if (
-            sys.platform.startswith("win")
-            and selected_uid is not None
-            and len(windows_probe_uids) >= 1
-            and selected_uid not in windows_probe_uids
-        ):
-            print(
-                "ERROR: The selected COM port resolved to probe UID "
-                f"{selected_uid}, but pyOCD does not currently see that probe.",
-                file=sys.stderr,
-            )
-            print(
-                "pyOCD probes: " + ", ".join(windows_probe_uids),
-                file=sys.stderr,
-            )
-            return 8
+        guard_rc, selected_uid = validate_windows_selected_probe(
+            args.port,
+            explicit_uid,
+            selected_uid,
+            host_tools_path,
+        )
+        if guard_rc != 0:
+            return guard_rc
         if preflight_linux_probe_access(args.port, host_tools_path):
             return 7
         rc = upload_pyocd(
@@ -1974,11 +1950,20 @@ def main() -> int:
                 args.openocd_script,
                 args.openocd_speed,
                 args.openocd_bin,
+                selected_uid,
                 retries=args.retries,
                 retry_delay=args.retry_delay,
                 host_tools_path=host_tools_path,
             ).returncode
     elif runner == "openocd":
+        guard_rc, selected_uid = validate_windows_selected_probe(
+            args.port,
+            explicit_uid,
+            selected_uid,
+            host_tools_path,
+        )
+        if guard_rc != 0:
+            return guard_rc
         if preflight_linux_probe_access(args.port, host_tools_path):
             return 7
         openocd_result = upload_openocd(
@@ -1986,6 +1971,7 @@ def main() -> int:
             args.openocd_script,
             args.openocd_speed,
             args.openocd_bin,
+            selected_uid,
             retries=args.retries,
             retry_delay=args.retry_delay,
             host_tools_path=host_tools_path,

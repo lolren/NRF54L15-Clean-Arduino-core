@@ -706,6 +706,31 @@ unsigned long micros(void)
     return (unsigned long)(ms_a * 1000UL + (elapsed / cycles_per_us));
 }
 
+static uint8_t bleDelayShouldBusyWait(void)
+{
+    if (nrf54l15_clean_ble_idle_sleep_cap_us == 0U) {
+        return 0U;
+    }
+    return nrf54l15_clean_ble_idle_sleep_cap_us() != 0U;
+}
+
+static void delayWithMicrosBusyWait(unsigned long ms)
+{
+    while (ms != 0UL) {
+        unsigned long chunkMs = ms;
+        if (chunkMs > (0xFFFFFFFFUL / 1000UL)) {
+            chunkMs = 0xFFFFFFFFUL / 1000UL;
+        }
+
+        const unsigned long delayUs = chunkMs * 1000UL;
+        const unsigned long startUs = micros();
+        while ((unsigned long)(micros() - startUs) < delayUs) {
+            __NOP();
+        }
+        ms -= chunkMs;
+    }
+}
+
 void delay(unsigned long ms)
 {
 #if defined(NRF54L15_CLEAN_POWER_LOW)
@@ -714,12 +739,8 @@ void delay(unsigned long ms)
         return;
     }
 
-    if (nrf54l15_clean_ble_idle_sleep_cap_us != 0U) {
-        const unsigned long startMs = millis();
-        while ((millis() - startMs) < ms) {
-            nrf54l15_clean_idle_service();
-            __NOP();
-        }
+    if (bleDelayShouldBusyWait()) {
+        delayWithMicrosBusyWait(ms);
         return;
     }
 
@@ -737,14 +758,10 @@ void delay(unsigned long ms)
         return;
     }
 
-    if (nrf54l15_clean_ble_idle_sleep_cap_us != 0U) {
+    if (bleDelayShouldBusyWait()) {
         // BLE-connected sketches can quantize delay() to the connection
         // interval if we re-enter the background event pump here.
-        const uint64_t targetUs =
-            readGrtcCounterUs(NRF_GRTC) + ((uint64_t)ms * 1000ULL);
-        while ((int64_t)(targetUs - readGrtcCounterUs(NRF_GRTC)) > 0) {
-            __NOP();
-        }
+        delayWithMicrosBusyWait(ms);
         return;
     }
 
