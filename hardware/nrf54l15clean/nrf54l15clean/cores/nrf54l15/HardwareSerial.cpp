@@ -215,6 +215,18 @@ static uint32_t serial_byte_timeout_us(unsigned long baud, uint32_t bytes) {
     return (per_byte * bytes) + margin;
 }
 
+static void stage_tx_bytes(uint8_t* out, const uint8_t* in, size_t size, uint8_t mask) {
+    if (out == nullptr || in == nullptr || size == 0U) {
+        return;
+    }
+    memcpy(out, in, size);
+    if (mask != 0xFFU) {
+        for (size_t i = 0U; i < size; ++i) {
+            out[i] = static_cast<uint8_t>(out[i] & mask);
+        }
+    }
+}
+
 static constexpr uint32_t kUarteRxInterruptMask =
     UARTE_INTENCLR_ERROR_Msk |
     UARTE_INTENCLR_RXTO_Msk |
@@ -930,17 +942,11 @@ size_t HardwareSerial::write(const uint8_t* buffer, size_t size) {
         const bool txIdle = (_txCount == 0U) && !_txDmaRunning;
         __set_PRIMASK(primask);
         if (txIdle) {
-            size_t sent = 0U;
-            if (_dataMask == 0xFFU) {
-                sent = writeBlocking(buffer, size, true);
-            } else {
-                for (size_t i = 0U; i < size; ++i) {
-                    _txBuffer[i] = static_cast<uint8_t>(buffer[i] & _dataMask);
-                }
-                sent = writeBlocking(_txBuffer, size, true);
-            }
-
-            return sent;
+            // UARTE EasyDMA must read from RAM. String literals used by
+            // Serial.print()/println() live in flash/rodata and appear as NULs
+            // if passed directly to the DMA pointer.
+            stage_tx_bytes(_txBuffer, buffer, size, _dataMask);
+            return writeBlocking(_txBuffer, size);
         }
     }
 
@@ -953,12 +959,7 @@ size_t HardwareSerial::write(const uint8_t* buffer, size_t size) {
         const bool txIdle = (_txCount == 0U) && !_txDmaRunning;
         __set_PRIMASK(primask);
         if (txIdle) {
-            if (_dataMask == 0xFFU) {
-                return writeBlocking(buffer, size, true);
-            }
-            for (size_t i = 0U; i < size; ++i) {
-                _txBuffer[i] = static_cast<uint8_t>(buffer[i] & _dataMask);
-            }
+            stage_tx_bytes(_txBuffer, buffer, size, _dataMask);
             return writeBlocking(_txBuffer, size, true);
         }
     }
