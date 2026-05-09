@@ -149,7 +149,9 @@ bool BleRadio::addCustomGattCharacteristic(uint16_t serviceHandle, uint16_t uuid
                                            const uint8_t* initialValue,
                                            uint8_t initialValueLength,
                                            uint16_t* outValueHandle,
-                                           uint16_t* outCccdHandle) {
+                                           uint16_t* outCccdHandle,
+                                           uint8_t readSecurity,
+                                           uint8_t writeSecurity) {
   if (uuid16 == 0U) {
     return false;
   }
@@ -158,7 +160,8 @@ bool BleRadio::addCustomGattCharacteristic(uint16_t serviceHandle, uint16_t uuid
   return addCustomGattCharacteristicCommon(serviceHandle, uuid, kBleUuid16Size,
                                            properties, initialValue,
                                            initialValueLength, outValueHandle,
-                                           outCccdHandle);
+                                           outCccdHandle, readSecurity,
+                                           writeSecurity);
 }
 
 bool BleRadio::addCustomGattCharacteristic128(uint16_t serviceHandle,
@@ -167,11 +170,14 @@ bool BleRadio::addCustomGattCharacteristic128(uint16_t serviceHandle,
                                               const uint8_t* initialValue,
                                               uint8_t initialValueLength,
                                               uint16_t* outValueHandle,
-                                              uint16_t* outCccdHandle) {
+                                              uint16_t* outCccdHandle,
+                                              uint8_t readSecurity,
+                                              uint8_t writeSecurity) {
   return addCustomGattCharacteristicCommon(serviceHandle, uuid128,
                                            kBleUuid128Size, properties,
                                            initialValue, initialValueLength,
-                                           outValueHandle, outCccdHandle);
+                                           outValueHandle, outCccdHandle,
+                                           readSecurity, writeSecurity);
 }
 
 bool BleRadio::addCustomGattCharacteristicCommon(uint16_t serviceHandle,
@@ -181,13 +187,17 @@ bool BleRadio::addCustomGattCharacteristicCommon(uint16_t serviceHandle,
                                                  const uint8_t* initialValue,
                                                  uint8_t initialValueLength,
                                                  uint16_t* outValueHandle,
-                                                 uint16_t* outCccdHandle) {
+                                                 uint16_t* outCccdHandle,
+                                                 uint8_t readSecurity,
+                                                 uint8_t writeSecurity) {
   constexpr uint8_t kAllowedProps = static_cast<uint8_t>(
       kBleGattPropRead | kBleGattPropWriteNoRsp | kBleGattPropWrite |
       kBleGattPropNotify | kBleGattPropIndicate);
   if (connected_ || uuid == nullptr ||
       customGattCharacteristicCount_ >= kCustomGattMaxCharacteristics ||
       (properties == 0U) || ((properties & ~kAllowedProps) != 0U) ||
+      (readSecurity > kBleGattSecurityAuthenticated) ||
+      (writeSecurity > kBleGattSecurityAuthenticated) ||
       (uuidSize != kBleUuid16Size && uuidSize != kBleUuid128Size)) {
     return false;
   }
@@ -233,6 +243,8 @@ bool BleRadio::addCustomGattCharacteristicCommon(uint16_t serviceHandle,
   characteristic.valueHandle = customGattNextHandle_++;
   characteristic.cccdHandle = hasCccd ? customGattNextHandle_++ : 0U;
   characteristic.cccdValue = 0U;
+  characteristic.readSecurity = readSecurity;
+  characteristic.writeSecurity = writeSecurity;
   characteristic.valueLength = initialValueLength;
   if (initialValueLength > 0U) {
     memcpy(characteristic.value, initialValue, initialValueLength);
@@ -422,6 +434,12 @@ bool BleRadio::notifyCustomGattCharacteristic(uint16_t valueHandle, bool indicat
     bleExitCritical(irqState);
     return false;
   }
+  if (characteristic->readSecurity != kBleGattSecurityOpen &&
+      !(connectionEncSessionValid_ && connectionEncRxEnabled_ &&
+        connectionEncTxEnabled_)) {
+    bleExitCritical(irqState);
+    return false;
+  }
 
   const bool notifyEnabled =
       ((characteristic->properties & kBleGattPropNotify) != 0U) &&
@@ -522,6 +540,57 @@ bool BleRadio::sendSmpSecurityRequest() {
     return false;
   }
   connectionSmpSecurityRequestPending_ = true;
+  bleExitCritical(irqState);
+  return true;
+}
+
+bool BleRadio::sendSmpPairingRequest() {
+  const uint32_t irqState = bleEnterCritical();
+  if (!connected_ ||
+      connectionRole_ != BleConnectionRole::kCentral ||
+      smpStkValid_ ||
+      connectionEncSessionValid_ ||
+      connectionEncRxEnabled_ ||
+      connectionEncTxEnabled_ ||
+      connectionEncStartReqPending_ ||
+      connectionEncStartReqTxPending_ ||
+      connectionEncAwaitingStartRsp_ ||
+      connectionEncKeyDerivationPending_ ||
+      smpPairingState_ != kSmpPairingStateIdle ||
+      connectionPendingTxValid_) {
+    bleExitCritical(irqState);
+    return false;
+  }
+
+  uint8_t pairingReq[kSmpPairingRequestLen] = {0};
+  pairingReq[0] = kSmpCodePairingRequest;
+  pairingReq[1] = kSmpIoCapNoInputNoOutput;
+  pairingReq[2] = 0x00U;
+  pairingReq[3] = static_cast<uint8_t>(0x01U | kSmpAuthReqSecureConnectionsMask);
+  pairingReq[4] = 16U;
+  pairingReq[5] = kSmpKeyDistIdKeyMask;
+  pairingReq[6] = kSmpKeyDistIdKeyMask;
+
+  uint8_t payloadLength = 0U;
+  if (!buildSmpL2capResponse(pairingReq, sizeof(pairingReq),
+                             connectionPendingTxPayload_, &payloadLength)) {
+    bleExitCritical(irqState);
+    return false;
+  }
+
+  memcpy(smpPairingReq_, pairingReq, sizeof(smpPairingReq_));
+  smpLocalInitiator_ = true;
+  smpBondingRequested_ = true;
+  smpSecureConnectionsActive_ = true;
+  smpExpectInitiatorEncKey_ = false;
+  smpExpectInitiatorIdKey_ = false;
+  smpKeySize_ = 16U;
+  smpPairingState_ = kSmpPairingStateReqSent;
+  connectionPendingTxLlid_ = kBlePduDataStartOrComplete;
+  connectionPendingTxLength_ = payloadLength;
+  connectionPendingTxOffset_ = 0U;
+  connectionPendingTxValid_ = true;
+  emitBleTrace("SMP_PAIRING_REQUEST_TX");
   bleExitCritical(irqState);
   return true;
 }
@@ -1375,6 +1444,19 @@ bool BleRadio::applyCustomGattCharacteristicValueWrite(uint16_t handle,
     if ((withResponse && !allowWriteReq) || (!withResponse && !allowWriteCmd)) {
       if (outErrorCode != nullptr) {
         *outErrorCode = kAttErrWriteNotPermitted;
+      }
+      return false;
+    }
+    if (valueTarget->writeSecurity != kBleGattSecurityOpen &&
+        !(connectionEncSessionValid_ && connectionEncRxEnabled_ &&
+          connectionEncTxEnabled_)) {
+      if (outErrorCode != nullptr) {
+        *outErrorCode = kAttErrInsufficientAuthentication;
+      }
+      if (connected_ && connectionRole_ == BleConnectionRole::kPeripheral &&
+          !smpStkValid_ && !connectionEncSessionValid_ &&
+          (smpPairingState_ == kSmpPairingStateIdle)) {
+        connectionSmpSecurityRequestPending_ = true;
       }
       return false;
     }

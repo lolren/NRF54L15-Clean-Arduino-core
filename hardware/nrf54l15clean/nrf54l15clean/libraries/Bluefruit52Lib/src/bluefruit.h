@@ -2,6 +2,7 @@
 #define BLUEFRUIT_H_
 
 #include <Arduino.h>
+#include <string.h>
 
 #include "bluefruit_common.h"
 
@@ -475,15 +476,65 @@ class BLEGatt {};
 
 class BLESecurity {
  public:
-  template <typename T>
-  void setSecuredCallback(T) {}
-  template <typename T>
-  void setPairPasskeyCallback(T) {}
-  template <typename T>
-  void setPairCompleteCallback(T) {}
-  void setIOCaps(uint8_t) {}
-  void setIOCaps(bool, bool, bool) {}
-  void setPIN(const char*) {}
+  typedef void (*secured_callback_t)(uint16_t conn_hdl);
+  typedef bool (*pair_passkey_callback_t)(uint16_t conn_hdl,
+                                          uint8_t const passkey[6],
+                                          bool match_request);
+  typedef void (*pair_complete_callback_t)(uint16_t conn_hdl,
+                                           uint8_t auth_status);
+
+  BLESecurity()
+      : secured_callback_(nullptr),
+        pair_passkey_callback_(nullptr),
+        pair_complete_callback_(nullptr),
+        io_caps_(0x03U),
+        pin_{0},
+        pin_valid_(false) {}
+
+  void setSecuredCallback(secured_callback_t fp) { secured_callback_ = fp; }
+  void setPairPasskeyCallback(pair_passkey_callback_t fp) {
+    pair_passkey_callback_ = fp;
+  }
+  void setPairCompleteCallback(pair_complete_callback_t fp) {
+    pair_complete_callback_ = fp;
+  }
+  void setIOCaps(uint8_t caps) { io_caps_ = caps; }
+  void setIOCaps(bool display, bool yes_no, bool keyboard) {
+    if (keyboard && display) {
+      io_caps_ = 0x04U;
+    } else if (keyboard) {
+      io_caps_ = 0x02U;
+    } else if (display && yes_no) {
+      io_caps_ = 0x01U;
+    } else if (display) {
+      io_caps_ = 0x00U;
+    } else {
+      io_caps_ = 0x03U;
+    }
+  }
+  void setPIN(const char* pin) {
+    pin_valid_ = false;
+    memset(pin_, 0, sizeof(pin_));
+    if (pin == nullptr) {
+      return;
+    }
+    size_t len = strlen(pin);
+    if (len > 6U) {
+      len = 6U;
+    }
+    memcpy(pin_, pin, len);
+    pin_valid_ = (len == 6U);
+  }
+
+ private:
+  secured_callback_t secured_callback_;
+  pair_passkey_callback_t pair_passkey_callback_;
+  pair_complete_callback_t pair_complete_callback_;
+  uint8_t io_caps_;
+  char pin_[7];
+  bool pin_valid_;
+
+  friend class BluefruitCompatManager;
 };
 
 enum {
@@ -965,10 +1016,12 @@ class BLEUart : public BLEService, public Stream {
   using Print::write;
 
  private:
+  static constexpr uint16_t kMaxRxFifoDepth = 256U;
+
   BLECharacteristic _txd;
   BLECharacteristic _rxd;
   uint16_t _rx_fifo_depth;
-  uint8_t* _rx_fifo;
+  uint8_t _rx_fifo[kMaxRxFifoDepth];
   uint16_t _rx_head;
   uint16_t _rx_tail;
   uint16_t _rx_count;

@@ -1858,6 +1858,12 @@ enum BleGattCharacteristicProperty : uint8_t {
   kBleGattPropIndicate = 0x20U,
 };
 
+enum BleGattSecurityMode : uint8_t {
+  kBleGattSecurityOpen = 0U,
+  kBleGattSecurityEncrypted = 1U,
+  kBleGattSecurityAuthenticated = 2U,
+};
+
 struct BleScanPacket {
   BleAdvertisingChannel channel;
   int8_t rssiDbm;
@@ -2331,14 +2337,18 @@ class BleRadio {
                                    const uint8_t* initialValue = nullptr,
                                    uint8_t initialValueLength = 0U,
                                    uint16_t* outValueHandle = nullptr,
-                                   uint16_t* outCccdHandle = nullptr);
+                                   uint16_t* outCccdHandle = nullptr,
+                                   uint8_t readSecurity = kBleGattSecurityOpen,
+                                   uint8_t writeSecurity = kBleGattSecurityOpen);
   bool addCustomGattCharacteristic128(uint16_t serviceHandle,
                                       const uint8_t uuid128[16],
                                       uint8_t properties,
                                       const uint8_t* initialValue = nullptr,
                                       uint8_t initialValueLength = 0U,
                                       uint16_t* outValueHandle = nullptr,
-                                      uint16_t* outCccdHandle = nullptr);
+                                      uint16_t* outCccdHandle = nullptr,
+                                      uint8_t readSecurity = kBleGattSecurityOpen,
+                                      uint8_t writeSecurity = kBleGattSecurityOpen);
   bool setCustomGattCharacteristicValue(uint16_t valueHandle,
                                         const uint8_t* value,
                                         uint8_t valueLength);
@@ -2450,6 +2460,10 @@ class BleRadio {
   // when no stored bond is expected.  Returns false if a bond is already primed
   // or encryption is already in progress.
   bool sendSmpSecurityRequest();
+  // Send an SMP Pairing Request (central -> peripheral). This is the central
+  // counterpart to sendSmpSecurityRequest() and is used by Bluefruit-style
+  // central pairing sketches.
+  bool sendSmpPairingRequest();
   bool getConnectionInfo(BleConnectionInfo* info) const;
   void getEncryptionDebugCounters(BleEncryptionDebugCounters* out) const;
   void clearEncryptionDebugCounters();
@@ -2531,6 +2545,8 @@ class BleRadio {
     uint16_t valueHandle;
     uint16_t cccdHandle;
     uint16_t cccdValue;
+    uint8_t readSecurity;
+    uint8_t writeSecurity;
     uint8_t valueLength;
     uint8_t value[kCustomGattMaxValueLength];
   };
@@ -2649,7 +2665,9 @@ class BleRadio {
                                          const uint8_t* initialValue,
                                          uint8_t initialValueLength,
                                          uint16_t* outValueHandle,
-                                         uint16_t* outCccdHandle);
+                                         uint16_t* outCccdHandle,
+                                         uint8_t readSecurity,
+                                         uint8_t writeSecurity);
   bool pollCentralConnectionEvent(BleConnectionEvent* event,
                                   uint32_t spinLimit);
   bool buildLlControlResponse(const uint8_t* payload, uint8_t length,

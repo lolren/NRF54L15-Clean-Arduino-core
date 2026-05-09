@@ -330,6 +330,11 @@ uint8_t BleRadio::readAttributeValue(uint16_t handle, uint16_t offset,
         if ((characteristic->properties & kBleGattPropRead) == 0U) {
           return kAttrReadNotPermittedLen;
         }
+        if (characteristic->readSecurity != kBleGattSecurityOpen &&
+            !(connectionEncSessionValid_ && connectionEncRxEnabled_ &&
+              connectionEncTxEnabled_)) {
+          return kAttrReadInsufficientAuthenticationLen;
+        }
         if (characteristic->valueLength > 0U) {
           memcpy(&fullValue[0], characteristic->value, characteristic->valueLength);
         }
@@ -908,7 +913,8 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
           const uint8_t vlen = readAttributeValue(handle, 0U, temp, maxAttValueLen);
           if (vlen == kAttrReadInvalidHandleLen ||
               vlen == kAttrReadInvalidOffsetLen ||
-              vlen == kAttrReadNotPermittedLen) {
+              vlen == kAttrReadNotPermittedLen ||
+              vlen == kAttrReadInsufficientAuthenticationLen) {
             continue;
           }
 
@@ -964,6 +970,11 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
         return buildAttErrorResponse(opcode, handle, kAttErrReadNotPermitted,
                                      outAttResponse, outAttResponseLength);
       }
+      if (vlen == kAttrReadInsufficientAuthenticationLen) {
+        return buildAttErrorResponse(opcode, handle,
+                                     kAttErrInsufficientAuthentication,
+                                     outAttResponse, outAttResponseLength);
+      }
       if (vlen == kAttrReadInvalidOffsetLen) {
         return buildAttErrorResponse(opcode, handle, kAttErrInvalidOffset,
                                      outAttResponse, outAttResponseLength);
@@ -993,6 +1004,11 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
       }
       if (vlen == kAttrReadNotPermittedLen) {
         return buildAttErrorResponse(opcode, handle, kAttErrReadNotPermitted,
+                                     outAttResponse, outAttResponseLength);
+      }
+      if (vlen == kAttrReadInsufficientAuthenticationLen) {
+        return buildAttErrorResponse(opcode, handle,
+                                     kAttErrInsufficientAuthentication,
                                      outAttResponse, outAttResponseLength);
       }
       if (vlen == kAttrReadInvalidOffsetLen) {
@@ -1031,6 +1047,11 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
         }
         if (vlen == kAttrReadNotPermittedLen) {
           return buildAttErrorResponse(opcode, handle, kAttErrReadNotPermitted,
+                                       outAttResponse, outAttResponseLength);
+        }
+        if (vlen == kAttrReadInsufficientAuthenticationLen) {
+          return buildAttErrorResponse(opcode, handle,
+                                       kAttErrInsufficientAuthentication,
                                        outAttResponse, outAttResponseLength);
         }
         if (vlen == kAttrReadInvalidOffsetLen) {

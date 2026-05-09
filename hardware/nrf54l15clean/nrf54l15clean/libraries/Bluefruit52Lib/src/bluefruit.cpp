@@ -2,6 +2,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <utility>
 
 #include <nrf54l15_hal.h>
 
@@ -12,6 +13,9 @@ using xiao_nrf54l15::BleDisconnectDebug;
 using xiao_nrf54l15::BleDisconnectReason;
 using xiao_nrf54l15::BleGattCharacteristicProperty;
 using xiao_nrf54l15::BleRadio;
+using xiao_nrf54l15::kBleGattSecurityAuthenticated;
+using xiao_nrf54l15::kBleGattSecurityEncrypted;
+using xiao_nrf54l15::kBleGattSecurityOpen;
 
 constexpr uint8_t kAdTypeFlags = 0x01U;
 constexpr uint8_t kAdTypeIncomplete16 = 0x02U;
@@ -207,12 +211,12 @@ class ScopedBluefruitUserCallback {
 };
 
 template <typename Callback, typename... Args>
-void invokeBluefruitUserCallback(Callback callback, Args... args) {
+void invokeBluefruitUserCallback(Callback callback, Args&&... args) {
   if (callback == nullptr) {
     return;
   }
   ScopedBluefruitUserCallback scope;
-  callback(args...);
+  callback(std::forward<Args>(args)...);
 }
 
 bool timeReachedUs(uint32_t now, uint32_t target) {
@@ -413,6 +417,22 @@ uint8_t mapProperties(uint8_t properties) {
   return mapped;
 }
 
+uint8_t mapSecurityMode(SecureMode_t mode) {
+  switch (mode) {
+    case SECMODE_ENC_WITH_MITM:
+    case SECMODE_ENC_WITH_LESC_MITM:
+    case SECMODE_SIGNED_WITH_MITM:
+      return kBleGattSecurityAuthenticated;
+    case SECMODE_ENC_NO_MITM:
+    case SECMODE_SIGNED_NO_MITM:
+      return kBleGattSecurityEncrypted;
+    case SECMODE_OPEN:
+    case SECMODE_NO_ACCESS:
+    default:
+      return kBleGattSecurityOpen;
+  }
+}
+
 uint8_t disconnectReasonToHci(const BleDisconnectDebug& debug) {
   switch (static_cast<BleDisconnectReason>(debug.reason)) {
     case BleDisconnectReason::kApi:
@@ -454,14 +474,17 @@ class BluefruitCompatManager {
         deferred_connection_phy_request_pending_(false),
         deferred_connection_data_length_request_pending_(false),
         deferred_connection_mtu_request_pending_(false),
+        deferred_connection_pairing_request_pending_(false),
         deferred_connection_requested_phy_(BLE_GAP_PHY_AUTO),
         deferred_connection_requested_mtu_(kDefaultAttMtu),
         deferred_connection_phy_next_ms_(0UL),
         deferred_connection_data_length_next_ms_(0UL),
         deferred_connection_mtu_next_ms_(0UL),
+        deferred_connection_pairing_next_ms_(0UL),
         deferred_connection_phy_attempts_(0U),
         deferred_connection_data_length_attempts_(0U),
         deferred_connection_mtu_attempts_(0U),
+        deferred_connection_pairing_attempts_(0U),
         central_connect_callback_pending_(false),
         central_connect_callback_not_before_ms_(0UL),
         central_link_config_not_before_ms_(0UL),
@@ -470,6 +493,8 @@ class BluefruitCompatManager {
         rssi_monitor_threshold_(0xFFU),
         last_reported_rssi_dbm_(0),
         last_reported_rssi_valid_(false),
+        last_security_encrypted_(false),
+        security_complete_dispatched_(false),
         scan_report_data_{0},
         scan_report_len_(0U) {
     memset(characteristics_, 0, sizeof(characteristics_));
@@ -582,6 +607,36 @@ class BluefruitCompatManager {
     deferred_connection_mtu_next_ms_ =
         millis() + kDeferredPhyRequestInitialDelayMs;
     return true;
+  }
+
+  bool deferConnectionPairingRequest() {
+    if (!radio_.isConnected()) {
+      return false;
+    }
+    deferred_connection_pairing_request_pending_ = true;
+    deferred_connection_pairing_attempts_ = 0U;
+    deferred_connection_pairing_next_ms_ =
+        millis() + kDeferredLinkRequestInitialDelayMs;
+    return true;
+  }
+
+  bool requestConnectionPairing() {
+    if (!radio_.isConnected()) {
+      return false;
+    }
+    bool ok = false;
+    if (radio_.connectionRole() == BleConnectionRole::kPeripheral) {
+      ok = radio_.sendSmpSecurityRequest();
+    } else if (radio_.connectionRole() == BleConnectionRole::kCentral) {
+      ok = radio_.sendSmpPairingRequest();
+    }
+    if (ok) {
+      deferred_connection_pairing_request_pending_ = false;
+      deferred_connection_pairing_attempts_ = 0U;
+      deferred_connection_pairing_next_ms_ = 0UL;
+      return true;
+    }
+    return deferConnectionPairingRequest();
   }
 
   bool registerCharacteristic(BLECharacteristic* characteristic) {
@@ -720,6 +775,12 @@ class BluefruitCompatManager {
       maybeApplyDeferredConnectionRequests();
       maybeDispatchRssiUpdate();
       if (radio_.connectionRole() == BleConnectionRole::kPeripheral) {
+        for (uint8_t i = 0U; i < 2U && radio_.isConnected(); ++i) {
+          BleConnectionEvent event{};
+          if (!radio_.pollConnectionEvent(&event, 120000UL)) {
+            break;
+          }
+        }
         for (uint8_t i = 0U; i < characteristic_count_; ++i) {
           if (characteristics_[i] != nullptr) {
             characteristics_[i]->pollCccdState();
@@ -728,7 +789,15 @@ class BluefruitCompatManager {
       } else if (radio_.connectionRole() == BleConnectionRole::kCentral) {
         maybeDispatchCentralConnectCallback();
         processCentralBackgroundEvents(4U);
+        for (uint8_t i = 0U; i < 2U && radio_.isConnected(); ++i) {
+          BleConnectionEvent event{};
+          if (!radio_.pollConnectionEvent(&event, 120000UL)) {
+            break;
+          }
+          handleCentralConnectionEvent(event);
+        }
       }
+      maybeDispatchSecurityUpdate();
     }
   }
 
@@ -821,14 +890,17 @@ class BluefruitCompatManager {
   bool deferred_connection_phy_request_pending_;
   bool deferred_connection_data_length_request_pending_;
   bool deferred_connection_mtu_request_pending_;
+  bool deferred_connection_pairing_request_pending_;
   uint8_t deferred_connection_requested_phy_;
   uint16_t deferred_connection_requested_mtu_;
   unsigned long deferred_connection_phy_next_ms_;
   unsigned long deferred_connection_data_length_next_ms_;
   unsigned long deferred_connection_mtu_next_ms_;
+  unsigned long deferred_connection_pairing_next_ms_;
   uint8_t deferred_connection_phy_attempts_;
   uint8_t deferred_connection_data_length_attempts_;
   uint8_t deferred_connection_mtu_attempts_;
+  uint8_t deferred_connection_pairing_attempts_;
   bool central_connect_callback_pending_;
   unsigned long central_connect_callback_not_before_ms_;
   unsigned long central_link_config_not_before_ms_;
@@ -837,6 +909,8 @@ class BluefruitCompatManager {
   uint8_t rssi_monitor_threshold_;
   int8_t last_reported_rssi_dbm_;
   bool last_reported_rssi_valid_;
+  bool last_security_encrypted_;
+  bool security_complete_dispatched_;
 
   static void gattWriteThunk(uint16_t valueHandle, const uint8_t* value,
                              uint8_t valueLength, bool withResponse, void* context) {
@@ -1094,6 +1168,36 @@ class BluefruitCompatManager {
 
     const unsigned long now = millis();
 
+    if (deferred_connection_pairing_request_pending_) {
+      if (radio_.isConnectionEncrypted()) {
+        deferred_connection_pairing_request_pending_ = false;
+        deferred_connection_pairing_attempts_ = 0U;
+        deferred_connection_pairing_next_ms_ = 0UL;
+      } else if (deferred_connection_pairing_attempts_ >=
+                 kDeferredLinkRequestMaxAttempts) {
+        deferred_connection_pairing_request_pending_ = false;
+        deferred_connection_pairing_attempts_ = 0U;
+        deferred_connection_pairing_next_ms_ = 0UL;
+      } else if (static_cast<int32_t>(
+                     now - deferred_connection_pairing_next_ms_) >= 0) {
+        bool ok = false;
+        if (radio_.connectionRole() == BleConnectionRole::kPeripheral) {
+          ok = radio_.sendSmpSecurityRequest();
+        } else if (radio_.connectionRole() == BleConnectionRole::kCentral) {
+          ok = radio_.sendSmpPairingRequest();
+        }
+        if (ok) {
+          deferred_connection_pairing_request_pending_ = false;
+          deferred_connection_pairing_attempts_ = 0U;
+          deferred_connection_pairing_next_ms_ = 0UL;
+        } else {
+          ++deferred_connection_pairing_attempts_;
+          deferred_connection_pairing_next_ms_ = now + kDeferredLinkRequestRetryMs;
+        }
+      }
+      return;
+    }
+
     if (deferred_connection_phy_request_pending_) {
       const uint8_t phy = deferred_connection_requested_phy_;
       const uint8_t currentPhy = radio_.getPHY();
@@ -1276,6 +1380,34 @@ class BluefruitCompatManager {
     invokeBluefruitUserCallback(Bluefruit.rssi_callback_, 0U, currentRssiDbm);
   }
 
+  void maybeDispatchSecurityUpdate() {
+    if (!radio_.isConnected()) {
+      last_security_encrypted_ = false;
+      return;
+    }
+
+    const bool encrypted = radio_.isConnectionEncrypted();
+    if (!encrypted) {
+      last_security_encrypted_ = false;
+      return;
+    }
+    if (last_security_encrypted_ && security_complete_dispatched_) {
+      return;
+    }
+
+    last_security_encrypted_ = true;
+    if (!security_complete_dispatched_) {
+      security_complete_dispatched_ = true;
+      if (Bluefruit.Security.pair_complete_callback_ != nullptr) {
+        invokeBluefruitUserCallback(Bluefruit.Security.pair_complete_callback_,
+                                    0U, BLE_GAP_SEC_STATUS_SUCCESS);
+      }
+      if (Bluefruit.Security.secured_callback_ != nullptr) {
+        invokeBluefruitUserCallback(Bluefruit.Security.secured_callback_, 0U);
+      }
+    }
+  }
+
   void handleConnectionEdge(bool connected) {
     if (connected) {
       last_connection_edge_ms_ = millis();
@@ -1286,6 +1418,8 @@ class BluefruitCompatManager {
       rssi_monitor_threshold_ = 0xFFU;
       last_reported_rssi_dbm_ = 0;
       last_reported_rssi_valid_ = false;
+      last_security_encrypted_ = false;
+      security_complete_dispatched_ = false;
       if (Bluefruit.auto_conn_led_) {
         digitalWrite(LED_BUILTIN, kLedOnState);
       }
@@ -1328,17 +1462,22 @@ class BluefruitCompatManager {
     rssi_monitor_threshold_ = 0xFFU;
     last_reported_rssi_dbm_ = 0;
     last_reported_rssi_valid_ = false;
+    last_security_encrypted_ = false;
+    security_complete_dispatched_ = false;
     deferred_connection_phy_request_pending_ = false;
     deferred_connection_data_length_request_pending_ = false;
     deferred_connection_mtu_request_pending_ = false;
+    deferred_connection_pairing_request_pending_ = false;
     deferred_connection_requested_phy_ = BLE_GAP_PHY_AUTO;
     deferred_connection_requested_mtu_ = kDefaultAttMtu;
     deferred_connection_phy_next_ms_ = 0UL;
     deferred_connection_data_length_next_ms_ = 0UL;
     deferred_connection_mtu_next_ms_ = 0UL;
+    deferred_connection_pairing_next_ms_ = 0UL;
     deferred_connection_phy_attempts_ = 0U;
     deferred_connection_data_length_attempts_ = 0U;
     deferred_connection_mtu_attempts_ = 0U;
+    deferred_connection_pairing_attempts_ = 0U;
     central_connect_callback_pending_ = false;
     central_connect_callback_not_before_ms_ = 0UL;
     connection_.handle_ = INVALID_CONNECTION_HANDLE;
@@ -2201,15 +2340,17 @@ err_t BLECharacteristic::begin() {
   uint16_t cccdHandle = 0U;
   const uint8_t initialLen = clampValueLen(_value_len);
   const uint8_t properties = mapProperties(_properties);
+  const uint8_t readSecurity = mapSecurityMode(_read_perm);
+  const uint8_t writeSecurity = mapSecurityMode(_write_perm);
   bool ok = false;
   if (uuid.size() == 2U) {
     ok = manager().radio().addCustomGattCharacteristic(
         _service->_handle, uuid.uuid16(), properties, _value, initialLen, &valueHandle,
-        &cccdHandle);
+        &cccdHandle, readSecurity, writeSecurity);
   } else if (uuid.size() == 16U) {
     ok = manager().radio().addCustomGattCharacteristic128(
         _service->_handle, uuid.uuid128(), properties, _value, initialLen, &valueHandle,
-        &cccdHandle);
+        &cccdHandle, readSecurity, writeSecurity);
   }
   if (!ok) {
     return ERROR_INVALID_STATE;
@@ -3005,10 +3146,7 @@ bool BLEConnection::requestPairing() const {
   if (!connected()) {
     return false;
   }
-  if (manager().radio().connectionRole() == BleConnectionRole::kPeripheral) {
-    return manager().radio().sendSmpSecurityRequest();
-  }
-  return false;
+  return manager().requestConnectionPairing();
 }
 
 bool BLEConnection::monitorRssi(uint8_t threshold) const {
@@ -4206,8 +4344,11 @@ BLEUart::BLEUart(uint16_t fifo_depth)
     : BLEService(BLEUART_UUID_SERVICE),
       _txd(BLEUART_UUID_CHR_TXD),
       _rxd(BLEUART_UUID_CHR_RXD),
-      _rx_fifo_depth((fifo_depth == 0U) ? 1U : fifo_depth),
-      _rx_fifo(new uint8_t[(fifo_depth == 0U) ? 1U : fifo_depth]),
+      _rx_fifo_depth((fifo_depth == 0U) ? 1U
+                                         : ((fifo_depth > kMaxRxFifoDepth)
+                                                ? kMaxRxFifoDepth
+                                                : fifo_depth)),
+      _rx_fifo{0},
       _rx_head(0U),
       _rx_tail(0U),
       _rx_count(0U),
@@ -4222,8 +4363,11 @@ err_t BLEUart::begin() {
     return status;
   }
 
+  const SecureMode_t serviceReadPerm = _read_perm;
+  const SecureMode_t serviceWritePerm = _write_perm;
+
   _txd.setProperties(CHR_PROPS_NOTIFY);
-  _txd.setPermission(SECMODE_OPEN, SECMODE_NO_ACCESS);
+  _txd.setPermission(serviceReadPerm, SECMODE_NO_ACCESS);
   _txd.setMaxLen(BleRadio::kCustomGattMaxValueLength);
   _txd.setCccdWriteCallback(bleuart_txd_cccd_cb);
   if (_txd.begin() != ERROR_NONE) {
@@ -4231,7 +4375,7 @@ err_t BLEUart::begin() {
   }
 
   _rxd.setProperties(CHR_PROPS_WRITE | CHR_PROPS_WRITE_WO_RESP);
-  _rxd.setPermission(SECMODE_NO_ACCESS, SECMODE_OPEN);
+  _rxd.setPermission(SECMODE_NO_ACCESS, serviceWritePerm);
   _rxd.setMaxLen(BleRadio::kCustomGattMaxValueLength);
   _rxd.setWriteCallback(bleuart_rxd_cb);
   if (_rxd.begin() != ERROR_NONE) {

@@ -708,6 +708,148 @@ exit 1
     return select_unique_connected_probe_uid(candidates, host_tools_path)
 
 
+def port_uid_from_windows_registry(
+    port: str | None,
+    host_tools_path: Path | None = None,
+) -> str | None:
+    if not port or not sys.platform.startswith("win"):
+        return None
+
+    # Arduino IDE can keep a stale COM selection after Windows re-enumerates a
+    # XIAO. Query the Enum registry instead of only present devices so the stale
+    # COM port can still be mapped back to its CMSIS-DAP probe UID.
+    script = r"""
+$port = $args[0]
+$vidPidPattern = 'VID_2886&PID_0066'
+
+function Emit-Candidate($prefix, $value) {
+  if ($null -eq $value) {
+    return
+  }
+  $text = $value.ToString().Trim()
+  if ($text) {
+    Write-Output ($prefix + $text)
+  }
+}
+
+function Get-EnumInstanceId($key) {
+  if ($null -eq $key) {
+    return $null
+  }
+  $prefix = 'HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Enum\'
+  $name = $key.Name
+  if ($name -and $name.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+    return $name.Substring($prefix.Length)
+  }
+  return $null
+}
+
+function Get-KeyValue($key, $name) {
+  try {
+    $prop = Get-ItemProperty -LiteralPath $key.PSPath -Name $name -ErrorAction Stop
+    return $prop.$name
+  } catch {}
+  return $null
+}
+
+function Get-PortName($key) {
+  try {
+    $paramPath = Join-Path $key.PSPath 'Device Parameters'
+    $prop = Get-ItemProperty -LiteralPath $paramPath -Name 'PortName' -ErrorAction Stop
+    return $prop.PortName
+  } catch {}
+  return $null
+}
+
+function Get-CandidateKeys {
+  $roots = @(
+    'HKLM:\SYSTEM\CurrentControlSet\Enum\USB',
+    'HKLM:\SYSTEM\CurrentControlSet\Enum\HID'
+  )
+  foreach ($root in $roots) {
+    try {
+      Get-ChildItem -LiteralPath $root -ErrorAction Stop |
+        Where-Object { $_.PSChildName -like ('*' + $vidPidPattern + '*') } |
+        ForEach-Object {
+          $_
+          try {
+            Get-ChildItem -LiteralPath $_.PSPath -Recurse -ErrorAction SilentlyContinue
+          } catch {}
+        }
+    } catch {}
+  }
+}
+
+function Emit-KeyCandidates($key) {
+  $instanceId = Get-EnumInstanceId $key
+  Emit-Candidate 'INSTANCE:' $instanceId
+  if ($instanceId) {
+    $parts = $instanceId -split '\\'
+    if ($parts.Length -gt 1) {
+      Emit-Candidate 'SERIAL:' $parts[$parts.Length - 1]
+    }
+  }
+  Emit-Candidate 'SERIAL:' (Get-KeyValue $key 'SerialNumber')
+  Emit-Candidate 'SERIAL:' (Get-KeyValue $key 'ParentIdPrefix')
+}
+
+$allKeys = @(Get-CandidateKeys)
+$matchingKeys = @()
+$containers = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+
+foreach ($key in $allKeys) {
+  $portName = Get-PortName $key
+  if ($portName -and $portName.ToString().Trim() -ieq $port) {
+    $matchingKeys += $key
+    $container = Get-KeyValue $key 'ContainerID'
+    if ($container) {
+      [void]$containers.Add($container.ToString().Trim())
+    }
+  }
+}
+
+if ($matchingKeys.Count -eq 0) {
+  exit 1
+}
+
+foreach ($key in $matchingKeys) {
+  Emit-KeyCandidates $key
+}
+
+if ($containers.Count -gt 0) {
+  foreach ($key in $allKeys) {
+    $container = Get-KeyValue $key 'ContainerID'
+    if ($container -and $containers.Contains($container.ToString().Trim())) {
+      Emit-KeyCandidates $key
+    }
+  }
+}
+
+exit 0
+"""
+
+    result = run_windows_powershell(script, port)
+    if result.returncode != 0:
+        return None
+
+    candidates: list[str] = []
+    for line in (result.stdout or "").splitlines():
+        entry = line.strip()
+        if not entry:
+            continue
+        if entry.startswith("INSTANCE:"):
+            serial_value = serial_from_instance_id(entry.split(":", 1)[1].strip())
+        elif entry.startswith("SERIAL:"):
+            serial_value = serial_from_plain_value(entry.split(":", 1)[1].strip())
+        else:
+            serial_value = serial_from_instance_id(entry)
+            if serial_value is None:
+                serial_value = serial_from_plain_value(entry)
+        if serial_value is not None:
+            candidates.append(serial_value)
+    return select_unique_connected_probe_uid(candidates, host_tools_path)
+
+
 def port_uid_from_list_ports(port: str | None, host_tools_path: Path | None = None) -> str | None:
     if not port:
         return None
@@ -785,6 +927,10 @@ def infer_uid_from_port(port: str | None, host_tools_path: Path | None = None) -
         return inferred
 
     inferred = port_uid_from_windows_parent_chain(port, host_tools_path)
+    if inferred is not None:
+        return inferred
+
+    inferred = port_uid_from_windows_registry(port, host_tools_path)
     if inferred is not None:
         return inferred
 
@@ -1652,16 +1798,64 @@ def main() -> int:
             and args.port
             and not windows_port_present
         ):
-            print(
-                f"ERROR: Selected COM port {args.port} is not currently present.",
-                file=sys.stderr,
-            )
-            if windows_cmsis_ports:
+            if selected_uid is not None:
+                if windows_probe_uids and selected_uid not in windows_probe_uids:
+                    print(
+                        f"ERROR: Selected COM port {args.port} maps to probe UID "
+                        f"{selected_uid}, but that probe is not currently visible.",
+                        file=sys.stderr,
+                    )
+                    print(
+                        "pyOCD probes: " + ", ".join(windows_probe_uids),
+                        file=sys.stderr,
+                    )
+                    print(
+                        "HINT: Select the COM port that belongs to a connected board, "
+                        "or reconnect the board that owns the selected COM port.",
+                        file=sys.stderr,
+                    )
+                    return 8
                 print(
-                    "Visible CMSIS-DAP ports: " + ", ".join(windows_cmsis_ports),
+                    f"WARNING: Selected COM port {args.port} is not currently present; "
+                    f"continuing with resolved probe UID {selected_uid}.",
                     file=sys.stderr,
                 )
-            return 8
+            elif len(windows_probe_uids) == 1:
+                selected_uid = windows_probe_uids[0]
+                allow_inferred_uid_fallback = False
+                print(
+                    f"WARNING: Selected COM port {args.port} is not currently present; "
+                    f"using the only visible pyOCD probe {selected_uid}.",
+                    file=sys.stderr,
+                )
+            elif len(windows_cmsis_ports) > 1 or len(windows_probe_uids) > 1:
+                print(
+                    f"ERROR: Selected COM port {args.port} is not currently present, "
+                    "and multiple CMSIS-DAP probes are connected.",
+                    file=sys.stderr,
+                )
+                if windows_cmsis_ports:
+                    print(
+                        "Visible CMSIS-DAP ports: " + ", ".join(windows_cmsis_ports),
+                        file=sys.stderr,
+                    )
+                if windows_probe_uids:
+                    print(
+                        "pyOCD probes: " + ", ".join(windows_probe_uids),
+                        file=sys.stderr,
+                    )
+                print(
+                    "HINT: Select a present board port, unplug the extra board, or pass "
+                    "the probe UID explicitly so the upload cannot hit the wrong target.",
+                    file=sys.stderr,
+                )
+                return 8
+            else:
+                print(
+                    f"WARNING: Selected COM port {args.port} is not currently present; "
+                    "continuing so pyOCD can report the actual probe state.",
+                    file=sys.stderr,
+                )
         if (
             sys.platform.startswith("win")
             and explicit_uid is None

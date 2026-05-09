@@ -667,22 +667,12 @@
         static_cast<uint32_t>(txCounterObserved & 0xFFFFFFFFULL);
   }
 
-  // During start encryption, some controllers send LL_START_ENC_REQ as a second
-  // packet in a later connection event. Keep TX->RX turnaround in hardware while
-  // awaiting LL_START_ENC_REQ so we can catch it without CPU latency.
-  const bool allowPlainFollowupTurnaround =
-      !terminateInd &&
-      !connectionEncSessionValid_ &&
-      !connectionEncRxEnabled_ &&
-      !connectionEncTxEnabled_ &&
-      !connectionEncStartReqPending_ &&
-      !connectionEncStartReqTxPending_ &&
-      !connectionEncAwaitingStartRsp_ &&
-      !connectionEncKeyDerivationPending_ &&
-      packetIsNew &&
-      ((rxLength > 0U) || txHasFollowingPayload);
-  const bool allowQueuedDataBurstFollowup =
-      allowPlainFollowupTurnaround && txHasFollowingPayload;
+  // Keep plain, non-secure ATT traffic on the 0.6.48-style TX-only responder
+  // path. The TX->RX turnaround below is only safe for security setup where the
+  // follow-up listener is handled explicitly; on plain links it makes TXEND look
+  // like a failed transmit and breaks central discovery.
+  const bool allowPlainFollowupTurnaround = false;
+  const bool allowQueuedDataBurstFollowup = false;
   const bool allowQueuedSmpFollowupTurnaround =
       !terminateInd &&
       !connectionEncSessionValid_ &&
