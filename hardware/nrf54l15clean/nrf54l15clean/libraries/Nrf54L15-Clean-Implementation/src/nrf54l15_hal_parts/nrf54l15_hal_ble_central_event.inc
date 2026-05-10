@@ -50,7 +50,21 @@ bool BleRadio::pollCentralConnectionEvent(BleConnectionEvent* event,
           return true;
         }
       }
-      updateNextConnectionEventTime();
+      // When late, advance counter/timer in one shot to close the gap.
+      // The central's timer drifts slightly from the peripheral's (SCA ±500ppm
+      // over 2s ≈ 1ms), but this is within the receive window. Advancing
+      // slowly (updateNextConnectionEventTime) would take hundreds of iterations
+      // each incrementing missedEventCount, triggering supervision timeout
+      // before catch-up completes. Do NOT reset missed count — if catch-up
+      // fails, supervision timeout will force a clean reconnect.
+      catchUpConnectionEventTime();
+      // Wait for the next event so the caller doesn't immediately become
+      // late again on the next poll call.
+      uint32_t waitGuard = spinLimit;
+      while (waitGuard-- > 0U &&
+             !timeReachedUs(bleTimingUs(), connectionNextEventUs_)) {
+        /* wait */
+      }
       emitBleTrace("CENTRAL_LATE_SKIP");
       return false;
     }

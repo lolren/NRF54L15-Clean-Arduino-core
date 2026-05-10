@@ -655,6 +655,7 @@ class BluefruitCompatManager {
           event.payloadLength >= 7U)) {
       return;
     }
+
     const uint8_t attOpcode = event.payload[4];
     if (attOpcode != kAttOpHandleValueNtf) {
       return;
@@ -741,6 +742,7 @@ class BluefruitCompatManager {
           }
           handleCentralConnectionEvent(event);
         }
+        dispatchDeferredUserCallbacks();
       }
     }
   }
@@ -795,6 +797,30 @@ class BluefruitCompatManager {
     central_connect_callback_pending_ = false;
     central_connect_callback_not_before_ms_ = 0UL;
     invokeBluefruitUserCallback(Bluefruit.Central.connect_callback_, 0U);
+    // After the user callback (which may stall for seconds), resynchronize
+    // the central's event counter/channel with the peripheral. The callback
+    // blocks polling, so the central falls behind and ends up on the wrong
+    // channel. Poll until we get a CRC-OK event to confirm alignment.
+    // Do NOT pre-advance the counter — the central's timer drifts from the
+    // peripheral's, so a calculated catch-up can overshoot. Instead, walk
+    // through events one at a time; pollCentralConnectionEvent waits for
+    // each event (advancing 1/event) so the central naturally locks on.
+    if (radio_.isConnected() && radio_.connectionRole() == BleConnectionRole::kCentral) {
+      const unsigned long resyncStartMs = millis();
+      while (radio_.isConnected() && (millis() - resyncStartMs) < 5000UL) {
+        BleConnectionEvent event{};
+        if (radio_.pollConnectionEvent(&event, 120000UL)) {
+          handleCentralConnectionEvent(event);
+          if (event.terminateInd) break;
+          if (event.eventStarted && event.crcOk && event.packetReceived) {
+            break;  // Channel aligned
+          }
+        }
+        // No delay needed — pollCentralConnectionEvent already waits for the
+        // next event when late, advancing the counter 1/event to match the
+        // peripheral's rate. Adding delay would make the central lag behind.
+      }
+    }
   }
 
  private:

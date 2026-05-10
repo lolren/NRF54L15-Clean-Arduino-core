@@ -2846,6 +2846,10 @@ class BleRadio {
                                  bool peerAckedLastTx);
   void recordDisconnectDebug(BleDisconnectReason reason, uint8_t errorCode);
   void updateNextConnectionEventTime();
+ public:
+  void resetConnectionMissedEventCount();
+  void catchUpConnectionEventTime();
+ private:
   void armConnectionResyncWindow(uint32_t extraPostAnchorUs, uint8_t attempts);
   uint8_t selectNextDataChannel(bool useCurrentEventCounter);
   void restoreAdvertisingLinkDefaults();

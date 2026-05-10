@@ -1536,10 +1536,29 @@ void BleRadio::updateNextConnectionEventTime() {
   connectionNextEventUs_ += intervalUs;
   ++connectionEventCounter_;
 
-  // Catch up if caller serviced connection late.
+  // Catch up if caller serviced connection late — advance at most 1 event
+  // per call so the resync loop can walk channels one-by-one and find the
+  // correct one (unguarded loop skips past the right channel).
   const uint32_t nowUs = bleTimingUs();
-  uint8_t guard = 8U;
-  while (guard-- > 0U && timeReachedUs(nowUs, connectionNextEventUs_)) {
+  if (timeReachedUs(nowUs, connectionNextEventUs_)) {
+    connectionNextEventUs_ += intervalUs;
+    ++connectionEventCounter_;
+  }
+}
+
+void BleRadio::resetConnectionMissedEventCount() {
+  connectionMissedEventCount_ = 0;
+}
+
+// Advance counter/timer until caught up to now (no guard) so the channel
+// selection aligns with the peripheral after a long callback stall.
+void BleRadio::catchUpConnectionEventTime() {
+  const uint32_t intervalUs = static_cast<uint32_t>(connectionIntervalUnits_) * 1250UL;
+  if (intervalUs == 0U) {
+    return;
+  }
+  const uint32_t nowUs = bleTimingUs();
+  while (timeReachedUs(nowUs, connectionNextEventUs_)) {
     connectionNextEventUs_ += intervalUs;
     ++connectionEventCounter_;
   }
