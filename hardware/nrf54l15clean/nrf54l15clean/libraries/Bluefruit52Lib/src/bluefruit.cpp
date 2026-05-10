@@ -720,6 +720,12 @@ class BluefruitCompatManager {
       maybeApplyDeferredConnectionRequests();
       maybeDispatchRssiUpdate();
       if (radio_.connectionRole() == BleConnectionRole::kPeripheral) {
+        for (uint8_t i = 0U; i < 2U && radio_.isConnected(); ++i) {
+          BleConnectionEvent event{};
+          if (!radio_.pollConnectionEvent(&event, 120000UL)) {
+            break;
+          }
+        }
         for (uint8_t i = 0U; i < characteristic_count_; ++i) {
           if (characteristics_[i] != nullptr) {
             characteristics_[i]->pollCccdState();
@@ -728,6 +734,13 @@ class BluefruitCompatManager {
       } else if (radio_.connectionRole() == BleConnectionRole::kCentral) {
         maybeDispatchCentralConnectCallback();
         processCentralBackgroundEvents(4U);
+        for (uint8_t i = 0U; i < 2U && radio_.isConnected(); ++i) {
+          BleConnectionEvent event{};
+          if (!radio_.pollConnectionEvent(&event, 120000UL)) {
+            break;
+          }
+          handleCentralConnectionEvent(event);
+        }
       }
     }
   }
