@@ -3,13 +3,19 @@ extern "C" void nrf54l15_clean_ble_idle_service(void) {
   // re-enters this service path. Without a guard the central callback stack can
   // recursively consume more connection events and corrupt user-visible
   // behavior.
+  // However, background connection service is safe to run during re-entry
+  // because it uses its own connectionServiceBusy_ guard. This lets sketches
+  // that call delay() inside connect callbacks still service BLE events.
+  if (g_activeBleRadio != nullptr) {
+    g_activeBleRadio->serviceBackgroundConnection();
+  }
+
   if (g_bleIdleServiceActive) {
     return;
   }
   g_bleIdleServiceActive = true;
 
   if (g_activeBleRadio != nullptr) {
-    g_activeBleRadio->serviceBackgroundConnection();
     g_activeBleRadio->serviceDeferredApplicationWork();
   }
   if (g_bleBackgroundRadio != nullptr && g_bleBackgroundRadio != g_activeBleRadio) {
@@ -23,13 +29,18 @@ extern "C" void nrf54l15_clean_ble_idle_service(void) {
 }
 
 extern "C" void nrf54l15_clean_ble_yield_service(void) {
+  // Same re-entry relaxation as idle_service: background connection polling
+  // is safe to run during callbacks thanks to connectionServiceBusy_.
+  if (g_activeBleRadio != nullptr) {
+    g_activeBleRadio->serviceBackgroundConnection(0U);
+  }
+
   if (g_bleIdleServiceActive) {
     return;
   }
   g_bleIdleServiceActive = true;
 
   if (g_activeBleRadio != nullptr) {
-    g_activeBleRadio->serviceBackgroundConnection(0U);
     g_activeBleRadio->serviceDeferredApplicationWork();
   }
   if (g_bleBackgroundRadio != nullptr && g_bleBackgroundRadio != g_activeBleRadio) {
