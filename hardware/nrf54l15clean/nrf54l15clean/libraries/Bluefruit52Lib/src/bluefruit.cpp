@@ -3352,6 +3352,9 @@ bool BLEClientService::discover(uint16_t conn_hdl) {
   if ((!begun_ && !begin()) || !centralReady(conn_hdl)) {
     return false;
   }
+  // Drain any queued link-setup TX (DLE, MTU, PHY) before attempting
+  // ATT service discovery, otherwise the ATT request backs up behind it.
+  manager().radio().forceClearPendingTx();
   if (!retryCentralProcedure([&]() {
         return discoverServiceRangeSync(uuid, &start_handle_, &end_handle_);
       })) {

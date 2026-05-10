@@ -2503,6 +2503,14 @@ class BleRadio {
                                uint32_t secondaryListenSpinLimit = 300000UL,
                                uint32_t scanRspListenSpinLimit = 300000UL);
 
+  // Force-clear a queued TX that may be blocking ATT service discovery.
+  // Link-setup procedures (DLE, MTU) will retry on the next idle cycle.
+  void forceClearPendingTx() {
+    connectionPendingTxLlid_ = 0x01U;
+    connectionPendingTxLength_ = 0U;
+    connectionPendingTxValid_ = false;
+  }
+
  private:
   friend void ::nrf54l15_clean_ble_idle_service(void);
   friend void ::nrf54l15_clean_ble_yield_service(void);
