@@ -1299,6 +1299,15 @@ class BluefruitCompatManager {
         if (Bluefruit.Periph.connect_callback_ != nullptr) {
           invokeBluefruitUserCallback(Bluefruit.Periph.connect_callback_, 0U);
         }
+        // Dispatch CCCD=0 callback on each characteristic so sketches
+        // reset their notifyenableFlag before the main loop body runs.
+        for (uint8_t i = 0U; i < characteristic_count_; ++i) {
+          BLECharacteristic* c = characteristics_[i];
+          if (c != nullptr && c->_cccd_wr_cb != nullptr) {
+            invokeBluefruitUserCallback(c->_cccd_wr_cb, 0U, c,
+                                        static_cast<uint16_t>(0U));
+          }
+        }
         if (!Bluefruit.Advertising.restart_on_disconnect_) {
           Bluefruit.Advertising.running_ = false;
         }
