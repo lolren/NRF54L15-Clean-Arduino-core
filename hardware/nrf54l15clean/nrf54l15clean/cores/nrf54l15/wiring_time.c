@@ -739,11 +739,6 @@ void delay(unsigned long ms)
         return;
     }
 
-    if (bleDelayShouldBusyWait()) {
-        delayWithMicrosBusyWait(ms);
-        return;
-    }
-
     initLowPowerTimebase();
     // Keep plain delay() Arduino-compatible. Sketches may hold board-control
     // rails such as VBAT_EN, RF_SW, or IMU_MIC_EN asserted across delay()

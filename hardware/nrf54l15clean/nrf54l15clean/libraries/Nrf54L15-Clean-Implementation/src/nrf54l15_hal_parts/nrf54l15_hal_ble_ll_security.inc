@@ -857,7 +857,7 @@ bool BleRadio::computeSecureConnectionsLocalConfirm() {
 
 namespace {
 
-constexpr uint32_t kBleDeferredSmpResponseSpinLimit = 45000UL;
+constexpr uint32_t kBleDeferredSmpResponseSpinLimit = 600000UL;
 
 constexpr uint8_t kSmpIoCapDisplayOnly = 0x00U;
 constexpr uint8_t kSmpIoCapDisplayYesNo = 0x01U;
@@ -1077,6 +1077,7 @@ bool BleRadio::queuePendingSmpL2capResponse(const uint8_t* smpPayload,
   connectionPendingTxLlid_ = kBlePduDataStartOrComplete;
   connectionPendingTxLength_ = payloadLength;
   connectionPendingTxOffset_ = 0U;
+  connectionPendingTxNotBeforeMs_ = 0U;
   connectionPendingTxValid_ = true;
   return true;
 }

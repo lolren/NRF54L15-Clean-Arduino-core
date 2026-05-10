@@ -500,6 +500,35 @@ void BleRadio::captureSecureConnectionsDebugState(
   out->checkValuesTimeUs = smpSecureConnectionsCheckValuesTimeUs_;
   out->cooperateHookCount = smpSecureConnectionsCooperateHookCount_;
   out->backgroundServiceCount = smpSecureConnectionsBackgroundServiceCount_;
+  out->pendingTxLlid = connectionPendingTxLlid_;
+  out->pendingTxLength = connectionPendingTxLength_;
+  out->pendingTxCid =
+      (connectionPendingTxLength_ >= kBleL2capHeaderLen)
+          ? static_cast<uint8_t>(readLe16(&connectionPendingTxPayload_[2]) & 0xFFU)
+          : 0U;
+  out->pendingTxOpcode =
+      (connectionPendingTxLength_ >= (kBleL2capHeaderLen + 1U))
+          ? connectionPendingTxPayload_[4]
+          : 0U;
+  out->lastTxLlid = connectionLastTxPlainLlid_;
+  out->lastTxLength = connectionLastTxPlainLength_;
+  out->lastTxCid =
+      (connectionLastTxPlainLength_ >= kBleL2capHeaderLen)
+          ? static_cast<uint8_t>(readLe16(&connectionLastTxPlainPayload_[2]) & 0xFFU)
+          : 0U;
+  out->lastTxOpcode =
+      (connectionLastTxPlainLength_ >= (kBleL2capHeaderLen + 1U))
+          ? connectionLastTxPlainPayload_[4]
+          : ((connectionLastTxPlainLength_ >= 1U) ? connectionLastTxPlainPayload_[0]
+                                                  : 0U);
+  out->freshTxAllowed = connectionFreshTxAllowed_ ? 1U : 0U;
+  out->txHistoryValid = connectionTxHistoryValid_ ? 1U : 0U;
+  out->txSn = connectionTxSn_;
+  out->expectedRxSn = connectionExpectedRxSn_;
+  out->pendingTxDelayMs =
+      (connectionPendingTxNotBeforeMs_ == 0U)
+          ? 0
+          : static_cast<int32_t>(connectionPendingTxNotBeforeMs_ - millis());
 }
 
 void BleRadio::latchSecureConnectionsDebugState() {

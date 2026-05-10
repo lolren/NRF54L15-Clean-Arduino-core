@@ -302,7 +302,33 @@ void printFailureDebug() {
   Serial.print(" coop=");
   Serial.print(sc.cooperateHookCount);
   Serial.print(" bg=");
-  Serial.println(sc.backgroundServiceCount);
+  Serial.print(sc.backgroundServiceCount);
+  Serial.print(" p_llid=");
+  Serial.print(sc.pendingTxLlid);
+  Serial.print(" p_len=");
+  Serial.print(sc.pendingTxLength);
+  Serial.print(" p_cid=0x");
+  Serial.print(sc.pendingTxCid, HEX);
+  Serial.print(" p_op=0x");
+  Serial.print(sc.pendingTxOpcode, HEX);
+  Serial.print(" l_llid=");
+  Serial.print(sc.lastTxLlid);
+  Serial.print(" l_len=");
+  Serial.print(sc.lastTxLength);
+  Serial.print(" l_cid=0x");
+  Serial.print(sc.lastTxCid, HEX);
+  Serial.print(" l_op=0x");
+  Serial.print(sc.lastTxOpcode, HEX);
+  Serial.print(" fresh=");
+  Serial.print(sc.freshTxAllowed);
+  Serial.print(" hist=");
+  Serial.print(sc.txHistoryValid);
+  Serial.print(" txsn=");
+  Serial.print(sc.txSn);
+  Serial.print(" rxsn=");
+  Serial.print(sc.expectedRxSn);
+  Serial.print(" p_delay=");
+  Serial.println(sc.pendingTxDelayMs);
 
   BleEncryptionDebugCounters enc{};
   g_ble.getEncryptionDebugCounters(&enc);
@@ -643,6 +669,9 @@ void setup() {
   g_ble.begin(kTxPowerDbm);
   g_ble.loadAddressFromFicr(true);
   g_ble.setBondPersistenceCallbacks(loadBond, saveBond, clearBond, nullptr);
+  if (!kSecure) {
+    g_ble.clearBondRecord(true);
+  }
   g_ble.setPreferredPhyOptions(kBlePhy1M | kBlePhy2M, kBlePhy1M | kBlePhy2M);
   g_ble.setBackgroundConnectionServiceEnabled(true);
   BoardControl::setAntennaPath(BoardAntennaPath::kCeramic);

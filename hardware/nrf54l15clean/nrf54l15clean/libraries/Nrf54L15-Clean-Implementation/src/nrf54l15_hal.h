@@ -2217,6 +2217,19 @@ struct BleSecureConnectionsDebugState {
   uint32_t checkValuesTimeUs;
   uint32_t cooperateHookCount;
   uint32_t backgroundServiceCount;
+  uint8_t pendingTxLlid;
+  uint8_t pendingTxLength;
+  uint8_t pendingTxCid;
+  uint8_t pendingTxOpcode;
+  uint8_t lastTxLlid;
+  uint8_t lastTxLength;
+  uint8_t lastTxCid;
+  uint8_t lastTxOpcode;
+  uint8_t freshTxAllowed;
+  uint8_t txHistoryValid;
+  uint8_t txSn;
+  uint8_t expectedRxSn;
+  int32_t pendingTxDelayMs;
 };
 
 struct BleBackgroundAdvertisingDebugCounters {

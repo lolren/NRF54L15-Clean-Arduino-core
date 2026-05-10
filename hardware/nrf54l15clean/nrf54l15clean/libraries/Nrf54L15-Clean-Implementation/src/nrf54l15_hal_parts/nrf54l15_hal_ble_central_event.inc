@@ -96,6 +96,28 @@ bool BleRadio::pollCentralConnectionEvent(BleConnectionEvent* event,
     event->rxPhy = connectionCurrentRxPhy_;
   }
 
+  const bool pendingTxIsPreEncryptionSmpPdu =
+      !connectionEncRxEnabled_ &&
+      !connectionEncTxEnabled_ &&
+      connectionPendingTxValid_ &&
+      (connectionPendingTxLlid_ == kBlePduDataStartOrComplete) &&
+      (connectionPendingTxLength_ >= (kBleL2capHeaderLen + 1U)) &&
+      (readLe16(&connectionPendingTxPayload_[2]) == kBleL2capCidSmp);
+  const bool securePairingCanAdvanceQueuedSmp =
+      pendingTxIsPreEncryptionSmpPdu &&
+      smpSecureConnectionsActive_ &&
+      (smpPairingState_ == kSmpPairingStateRandomSent) &&
+      smpSecureConnectionsDhKeyReady_ &&
+      smpSecureConnectionsCheckValuesReady_;
+  if (!connectionFreshTxAllowed_ && securePairingCanAdvanceQueuedSmp) {
+    // Reaching local DHKey Check means the peer already advanced through SMP
+    // Random. Some partner timing paths leave NESN stale by one packet here;
+    // force the central reliability state forward only for pre-encryption SMP.
+    if (connectionTxHistoryValid_) {
+      connectionTxSn_ ^= 0x01U;
+    }
+    connectionFreshTxAllowed_ = true;
+  }
   const bool canSendNewPayloadThisEvent =
       !connectionTxHistoryValid_ || connectionFreshTxAllowed_;
   // Do not replace an earlier empty ACK with a fresh queued central request.
@@ -624,6 +646,13 @@ bool BleRadio::pollCentralConnectionEvent(BleConnectionEvent* event,
       (connectionLastTxLlid_ == kBlePduDataStartOrComplete) &&
       (connectionLastTxPlainLength_ >= (kBleL2capHeaderLen + 1U)) &&
       (readLe16(&connectionLastTxPlainPayload_[2]) == kBleL2capCidAtt);
+  const bool lastTxHadUnencryptedSmpPayload =
+      !connectionEncRxEnabled_ &&
+      !connectionEncTxEnabled_ &&
+      connectionTxHistoryValid_ &&
+      (connectionLastTxLlid_ == kBlePduDataStartOrComplete) &&
+      (connectionLastTxPlainLength_ >= (kBleL2capHeaderLen + 1U)) &&
+      (readLe16(&connectionLastTxPlainPayload_[2]) == kBleL2capCidSmp);
   const bool peerAdvancedToNewAttServerProgress =
       legacyPlainLinkFlow &&
       packetIsNew &&
@@ -633,14 +662,24 @@ bool BleRadio::pollCentralConnectionEvent(BleConnectionEvent* event,
       (attOpcodeIsServerResponsePdu(rxPacket_[2 + kBleL2capHeaderLen]) ||
        (rxPacket_[2 + kBleL2capHeaderLen] == kAttOpHandleValueNtf) ||
        (rxPacket_[2 + kBleL2capHeaderLen] == kAttOpHandleValueInd));
+  const bool peerAdvancedToNewSmpProgress =
+      !connectionEncRxEnabled_ &&
+      !connectionEncTxEnabled_ &&
+      packetIsNew &&
+      (llid == kBlePduDataStartOrComplete) &&
+      (rxLength >= (kBleL2capHeaderLen + 1U)) &&
+      (readLe16(&rxPacket_[4]) == kBleL2capCidSmp);
   // Some peers keep NESN stale while they continue pushing notifications or a
-  // server response. Keep the 0.6.48 heuristic on plain links only; encrypted
-  // traffic uses its own follow-up path.
+  // server response. Keep the 0.6.48 ATT heuristic on plain links only; add the
+  // same pre-encryption guard for SMP pairing progress so LE SC Random can
+  // advance to DHKey Check even if NESN lags by one packet.
   if (!peerAckedLastTx &&
       connectionTxHistoryValid_ &&
       packetIsNew &&
       ((lastTxWasEmptyAck && peerAdvancedToNewAttServerProgress) ||
-       (lastTxHadAttPayload && peerAdvancedToNewAttServerProgress))) {
+       (lastTxWasEmptyAck && peerAdvancedToNewSmpProgress) ||
+       (lastTxHadAttPayload && peerAdvancedToNewAttServerProgress) ||
+       (lastTxHadUnencryptedSmpPayload && peerAdvancedToNewSmpProgress))) {
     peerAckedLastTx = true;
     implicitEmptyAck = true;
     if (lastTxHadAttPayload && peerAdvancedToNewAttServerProgress) {
@@ -1178,6 +1217,13 @@ bool BleRadio::pollCentralConnectionEvent(BleConnectionEvent* event,
           (connectionLastTxLlid_ == kBlePduDataStartOrComplete) &&
           (connectionLastTxPlainLength_ >= (kBleL2capHeaderLen + 1U)) &&
           (readLe16(&connectionLastTxPlainPayload_[2]) == kBleL2capCidAtt);
+      const bool lastTxHadUnencryptedSmpPayloadFollow =
+          !connectionEncRxEnabled_ &&
+          !connectionEncTxEnabled_ &&
+          connectionTxHistoryValid_ &&
+          (connectionLastTxLlid_ == kBlePduDataStartOrComplete) &&
+          (connectionLastTxPlainLength_ >= (kBleL2capHeaderLen + 1U)) &&
+          (readLe16(&connectionLastTxPlainPayload_[2]) == kBleL2capCidSmp);
       const bool peerAdvancedToNewAttServerProgressFollow =
           packetIsNewFollow &&
           (llidFollow == kBlePduDataStartOrComplete) &&
@@ -1186,11 +1232,21 @@ bool BleRadio::pollCentralConnectionEvent(BleConnectionEvent* event,
           (attOpcodeIsServerResponsePdu(rxPacket_[2 + kBleL2capHeaderLen]) ||
            (rxPacket_[2 + kBleL2capHeaderLen] == kAttOpHandleValueNtf) ||
            (rxPacket_[2 + kBleL2capHeaderLen] == kAttOpHandleValueInd));
+      const bool peerAdvancedToNewSmpProgressFollow =
+          !connectionEncRxEnabled_ &&
+          !connectionEncTxEnabled_ &&
+          packetIsNewFollow &&
+          (llidFollow == kBlePduDataStartOrComplete) &&
+          (rxLengthFollow >= (kBleL2capHeaderLen + 1U)) &&
+          (readLe16(&rxPacket_[4]) == kBleL2capCidSmp);
       if (!peerAckedLastTxFollow &&
           connectionTxHistoryValid_ &&
           packetIsNewFollow &&
           ((lastTxWasEmptyAckFollow && peerAdvancedToNewAttServerProgressFollow) ||
-           (lastTxHadAttPayloadFollow && peerAdvancedToNewAttServerProgressFollow))) {
+           (lastTxWasEmptyAckFollow && peerAdvancedToNewSmpProgressFollow) ||
+           (lastTxHadAttPayloadFollow && peerAdvancedToNewAttServerProgressFollow) ||
+           (lastTxHadUnencryptedSmpPayloadFollow &&
+            peerAdvancedToNewSmpProgressFollow))) {
         peerAckedLastTxFollow = true;
         implicitEmptyAckFollow = true;
         if (lastTxHadAttPayloadFollow &&

@@ -244,9 +244,10 @@ void loop() {
     Serial.print(line);
   }
 
-  // GRTC ACTIVE cleared by end() above — WFI reaches 2–3 µA here
-  const uint32_t deadline = cycleStart + kAdvertisingIntervalMs;
-  while (static_cast<int32_t>(millis() - deadline) < 0) {
-    __asm volatile("wfi");
+  // GRTC ACTIVE is cleared by end() above; delay() uses the core WFI path in
+  // PowerProfile:WFI builds and preserves the measured 2-3 uA idle window.
+  const uint32_t elapsedMs = millis() - cycleStart;
+  if (elapsedMs < kAdvertisingIntervalMs) {
+    delay(kAdvertisingIntervalMs - elapsedMs);
   }
 }

@@ -814,7 +814,7 @@ class BluefruitCompatManager {
       return 1U;
     }
     if (Bluefruit.Advertising.running_) {
-      return 1U;
+      return kBleActiveIdleSleepCapUs;
     }
     if (radio_.isConnected()) {
       if ((millis() - last_connection_edge_ms_) < kBleNoWfiDuringSetupMs) {
@@ -1525,6 +1525,14 @@ class BluefruitCompatManager {
 BluefruitCompatManager& manager() {
   static BluefruitCompatManager instance;
   return instance;
+}
+
+void serviceBluefruitBeforePollingState() {
+  if (ScopedBluefruitUserCallback::active()) {
+    return;
+  }
+  manager().idleService();
+  manager().dispatchDeferredUserCallbacks();
 }
 
 static constexpr unsigned long kLinkCapacityWaitTimeoutMs = 2000UL;
@@ -3179,6 +3187,7 @@ bool BLECentral::connect(const ble_gap_evt_adv_report_t* report) {
 }
 
 bool BLECentral::connected() const {
+  serviceBluefruitBeforePollingState();
   return manager().radio().isConnected() &&
          manager().radio().connectionRole() == BleConnectionRole::kCentral;
 }
@@ -4811,9 +4820,13 @@ void AdafruitBluefruit::autoConnLed(bool enabled) {
 
 void AdafruitBluefruit::setConnLedInterval(uint32_t ms) { conn_led_interval_ms_ = ms; }
 
-uint8_t AdafruitBluefruit::connected() const { return manager().radio().isConnected() ? 1U : 0U; }
+uint8_t AdafruitBluefruit::connected() const {
+  serviceBluefruitBeforePollingState();
+  return manager().radio().isConnected() ? 1U : 0U;
+}
 
 bool AdafruitBluefruit::connected(uint16_t conn_hdl) const {
+  serviceBluefruitBeforePollingState();
   return (conn_hdl == 0U) && manager().radio().isConnected();
 }
 
