@@ -924,25 +924,10 @@ size_t HardwareSerial::write(const uint8_t* buffer, size_t size) {
         return 0U;
     }
 
-    if (usesBridgePins() && _baud <= 9600UL && size <= kBridgeDirectWriteMax) {
-        const uint32_t primask = __get_PRIMASK();
-        __disable_irq();
-        const bool txIdle = (_txCount == 0U) && !_txDmaRunning;
-        __set_PRIMASK(primask);
-        if (txIdle) {
-            size_t sent = 0U;
-            if (_dataMask == 0xFFU) {
-                sent = writeBlocking(buffer, size, true);
-            } else {
-                for (size_t i = 0U; i < size; ++i) {
-                    _txBuffer[i] = static_cast<uint8_t>(buffer[i] & _dataMask);
-                }
-                sent = writeBlocking(_txBuffer, size, true);
-            }
-
-            return sent;
-        }
-    }
+    // Bridge direct-writes at low baud (<=9600) are disabled: the writeBlocking()
+    // path races with the SHORTS DMA_TX_END→DMA_TX_STOP chain on the SAMD11 bridge
+    // UART (XIAO nRF54L15), corrupting newline bytes. Let writes flow through the
+    // ring-buffer + DMA path, which is reliable at all baud rates.
 
     // Small low-baud writes on header UARTs (for example GNSS command bursts)
     // are latency-sensitive. Drain them synchronously when the port is idle so
