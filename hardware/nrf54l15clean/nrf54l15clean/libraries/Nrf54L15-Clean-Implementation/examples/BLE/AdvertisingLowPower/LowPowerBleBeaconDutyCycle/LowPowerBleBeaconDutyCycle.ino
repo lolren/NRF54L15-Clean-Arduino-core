@@ -129,8 +129,8 @@ void loop() {
 
   // Still System ON: this is a WFI-idle interval, not a cold-boot wake cycle.
   // GRTC ACTIVE cleared by end() above — WFI reaches 2–3 µA here
-  const uint32_t deadline = cycleStart + kBurstPeriodMs;
-  while (static_cast<int32_t>(millis() - deadline) < 0) {
-    __asm volatile("wfi");
+  const uint32_t elapsedMs = millis() - cycleStart;
+  if (elapsedMs < kBurstPeriodMs) {
+    delay(kBurstPeriodMs - elapsedMs);
   }
 }

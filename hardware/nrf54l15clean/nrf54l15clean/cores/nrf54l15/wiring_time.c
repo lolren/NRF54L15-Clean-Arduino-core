@@ -714,15 +714,6 @@ void delay(unsigned long ms)
         return;
     }
 
-    if (nrf54l15_clean_ble_idle_sleep_cap_us != 0U) {
-        const unsigned long startMs = millis();
-        while ((millis() - startMs) < ms) {
-            nrf54l15_clean_idle_service();
-            __NOP();
-        }
-        return;
-    }
-
     initLowPowerTimebase();
     // Keep plain delay() Arduino-compatible. Sketches may hold board-control
     // rails such as VBAT_EN, RF_SW, or IMU_MIC_EN asserted across delay()

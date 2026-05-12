@@ -209,8 +209,8 @@ void loop() {
   // Sleep until the next advertising window.
   // GRTC ACTIVE is cleared by end() above so WFI reaches 2–3 µA here
   // instead of the ~90 µA seen when BLE is left open between events.
-  const uint32_t deadline = cycleStart + kAdvertisingIntervalMs;
-  while (static_cast<int32_t>(millis() - deadline) < 0) {
-    __asm volatile("wfi");
+  const uint32_t elapsedMs = millis() - cycleStart;
+  if (elapsedMs < kAdvertisingIntervalMs) {
+    delay(kAdvertisingIntervalMs - elapsedMs);
   }
 }

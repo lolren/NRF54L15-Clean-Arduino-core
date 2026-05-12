@@ -245,8 +245,8 @@ void loop() {
   }
 
   // GRTC ACTIVE cleared by end() above — WFI reaches 2–3 µA here
-  const uint32_t deadline = cycleStart + kAdvertisingIntervalMs;
-  while (static_cast<int32_t>(millis() - deadline) < 0) {
-    __asm volatile("wfi");
+  const uint32_t elapsedMs = millis() - cycleStart;
+  if (elapsedMs < kAdvertisingIntervalMs) {
+    delay(kAdvertisingIntervalMs - elapsedMs);
   }
 }

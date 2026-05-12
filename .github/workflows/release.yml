@@ -59,9 +59,35 @@ jobs:
             --index dist/package_nrf54l15clean_index.json \
             --archive "${PLATFORM_ARCHIVE}"
 
+      - name: Verify tracked package indexes match release build
+        run: |
+          diff -u package_nrf54l15clean_index.json dist/package_nrf54l15clean_index.json
+          diff -u package_nrf54l15clean_stable_index.json dist/package_nrf54l15clean_stable_index.json
+          diff -u package_nrf54l15clean_archive_index.json dist/package_nrf54l15clean_archive_index.json
+
+      - name: Remove stale assets from existing tag release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${{ steps.vars.outputs.version }}"
+          if ! gh release view "${TAG}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            exit 0
+          fi
+          RELEASE_ID="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}" --jq '.id')"
+          gh api "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}/assets" --paginate --jq '.[] | [.id, .name] | @tsv' | \
+          while IFS=$'\t' read -r ASSET_ID ASSET_NAME; do
+            case "${ASSET_NAME}" in
+              "nrf54l15clean-${VERSION}-"*.tar.bz2|package_nrf54l15clean_index.json|package_nrf54l15clean_stable_index.json|package_nrf54l15clean_archive_index.json|release-manifest.json)
+                gh api -X DELETE "repos/${GITHUB_REPOSITORY}/releases/assets/${ASSET_ID}"
+                ;;
+            esac
+          done
+
       - name: Publish GitHub release assets
         uses: softprops/action-gh-release@v2
         with:
+          overwrite_files: true
           files: |
             dist/*
           generate_release_notes: true
