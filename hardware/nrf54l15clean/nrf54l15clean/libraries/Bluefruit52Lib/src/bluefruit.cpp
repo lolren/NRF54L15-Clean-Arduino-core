@@ -562,7 +562,7 @@ class BluefruitCompatManager {
     deferred_connection_data_length_request_pending_ = true;
     deferred_connection_data_length_attempts_ = 0U;
     deferred_connection_data_length_next_ms_ =
-        millis() + kDeferredPhyRequestInitialDelayMs;
+        millis() + kDeferredLinkRequestInitialDelayMs;
     return true;
   }
 
@@ -573,14 +573,11 @@ class BluefruitCompatManager {
     if (mtu < kDefaultAttMtu) {
       mtu = kDefaultAttMtu;
     }
-    if (!deferred_connection_mtu_request_pending_ ||
-        mtu > deferred_connection_requested_mtu_) {
-      deferred_connection_requested_mtu_ = mtu;
-    }
+    deferred_connection_requested_mtu_ = mtu;
     deferred_connection_mtu_request_pending_ = true;
     deferred_connection_mtu_attempts_ = 0U;
     deferred_connection_mtu_next_ms_ =
-        millis() + kDeferredPhyRequestInitialDelayMs;
+        millis() + kDeferredLinkRequestInitialDelayMs;
     return true;
   }
 
@@ -1110,7 +1107,8 @@ class BluefruitCompatManager {
     }
 
     if (central_data_length_request_pending_) {
-      if ((radio_.currentDataLength() >=
+      if (radio_.dataLengthUpdateComplete() ||
+          (radio_.currentDataLength() >=
            static_cast<uint16_t>(BleRadio::kCustomGattMaxValueLength + 7U)) ||
           radio_.requestDataLengthUpdate()) {
         central_data_length_request_pending_ = false;
@@ -1119,7 +1117,8 @@ class BluefruitCompatManager {
 
     if (central_mtu_request_pending_) {
       const uint16_t mtu = Bluefruit.central_requested_mtu_;
-      if ((mtu <= 23U) || (radio_.currentAttMtu() >= mtu) ||
+      if ((mtu <= 23U) || radio_.attMtuExchangeComplete() ||
+          (radio_.currentAttMtu() >= mtu) ||
           radio_.requestAttMtuExchange(mtu)) {
         central_mtu_request_pending_ = false;
       }
@@ -1191,8 +1190,11 @@ class BluefruitCompatManager {
     if (deferred_connection_mtu_request_pending_) {
       const uint16_t mtu = deferred_connection_requested_mtu_;
       const uint16_t currentMtu = radio_.currentAttMtu();
-      if ((mtu <= kDefaultAttMtu) || (currentMtu >= mtu) ||
-          (currentMtu > kDefaultAttMtu)) {
+      // Callback-time requestMtuExchange(23) still needs a real ATT_MTU_REQ
+      // even though the connection starts at 23. Otherwise a later automatic
+      // request from the peer can raise the MTU and the user's "keep it at 23"
+      // request was never actually negotiated on-air.
+      if (radio_.attMtuExchangeComplete() && (currentMtu == mtu)) {
         deferred_connection_mtu_request_pending_ = false;
         deferred_connection_requested_mtu_ = kDefaultAttMtu;
         deferred_connection_mtu_attempts_ = 0U;

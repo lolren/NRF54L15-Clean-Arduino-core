@@ -586,6 +586,14 @@ uint16_t BleRadio::currentAttMtu() const {
              : kBleDefaultAttMtu;
 }
 
+bool BleRadio::dataLengthUpdateComplete() const {
+  return connected_ && connectionDataLengthUpdateComplete_;
+}
+
+bool BleRadio::attMtuExchangeComplete() const {
+  return connected_ && connectionAttMtuExchangeComplete_;
+}
+
 uint16_t BleRadio::currentDataLengthMaxTimeUs() const {
   const uint8_t phy = connected_ ? connectionCurrentTxPhy_ : kBlePhy1M;
   return maximumDataLengthTimeUsForPhy(phy);

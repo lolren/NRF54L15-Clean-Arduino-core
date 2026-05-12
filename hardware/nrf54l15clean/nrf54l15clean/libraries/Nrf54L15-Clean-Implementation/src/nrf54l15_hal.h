@@ -2353,6 +2353,8 @@ class BleRadio {
                                       bool indicate = false) const;
   uint16_t currentDataLength() const;
   uint16_t currentAttMtu() const;
+  bool dataLengthUpdateComplete() const;
+  bool attMtuExchangeComplete() const;
   uint8_t currentTxPhy() const;
   uint8_t currentRxPhy() const;
   uint8_t getPHY() const;
