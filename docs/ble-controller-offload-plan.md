@@ -145,7 +145,7 @@ time base and the scheduled HFXO timing.
 
 Current API:
 
-- `bool BleRadio::beginBackgroundAdvertising(uint32_t intervalMs, BleAdvertisingChannel channel = BleAdvertisingChannel::k37, uint32_t hfxoLeadUs = 1200U);`
+- `bool BleRadio::beginBackgroundAdvertising(uint32_t intervalMs, BleAdvertisingChannel channel = BleAdvertisingChannel::k37, uint32_t hfxoLeadUs = 1200U, bool addRandomDelay = false, bool rotateChannels = false);`
 - `bool BleRadio::beginBackgroundAdvertising3Channel(uint32_t intervalMs, uint32_t interChannelDelayUs = 350U, uint32_t hfxoLeadUs = 1200U, bool addRandomDelay = false);`
 - `void BleRadio::stopBackgroundAdvertising();`
 - `bool BleRadio::isBackgroundAdvertisingEnabled() const;`

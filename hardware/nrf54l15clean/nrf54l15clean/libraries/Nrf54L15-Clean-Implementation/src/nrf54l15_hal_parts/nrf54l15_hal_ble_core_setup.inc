@@ -125,6 +125,7 @@ BleRadio::BleRadio(uint32_t radioBase, uint32_t ficrBase)
       backgroundAdvertisingInProgress_(false),
       backgroundAdvertisingDue_(false),
       backgroundAdvertisingThreeChannel_(false),
+      backgroundAdvertisingRotateChannel_(false),
       backgroundAdvertisingRandomDelay_(false),
       backgroundAdvertisingManageRfPath_(false),
       backgroundAdvertisingRfPathCollapsed_(false),
@@ -374,6 +375,7 @@ void BleRadio::captureBackgroundAdvertisingRestartState(
   out->active = backgroundAdvertisingEnabled_;
   out->threeChannel = backgroundAdvertisingThreeChannel_;
   out->randomDelay = backgroundAdvertisingRandomDelay_;
+  out->rotateChannels = backgroundAdvertisingRotateChannel_;
   out->channel = backgroundAdvertisingChannel_;
   out->intervalMs = backgroundAdvertisingIntervalUs_ / 1000UL;
   out->interChannelDelayUs = backgroundAdvertisingInterChannelDelayUs_;
@@ -393,7 +395,8 @@ bool BleRadio::restartBackgroundAdvertisingFromState(
   }
   return beginBackgroundAdvertising(state.intervalMs, state.channel,
                                     state.hfxoLeadUs,
-                                    state.randomDelay);
+                                    state.randomDelay,
+                                    state.rotateChannels);
 }
 
 void BleRadio::snapshotBackgroundAdvertisingRfPathRestoreState() {

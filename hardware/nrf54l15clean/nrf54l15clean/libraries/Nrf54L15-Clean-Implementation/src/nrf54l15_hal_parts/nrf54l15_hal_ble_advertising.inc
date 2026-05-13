@@ -175,8 +175,8 @@ bool BleRadio::prepareBackgroundAdvertisingEvent() {
   if (backgroundAdvertisingThreeChannel_) {
     channel = bleBackgroundAdvertisingStageChannel(backgroundAdvertisingPrimaryStage_);
     backgroundAdvertisingChannel_ = channel;
-    backgroundAdvertisingDebug_.lastChannel = static_cast<uint8_t>(channel);
   }
+  backgroundAdvertisingDebug_.lastChannel = static_cast<uint8_t>(channel);
 
   if (!setAdvertisingChannel(channel)) {
     return false;
@@ -625,7 +625,8 @@ void BleRadio::collapseBackgroundAdvertisingRfPathIfManaged() {
 bool BleRadio::beginBackgroundAdvertising(uint32_t intervalMs,
                                           BleAdvertisingChannel channel,
                                           uint32_t hfxoLeadUs,
-                                          bool addRandomDelay) {
+                                          bool addRandomDelay,
+                                          bool rotateChannels) {
   if (!initialized_ || radio_ == nullptr || connected_) {
     return false;
   }
@@ -670,6 +671,7 @@ bool BleRadio::beginBackgroundAdvertising(uint32_t intervalMs,
   backgroundAdvertisingInProgress_ = false;
   backgroundAdvertisingDue_ = false;
   backgroundAdvertisingThreeChannel_ = false;
+  backgroundAdvertisingRotateChannel_ = rotateChannels;
   backgroundAdvertisingRandomDelay_ = addRandomDelay;
   backgroundAdvertisingManageRfPath_ = bleBackgroundAdvertisingShouldManageRfPath();
   backgroundAdvertisingRfPathCollapsed_ = false;
@@ -695,6 +697,7 @@ bool BleRadio::beginBackgroundAdvertising(uint32_t intervalMs,
   memset(&backgroundAdvertisingDebug_, 0, sizeof(backgroundAdvertisingDebug_));
   backgroundAdvertisingDebug_.enabled = 1U;
   backgroundAdvertisingDebug_.threeChannel = 0U;
+  backgroundAdvertisingDebug_.rotatingChannel = rotateChannels ? 1U : 0U;
   backgroundAdvertisingDebug_.rfPathManaged =
       backgroundAdvertisingManageRfPath_ ? 1U : 0U;
   backgroundAdvertisingDebug_.rfPathActive =
@@ -778,6 +781,7 @@ bool BleRadio::beginBackgroundAdvertising3Channel(uint32_t intervalMs,
   backgroundAdvertisingInProgress_ = false;
   backgroundAdvertisingDue_ = false;
   backgroundAdvertisingThreeChannel_ = true;
+  backgroundAdvertisingRotateChannel_ = false;
   backgroundAdvertisingRandomDelay_ = addRandomDelay;
   backgroundAdvertisingManageRfPath_ = bleBackgroundAdvertisingShouldManageRfPath();
   backgroundAdvertisingRfPathCollapsed_ = false;
@@ -802,6 +806,7 @@ bool BleRadio::beginBackgroundAdvertising3Channel(uint32_t intervalMs,
   memset(&backgroundAdvertisingDebug_, 0, sizeof(backgroundAdvertisingDebug_));
   backgroundAdvertisingDebug_.enabled = 1U;
   backgroundAdvertisingDebug_.threeChannel = 1U;
+  backgroundAdvertisingDebug_.rotatingChannel = 0U;
   backgroundAdvertisingDebug_.rfPathManaged =
       backgroundAdvertisingManageRfPath_ ? 1U : 0U;
   backgroundAdvertisingDebug_.rfPathActive =
@@ -871,6 +876,7 @@ void BleRadio::stopBackgroundAdvertising() {
   backgroundAdvertisingInProgress_ = false;
   backgroundAdvertisingDue_ = false;
   backgroundAdvertisingThreeChannel_ = false;
+  backgroundAdvertisingRotateChannel_ = false;
   backgroundAdvertisingRandomDelay_ = false;
   backgroundAdvertisingManageRfPath_ = false;
   backgroundAdvertisingRfPathCollapsed_ = false;
@@ -893,6 +899,7 @@ void BleRadio::stopBackgroundAdvertising() {
       kBleBackgroundInvalidCompareChannel;
   backgroundAdvertisingDebug_.enabled = 0U;
   backgroundAdvertisingDebug_.threeChannel = 0U;
+  backgroundAdvertisingDebug_.rotatingChannel = 0U;
   backgroundAdvertisingDebug_.rfPathManaged = 0U;
   backgroundAdvertisingDebug_.rfPathActive =
       BoardControl::rfSwitchPowerEnabled() ? 1U : 0U;
@@ -937,6 +944,7 @@ void BleRadio::clearBackgroundAdvertisingDebugCounters() {
   const uint32_t irqState = bleEnterCritical();
   const uint8_t enabled = backgroundAdvertisingEnabled_ ? 1U : 0U;
   const uint8_t threeChannel = backgroundAdvertisingThreeChannel_ ? 1U : 0U;
+  const uint8_t rotatingChannel = backgroundAdvertisingRotateChannel_ ? 1U : 0U;
   const uint8_t rfPathManaged = backgroundAdvertisingManageRfPath_ ? 1U : 0U;
   const uint8_t rfPathActive =
       BoardControl::rfSwitchPowerEnabled() ? 1U : 0U;
@@ -948,6 +956,7 @@ void BleRadio::clearBackgroundAdvertisingDebugCounters() {
   memset(&backgroundAdvertisingDebug_, 0, sizeof(backgroundAdvertisingDebug_));
   backgroundAdvertisingDebug_.enabled = enabled;
   backgroundAdvertisingDebug_.threeChannel = threeChannel;
+  backgroundAdvertisingDebug_.rotatingChannel = rotatingChannel;
   backgroundAdvertisingDebug_.rfPathManaged = rfPathManaged;
   backgroundAdvertisingDebug_.rfPathActive = rfPathActive;
   backgroundAdvertisingDebug_.latencyManaged = latencyManaged;
@@ -1258,6 +1267,10 @@ bool BleRadio::serviceBackgroundAdvertising() {
     }
     backgroundAdvertisingPrimaryStage_ = 0U;
     backgroundAdvertisingDebug_.currentStage = 0U;
+    if (!backgroundAdvertisingThreeChannel_ && backgroundAdvertisingRotateChannel_) {
+      backgroundAdvertisingChannel_ =
+          bleBackgroundAdvertisingNextChannel(backgroundAdvertisingChannel_);
+    }
     backgroundAdvertisingEventStartTxUs_ = nextEventStartUs;
     prepared = prepareBackgroundAdvertisingEvent();
     if (prepared) {

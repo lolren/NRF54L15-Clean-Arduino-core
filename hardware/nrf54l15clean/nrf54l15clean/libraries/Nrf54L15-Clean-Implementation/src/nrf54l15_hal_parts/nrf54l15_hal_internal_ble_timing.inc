@@ -255,6 +255,18 @@ static inline BleAdvertisingChannel bleBackgroundAdvertisingStageChannel(uint8_t
   }
 }
 
+static inline BleAdvertisingChannel bleBackgroundAdvertisingNextChannel(
+    BleAdvertisingChannel channel) {
+  switch (channel) {
+    case BleAdvertisingChannel::k37:
+      return BleAdvertisingChannel::k38;
+    case BleAdvertisingChannel::k38:
+      return BleAdvertisingChannel::k39;
+    default:
+      return BleAdvertisingChannel::k37;
+  }
+}
+
 static inline uint8_t bleBackgroundAdvertisingServiceCompareChannelForTxCompare(
     bool threeChannel, uint8_t txCompareChannel) {
   if (!threeChannel) {

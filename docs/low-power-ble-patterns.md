@@ -1,6 +1,6 @@
 # Low-Power BLE Patterns
 
-This note captures the three BLE operating modes now implemented in the Arduino core
+This note captures the BLE operating modes now implemented in the Arduino core
 for the XIAO nRF54L15, along with the helper APIs that make the board-specific
 current savings reproducible.
 
@@ -32,7 +32,34 @@ The low-power BLE examples are now sketch-owned. Advertising cadence, burst
 count, burst gap, and system-off interval live as plain top-of-sketch
 constants inside each example instead of hidden board-menu overrides.
 
-## Mode 1: Continuous Advertising With RF-Switch Duty-Cycling
+## Mode 1: Lowest Continuous Background Beacon
+
+Example:
+
+- `examples/BLE/AdvertisingLowPower/BleAdvertiserRotatingBackground/BleAdvertiserRotatingBackground.ino`
+
+Intent:
+
+- stay continuously discoverable over time
+- remain in `System ON`
+- let the BLE HAL schedule HFXO/RADIO from GRTC/DPPI-assisted background timing
+- transmit one primary-channel packet per interval and rotate channels over successive intervals
+- collapse the board RF switch path between events
+
+Why it exists:
+
+- a full three-channel advertising event costs extra radio time and CPU service work every interval
+- rotating `37 -> 38 -> 39` over intervals keeps scanner coverage while reducing average current for beacon-style payloads
+- this is the first practical step toward Zephyr-like low-power advertising behavior in this raw Arduino BLE path
+
+Default sketch profile:
+
+- `ADV_NONCONN_IND`
+- `1000 ms` interval
+- `-10 dBm`
+- low-power board build with VPR, Thread, Matter, and Zigbee disabled
+
+## Mode 2: Continuous Advertising With RF-Switch Duty-Cycling
 
 Example:
 
@@ -54,7 +81,7 @@ Observed result in local testing:
 - user-measured around `0.1 mA` with the validated sketch configuration
 - change `kAdvertisingIntervalMs` in the sketch to `1000UL` if you want easier scanner visibility
 
-## Mode 2: Hybrid Burst Advertising In System ON
+## Mode 3: Hybrid Burst Advertising In System ON
 
 Example:
 
@@ -85,7 +112,7 @@ Status:
 - compiled successfully in this turn
 - reflashed and revalidated on hardware in this turn as `X54-HYBRID`
 
-## Mode 3: Burst Advertising Plus Timed SYSTEM OFF
+## Mode 4: Burst Advertising Plus Timed SYSTEM OFF
 
 Example:
 
@@ -117,7 +144,7 @@ Validated baseline:
 - default boot profile
 - change `kSystemOffIntervalMs` in the sketch to `5000UL` if you want a sparser wake cadence
 
-## Mode 4: Long-Sleep Phone-Tuned Beacon
+## Mode 5: Long-Sleep Phone-Tuned Beacon
 
 Example:
 
@@ -155,22 +182,28 @@ Observed behavior:
 
 Use mode 1 when:
 
+- you need a continuously running beacon-style advertiser
+- scan responses and connections are unnecessary
+- lowest `System ON` advertising current matters more than sending on all three channels in each interval
+
+Use mode 2 when:
+
 - you need practical continuous discoverability
 - `~100 uA` class current is acceptable
 
-Use mode 2 when:
+Use mode 3 when:
 
 - you want a middle ground
 - scanners should still have a reasonable chance to catch advertisements
 - you do not want a cold boot every cycle
 
-Use mode 3 when:
+Use mode 4 when:
 
 - the lowest average current matters more than continuous discoverability
 - burst beaconing is acceptable
 - cold-boot behavior on every cycle is acceptable
 
-Use mode 4 when:
+Use mode 5 when:
 
 - you want long battery-style sleep intervals
 - scanners should still have a realistic chance to catch the device inside a longer scan window

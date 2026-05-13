@@ -1361,15 +1361,29 @@ class BluefruitCompatManager {
 
     const uint8_t advType = Bluefruit.Advertising.adv_type_;
     if (advType == BLE_GAP_ADV_TYPE_NONCONNECTABLE_NONSCANNABLE_UNDIRECTED) {
-      if (!radio_.isBackgroundAdvertisingEnabled()) {
+      if (radio_.isBackgroundAdvertisingEnabled()) {
+        return;
+      }
+
+      bool backgroundStarted = false;
+      {
         const uint32_t intervalUs = static_cast<uint32_t>(intervalUnits) * 625UL;
         if ((intervalUs % 1000UL) == 0UL) {
           const uint32_t intervalMs = intervalUs / 1000UL;
-          (void)radio_.beginBackgroundAdvertising3Channel(intervalMs, 350U, 1200U,
-                                                          true);
+#if defined(NRF54L15_CLEAN_POWER_LOW)
+          backgroundStarted = radio_.beginBackgroundAdvertising(
+              intervalMs, xiao_nrf54l15::BleAdvertisingChannel::k37, 1200U,
+              true, true);
+#else
+          backgroundStarted =
+              radio_.beginBackgroundAdvertising3Channel(intervalMs, 350U, 1200U,
+                                                        true);
+#endif
         }
       }
-      return;
+      if (backgroundStarted) {
+        return;
+      }
     }
 
     const uint64_t nowUs = schedulerTimeUs();

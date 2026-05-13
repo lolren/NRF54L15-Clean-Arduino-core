@@ -479,7 +479,9 @@ void GRTC_0_IRQHandler(void)
     }
 #endif
     if (nrf54l15_ble_grtc_irq_service != 0) {
+#if defined(NRF54L15_CLEAN_POWER_LOW)
         ++g_nrf54l15_diag_ble_grtc_irq_service_count;
+#endif
         nrf54l15_ble_grtc_irq_service();
     }
     if (nrf54l15_grtc_pwm_irq_service != 0) {

@@ -2247,6 +2247,7 @@ struct BleBackgroundAdvertisingDebugCounters {
   uint8_t currentStage;
   uint8_t enabled;
   uint8_t threeChannel;
+  uint8_t rotatingChannel;
   uint8_t rfPathManaged;
   uint8_t rfPathActive;
   uint8_t latencyManaged;
@@ -2389,7 +2390,8 @@ class BleRadio {
       uint32_t intervalMs,
       BleAdvertisingChannel channel = BleAdvertisingChannel::k37,
       uint32_t hfxoLeadUs = 1200U,
-      bool addRandomDelay = false);
+      bool addRandomDelay = false,
+      bool rotateChannels = false);
   bool beginBackgroundAdvertising3Channel(uint32_t intervalMs,
                                           uint32_t interChannelDelayUs = 350U,
                                           uint32_t hfxoLeadUs = 1200U,
@@ -2578,6 +2580,7 @@ class BleRadio {
     bool active;
     bool threeChannel;
     bool randomDelay;
+    bool rotateChannels;
     BleAdvertisingChannel channel;
     uint32_t intervalMs;
     uint32_t interChannelDelayUs;
@@ -3014,6 +3017,7 @@ class BleRadio {
   bool backgroundAdvertisingInProgress_;
   bool backgroundAdvertisingDue_;
   bool backgroundAdvertisingThreeChannel_;
+  bool backgroundAdvertisingRotateChannel_;
   bool backgroundAdvertisingRandomDelay_;
   bool backgroundAdvertisingManageRfPath_;
   bool backgroundAdvertisingRfPathCollapsed_;
