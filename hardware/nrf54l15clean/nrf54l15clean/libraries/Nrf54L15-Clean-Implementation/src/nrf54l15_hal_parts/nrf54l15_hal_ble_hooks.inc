@@ -7,7 +7,11 @@ extern "C" void nrf54l15_clean_ble_idle_service(void) {
   // because it uses its own connectionServiceBusy_ guard. This lets sketches
   // that call delay() inside connect callbacks still service BLE events.
   if (g_activeBleRadio != nullptr) {
-    g_activeBleRadio->serviceBackgroundConnection();
+    if (g_activeBleRadio->isBackgroundConnectionServiceEnabled()) {
+      g_activeBleRadio->serviceBackgroundConnection(0U);
+    } else {
+      g_activeBleRadio->serviceBackgroundConnection();
+    }
   }
 
   if (g_bleIdleServiceActive) {
@@ -57,7 +61,8 @@ extern "C" void nrf54l15_clean_ble_yield_service(void) {
 extern "C" uint32_t nrf54l15_clean_ble_idle_sleep_cap_us(void) {
   uint32_t capUs = 0U;
 
-  if (g_activeBleRadio != nullptr && g_activeBleRadio->isConnected()) {
+  if (g_activeBleRadio != nullptr && g_activeBleRadio->isConnected() &&
+      !g_activeBleRadio->isBackgroundConnectionServiceEnabled()) {
     capUs = 1000U;
   }
   if (nrf54l15_bluefruit_compat_idle_sleep_cap_us != nullptr) {

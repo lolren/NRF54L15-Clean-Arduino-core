@@ -1041,6 +1041,66 @@ bool BleRadio::backgroundAdvertisingConsumePendingCompareFromFallback() {
   return consumed;
 }
 
+void BleRadio::serviceBackgroundAdvertisingFromIrq() {
+  if (NRF54L15_CLEAN_BLE_BACKGROUND_GRTC_IRQ_RUN == 0) {
+    return;
+  }
+  if (!backgroundAdvertisingEnabled_ || radio_ == nullptr || connected_ ||
+      backgroundAdvertisingInProgress_) {
+    return;
+  }
+
+  bool runService = false;
+  bool runPrewarm = false;
+  const uint32_t irqState = bleEnterCritical();
+  if (bleCompareEventPending(kBleBackgroundAdvPrewarmCompareChannel)) {
+    bleDisableCompare(kBleBackgroundAdvPrewarmCompareChannel, true);
+    runPrewarm = true;
+  }
+
+  if (bleCompareEventPending(kBleBackgroundAdvTxCompareChannel)) {
+    bleDisableCompare(kBleBackgroundAdvTxCompareChannel, true);
+  }
+  if (bleCompareEventPending(kBleBackgroundAdvStage1TxCompareChannel)) {
+    bleDisableCompare(kBleBackgroundAdvStage1TxCompareChannel, true);
+  }
+  if (bleCompareEventPending(kBleBackgroundAdvStage2TxCompareChannel)) {
+    bleDisableCompare(kBleBackgroundAdvStage2TxCompareChannel, true);
+  }
+
+  if (bleCompareEventPending(kBleBackgroundAdvCleanupCompareChannel)) {
+    bleDisableCompare(kBleBackgroundAdvCleanupCompareChannel, true);
+    backgroundAdvertisingArmed_ = false;
+    backgroundAdvertisingDue_ = true;
+    runService = true;
+  } else if (bleCompareEventPending(kBleBackgroundAdvStage1ServiceCompareChannel)) {
+    bleDisableCompare(kBleBackgroundAdvStage1ServiceCompareChannel, true);
+    backgroundAdvertisingArmed_ = false;
+    backgroundAdvertisingDue_ = true;
+    runService = true;
+  } else if (bleCompareEventPending(kBleBackgroundAdvStage2ServiceCompareChannel)) {
+    bleDisableCompare(kBleBackgroundAdvStage2ServiceCompareChannel, true);
+    backgroundAdvertisingArmed_ = false;
+    backgroundAdvertisingDue_ = true;
+    runService = true;
+  } else if (bleCompareEventPending(kBleBackgroundAdvFinalCleanupCompareChannel)) {
+    bleDisableCompare(kBleBackgroundAdvFinalCleanupCompareChannel, true);
+    backgroundAdvertisingArmed_ = false;
+    backgroundAdvertisingDue_ = true;
+    runService = true;
+  }
+  bleExitCritical(irqState);
+
+  if (runPrewarm && !handleBackgroundAdvertisingPrewarmEvent()) {
+    backgroundAdvertisingLastStopReason_ = kBleBackgroundAdvStopReasonPrewarmFailed;
+    stopBackgroundAdvertising();
+    return;
+  }
+  if (runService || backgroundAdvertisingDue_) {
+    (void)serviceBackgroundAdvertising();
+  }
+}
+
 bool BleRadio::serviceBackgroundAdvertising() {
   if (NRF54L15_CLEAN_BLE_BACKGROUND_SERVICE == 0) {
     return false;

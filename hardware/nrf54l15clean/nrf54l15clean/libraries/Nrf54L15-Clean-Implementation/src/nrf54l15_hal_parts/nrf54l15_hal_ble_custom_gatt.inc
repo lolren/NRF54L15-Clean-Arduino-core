@@ -1350,7 +1350,8 @@ bool BleRadio::applyCustomGattCharacteristicValueWrite(uint16_t handle,
     }
     const bool allowWriteReq = ((valueTarget->properties & kBleGattPropWrite) != 0U);
     const bool allowWriteCmd =
-        ((valueTarget->properties & kBleGattPropWriteNoRsp) != 0U);
+        ((valueTarget->properties &
+          (kBleGattPropWriteNoRsp | kBleGattPropWrite)) != 0U);
     if ((withResponse && !allowWriteReq) || (!withResponse && !allowWriteCmd)) {
       if (outErrorCode != nullptr) {
         *outErrorCode = kAttErrWriteNotPermitted;

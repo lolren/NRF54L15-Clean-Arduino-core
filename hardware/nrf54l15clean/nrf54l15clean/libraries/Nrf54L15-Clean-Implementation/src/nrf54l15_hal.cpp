@@ -83,6 +83,28 @@ namespace {
 
 constexpr uint32_t kBleSecp256r1CooperateSpinLimit = 0UL;
 
+void clearUnownedBleBackgroundGrtcCompares() {
+  static constexpr uint8_t kChannels[] = {
+      kBleBackgroundCompareChannel,
+      kBleBackgroundAdvPrewarmCompareChannel,
+      kBleBackgroundAdvTxCompareChannel,
+      kBleBackgroundConnPrewarmCompareChannel,
+      kBleBackgroundAdvCleanupCompareChannel,
+      kBleBackgroundAdvStage1ServiceCompareChannel,
+      kBleBackgroundAdvStage1TxCompareChannel,
+      kBleBackgroundAdvStage2ServiceCompareChannel,
+      kBleBackgroundAdvStage2TxCompareChannel,
+      kBleBackgroundAdvFinalCleanupCompareChannel,
+  };
+
+  for (uint8_t i = 0U; i < sizeof(kChannels); ++i) {
+    const uint8_t channel = kChannels[i];
+    if (bleCompareEventPending(channel) || bleCompareEnabled(channel)) {
+      bleDisableCompare(channel, true);
+    }
+  }
+}
+
 }  // namespace
 
 extern "C" void nrf54l15_secp256r1_cooperate_hook(void) {
@@ -96,6 +118,15 @@ extern "C" void nrf54l15_secp256r1_cooperate_hook(void) {
     ++g_bleBackgroundRadio->smpSecureConnectionsCooperateHookCount_;
     g_bleBackgroundRadio->serviceBackgroundConnection(
         kBleSecp256r1CooperateSpinLimit);
+  }
+}
+
+extern "C" void nrf54l15_ble_grtc_irq_service(void) {
+  if (g_bleBackgroundRadio != nullptr) {
+    g_bleBackgroundRadio->serviceBackgroundAdvertisingFromIrq();
+    g_bleBackgroundRadio->serviceBackgroundConnectionFromIrq();
+  } else {
+    clearUnownedBleBackgroundGrtcCompares();
   }
 }
 

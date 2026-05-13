@@ -670,6 +670,7 @@ void BleRadio::serviceBackgroundConnection(uint32_t spinLimit) {
 
   ++smpSecureConnectionsBackgroundServiceCount_;
   connectionServiceBusy_ = true;
+  backgroundConnectionServiceInProgress_ = backgroundConnectionServiceEnabled_;
   BleConnectionEvent event{};
   resetConnectionEventStruct(&event);
   const bool ran = pollConnectionEventInternal(&event, spinLimit);
@@ -679,7 +680,30 @@ void BleRadio::serviceBackgroundConnection(uint32_t spinLimit) {
   if (ran && shouldQueueConnectionEvent(event)) {
     enqueueConnectionEvent(event);
   }
+  backgroundConnectionServiceInProgress_ = false;
   connectionServiceBusy_ = false;
+
+  if (backgroundConnectionServiceEnabled_ && connected_ && connectionNextEventUs_ != 0U) {
+    uint32_t wakeUs = connectionNextEventUs_;
+    if (connectionRole_ == BleConnectionRole::kPeripheral) {
+      const uint32_t rxStartUs =
+          (connectionNextEventUs_ > kBleConnRxStartLeadUs)
+              ? static_cast<uint32_t>(connectionNextEventUs_ - kBleConnRxStartLeadUs)
+              : connectionNextEventUs_;
+      wakeUs = (rxStartUs > kBleConnAnchorPrewaitUs)
+                   ? static_cast<uint32_t>(rxStartUs - kBleConnAnchorPrewaitUs)
+                   : rxStartUs;
+    } else {
+      wakeUs = (connectionNextEventUs_ > kBleConnAnchorPrewaitUs)
+                   ? static_cast<uint32_t>(connectionNextEventUs_ - kBleConnAnchorPrewaitUs)
+                   : connectionNextEventUs_;
+    }
+    backgroundConnectionWakeUs_ = wakeUs;
+    backgroundConnectionServiceArmed_ = true;
+    backgroundConnectionServiceDue_ = false;
+    bleBackgroundEnableIrq();
+    bleProgramCompare(kBleBackgroundConnPrewarmCompareChannel, wakeUs, true);
+  }
 }
 
 bool BleRadio::disconnect(uint32_t spinLimit) {
@@ -958,11 +982,43 @@ void BleRadio::setBackgroundConnectionServiceEnabled(bool enabled) {
   backgroundConnectionPreparedDataChannel_ = 0U;
   backgroundConnectionWakeUs_ = 0U;
   g_bleBackgroundRadio = this;
+  if (connectionNextEventUs_ != 0U) {
+    uint32_t wakeUs = connectionNextEventUs_;
+    if (connectionRole_ == BleConnectionRole::kPeripheral) {
+      const uint32_t rxStartUs =
+          (connectionNextEventUs_ > kBleConnRxStartLeadUs)
+              ? static_cast<uint32_t>(connectionNextEventUs_ - kBleConnRxStartLeadUs)
+              : connectionNextEventUs_;
+      wakeUs = (rxStartUs > kBleConnAnchorPrewaitUs)
+                   ? static_cast<uint32_t>(rxStartUs - kBleConnAnchorPrewaitUs)
+                   : rxStartUs;
+    } else {
+      wakeUs = (connectionNextEventUs_ > kBleConnAnchorPrewaitUs)
+                   ? static_cast<uint32_t>(connectionNextEventUs_ - kBleConnAnchorPrewaitUs)
+                   : connectionNextEventUs_;
+    }
+    backgroundConnectionWakeUs_ = wakeUs;
+    backgroundConnectionServiceArmed_ = true;
+    bleBackgroundEnableIrq();
+    bleProgramCompare(kBleBackgroundConnPrewarmCompareChannel, wakeUs, true);
+  }
   bleExitCritical(irqState);
 }
 
 bool BleRadio::isBackgroundConnectionServiceEnabled() const {
   return backgroundConnectionServiceEnabled_;
+}
+
+void BleRadio::serviceBackgroundConnectionFromIrq() {
+  if (!backgroundConnectionServiceEnabled_ ||
+      !bleCompareEventPending(kBleBackgroundConnPrewarmCompareChannel)) {
+    return;
+  }
+
+  bleDisableCompare(kBleBackgroundConnPrewarmCompareChannel, true);
+  backgroundConnectionServiceArmed_ = false;
+  backgroundConnectionServiceDue_ = true;
+  serviceBackgroundConnection(120000UL);
 }
 
 void BleRadio::stopBackgroundConnectionService() {

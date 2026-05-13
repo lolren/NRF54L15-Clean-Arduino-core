@@ -461,6 +461,7 @@ class BluefruitCompatManager {
  public:
   static constexpr uint32_t kBleActiveIdleSleepCapUs = 1000UL;
   static constexpr unsigned long kBleNoWfiDuringSetupMs = 2000UL;
+  static constexpr uint32_t kBleIdleConnectionPollBudgetUs = 0UL;
 
   BluefruitCompatManager()
       : started_(false),
@@ -741,12 +742,24 @@ class BluefruitCompatManager {
     }
 
     if (connected) {
+      const bool backgroundReady =
+          static_cast<int32_t>(millis() - last_connection_edge_ms_) >=
+          static_cast<int32_t>(kBleNoWfiDuringSetupMs);
+      if (backgroundReady) {
+        if (!radio_.isBackgroundConnectionServiceEnabled()) {
+          radio_.setBackgroundConnectionServiceEnabled(true);
+        }
+      } else if (radio_.isBackgroundConnectionServiceEnabled()) {
+        radio_.setBackgroundConnectionServiceEnabled(false);
+      }
+
       maybeApplyDeferredConnectionRequests();
       maybeDispatchRssiUpdate();
       if (radio_.connectionRole() == BleConnectionRole::kPeripheral) {
         for (uint8_t i = 0U; i < 2U && radio_.isConnected(); ++i) {
           BleConnectionEvent event{};
-          if (!radio_.pollConnectionEvent(&event, 120000UL)) {
+          if (!radio_.pollConnectionEvent(&event,
+                                          kBleIdleConnectionPollBudgetUs)) {
             break;
           }
         }
@@ -760,7 +773,8 @@ class BluefruitCompatManager {
         processCentralBackgroundEvents(4U);
         for (uint8_t i = 0U; i < 2U && radio_.isConnected(); ++i) {
           BleConnectionEvent event{};
-          if (!radio_.pollConnectionEvent(&event, 120000UL)) {
+          if (!radio_.pollConnectionEvent(&event,
+                                          kBleIdleConnectionPollBudgetUs)) {
             break;
           }
           handleCentralConnectionEvent(event);
@@ -815,6 +829,9 @@ class BluefruitCompatManager {
       return remainingUs;
     }
     if (radio_.isConnected()) {
+      if (radio_.isBackgroundConnectionServiceEnabled()) {
+        return 0U;
+      }
       if ((millis() - last_connection_edge_ms_) < kBleNoWfiDuringSetupMs) {
         return 1U;
       }
@@ -1478,6 +1495,7 @@ class BluefruitCompatManager {
     }
 
     last_connection_edge_ms_ = millis();
+    radio_.setBackgroundConnectionServiceEnabled(false);
     BleDisconnectDebug debug{};
     uint8_t reason = 0x13U;
     if (radio_.getDisconnectDebug(&debug)) {

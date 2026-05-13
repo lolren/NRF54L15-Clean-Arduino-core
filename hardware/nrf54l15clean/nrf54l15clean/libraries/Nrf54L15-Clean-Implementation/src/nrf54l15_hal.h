@@ -2474,6 +2474,8 @@ class BleRadio {
                            uint32_t spinLimit = 400000UL);
   void setBackgroundConnectionServiceEnabled(bool enabled);
   bool isBackgroundConnectionServiceEnabled() const;
+  void serviceBackgroundAdvertisingFromIrq();
+  void serviceBackgroundConnectionFromIrq();
   bool consumeDeferredConnectionEvent(BleConnectionEvent* event);
 
   bool scanOnce(BleAdvertisingChannel channel, BleScanPacket* packet,

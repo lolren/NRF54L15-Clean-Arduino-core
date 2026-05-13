@@ -865,6 +865,7 @@ constexpr uint32_t kBleScanRspTxenAfterRxUs = BLE_SCAN_RSP_TXEN_AFTER_RX_US;
 // Legacy advertising request/response exchanges should complete within hundreds
 // of microseconds around T_IFS. Bound RX listen windows so advertising cadence
 // does not become host-CPU-spin dependent.
+constexpr uint32_t kBleAdvRequestStartWaitMaxUs = 210U;
 constexpr uint32_t kBleAdvRequestListenMaxUs = 2500U;
 constexpr uint32_t kBleScanRspListenMaxUs = 2500U;
 
