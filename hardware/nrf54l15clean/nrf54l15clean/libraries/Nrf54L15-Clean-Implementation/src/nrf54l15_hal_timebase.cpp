@@ -22,7 +22,7 @@ static constexpr uint32_t kLfclkFrequencyHz = 32768UL;
 static constexpr uint32_t kMaxCcLatchWaitUs = 77UL;
 static constexpr uint32_t kSystemOffMinimumLatencyGuardUs = 1000UL;
 static constexpr Pin kGrtcPwmPin{0U, 3U};
-#if defined(ARDUINO_XIAO_NRF54L15)
+#if defined(ARDUINO_XIAO_NRF54L15) || defined(ARDUINO_XIAO_NRF54L15_CLEAN)
 static constexpr uint32_t kZephyrAllowedCcMaskXiao = 0x67UL;
 static constexpr uint8_t kZephyrMainCcChannelXiao = 1U;
 #endif
@@ -97,7 +97,7 @@ void waitForSystemOffWakeLatch() {
 }
 
 uint8_t systemOffWakeChannel() {
-#if defined(ARDUINO_XIAO_NRF54L15)
+#if defined(ARDUINO_XIAO_NRF54L15) || defined(ARDUINO_XIAO_NRF54L15_CLEAN)
   const uint32_t available =
       kZephyrAllowedCcMaskXiao & ~(1UL << kZephyrMainCcChannelXiao);
   uint8_t channel = kZephyrMainCcChannelXiao;

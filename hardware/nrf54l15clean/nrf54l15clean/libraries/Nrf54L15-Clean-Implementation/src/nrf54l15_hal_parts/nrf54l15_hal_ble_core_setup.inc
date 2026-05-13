@@ -306,6 +306,10 @@ BleRadio::BleRadio(uint32_t radioBase, uint32_t ficrBase)
       lastObservedPacketIsNew_(false),
       lastObservedPeerAckedLastTx_(false) {}
 
+volatile uint32_t g_bleUnconnectedHfxoStartCallCount = 0U;
+volatile uint32_t g_bleUnconnectedHfxoStartTotalUs = 0U;
+volatile uint32_t g_bleUnconnectedHfxoStartMaxUs = 0U;
+
 bool BleRadio::ensureRfPathActiveForBle() {
   const bool rfPowerEnabled = BoardControl::rfSwitchPowerEnabled();
   const BoardAntennaPath currentPath = BoardControl::antennaPath();
@@ -434,8 +438,22 @@ bool BleRadio::beginUnconnectedRadioActivity(uint32_t spinLimit) {
   if (connected_) {
     return true;
   }
+  if (NRF_GRTC != nullptr) {
+    NRF54L15_GRTC_SYSCOUNTER(NRF_GRTC).ACTIVE =
+        (GRTC_SYSCOUNTER_ACTIVE_ACTIVE_Active
+         << GRTC_SYSCOUNTER_ACTIVE_ACTIVE_Pos);
+    __asm volatile("dsb 0xF" ::: "memory");
+  }
+  const uint32_t hfxoStartUs = bleTimingUs();
   if (!ClockControl::startHfxo(true, spinLimit)) {
     return false;
+  }
+  ++g_bleUnconnectedHfxoStartCallCount;
+  const uint32_t hfxoElapsedUs =
+      static_cast<uint32_t>(bleTimingUs() - hfxoStartUs);
+  g_bleUnconnectedHfxoStartTotalUs += hfxoElapsedUs;
+  if (hfxoElapsedUs > g_bleUnconnectedHfxoStartMaxUs) {
+    g_bleUnconnectedHfxoStartMaxUs = hfxoElapsedUs;
   }
   // Match the per-event RF ownership model used by the phone-visible
   // non-connectable advertiser: enable the RF path for this event, then
@@ -447,6 +465,12 @@ void BleRadio::endUnconnectedRadioActivity() {
   if (!connected_) {
     ClockControl::stopHfxo();
     releaseRfPathForBle();
+    if (!backgroundServicesActive() && NRF_GRTC != nullptr) {
+      NRF54L15_GRTC_SYSCOUNTER(NRF_GRTC).ACTIVE =
+          (GRTC_SYSCOUNTER_ACTIVE_ACTIVE_NotActive
+           << GRTC_SYSCOUNTER_ACTIVE_ACTIVE_Pos);
+      __asm volatile("dsb 0xF" ::: "memory");
+    }
   }
 }
 
@@ -481,13 +505,6 @@ bool BleRadio::begin(int8_t txPowerDbm) {
   externalAntenna_ =
       (boardDesiredAntennaPath() == BoardAntennaPath::kExternal);
   initBleGrtc();
-  // Re-assert GRTC ACTIVE on every begin(); initBleGrtc() is one-shot but
-  // end() clears it so subsequent begin() calls must restore it explicitly.
-  if (NRF_GRTC != nullptr) {
-    NRF54L15_GRTC_SYSCOUNTER(NRF_GRTC).ACTIVE =
-        (GRTC_SYSCOUNTER_ACTIVE_ACTIVE_Active
-         << GRTC_SYSCOUNTER_ACTIVE_ACTIVE_Pos);
-  }
 
   if (!beginUnconnectedRadioActivity(1500000UL)) {
     return false;
@@ -539,7 +556,10 @@ bool BleRadio::begin(int8_t txPowerDbm) {
   }
 
   loadBondRecordFromPersistence();
-  (void)ensureSecureConnectionsLocalKeypair();
+  // Secure Connections material is generated lazily when an SC pairing flow
+  // actually starts. Keeping begin() side-effect free is important for
+  // advertising-only / insecure BLE power.
+  endUnconnectedRadioActivity();
   initialized_ = true;
   g_activeBleRadio = this;
   return true;
@@ -554,13 +574,14 @@ void BleRadio::end() {
     latestConnectionRssiDbm_ = 0;
     latestConnectionRssiValid_ = false;
     connectionServiceBusy_ = false;
-    clearQueuedConnectionEvents();
-    clearCustomGattConnectionState();
-    if (g_activeBleRadio == this) {
-      g_activeBleRadio = nullptr;
-    }
-    return;
+  clearQueuedConnectionEvents();
+  clearCustomGattConnectionState();
+  if (g_activeBleRadio == this) {
+    g_activeBleRadio = nullptr;
   }
+  endUnconnectedRadioActivity();
+  return;
+}
 
   radio_->SHORTS = 0U;
   radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
@@ -578,6 +599,7 @@ void BleRadio::end() {
   if (g_activeBleRadio == this) {
     g_activeBleRadio = nullptr;
   }
+  endUnconnectedRadioActivity();
 }
 
 bool BleRadio::setTxPowerDbm(int8_t dbm) {

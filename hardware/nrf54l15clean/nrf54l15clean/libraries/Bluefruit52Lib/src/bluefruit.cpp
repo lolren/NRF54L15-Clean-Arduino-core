@@ -13,6 +13,9 @@ using xiao_nrf54l15::BleDisconnectReason;
 using xiao_nrf54l15::BleGattCharacteristicProperty;
 using xiao_nrf54l15::BleRadio;
 
+extern "C" uint64_t nrf54l15_core_monotonic_time_us(void);
+extern "C" uint32_t nrf54l15_core_monotonic_time_ms(void);
+
 constexpr uint8_t kAdTypeFlags = 0x01U;
 constexpr uint8_t kAdTypeIncomplete16 = 0x02U;
 constexpr uint8_t kAdTypeComplete16 = 0x03U;
@@ -47,6 +50,23 @@ constexpr uint8_t kAttOpWriteReq = 0x12U;
 constexpr uint8_t kAttOpWriteRsp = 0x13U;
 constexpr uint8_t kAttOpHandleValueNtf = 0x1BU;
 constexpr uint8_t kAttErrAttributeNotFound = 0x0AU;
+
+volatile uint32_t g_bluefruitIdleCapAdvZeroDueCount = 0U;
+volatile uint32_t g_bluefruitIdleCapAdvPastDueCount = 0U;
+volatile uint32_t g_bluefruitIdleCapAdvLeadBusyCount = 0U;
+volatile uint32_t g_bluefruitIdleCapAdvSleepCount = 0U;
+volatile uint32_t g_bluefruitMaybeAdvertiseCallCount = 0U;
+volatile uint32_t g_bluefruitMaybeAdvertiseNotDueCount = 0U;
+volatile uint32_t g_bluefruitMaybeAdvertiseEventCount = 0U;
+volatile uint32_t g_bluefruitMaybeAdvertiseConnectableEventCount = 0U;
+volatile uint32_t g_bluefruitMaybeAdvertiseNonconnEventCount = 0U;
+volatile uint32_t g_bluefruitMaybeAdvertiseIntervalUnitsLast = 0U;
+volatile uint32_t g_bluefruitMaybeAdvertiseIntervalUnitsMin = 0xFFFFFFFFUL;
+volatile uint32_t g_bluefruitMaybeAdvertiseIntervalUnitsMax = 0U;
+volatile uint32_t g_bluefruitMaybeAdvertiseGapMinUs = 0xFFFFFFFFUL;
+volatile uint32_t g_bluefruitMaybeAdvertiseGapMaxUs = 0U;
+volatile uint64_t g_bluefruitMaybeAdvertiseGapTotalUs = 0ULL;
+volatile uint64_t g_bluefruitMaybeAdvertiseLastEventUs = 0ULL;
 
 static uint8_t normalizeBluefruitPhy(uint8_t phy) {
   switch (phy) {
@@ -215,9 +235,15 @@ void invokeBluefruitUserCallback(Callback callback, Args... args) {
   callback(args...);
 }
 
-bool timeReachedUs(uint32_t now, uint32_t target) {
-  return static_cast<int32_t>(now - target) >= 0;
+bool timeReachedUs(uint64_t now, uint64_t target) {
+  return static_cast<int64_t>(now - target) >= 0;
 }
+
+unsigned long schedulerTimeMs() {
+  return static_cast<unsigned long>(nrf54l15_core_monotonic_time_ms());
+}
+
+uint64_t schedulerTimeUs() { return nrf54l15_core_monotonic_time_us(); }
 
 uint16_t byteSwap16(uint16_t value) {
   return static_cast<uint16_t>((value >> 8U) | (value << 8U));
@@ -611,7 +637,7 @@ class BluefruitCompatManager {
   }
 
   void advertisingStarted() {
-    adv_started_ms_ = millis();
+    adv_started_ms_ = schedulerTimeMs();
     next_adv_due_us_ = 0U;
   }
 
@@ -756,8 +782,37 @@ class BluefruitCompatManager {
         Bluefruit.Scanner.rx_callback_ != nullptr) {
       return 1U;
     }
+    if (radio_.isBackgroundAdvertisingEnabled()) {
+      return 0U;
+    }
     if (Bluefruit.Advertising.running_) {
-      return kBleActiveIdleSleepCapUs;
+      if (next_adv_due_us_ == 0U) {
+        ++g_bluefruitIdleCapAdvZeroDueCount;
+        return 1U;
+      }
+
+      const uint64_t nowUs = schedulerTimeUs();
+      if (timeReachedUs(nowUs, next_adv_due_us_)) {
+        ++g_bluefruitIdleCapAdvPastDueCount;
+        return 1U;
+      }
+
+      const uint64_t remainingUs64 = next_adv_due_us_ - nowUs;
+      uint32_t remainingUs = (remainingUs64 > 0xFFFFFFFFULL)
+                                 ? 0xFFFFFFFFUL
+                                 : static_cast<uint32_t>(remainingUs64);
+
+      // Wake slightly ahead of the deadline so the pump-driven advertising
+      // state machine can stage the next event without falling late.
+      if (remainingUs > 500U) {
+        remainingUs -= 500U;
+      } else {
+        ++g_bluefruitIdleCapAdvLeadBusyCount;
+        remainingUs = 1U;
+      }
+
+      ++g_bluefruitIdleCapAdvSleepCount;
+      return remainingUs;
     }
     if (radio_.isConnected()) {
       if ((millis() - last_connection_edge_ms_) < kBleNoWfiDuringSetupMs) {
@@ -837,7 +892,7 @@ class BluefruitCompatManager {
   bool last_connected_;
   BleConnectionRole last_connection_role_;
   unsigned long last_connection_edge_ms_;
-  uint32_t next_adv_due_us_;
+  uint64_t next_adv_due_us_;
   unsigned long adv_started_ms_;
   bool scan_rsp_name_added_;
   BLECharacteristic* characteristics_[kMaxCharacteristics];
@@ -1241,15 +1296,22 @@ class BluefruitCompatManager {
   }
 
   void maybeAdvertise() {
+    ++g_bluefruitMaybeAdvertiseCallCount;
     if (!Bluefruit.Advertising.running_) {
+      if (radio_.isBackgroundAdvertisingEnabled()) {
+        radio_.stopBackgroundAdvertising();
+      }
       return;
     }
 
     if (Bluefruit.Advertising.stop_timeout_s_ != 0U) {
-      const unsigned long elapsedMs = millis() - adv_started_ms_;
+      const unsigned long elapsedMs = schedulerTimeMs() - adv_started_ms_;
       if (elapsedMs >= (static_cast<unsigned long>(Bluefruit.Advertising.stop_timeout_s_) *
                         1000UL)) {
         Bluefruit.Advertising.running_ = false;
+        if (radio_.isBackgroundAdvertisingEnabled()) {
+          radio_.stopBackgroundAdvertising();
+        }
         if (Bluefruit.Advertising.stop_callback_ != nullptr) {
           invokeBluefruitUserCallback(Bluefruit.Advertising.stop_callback_);
         }
@@ -1261,11 +1323,14 @@ class BluefruitCompatManager {
       if (!applyAdvertisingPayloads()) {
         return;
       }
+      if (radio_.isBackgroundAdvertisingEnabled()) {
+        radio_.stopBackgroundAdvertising();
+      }
     }
 
     uint16_t intervalUnits = Bluefruit.Advertising.interval_fast_;
     if (Bluefruit.Advertising.fast_timeout_s_ != 0U) {
-      const unsigned long elapsedMs = millis() - adv_started_ms_;
+      const unsigned long elapsedMs = schedulerTimeMs() - adv_started_ms_;
       if (elapsedMs >= (static_cast<unsigned long>(Bluefruit.Advertising.fast_timeout_s_) *
                         1000UL)) {
         intervalUnits = (Bluefruit.Advertising.interval_slow_ != 0U)
@@ -1277,12 +1342,56 @@ class BluefruitCompatManager {
       intervalUnits = 32U;
     }
 
-    const uint32_t nowUs = micros();
-    if (next_adv_due_us_ != 0U && !timeReachedUs(nowUs, next_adv_due_us_)) {
+    const uint8_t advType = Bluefruit.Advertising.adv_type_;
+    if (advType == BLE_GAP_ADV_TYPE_NONCONNECTABLE_NONSCANNABLE_UNDIRECTED) {
+      if (!radio_.isBackgroundAdvertisingEnabled()) {
+        const uint32_t intervalUs = static_cast<uint32_t>(intervalUnits) * 625UL;
+        if ((intervalUs % 1000UL) == 0UL) {
+          const uint32_t intervalMs = intervalUs / 1000UL;
+          (void)radio_.beginBackgroundAdvertising3Channel(intervalMs, 350U, 1200U,
+                                                          true);
+        }
+      }
       return;
     }
 
-    radio_.advertiseInteractEvent(nullptr);
+    const uint64_t nowUs = schedulerTimeUs();
+    if (next_adv_due_us_ != 0U && !timeReachedUs(nowUs, next_adv_due_us_)) {
+      ++g_bluefruitMaybeAdvertiseNotDueCount;
+      return;
+    }
+
+    g_bluefruitMaybeAdvertiseIntervalUnitsLast = intervalUnits;
+    if (intervalUnits < g_bluefruitMaybeAdvertiseIntervalUnitsMin) {
+      g_bluefruitMaybeAdvertiseIntervalUnitsMin = intervalUnits;
+    }
+    if (intervalUnits > g_bluefruitMaybeAdvertiseIntervalUnitsMax) {
+      g_bluefruitMaybeAdvertiseIntervalUnitsMax = intervalUnits;
+    }
+
+    if (advType == BLE_GAP_ADV_TYPE_CONNECTABLE_SCANNABLE_UNDIRECTED ||
+        advType == BLE_GAP_ADV_TYPE_NONCONNECTABLE_SCANNABLE_UNDIRECTED) {
+      (void)radio_.advertiseInteractEvent(nullptr, 120U);
+      ++g_bluefruitMaybeAdvertiseConnectableEventCount;
+    } else {
+      (void)radio_.advertiseEvent();
+      ++g_bluefruitMaybeAdvertiseNonconnEventCount;
+    }
+
+    ++g_bluefruitMaybeAdvertiseEventCount;
+    if (g_bluefruitMaybeAdvertiseLastEventUs != 0ULL) {
+      const uint64_t gapUs64 = nowUs - g_bluefruitMaybeAdvertiseLastEventUs;
+      const uint32_t gapUs =
+          (gapUs64 > 0xFFFFFFFFULL) ? 0xFFFFFFFFUL : static_cast<uint32_t>(gapUs64);
+      g_bluefruitMaybeAdvertiseGapTotalUs += gapUs;
+      if (gapUs < g_bluefruitMaybeAdvertiseGapMinUs) {
+        g_bluefruitMaybeAdvertiseGapMinUs = gapUs;
+      }
+      if (gapUs > g_bluefruitMaybeAdvertiseGapMaxUs) {
+        g_bluefruitMaybeAdvertiseGapMaxUs = gapUs;
+      }
+    }
+    g_bluefruitMaybeAdvertiseLastEventUs = nowUs;
     next_adv_due_us_ = nowUs + (static_cast<uint32_t>(intervalUnits) * 625UL);
   }
 
@@ -1415,7 +1524,7 @@ class BluefruitCompatManager {
       }
       if (Bluefruit.Advertising.restart_on_disconnect_) {
         Bluefruit.Advertising.running_ = true;
-        adv_started_ms_ = millis();
+        adv_started_ms_ = schedulerTimeMs();
         next_adv_due_us_ = 0U;
       }
     } else if (last_connection_role_ == BleConnectionRole::kCentral) {
@@ -2717,6 +2826,7 @@ bool BLEAdvertising::start(uint16_t timeout) {
 
 bool BLEAdvertising::stop() {
   running_ = false;
+  manager().radio().stopBackgroundAdvertising();
   return true;
 }
 

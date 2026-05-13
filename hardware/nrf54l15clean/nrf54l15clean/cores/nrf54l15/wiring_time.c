@@ -6,7 +6,7 @@
 #include "nrf54l15.h"
 #include "variant.h"
 
-#if !defined(ARDUINO_XIAO_NRF54L15) && !defined(XIAO_NRF54L15_BOARD_STATE_DECLARED)
+#if !defined(ARDUINO_XIAO_NRF54L15) && !defined(ARDUINO_XIAO_NRF54L15_CLEAN) && !defined(XIAO_NRF54L15_BOARD_STATE_DECLARED)
 typedef struct {
     uint8_t unused;
 } xiao_nrf54l15_board_state_t;
@@ -15,6 +15,7 @@ typedef struct {
 extern uint32_t SystemCoreClock;
 extern void SystemCoreClockUpdate(void);
 extern void nrf54l15_clean_idle_service(void);
+extern uint8_t nrf54l15_bridge_serial_active(void) __attribute__((weak));
 extern void nrf54l15_ble_grtc_irq_service(void) __attribute__((weak));
 extern void nrf54l15_grtc_pwm_irq_service(void) __attribute__((weak));
 extern uint32_t nrf54l15_ble_grtc_reserved_cc_mask(void) __attribute__((weak));
@@ -33,7 +34,18 @@ static const uint32_t kSystemOffLfclkFrequencyHz = 32768UL;
 static const uint32_t kSystemOffMaxCcLatchWaitUs = 77UL;
 static const uint32_t kSystemOffMinimumLatencyGuardUs = 1000UL;
 static const uint32_t kGrtcStartSettleUs = 93UL;
+uint64_t nrf54l15_core_monotonic_time_us(void);
+uint32_t nrf54l15_core_monotonic_time_ms(void);
 #if defined(NRF54L15_CLEAN_POWER_LOW)
+volatile uint32_t g_nrf54l15_diag_delay_outer_loops = 0U;
+volatile uint32_t g_nrf54l15_diag_delay_wfi_entries = 0U;
+volatile uint32_t g_nrf54l15_diag_delay_skipwfi_count = 0U;
+volatile uint32_t g_nrf54l15_diag_delay_invalid_channel_count = 0U;
+volatile uint32_t g_nrf54l15_diag_grtc_irq_count = 0U;
+volatile uint32_t g_nrf54l15_diag_grtc_delay_irq_count = 0U;
+volatile uint32_t g_nrf54l15_diag_ble_grtc_irq_service_count = 0U;
+volatile uint32_t g_nrf54l15_diag_delay_skipwfi_total_us = 0U;
+volatile uint32_t g_nrf54l15_diag_delay_skipwfi_max_us = 0U;
 static const uint16_t kLowPowerDelayTimeoutLfclk = 5U;
 static const uint8_t kLowPowerDelayWakeLfclk = 4U;
 #if NRF54L15_GRTC_IRQ_GROUP == 2U
@@ -44,7 +56,7 @@ static const IRQn_Type kLowPowerTickIrq = GRTC_1_IRQn;
 static const IRQn_Type kLowPowerTickIrq = GRTC_0_IRQn;
 #endif
 #endif
-#if defined(ARDUINO_XIAO_NRF54L15)
+#if defined(ARDUINO_XIAO_NRF54L15) || defined(ARDUINO_XIAO_NRF54L15_CLEAN)
 static const uint32_t kZephyrAllowedCcMaskXiao = 0x67UL;
 static const uint8_t kZephyrMainCcChannelXiao = 1U;
 #endif
@@ -270,6 +282,8 @@ enum { kLowPowerDelayInvalidChannel = 0xFFU };
 static volatile uint8_t g_low_power_delay_fired = 0U;
 static volatile uint8_t g_low_power_timebase_initialized = 0U;
 static uint8_t g_low_power_delay_channel = kLowPowerDelayInvalidChannel;
+static uint8_t g_low_power_monotonic_origin_valid = 0U;
+static uint64_t g_low_power_monotonic_origin_us = 0ULL;
 
 static uint32_t lowPowerAllCcMask(void)
 {
@@ -350,7 +364,7 @@ static void initLowPowerTimebase(void)
             ? nrf54l15_ble_grtc_reserved_cc_mask()
             : 0U;
     uint32_t availableMask = lowPowerAllCcMask() & ~bleReservedMask;
-#if defined(ARDUINO_XIAO_NRF54L15)
+#if defined(ARDUINO_XIAO_NRF54L15) || defined(ARDUINO_XIAO_NRF54L15_CLEAN)
     availableMask &= kZephyrAllowedCcMaskXiao;
 #endif
     g_low_power_delay_channel =
@@ -392,6 +406,7 @@ static void delayUntilLowPowerCounterUs(uint64_t targetUs)
     }
 
     while ((int64_t)(targetUs - readLowPowerCounterUs()) > 0) {
+        ++g_nrf54l15_diag_delay_outer_loops;
         nrf54l15_clean_idle_service();
         uint64_t sleepTargetUs = targetUs;
         uint8_t skipWfi = 0U;
@@ -400,21 +415,32 @@ static void delayUntilLowPowerCounterUs(uint64_t targetUs)
             // the current CPUAPP path. Sleep in short slices while BLE is
             // active so WFI idle does not starve that state machine.
             const uint32_t sleepCapUs = nrf54l15_clean_ble_idle_sleep_cap_us();
-            if (sleepCapUs <= 1U) {
-                skipWfi = 1U;
-            } else {
+            if (sleepCapUs != 0U) {
+                if (sleepCapUs == 1U) {
+                    skipWfi = 1U;
+                } else {
                 const uint64_t cappedTargetUs =
                     readLowPowerCounterUs() + (uint64_t)sleepCapUs;
                 if ((int64_t)(targetUs - cappedTargetUs) > 0) {
                     sleepTargetUs = cappedTargetUs;
                 }
+                }
             }
         }
         if (skipWfi != 0U) {
+            const uint32_t skipStartUs = (uint32_t)readLowPowerCounterUs();
+            ++g_nrf54l15_diag_delay_skipwfi_count;
             __NOP();
+            const uint32_t skipElapsedUs =
+                (uint32_t)(readLowPowerCounterUs() - (uint64_t)skipStartUs);
+            g_nrf54l15_diag_delay_skipwfi_total_us += skipElapsedUs;
+            if (skipElapsedUs > g_nrf54l15_diag_delay_skipwfi_max_us) {
+                g_nrf54l15_diag_delay_skipwfi_max_us = skipElapsedUs;
+            }
             continue;
         }
         if (g_low_power_delay_channel == kLowPowerDelayInvalidChannel) {
+            ++g_nrf54l15_diag_delay_invalid_channel_count;
             __NOP();
             continue;
         }
@@ -422,6 +448,7 @@ static void delayUntilLowPowerCounterUs(uint64_t targetUs)
         const uint32_t restoreRaw = beginIdleSleep();
         while ((g_low_power_delay_fired == 0U) &&
                ((int64_t)(sleepTargetUs - readLowPowerCounterUs()) > 0)) {
+            ++g_nrf54l15_diag_delay_wfi_entries;
             __asm volatile("wfi");
         }
         endIdleSleep(restoreRaw);
@@ -439,8 +466,10 @@ void GRTC_0_IRQHandler(void)
 #endif
 {
 #if defined(NRF54L15_CLEAN_POWER_LOW)
+    ++g_nrf54l15_diag_grtc_irq_count;
     if (g_low_power_delay_channel != kLowPowerDelayInvalidChannel &&
         g_low_power_grtc->EVENTS_COMPARE[g_low_power_delay_channel] != 0U) {
+        ++g_nrf54l15_diag_grtc_delay_irq_count;
         g_low_power_grtc->EVENTS_COMPARE[g_low_power_delay_channel] = 0U;
         g_low_power_grtc->CC[g_low_power_delay_channel].CCEN =
             (GRTC_CC_CCEN_ACTIVE_Disable << GRTC_CC_CCEN_ACTIVE_Pos);
@@ -450,6 +479,7 @@ void GRTC_0_IRQHandler(void)
     }
 #endif
     if (nrf54l15_ble_grtc_irq_service != 0) {
+        ++g_nrf54l15_diag_ble_grtc_irq_service_count;
         nrf54l15_ble_grtc_irq_service();
     }
     if (nrf54l15_grtc_pwm_irq_service != 0) {
@@ -459,7 +489,7 @@ void GRTC_0_IRQHandler(void)
 
 static uint8_t delayBoardStateEnter(xiao_nrf54l15_board_state_t* state)
 {
-#if defined(ARDUINO_XIAO_NRF54L15)
+#if defined(ARDUINO_XIAO_NRF54L15) || defined(ARDUINO_XIAO_NRF54L15_CLEAN)
     if (state == 0 || xiaoNrf54l15SaveBoardState(state) == 0U) {
         return 0U;
     }
@@ -474,7 +504,7 @@ static uint8_t delayBoardStateEnter(xiao_nrf54l15_board_state_t* state)
 
 static void delayBoardStateExit(const xiao_nrf54l15_board_state_t* state, uint8_t active)
 {
-#if defined(ARDUINO_XIAO_NRF54L15)
+#if defined(ARDUINO_XIAO_NRF54L15) || defined(ARDUINO_XIAO_NRF54L15_CLEAN)
     if (active != 0U) {
         (void)xiaoNrf54l15RestoreBoardState(state);
     }
@@ -484,9 +514,19 @@ static void delayBoardStateExit(const xiao_nrf54l15_board_state_t* state, uint8_
 #endif
 }
 
+static uint8_t delayAutoBoardStateEnabled(void)
+{
+#if defined(ARDUINO_XIAO_NRF54L15) || defined(ARDUINO_XIAO_NRF54L15_CLEAN)
+    return (nrf54l15_bridge_serial_active == 0 ||
+            nrf54l15_bridge_serial_active() == 0U) ? 1U : 0U;
+#else
+    return 0U;
+#endif
+}
+
 static uint8_t systemOffWakeChannel(void)
 {
-#if defined(ARDUINO_XIAO_NRF54L15)
+#if defined(ARDUINO_XIAO_NRF54L15) || defined(ARDUINO_XIAO_NRF54L15_CLEAN)
     const uint32_t available =
         kZephyrAllowedCcMaskXiao & ~(1UL << kZephyrMainCcChannelXiao);
     return highestSetBit(available);
@@ -680,11 +720,18 @@ void initSysTick(void)
 
 unsigned long millis(void)
 {
+#if defined(NRF54L15_CLEAN_POWER_LOW)
+    return (unsigned long)(nrf54l15_core_monotonic_time_us() / 1000ULL);
+#else
     return (unsigned long)g_millis_ticks;
+#endif
 }
 
 unsigned long micros(void)
 {
+#if defined(NRF54L15_CLEAN_POWER_LOW)
+    return (unsigned long)nrf54l15_core_monotonic_time_us();
+#else
     uint32_t ms_a;
     uint32_t ms_b;
     uint32_t val;
@@ -704,6 +751,28 @@ unsigned long micros(void)
     }
 
     return (unsigned long)(ms_a * 1000UL + (elapsed / cycles_per_us));
+#endif
+}
+
+uint64_t nrf54l15_core_monotonic_time_us(void)
+{
+#if defined(NRF54L15_CLEAN_POWER_LOW)
+    initLowPowerTimebase();
+    const uint64_t nowUs = readLowPowerCounterUs();
+    if (g_low_power_monotonic_origin_valid == 0U) {
+        g_low_power_monotonic_origin_us = nowUs;
+        g_low_power_monotonic_origin_valid = 1U;
+        return 0ULL;
+    }
+    return nowUs - g_low_power_monotonic_origin_us;
+#else
+    return (uint64_t)micros();
+#endif
+}
+
+uint32_t nrf54l15_core_monotonic_time_ms(void)
+{
+    return (uint32_t)(nrf54l15_core_monotonic_time_us() / 1000ULL);
 }
 
 void delay(unsigned long ms)
@@ -714,14 +783,19 @@ void delay(unsigned long ms)
         return;
     }
 
+    xiao_nrf54l15_board_state_t boardState;
+    const uint8_t boardStateActive =
+        delayAutoBoardStateEnabled() ? delayBoardStateEnter(&boardState) : 0U;
     initLowPowerTimebase();
     // Keep plain delay() Arduino-compatible. Sketches may hold board-control
     // rails such as VBAT_EN, RF_SW, or IMU_MIC_EN asserted across delay()
     // and expect that state to remain live during the sleep interval.
-    // delayLowPowerIdle() is the explicit helper that collapses and restores
-    // the XIAO board rails for lowest-current idle windows.
+    // On XIAO, auto-collapse only when the USB bridge UART is idle. That keeps
+    // plain delay() low-current for idle sketches while avoiding garbling
+    // active bridge-backed Serial sessions.
     const uint64_t targetUs = readLowPowerCounterUs() + ((uint64_t)ms * 1000ULL);
     delayUntilLowPowerCounterUs(targetUs);
+    delayBoardStateExit(&boardState, boardStateActive);
 #else
     const unsigned long start = millis();
     while ((millis() - start) < ms) {
@@ -807,7 +881,7 @@ void nrf54l15_core_prepare_system_off(void)
 #endif
 
     clearSystemOffVprRetention();
-#if defined(ARDUINO_XIAO_NRF54L15)
+#if defined(ARDUINO_XIAO_NRF54L15) || defined(ARDUINO_XIAO_NRF54L15_CLEAN)
     xiaoNrf54l15EnterLowestPowerBoardState();
 #endif
     SysTick->CTRL = 0U;

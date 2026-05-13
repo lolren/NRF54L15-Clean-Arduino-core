@@ -60,9 +60,6 @@ extern "C" uint32_t nrf54l15_clean_ble_idle_sleep_cap_us(void) {
   if (g_activeBleRadio != nullptr && g_activeBleRadio->isConnected()) {
     capUs = 1000U;
   }
-  if (g_bleBackgroundRadio != nullptr) {
-    capUs = (capUs == 0U || capUs > 1000U) ? 1000U : capUs;
-  }
   if (nrf54l15_bluefruit_compat_idle_sleep_cap_us != nullptr) {
     const uint32_t compatCapUs = nrf54l15_bluefruit_compat_idle_sleep_cap_us();
     if (compatCapUs != 0U && (capUs == 0U || compatCapUs < capUs)) {

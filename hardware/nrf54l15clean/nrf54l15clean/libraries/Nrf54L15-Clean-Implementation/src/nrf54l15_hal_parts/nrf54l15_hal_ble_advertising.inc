@@ -1,3 +1,23 @@
+volatile uint32_t g_bleAdvertiseInteractEventCallCount = 0U;
+volatile uint32_t g_bleAdvertiseInteractEventTotalUs = 0U;
+volatile uint32_t g_bleAdvertiseInteractEventMaxUs = 0U;
+volatile uint32_t g_bleAdvertiseInteractTxTotalUs = 0U;
+volatile uint32_t g_bleAdvertiseInteractTxMaxUs = 0U;
+volatile uint32_t g_bleAdvertiseInteractRxTotalUs = 0U;
+volatile uint32_t g_bleAdvertiseInteractRxMaxUs = 0U;
+volatile uint32_t g_bleAdvertiseInteractScanRspTotalUs = 0U;
+volatile uint32_t g_bleAdvertiseInteractScanRspMaxUs = 0U;
+volatile uint32_t g_bleAdvertiseInteractPhaseCallCount = 0U;
+volatile uint32_t g_bleAdvertiseInteractScanRspCount = 0U;
+volatile uint32_t g_bleAdvertiseInteractNoEndCount = 0U;
+volatile uint32_t g_bleAdvertiseInteractNoEndTotalUs = 0U;
+volatile uint32_t g_bleAdvertiseInteractNoEndMaxUs = 0U;
+volatile uint32_t g_bleAdvertiseInteractReqStartTimeoutCount = 0U;
+volatile uint32_t g_bleAdvertiseInteractReqSpinTimeoutCount = 0U;
+volatile uint32_t g_bleAdvertiseInteractReqAddressSeenCount = 0U;
+volatile uint32_t g_bleAdvertiseInteractReqEndTimeoutCount = 0U;
+extern "C" uint64_t nrf54l15_core_monotonic_time_us(void);
+
 bool BleRadio::transmitPreparedPacketOnCurrentChannel(const uint8_t* packet,
                                                       uint32_t spinLimit,
                                                       uint32_t* txReadyUs) {
@@ -61,6 +81,32 @@ bool BleRadio::kickPreparedPacketOnCurrentChannel(const uint8_t* packet) {
   return true;
 }
 
+static uint32_t bleAdvertisingRandomDelayUs(const uint8_t* address) {
+  static uint32_t seed = 0U;
+  if (seed == 0U) {
+    const uint32_t addressMix =
+        (address != nullptr) ? (static_cast<uint32_t>(address[0]) << 24U) : 0U;
+    seed = micros() ^ addressMix;
+  }
+  seed = seed * 1103515245U + 12345U;
+  return (seed % 10001U);
+}
+
+static void bleAdvertisingDelayUs(uint32_t delayUs) {
+  if (delayUs == 0U) {
+    return;
+  }
+
+  const uint32_t delayMs = delayUs / 1000U;
+  const uint32_t tailUs = delayUs % 1000U;
+  if (delayMs > 0U) {
+    delay(delayMs);
+  }
+  if (tailUs > 0U) {
+    delayMicroseconds(tailUs);
+  }
+}
+
 bool BleRadio::advertiseOncePrepared(BleAdvertisingChannel channel,
                                      uint32_t spinLimit) {
   if (!initialized_ || radio_ == nullptr || connected_) {
@@ -88,21 +134,11 @@ bool BleRadio::advertiseOnce(BleAdvertisingChannel channel, uint32_t spinLimit) 
 }
 
 bool BleRadio::advertiseEvent(uint32_t interChannelDelayUs, uint32_t spinLimit) {
+  const uint32_t advDelayUs = bleAdvertisingRandomDelayUs(address_);
+  bleAdvertisingDelayUs(advDelayUs);
+
   if (!beginUnconnectedRadioActivity(1500000UL)) {
     return false;
-  }
-
-  // Add spec-compliant random delay (0-10ms) to prevent persistent collisions.
-  {
-    static uint32_t seed = 0U;
-    if (seed == 0U) {
-      seed = micros() ^ (static_cast<uint32_t>(address_[0]) << 24U);
-    }
-    seed = seed * 1103515245U + 12345U;
-    const uint32_t advDelayUs = (seed % 10001U);
-    if (advDelayUs > 0U) {
-      delayMicroseconds(advDelayUs);
-    }
   }
 
   if (!advertiseOncePrepared(BleAdvertisingChannel::k37, spinLimit)) {
@@ -1198,6 +1234,10 @@ bool BleRadio::advertiseExtendedEvent(uint32_t auxOffsetUs,
   if (!initialized_ || radio_ == nullptr || connected_) {
     return false;
   }
+
+  const uint32_t advDelayUs = bleAdvertisingRandomDelayUs(address_);
+  bleAdvertisingDelayUs(advDelayUs);
+
   if (!beginUnconnectedRadioActivity(1500000UL)) {
     return false;
   }
@@ -1206,18 +1246,6 @@ bool BleRadio::advertiseExtendedEvent(uint32_t auxOffsetUs,
   if (!buildExtendedAdvertisingPackets(auxOffsetUs, &actualAuxOffsetUs)) {
     endUnconnectedRadioActivity();
     return false;
-  }
-
-  {
-    static uint32_t seed = 0U;
-    if (seed == 0U) {
-      seed = micros() ^ (static_cast<uint32_t>(address_[0]) << 24U);
-    }
-    seed = seed * 1103515245U + 12345U;
-    const uint32_t advDelayUs = (seed % 10001U);
-    if (advDelayUs > 0U) {
-      delayMicroseconds(advDelayUs);
-    }
   }
 
   const BleAdvertisingChannel channels[] = {
@@ -1291,6 +1319,10 @@ bool BleRadio::advertiseExtendedScannableEvent(uint32_t auxOffsetUs,
   if (!initialized_ || radio_ == nullptr || connected_) {
     return false;
   }
+
+  const uint32_t advDelayUs = bleAdvertisingRandomDelayUs(address_);
+  bleAdvertisingDelayUs(advDelayUs);
+
   if (!beginUnconnectedRadioActivity(1500000UL)) {
     return false;
   }
@@ -1301,18 +1333,6 @@ bool BleRadio::advertiseExtendedScannableEvent(uint32_t auxOffsetUs,
                                                 &actualScanRspChainOffsetUs)) {
     endUnconnectedRadioActivity();
     return false;
-  }
-
-  {
-    static uint32_t seed = 0U;
-    if (seed == 0U) {
-      seed = micros() ^ (static_cast<uint32_t>(address_[0]) << 24U);
-    }
-    seed = seed * 1103515245U + 12345U;
-    const uint32_t advDelayUs = (seed % 10001U);
-    if (advDelayUs > 0U) {
-      delayMicroseconds(advDelayUs);
-    }
   }
 
   const BleAdvertisingChannel channels[] = {
@@ -1390,6 +1410,7 @@ bool BleRadio::handleExtendedScanRequestAndMaybeRespond(
         << RADIO_SHORTS_ADDRESS_RSSISTART_Pos) &
        RADIO_SHORTS_ADDRESS_RSSISTART_Msk);
 
+  const uint64_t txPhaseStartUs = nrf54l15_core_monotonic_time_us();
   radio_->TASKS_TXEN = RADIO_TASKS_TXEN_TASKS_TXEN_Trigger;
   const bool txEndSeen = waitForEnd(spinLimit);
   if (!txEndSeen) {
@@ -1414,6 +1435,7 @@ bool BleRadio::handleExtendedScanRequestAndMaybeRespond(
   radio_->EVENTS_DISABLED = 0U;
   radio_->EVENTS_END = 0U;
   radio_->EVENTS_PHYEND = 0U;
+  radio_->EVENTS_ADDRESS = 0U;
   radio_->EVENTS_CRCOK = 0U;
   radio_->EVENTS_CRCERROR = 0U;
   radio_->SHORTS =
@@ -1432,8 +1454,49 @@ bool BleRadio::handleExtendedScanRequestAndMaybeRespond(
   }
 
   uint32_t rxEndUs = 0U;
-  const bool endSeen = waitRadioEndBudgeted(
-      radio_, kBleAdvRequestListenMaxUs, requestListenSpinLimit, &rxEndUs);
+  bool addressSeen = false;
+  bool endSeen = false;
+  uint32_t rxListenStartUs = bleTimingUs();
+  uint8_t listenDivider = kBleConnMicrosPollDivider;
+  uint32_t listenSpinRemaining = requestListenSpinLimit;
+  while (true) {
+    if (!addressSeen && (radio_->EVENTS_ADDRESS != 0U)) {
+      addressSeen = true;
+      break;
+    }
+    if ((radio_->EVENTS_END != 0U) || (radio_->EVENTS_PHYEND != 0U)) {
+      endSeen = true;
+      rxEndUs = bleTimingUs();
+      break;
+    }
+
+    if (--listenDivider == 0U) {
+      listenDivider = kBleConnMicrosPollDivider;
+      const uint32_t elapsedUs =
+          static_cast<uint32_t>(bleTimingUs() - rxListenStartUs);
+      if (!addressSeen && (elapsedUs >= kBleAdvRequestStartWaitMaxUs)) {
+        ++g_bleAdvertiseInteractReqStartTimeoutCount;
+        break;
+      }
+    }
+
+    if (listenSpinRemaining > 0U) {
+      --listenSpinRemaining;
+      if (listenSpinRemaining == 0U) {
+        ++g_bleAdvertiseInteractReqSpinTimeoutCount;
+        break;
+      }
+    }
+  }
+
+  if (!endSeen && addressSeen) {
+    ++g_bleAdvertiseInteractReqAddressSeenCount;
+    endSeen = waitRadioEndBudgeted(
+        radio_, kBleAdvRequestListenMaxUs, requestListenSpinLimit, &rxEndUs);
+    if (!endSeen) {
+      ++g_bleAdvertiseInteractReqEndTimeoutCount;
+    }
+  }
   if (!endSeen) {
     radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
     waitDisabled(spinLimit / 2U + 1U);
@@ -1592,25 +1655,35 @@ bool BleRadio::advertiseInteractOncePrepared(BleAdvertisingChannel channel,
         << RADIO_SHORTS_ADDRESS_RSSISTART_Pos) &
        RADIO_SHORTS_ADDRESS_RSSISTART_Msk);
 
+  const uint64_t txPhaseStartUs = nrf54l15_core_monotonic_time_us();
   radio_->TASKS_TXEN = RADIO_TASKS_TXEN_TASKS_TXEN_Trigger;
   const bool txEndSeen = waitForEnd(spinLimit);
   if (!txEndSeen) {
     radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
-    waitDisabled(spinLimit / 2U + 1U);
+    (void)waitRadioDisabledBudgeted(radio_, kBleConnTxDisableWaitUs,
+                                    spinLimit / 2U + 1U);
     radio_->SHORTS = 0U;
     clearRadioCoreEvents(radio_);
     return false;
   }
 
-  bool txDisabled = waitDisabled(spinLimit / 2U + 1U);
+  bool txDisabled = waitRadioDisabledBudgeted(radio_, kBleConnTxDisableWaitUs,
+                                              spinLimit / 2U + 1U);
   if (!txDisabled) {
     radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
-    txDisabled = waitDisabled(spinLimit / 2U + 1U);
+    txDisabled = waitRadioDisabledBudgeted(radio_, kBleConnTxDisableWaitUs,
+                                           spinLimit / 2U + 1U);
   }
   if (!txDisabled) {
     radio_->SHORTS = 0U;
     clearRadioCoreEvents(radio_);
     return false;
+  }
+  const uint32_t txPhaseElapsedUs = static_cast<uint32_t>(
+      nrf54l15_core_monotonic_time_us() - txPhaseStartUs);
+  g_bleAdvertiseInteractTxTotalUs += txPhaseElapsedUs;
+  if (txPhaseElapsedUs > g_bleAdvertiseInteractTxMaxUs) {
+    g_bleAdvertiseInteractTxMaxUs = txPhaseElapsedUs;
   }
 
   // Clear TX completion events and remove DISABLED->RX shortcut so RX disable
@@ -1618,6 +1691,7 @@ bool BleRadio::advertiseInteractOncePrepared(BleAdvertisingChannel channel,
   radio_->EVENTS_DISABLED = 0U;
   radio_->EVENTS_END = 0U;
   radio_->EVENTS_PHYEND = 0U;
+  radio_->EVENTS_ADDRESS = 0U;
   radio_->EVENTS_CRCOK = 0U;
   radio_->EVENTS_CRCERROR = 0U;
   radio_->SHORTS =
@@ -1636,14 +1710,64 @@ bool BleRadio::advertiseInteractOncePrepared(BleAdvertisingChannel channel,
     radio_->TASKS_RXEN = RADIO_TASKS_RXEN_TASKS_RXEN_Trigger;
   }
 
+  const uint64_t rxPhaseStartUs = nrf54l15_core_monotonic_time_us();
   uint32_t rxEndUs = 0U;
-  const bool endSeen = waitRadioEndBudgeted(
-      radio_, kBleAdvRequestListenMaxUs, requestListenSpinLimit, &rxEndUs);
+  bool addressSeen = false;
+  bool endSeen = false;
+  const uint32_t rxListenStartUs = bleTimingUs();
+  uint8_t listenDivider = kBleConnMicrosPollDivider;
+  uint32_t listenSpinRemaining = requestListenSpinLimit;
+  while (true) {
+    if (!addressSeen && (radio_->EVENTS_ADDRESS != 0U)) {
+      addressSeen = true;
+      break;
+    }
+    if ((radio_->EVENTS_END != 0U) || (radio_->EVENTS_PHYEND != 0U)) {
+      endSeen = true;
+      rxEndUs = bleTimingUs();
+      break;
+    }
+
+    if (--listenDivider == 0U) {
+      listenDivider = kBleConnMicrosPollDivider;
+      const uint32_t elapsedUs =
+          static_cast<uint32_t>(bleTimingUs() - rxListenStartUs);
+      if (!addressSeen && (elapsedUs >= kBleAdvRequestStartWaitMaxUs)) {
+        ++g_bleAdvertiseInteractReqStartTimeoutCount;
+        break;
+      }
+    }
+
+    if (listenSpinRemaining > 0U) {
+      --listenSpinRemaining;
+      if (listenSpinRemaining == 0U) {
+        ++g_bleAdvertiseInteractReqSpinTimeoutCount;
+        break;
+      }
+    }
+  }
+
+  if (!endSeen && addressSeen) {
+    ++g_bleAdvertiseInteractReqAddressSeenCount;
+    endSeen = waitRadioEndBudgeted(
+        radio_, kBleAdvRequestListenMaxUs, requestListenSpinLimit, &rxEndUs);
+    if (!endSeen) {
+      ++g_bleAdvertiseInteractReqEndTimeoutCount;
+    }
+  }
   if (!endSeen) {
     radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
-    waitDisabled(spinLimit / 2U + 1U);
+    (void)waitRadioDisabledBudgeted(radio_, kBleConnDisableWaitUs,
+                                    spinLimit / 2U + 1U);
     radio_->SHORTS = 0U;
     clearRadioCoreEvents(radio_);
+    const uint32_t rxPhaseElapsedUs = static_cast<uint32_t>(
+        nrf54l15_core_monotonic_time_us() - rxPhaseStartUs);
+    g_bleAdvertiseInteractNoEndTotalUs += rxPhaseElapsedUs;
+    if (rxPhaseElapsedUs > g_bleAdvertiseInteractNoEndMaxUs) {
+      g_bleAdvertiseInteractNoEndMaxUs = rxPhaseElapsedUs;
+    }
+    ++g_bleAdvertiseInteractNoEndCount;
     return true;
   }
   if (rxEndUs == 0U) {
@@ -1662,16 +1786,25 @@ bool BleRadio::advertiseInteractOncePrepared(BleAdvertisingChannel channel,
   const bool rxAddrRandom = ((hdr >> 7U) & 0x1U) != 0U;
   const uint8_t* payload = &rxPacket_[2];
 
-  bool disabled = waitDisabled(spinLimit / 2U + 1U);
+  bool disabled = waitRadioDisabledBudgeted(radio_, kBleConnDisableWaitUs,
+                                            spinLimit / 2U + 1U);
   if (!disabled) {
     radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
-    disabled = waitDisabled(spinLimit / 2U + 1U);
+    disabled = waitRadioDisabledBudgeted(radio_, kBleConnDisableWaitUs,
+                                         spinLimit / 2U + 1U);
   }
   radio_->SHORTS = 0U;
   if (!disabled) {
     clearRadioCoreEvents(radio_);
     return false;
   }
+  const uint32_t rxPhaseElapsedUs = static_cast<uint32_t>(
+      nrf54l15_core_monotonic_time_us() - rxPhaseStartUs);
+  g_bleAdvertiseInteractRxTotalUs += rxPhaseElapsedUs;
+  if (rxPhaseElapsedUs > g_bleAdvertiseInteractRxMaxUs) {
+    g_bleAdvertiseInteractRxMaxUs = rxPhaseElapsedUs;
+  }
+  ++g_bleAdvertiseInteractPhaseCallCount;
 
   bool hasScanReq = false;
   bool hasConnectInd = false;
@@ -1724,6 +1857,7 @@ bool BleRadio::advertiseInteractOncePrepared(BleAdvertisingChannel channel,
   const bool scannable = (pduType_ == BleAdvPduType::kAdvInd) ||
                          (pduType_ == BleAdvPduType::kAdvScanInd);
   if (hasScanReq && scannable && !connectAccepted) {
+    const uint64_t scanRspPhaseStartUs = nrf54l15_core_monotonic_time_us();
     clearRadioCoreEvents(radio_);
     radio_->PACKETPTR =
         static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&scanRspPacket_[0]));
@@ -1737,8 +1871,16 @@ bool BleRadio::advertiseInteractOncePrepared(BleAdvertisingChannel channel,
     // Wait for T_IFS turnaround (150us nominal).
     const uint32_t txTriggerTargetUs = rxEndUs + kBleScanRspTxenAfterRxUs;
     bleTriggerTxAtTargetUsCritical(radio_, txTriggerTargetUs);
-    txScanRspOk = waitDisabled(spinLimit);
+    txScanRspOk = waitRadioDisabledBudgeted(radio_, kBleConnTxDisableWaitUs,
+                                            spinLimit / 2U + 1U);
     radio_->SHORTS = 0U;
+    const uint32_t scanRspPhaseElapsedUs = static_cast<uint32_t>(
+        nrf54l15_core_monotonic_time_us() - scanRspPhaseStartUs);
+    g_bleAdvertiseInteractScanRspTotalUs += scanRspPhaseElapsedUs;
+    if (scanRspPhaseElapsedUs > g_bleAdvertiseInteractScanRspMaxUs) {
+      g_bleAdvertiseInteractScanRspMaxUs = scanRspPhaseElapsedUs;
+    }
+    ++g_bleAdvertiseInteractScanRspCount;
   }
 
   if (interaction != nullptr) {
@@ -1771,21 +1913,12 @@ bool BleRadio::advertiseInteractEvent(BleAdvInteraction* interaction,
                                       uint32_t interChannelDelayUs,
                                       uint32_t requestListenSpinLimit,
                                       uint32_t spinLimit) {
+  const uint32_t advDelayUs = bleAdvertisingRandomDelayUs(address_);
+  bleAdvertisingDelayUs(advDelayUs);
+  const uint64_t eventStartUs = nrf54l15_core_monotonic_time_us();
+
   if (!beginUnconnectedRadioActivity(1500000UL)) {
     return false;
-  }
-
-  // Add spec-compliant random delay (0-10ms) to prevent persistent collisions.
-  {
-    static uint32_t seed = 0U;
-    if (seed == 0U) {
-      seed = micros() ^ (static_cast<uint32_t>(address_[0]) << 24U);
-    }
-    seed = seed * 1103515245U + 12345U;
-    const uint32_t advDelayUs = (seed % 10001U);
-    if (advDelayUs > 0U) {
-      delayMicroseconds(advDelayUs);
-    }
   }
 
   BleAdvInteraction tmp{};
@@ -1833,5 +1966,12 @@ bool BleRadio::advertiseInteractEvent(BleAdvInteraction* interaction,
 
   advCycleStartIndex_ = static_cast<uint8_t>((startIndex + 1U) % 3U);
   endUnconnectedRadioActivity();
+  ++g_bleAdvertiseInteractEventCallCount;
+  const uint32_t eventElapsedUs = static_cast<uint32_t>(
+      nrf54l15_core_monotonic_time_us() - eventStartUs);
+  g_bleAdvertiseInteractEventTotalUs += eventElapsedUs;
+  if (eventElapsedUs > g_bleAdvertiseInteractEventMaxUs) {
+    g_bleAdvertiseInteractEventMaxUs = eventElapsedUs;
+  }
   return allOk;
 }
