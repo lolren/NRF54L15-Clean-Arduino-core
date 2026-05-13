@@ -488,11 +488,10 @@ bool BleRadio::handleBackgroundAdvertisingPrewarmEvent() {
   const uint32_t irqState = bleEnterCritical();
   backgroundAdvertisingAwaitingHfxoTuned_ = awaitingTune;
   bleExitCritical(irqState);
-  if (awaitingTune) {
-    bleBackgroundEnableClockTuneInterrupts();
-  } else {
-    bleBackgroundDisableClockIrq();
-  }
+  // The default background-advertising flow uses the TX compare IRQ to retry
+  // until HFXO is genuinely running, so keep the CLOCK IRQ path out of the
+  // steady-state schedule here.
+  bleBackgroundDisableClockIrq();
   return true;
 }
 
@@ -1061,42 +1060,88 @@ void BleRadio::serviceBackgroundAdvertisingFromIrq() {
 
   bool runService = false;
   bool runPrewarm = false;
+  bool kickTx = false;
+  bool retryTx = false;
+  bool rearmService = false;
+  uint8_t txCompareChannel = kBleBackgroundInvalidCompareChannel;
+  uint8_t serviceCompareChannel = kBleBackgroundInvalidCompareChannel;
   const uint32_t irqState = bleEnterCritical();
   if (bleCompareEventPending(kBleBackgroundAdvPrewarmCompareChannel)) {
     bleDisableCompare(kBleBackgroundAdvPrewarmCompareChannel, true);
+    ++backgroundAdvertisingDebug_.irqCompareCount;
     runPrewarm = true;
   }
 
   if (bleCompareEventPending(kBleBackgroundAdvTxCompareChannel)) {
-    bleDisableCompare(kBleBackgroundAdvTxCompareChannel, true);
+    txCompareChannel = kBleBackgroundAdvTxCompareChannel;
+  } else if (bleCompareEventPending(kBleBackgroundAdvStage1TxCompareChannel)) {
+    txCompareChannel = kBleBackgroundAdvStage1TxCompareChannel;
+  } else if (bleCompareEventPending(kBleBackgroundAdvStage2TxCompareChannel)) {
+    txCompareChannel = kBleBackgroundAdvStage2TxCompareChannel;
   }
-  if (bleCompareEventPending(kBleBackgroundAdvStage1TxCompareChannel)) {
-    bleDisableCompare(kBleBackgroundAdvStage1TxCompareChannel, true);
-  }
-  if (bleCompareEventPending(kBleBackgroundAdvStage2TxCompareChannel)) {
-    bleDisableCompare(kBleBackgroundAdvStage2TxCompareChannel, true);
+
+  if (txCompareChannel != kBleBackgroundInvalidCompareChannel) {
+    bleDisableCompare(txCompareChannel, true);
+    ++backgroundAdvertisingDebug_.irqCompareCount;
+    serviceCompareChannel = bleBackgroundAdvertisingServiceCompareChannelForTxCompare(
+        backgroundAdvertisingThreeChannel_, txCompareChannel);
+    if (backgroundAdvertisingUseIrqTxKick_) {
+      if (backgroundAdvertisingAwaitingHfxoTuned_ && !bleHfxoRunning()) {
+        retryTx = true;
+        if (serviceCompareChannel != kBleBackgroundInvalidCompareChannel) {
+          rearmService = true;
+        }
+      } else {
+        backgroundAdvertisingAwaitingHfxoTuned_ = false;
+        kickTx = true;
+      }
+    }
   }
 
   if (bleCompareEventPending(kBleBackgroundAdvCleanupCompareChannel)) {
     bleDisableCompare(kBleBackgroundAdvCleanupCompareChannel, true);
-    backgroundAdvertisingArmed_ = false;
-    backgroundAdvertisingDue_ = true;
-    runService = true;
+    ++backgroundAdvertisingDebug_.irqCompareCount;
+    if (retryTx || kickTx) {
+      serviceCompareChannel = kBleBackgroundAdvCleanupCompareChannel;
+      rearmService = true;
+    } else {
+      backgroundAdvertisingArmed_ = false;
+      backgroundAdvertisingDue_ = true;
+      runService = true;
+    }
   } else if (bleCompareEventPending(kBleBackgroundAdvStage1ServiceCompareChannel)) {
     bleDisableCompare(kBleBackgroundAdvStage1ServiceCompareChannel, true);
-    backgroundAdvertisingArmed_ = false;
-    backgroundAdvertisingDue_ = true;
-    runService = true;
+    ++backgroundAdvertisingDebug_.irqCompareCount;
+    if (retryTx || kickTx) {
+      serviceCompareChannel = kBleBackgroundAdvStage1ServiceCompareChannel;
+      rearmService = true;
+    } else {
+      backgroundAdvertisingArmed_ = false;
+      backgroundAdvertisingDue_ = true;
+      runService = true;
+    }
   } else if (bleCompareEventPending(kBleBackgroundAdvStage2ServiceCompareChannel)) {
     bleDisableCompare(kBleBackgroundAdvStage2ServiceCompareChannel, true);
-    backgroundAdvertisingArmed_ = false;
-    backgroundAdvertisingDue_ = true;
-    runService = true;
+    ++backgroundAdvertisingDebug_.irqCompareCount;
+    if (retryTx || kickTx) {
+      serviceCompareChannel = kBleBackgroundAdvStage2ServiceCompareChannel;
+      rearmService = true;
+    } else {
+      backgroundAdvertisingArmed_ = false;
+      backgroundAdvertisingDue_ = true;
+      runService = true;
+    }
   } else if (bleCompareEventPending(kBleBackgroundAdvFinalCleanupCompareChannel)) {
     bleDisableCompare(kBleBackgroundAdvFinalCleanupCompareChannel, true);
-    backgroundAdvertisingArmed_ = false;
-    backgroundAdvertisingDue_ = true;
-    runService = true;
+    ++backgroundAdvertisingDebug_.irqCompareCount;
+    if (retryTx || kickTx) {
+      serviceCompareChannel = kBleBackgroundAdvFinalCleanupCompareChannel;
+      rearmService = true;
+    } else {
+      backgroundAdvertisingArmed_ = false;
+      backgroundAdvertisingDue_ = true;
+      runService = true;
+    }
   }
   bleExitCritical(irqState);
 
@@ -1104,6 +1149,30 @@ void BleRadio::serviceBackgroundAdvertisingFromIrq() {
     backgroundAdvertisingLastStopReason_ = kBleBackgroundAdvStopReasonPrewarmFailed;
     stopBackgroundAdvertising();
     return;
+  }
+  if (retryTx) {
+    bool ok = rescheduleBackgroundAdvertisingTxCompare(txCompareChannel);
+    if (ok && rearmService &&
+        serviceCompareChannel != kBleBackgroundInvalidCompareChannel) {
+      ok = rescheduleBackgroundAdvertisingService(serviceCompareChannel);
+    }
+    if (!ok) {
+      backgroundAdvertisingLastStopReason_ = kBleBackgroundAdvStopReasonTxCompareFailed;
+      stopBackgroundAdvertising();
+    }
+    return;
+  }
+  if (kickTx) {
+    bool ok = kickPreparedPacketOnCurrentChannel(&txPacket_[0]);
+    if (ok && rearmService &&
+        serviceCompareChannel != kBleBackgroundInvalidCompareChannel) {
+      ok = rescheduleBackgroundAdvertisingService(serviceCompareChannel);
+    }
+    if (!ok) {
+      backgroundAdvertisingLastStopReason_ = kBleBackgroundAdvStopReasonTxCompareFailed;
+      stopBackgroundAdvertising();
+      return;
+    }
   }
   if (runService || backgroundAdvertisingDue_) {
     (void)serviceBackgroundAdvertising();

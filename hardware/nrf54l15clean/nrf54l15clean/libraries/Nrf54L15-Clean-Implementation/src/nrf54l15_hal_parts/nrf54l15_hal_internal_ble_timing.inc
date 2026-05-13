@@ -179,7 +179,7 @@ xiao_nrf54l15::BleRadio* volatile g_bleBackgroundRadio = nullptr;
 #endif
 
 #if !defined(NRF54L15_CLEAN_BLE_BACKGROUND_MANAGE_RF_PATH)
-#if defined(ARDUINO_XIAO_NRF54L15)
+#if defined(ARDUINO_XIAO_NRF54L15) || defined(ARDUINO_XIAO_NRF54L15_CLEAN)
 #define NRF54L15_CLEAN_BLE_BACKGROUND_MANAGE_RF_PATH 1
 #else
 #define NRF54L15_CLEAN_BLE_BACKGROUND_MANAGE_RF_PATH 0
@@ -187,7 +187,7 @@ xiao_nrf54l15::BleRadio* volatile g_bleBackgroundRadio = nullptr;
 #endif
 
 #if !defined(NRF54L15_CLEAN_BLE_BACKGROUND_FORCE_IRQ_TXEN)
-#if defined(ARDUINO_XIAO_NRF54L15)
+#if defined(ARDUINO_XIAO_NRF54L15) || defined(ARDUINO_XIAO_NRF54L15_CLEAN)
 #define NRF54L15_CLEAN_BLE_BACKGROUND_FORCE_IRQ_TXEN 1
 #else
 #define NRF54L15_CLEAN_BLE_BACKGROUND_FORCE_IRQ_TXEN 0
@@ -367,14 +367,8 @@ static inline CracenRng& bleBackgroundAdvertisingRng() {
 
 static inline void bleBackgroundAdvertisingConfigureRandomSource(bool enable) {
   CracenRng& rng = bleBackgroundAdvertisingRng();
-  if (!enable) {
-    if (rng.active()) {
-      rng.end();
-    }
-    return;
-  }
-  if (!rng.active()) {
-    (void)rng.beginNonBlocking();
+  if (!enable && rng.active()) {
+    rng.end();
   }
 }
 
@@ -383,7 +377,8 @@ static inline uint32_t bleBackgroundAdvertisingRandomDelayUs(uint32_t* state,
                                                              bool* usedHardware) {
   CracenRng& rng = bleBackgroundAdvertisingRng();
   uint32_t randomWord = 0U;
-  if (rng.tryRandomWord(&randomWord)) {
+  static constexpr uint32_t kBleBackgroundAdvRandomWordSpinLimit = 4096U;
+  if (rng.randomWord(&randomWord, kBleBackgroundAdvRandomWordSpinLimit)) {
     if (usedHardware != nullptr) {
       *usedHardware = true;
     }

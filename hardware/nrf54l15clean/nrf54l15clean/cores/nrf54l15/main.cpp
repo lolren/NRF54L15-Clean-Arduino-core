@@ -13,14 +13,31 @@ extern "C" void nrf54l15_core_bootstrap_low_power_timebase(void);
 
 namespace {
 volatile bool g_loop_suspended = false;
+
+#if defined(NRF54L15_CLEAN_POWER_LOW)
+void disableSysTickForLowPowerProfile() {
+    SysTick->CTRL = 0U;
+    SysTick->LOAD = 0U;
+    SysTick->VAL = 0U;
+
+    static volatile uint32_t* const kScbIcsr =
+        reinterpret_cast<volatile uint32_t*>(0xE000ED04UL);
+    static constexpr uint32_t kScbIcsrPendstclr = (1UL << 25);
+    *kScbIcsr = kScbIcsrPendstclr;
+    __DSB();
+    __ISB();
+}
+#endif
 }  // namespace
 
 extern "C" void __attribute__((weak)) init(void) {
 #if !defined(NRF54L15_CLEAN_LOWPOWER_BOOT_MINIMAL)
-    initSysTick();
 #if defined(NRF54L15_CLEAN_POWER_LOW)
-    // Keep the GRTC low-power timebase lazy. BLE sketches can run setup-time
-    // Serial and radio initialization without taking GRTC compare ownership.
+    // Low-power builds use the GRTC-backed monotonic clock for millis()/micros().
+    // Leaving the 1 kHz SysTick running destroys tickless idle current.
+    disableSysTickForLowPowerProfile();
+#else
+    initSysTick();
 #endif
 #endif
 }
@@ -39,10 +56,18 @@ extern "C" void __attribute__((weak)) yield(void) {
     }
     return;
 #else
-    // The default balanced profile must not block here. Ordinary sketches and
-    // peripheral examples rely on loop() progressing even when they have not
-    // armed an explicit wake source.
-    __asm volatile("nop");
+    // Balanced profile: SysTick fires every 1ms, providing a guaranteed
+    // periodic wake source.  WFI here is safe and drops idle current from
+    // ~1 mA (busy-spin) to ~3 µA while loop() is idle.
+    if ((__get_PRIMASK() & 1U) != 0U) {
+        __asm volatile("nop");
+        return;
+    }
+    extern uint32_t nrf54l15_balanced_begin_idle_sleep(void);
+    extern void nrf54l15_balanced_end_idle_sleep(uint32_t);
+    const uint32_t restoreRaw = nrf54l15_balanced_begin_idle_sleep();
+    __asm volatile("wfi");
+    nrf54l15_balanced_end_idle_sleep(restoreRaw);
 #endif
 }
 

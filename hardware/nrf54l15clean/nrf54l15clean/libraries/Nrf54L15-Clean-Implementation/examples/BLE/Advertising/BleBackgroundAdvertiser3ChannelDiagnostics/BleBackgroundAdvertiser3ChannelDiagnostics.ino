@@ -23,15 +23,28 @@ namespace {
 
 constexpr BoardAntennaPath kAntennaPath = BoardAntennaPath::kCeramic;
 constexpr int8_t kTxPowerDbm = -10;
+#if defined(NRF54L15_BG_DIAG_INTERVAL_MS)
+constexpr uint32_t kAdvertisingIntervalMs =
+    static_cast<uint32_t>(NRF54L15_BG_DIAG_INTERVAL_MS);
+#else
 constexpr uint32_t kAdvertisingIntervalMs = 100;
+#endif
 constexpr uint32_t kInterChannelDelayUs = 350;
 constexpr BleAdvertisingChannel kSingleChannel = BleAdvertisingChannel::k37;
 #if defined(NRF54L15_BG_DIAG_SINGLE_CHANNEL) && \
     (NRF54L15_BG_DIAG_SINGLE_CHANNEL != 0)
 constexpr bool kUseThreeChannel = false;
+#if defined(NRF54L15_BG_DIAG_ROTATE_CHANNEL) && \
+    (NRF54L15_BG_DIAG_ROTATE_CHANNEL != 0)
+constexpr bool kRotateSingleChannel = true;
+constexpr const char* kAdvertisingName = "X54-BG-ROT";
+#else
+constexpr bool kRotateSingleChannel = false;
 constexpr const char* kAdvertisingName = "X54-BG-1CH";
+#endif
 #else
 constexpr bool kUseThreeChannel = true;
+constexpr bool kRotateSingleChannel = false;
 constexpr const char* kAdvertisingName = "X54-BG-DIAG";
 #endif
 #if defined(NRF54L15_BG_EXAMPLE_HFXO_LEAD_US)
@@ -241,6 +254,8 @@ void printCounters() {
   Serial.print(counters.enabled);
   Serial.print(F(" three_ch="));
   Serial.print(counters.threeChannel);
+  Serial.print(F(" rotate="));
+  Serial.print(counters.rotatingChannel);
   Serial.print(F(" arm="));
   Serial.print(counters.eventArmCount);
   Serial.print(F(" complete="));
@@ -387,7 +402,7 @@ void setup() {
     } else {
       ok = gBle.beginBackgroundAdvertising(
           kAdvertisingIntervalMs, kSingleChannel, kHfxoLeadUs,
-          kAddRandomDelay);
+          kAddRandomDelay, kRotateSingleChannel);
     }
   }
   if (!ok) {
