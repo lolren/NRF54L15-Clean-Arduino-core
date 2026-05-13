@@ -63,11 +63,9 @@ extern "C" void __attribute__((weak)) yield(void) {
         __asm volatile("nop");
         return;
     }
-    extern uint32_t nrf54l15_balanced_begin_idle_sleep(void);
-    extern void nrf54l15_balanced_end_idle_sleep(uint32_t);
-    const uint32_t restoreRaw = nrf54l15_balanced_begin_idle_sleep();
+    const uint32_t restoreRaw = nrf54l15_core_enter_idle_cpu_scaling();
     __asm volatile("wfi");
-    nrf54l15_balanced_end_idle_sleep(restoreRaw);
+    nrf54l15_core_exit_idle_cpu_scaling(restoreRaw);
 #endif
 }
 
