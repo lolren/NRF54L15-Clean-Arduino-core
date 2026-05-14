@@ -1299,6 +1299,7 @@ bool BleRadio::startConnectionFromConnectInd(const uint8_t* payload, uint8_t len
   connectionConnParamUpdatePending_ = false;
   connectionConnParamUpdateInFlight_ = false;
   connectionConnParamUpdateIdentifier_ = 1U;
+  connectionRole_ = BleConnectionRole::kPeripheral;
   connectionRequestedAttMtu_ =
       preferredAttMtuForRole(BleConnectionRole::kPeripheral);
   connectionAttMtu_ = kBleDefaultAttMtu;
@@ -1381,7 +1382,6 @@ bool BleRadio::startConnectionFromConnectInd(const uint8_t* payload, uint8_t len
   // Do not add extra background-advertising or RF-path work here unless it is
   // proven safe against the first connection-event anchor on hardware.
   connected_ = true;
-  connectionRole_ = BleConnectionRole::kPeripheral;
   emitBleTrace("CONNECTED");
   return true;
 }
@@ -1455,6 +1455,7 @@ bool BleRadio::startCentralConnection(const uint8_t peerAddress[6],
   connectionConnParamUpdatePending_ = false;
   connectionConnParamUpdateInFlight_ = false;
   connectionConnParamUpdateIdentifier_ = 1U;
+  connectionRole_ = BleConnectionRole::kCentral;
   connectionRequestedAttMtu_ =
       preferredAttMtuForRole(BleConnectionRole::kCentral);
   connectionAttMtu_ = kBleDefaultAttMtu;
@@ -1515,7 +1516,6 @@ bool BleRadio::startCentralConnection(const uint8_t peerAddress[6],
       (connectIndEndUs != 0U) ? connectIndEndUs : bleTimingUs();
   connectionNextEventUs_ = nowUs + 1250UL;
   connected_ = true;
-  connectionRole_ = BleConnectionRole::kCentral;
   maybeQueueCentralLinkSetupRequest();
   emitBleTrace("CONNECTED_CENTRAL");
   return true;

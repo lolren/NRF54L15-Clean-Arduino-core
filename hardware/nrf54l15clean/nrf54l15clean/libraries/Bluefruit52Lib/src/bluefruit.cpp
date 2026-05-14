@@ -439,6 +439,8 @@ uint8_t mapProperties(uint8_t properties) {
   return mapped;
 }
 
+static uint16_t preferredBleDataLengthFromMtu(uint16_t mtu_max);
+
 uint8_t disconnectReasonToHci(const BleDisconnectDebug& debug) {
   switch (static_cast<BleDisconnectReason>(debug.reason)) {
     case BleDisconnectReason::kApi:
@@ -525,6 +527,14 @@ class BluefruitCompatManager {
                                             Bluefruit.Periph.conn_interval_max_,
                                             Bluefruit.Periph.conn_latency_,
                                             Bluefruit.Periph.conn_supervision_timeout_);
+    // Bluefruit defaults to a 23-byte ATT MTU and 27-byte LL data length
+    // unless the sketch explicitly chooses a wider bandwidth profile.
+    radio_.setPeripheralPreferredAttMtu(Bluefruit.periph_requested_mtu_);
+    radio_.setPeripheralPreferredDataLength(
+        preferredBleDataLengthFromMtu(Bluefruit.periph_requested_mtu_));
+    radio_.setCentralPreferredAttMtu(Bluefruit.central_requested_mtu_);
+    radio_.setCentralPreferredDataLength(
+        preferredBleDataLengthFromMtu(Bluefruit.central_requested_mtu_));
     radio_.setCustomGattWriteCallback(&BluefruitCompatManager::gattWriteThunk, this);
 
     if (Bluefruit.auto_conn_led_) {

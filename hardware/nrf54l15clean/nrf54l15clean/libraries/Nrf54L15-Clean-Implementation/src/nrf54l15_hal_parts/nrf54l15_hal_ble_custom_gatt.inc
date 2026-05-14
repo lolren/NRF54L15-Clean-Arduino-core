@@ -615,8 +615,9 @@ uint16_t BleRadio::preferredDataLengthForRole(BleConnectionRole role) const {
 }
 
 uint16_t BleRadio::localMaxDataPduPayloadLength() const {
-  return connected_ ? preferredDataLengthForRole(connectionRole_)
-                    : static_cast<uint16_t>(kBleDataPduMaxPayload);
+  return (connectionRole_ != BleConnectionRole::kNone)
+             ? preferredDataLengthForRole(connectionRole_)
+             : static_cast<uint16_t>(kBleDataPduMaxPayload);
 }
 
 uint8_t BleRadio::supportedBlePhys(uint8_t phys) const {
@@ -757,8 +758,9 @@ uint16_t BleRadio::preferredAttMtuForRole(BleConnectionRole role) const {
 }
 
 uint16_t BleRadio::localPreferredAttMtu() const {
-  return connected_ ? preferredAttMtuForRole(connectionRole_)
-                    : kBleServerPreferredMtu;
+  return (connectionRole_ != BleConnectionRole::kNone)
+             ? preferredAttMtuForRole(connectionRole_)
+             : kBleServerPreferredMtu;
 }
 
 void BleRadio::updateConnectionDataLengthFromPeer(uint16_t peerMaxRxOctets,

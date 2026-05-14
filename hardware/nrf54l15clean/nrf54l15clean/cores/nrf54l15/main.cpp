@@ -4,6 +4,8 @@
 extern "C" void nrf54l15_clean_idle_service(void);
 extern "C" void nrf54l15_clean_yield_service(void);
 extern "C" void nrf54l15_software_timer_service(void);
+extern "C" uint32_t nrf54l15_clean_ble_idle_sleep_cap_us(void)
+    __attribute__((weak));
 extern "C" size_t nrf54l15_heap_total_bytes(void);
 extern "C" size_t nrf54l15_heap_used_bytes(void);
 extern "C" size_t nrf54l15_heap_free_bytes(void);
@@ -62,6 +64,18 @@ extern "C" void __attribute__((weak)) yield(void) {
     if ((__get_PRIMASK() & 1U) != 0U) {
         __asm volatile("nop");
         return;
+    }
+    if (nrf54l15_clean_ble_idle_sleep_cap_us != nullptr) {
+        const uint32_t sleepCapUs = nrf54l15_clean_ble_idle_sleep_cap_us();
+        // Bluefruit / BLE CPUAPP flows are still pump-driven whenever the BLE
+        // layer reports an active timing budget. A 1 ms SysTick wake cadence
+        // is still too coarse for foreground advertising / connect windows on
+        // some stacks, so Balanced mode must stay out of WFI for any active
+        // BLE slice and leave low-power WFI behavior to clean_power=low.
+        if (sleepCapUs != 0U) {
+            __asm volatile("nop");
+            return;
+        }
     }
     const uint32_t restoreRaw = nrf54l15_core_enter_idle_cpu_scaling();
     __asm volatile("wfi");
