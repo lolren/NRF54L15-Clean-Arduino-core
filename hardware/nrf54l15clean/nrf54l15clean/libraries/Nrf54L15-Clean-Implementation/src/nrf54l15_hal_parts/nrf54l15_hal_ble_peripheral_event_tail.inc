@@ -444,12 +444,8 @@
     } else {
       emitBleTrace("TERMINATE_INTERNAL");
     }
-    recordDisconnectDebug(disconnectReason, disconnectErrorCode);
-    connectionPendingTxLlid_ = 0x01U;
-    connectionPendingTxLength_ = 0U;
-    connectionPendingTxValid_ = false;
-    connected_ = false;
-    restoreAdvertisingLinkDefaults();
+    disconnectWithReason(disconnectReason, disconnectErrorCode,
+                         spinLimit / 2U + 1U);
   }
 
   clearRadioCoreEvents(radio_);

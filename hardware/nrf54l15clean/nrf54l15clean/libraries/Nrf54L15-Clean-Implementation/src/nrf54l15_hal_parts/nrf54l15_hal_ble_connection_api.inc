@@ -771,7 +771,9 @@ bool BleRadio::disconnectWithReason(BleDisconnectReason reason, uint8_t errorCod
   clearConnectionSecurityState();
   connectionServiceBusy_ = false;
   clearQueuedConnectionEvents();
-  restoreAdvertisingLinkDefaults();
+  if (!configureBle1M()) {
+    restoreAdvertisingLinkDefaults();
+  }
   clearRadioCoreEvents(radio_);
   endUnconnectedRadioActivity();
   emitBleTrace("DISCONNECT");

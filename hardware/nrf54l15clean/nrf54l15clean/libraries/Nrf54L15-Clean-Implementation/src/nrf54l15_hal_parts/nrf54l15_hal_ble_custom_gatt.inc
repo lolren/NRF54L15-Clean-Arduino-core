@@ -132,7 +132,13 @@ bool BleRadio::addCustomGattServiceCommon(const uint8_t* uuid, uint8_t uuidSize,
   BleCustomServiceState& service = customGattServices_[customGattServiceCount_];
   memset(&service, 0, sizeof(service));
   service.uuidSize = uuidSize;
-  memcpy(service.uuid, uuid, uuidSize);
+  if (uuidSize == kBleUuid128Size) {
+    for (uint8_t i = 0U; i < kBleUuid128Size; ++i) {
+      service.uuid[i] = uuid[kBleUuid128Size - 1U - i];
+    }
+  } else {
+    memcpy(service.uuid, uuid, uuidSize);
+  }
   service.serviceHandle = customGattNextHandle_;
   service.endHandle = customGattNextHandle_;
   ++customGattNextHandle_;
@@ -227,7 +233,13 @@ bool BleRadio::addCustomGattCharacteristicCommon(uint16_t serviceHandle,
   memset(&characteristic, 0, sizeof(characteristic));
   characteristic.serviceHandle = serviceHandle;
   characteristic.uuidSize = uuidSize;
-  memcpy(characteristic.uuid, uuid, uuidSize);
+  if (uuidSize == kBleUuid128Size) {
+    for (uint8_t i = 0U; i < kBleUuid128Size; ++i) {
+      characteristic.uuid[i] = uuid[kBleUuid128Size - 1U - i];
+    }
+  } else {
+    memcpy(characteristic.uuid, uuid, uuidSize);
+  }
   characteristic.properties = properties;
   characteristic.declarationHandle = customGattNextHandle_++;
   characteristic.valueHandle = customGattNextHandle_++;

@@ -191,8 +191,8 @@ static void resetBridgeBuffers() {
 
 static void stageUsbToBle(int maxBytes) {
   int budget = maxBytes;
-  while (budget > 0 && Serial.available() > 0) {
-    const int ch = Serial.read();
+  while (budget > 0 && Serial.availableBuffered() > 0) {
+    const int ch = Serial.readBuffered();
     if (ch < 0) {
       break;
     }
@@ -330,7 +330,7 @@ static void printStreamingStats() {
   Serial.print(" ble_q=");
   Serial.print(g_bleToUsbCount);
   Serial.print(" usb_avail=");
-  Serial.print(Serial.available());
+  Serial.print(Serial.availableBuffered());
   Serial.print(" rxq=");
   Serial.print(g_nus.available());
   Serial.print(" mtu=");

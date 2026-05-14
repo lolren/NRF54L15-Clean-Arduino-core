@@ -852,6 +852,14 @@ int HardwareSerial::available() {
     return static_cast<int>(_rxCount);
 }
 
+int HardwareSerial::availableBuffered() const {
+    const uint32_t primask = __get_PRIMASK();
+    __disable_irq();
+    const int buffered = static_cast<int>(_rxCount);
+    __set_PRIMASK(primask);
+    return buffered;
+}
+
 int HardwareSerial::availableForWrite() {
     serviceTxDma();
     const uint32_t primask = __get_PRIMASK();
@@ -863,6 +871,22 @@ int HardwareSerial::availableForWrite() {
 
 int HardwareSerial::read() {
     serviceRxDma();
+    const uint32_t primask = __get_PRIMASK();
+    __disable_irq();
+    if (_rxCount == 0U) {
+        __set_PRIMASK(primask);
+        return -1;
+    }
+
+    const uint8_t value = _rxRing[_rxTail];
+    _rxTail = static_cast<uint16_t>(
+        (_rxTail + 1U) & static_cast<uint16_t>(kRxRingSize - 1U));
+    --_rxCount;
+    __set_PRIMASK(primask);
+    return static_cast<int>(value & _dataMask);
+}
+
+int HardwareSerial::readBuffered() {
     const uint32_t primask = __get_PRIMASK();
     __disable_irq();
     if (_rxCount == 0U) {

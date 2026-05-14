@@ -254,8 +254,8 @@ uint16_t advanceBridgeIndex(uint16_t index, uint16_t capacity) {
 
 void stageUsbToBle(int maxBytes) {
   int budget = maxBytes;
-  while (budget > 0 && Serial.available() > 0) {
-    const int ch = Serial.read();
+  while (budget > 0 && Serial.availableBuffered() > 0) {
+    const int ch = Serial.readBuffered();
     if (ch < 0) {
       break;
     }

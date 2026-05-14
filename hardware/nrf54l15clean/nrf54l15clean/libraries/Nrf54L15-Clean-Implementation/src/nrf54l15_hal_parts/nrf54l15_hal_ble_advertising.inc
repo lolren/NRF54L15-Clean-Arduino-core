@@ -120,6 +120,9 @@ bool BleRadio::advertiseOncePrepared(BleAdvertisingChannel channel,
   if (!setAdvertisingChannel(channel)) {
     return false;
   }
+  if (!buildAdvertisingPacket()) {
+    return false;
+  }
   return transmitPreparedPacketOnCurrentChannel(&txPacket_[0], spinLimit);
 }
 
@@ -179,6 +182,9 @@ bool BleRadio::prepareBackgroundAdvertisingEvent() {
   backgroundAdvertisingDebug_.lastChannel = static_cast<uint8_t>(channel);
 
   if (!setAdvertisingChannel(channel)) {
+    return false;
+  }
+  if (!buildAdvertisingPacket()) {
     return false;
   }
 
@@ -1771,6 +1777,9 @@ bool BleRadio::advertiseInteractOncePrepared(BleAdvertisingChannel channel,
     return false;
   }
   if (!setAdvertisingChannel(channel)) {
+    return false;
+  }
+  if (!buildAdvertisingPacket()) {
     return false;
   }
 
