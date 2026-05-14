@@ -33,8 +33,6 @@ public:
     int read() override;
     int peek() override;
     void flush() override;
-    int availableBuffered() const;
-    int readBuffered();
 
     size_t write(uint8_t value) override;
     size_t write(const uint8_t* buffer, size_t size) override;
