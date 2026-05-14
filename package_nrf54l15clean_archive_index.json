@@ -3,10 +3,10 @@
     {
       "name": "nrf54l15clean",
       "maintainer": "nRF54L15 Clean Arduino",
-      "websiteURL": "https://github.com/REPLACE_ME/REPLACE_ME",
+      "websiteURL": "https://github.com/lolren/nrf54-arduino-core",
       "email": "",
       "help": {
-        "online": "https://github.com/REPLACE_ME/REPLACE_ME"
+        "online": "https://github.com/lolren/nrf54-arduino-core"
       },
       "platforms": [
         {
@@ -14,7 +14,7 @@
           "architecture": "nrf54l15clean",
           "version": "0.7.10",
           "category": "Arduino",
-          "url": "https://github.com/REPLACE_ME/REPLACE_ME/releases/download/v0.7.10/nrf54l15clean-0.7.10-c945778b1684.tar.bz2",
+          "url": "https://github.com/lolren/nrf54-arduino-core/releases/download/v0.7.10/nrf54l15clean-0.7.10-c945778b1684.tar.bz2",
           "archiveFileName": "nrf54l15clean-0.7.10-c945778b1684.tar.bz2",
           "checksum": "SHA-256:c945778b168495ce2c48138512ae3c9b6c697dcc4c7567bfd09858a359178d80",
           "size": "1417327",
@@ -36,7 +36,7 @@
             }
           ],
           "help": {
-            "online": "https://github.com/REPLACE_ME/REPLACE_ME"
+            "online": "https://github.com/lolren/nrf54-arduino-core"
           },
           "toolsDependencies": [
             {
