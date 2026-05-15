@@ -7,7 +7,9 @@ Open-source Arduino board package for **nRF54L15** — the latest-gen Cortex-M33
 ## Quick Start
 
 1. Add Boards Manager URL in Arduino IDE:  
-   **`https://raw.githubusercontent.com/lolren/nrf54-arduino-core/main/package_nrf54l15clean_index.json`**
+   ```
+   https://raw.githubusercontent.com/lolren/nrf54-arduino-core/main/package_nrf54l15clean_index.json
+   ```
 
 2. Install **nRF54L15 Boards** from Tools → Board → Boards Manager
 
