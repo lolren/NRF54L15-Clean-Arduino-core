@@ -28,7 +28,7 @@ This is a **bare-metal, register-level Arduino core** — no Zephyr, no nRF Conn
 **Strengths:**
 - Full control over the hardware — no opaque vendor layers
 - Small binary footprint (no RTOS overhead unless you opt into Thread/Matter)
-- BLE is production-quality: advertising, scanning, connections, 2M/coded PHY, channel sounding all work
+- BLE is production-quality for advertising, scanning, connections, and GATT. Pairing is legacy-only (LESC crypto is done but not plumbed). Channel sounding works on two-board in Mode 2/PBR only. See [BLE status](#ble-status)
 - All standard Arduino peripherals verified: GPIO, PWM, ADC, I2C, SPI, UART, I2S, PDM
 - VPR RISC-V coprocessor fully usable via the SoftPeripheral SDK
 - Crypto: AES-CCM, AES-ECB, PBKDF2 all hardware-accelerated through CRACEN
@@ -37,7 +37,7 @@ This is a **bare-metal, register-level Arduino core** — no Zephyr, no nRF Conn
 - ECC (secp256r1) is **software-only** — the CRACEN PK engine needs proprietary Nordic microcode that isn't publicly available. Thread/Matter pairing takes 2–5 seconds of CPU-bound crypto. See [Why Software ECC](#-why-software-ecc-and-what-it-means-for-pairing)
 - Thread and Matter are **experimental compile targets**, not functional protocol stacks. See [Thread](#thread-experimental) and [Matter](#matter-experimental) status sections
 - Zigbee is **functional but incomplete** — coordinator/router/end-device roles work, but many ZCL clusters are missing. See [Zigbee status](#zigbee-status)
-- BLE LE Secure Connections not yet implemented (legacy pairing only)
+- BLE LE Secure Connections crypto is done but the SMP handshake isn't plumbed yet (legacy pairing only). See [BLE status](#ble--production-quality)
 - P2 GPIO port lacks interrupt/wake capability (hardware limitation of the nRF54L15)
 
 **Who this core is for:** Developers who want bare-metal access to the nRF54L15, are comfortable reading datasheets, and don't mind that some protocol stacks are still maturing. If you need production Thread/Matter/Zigbee today, use Nordic's nRF Connect SDK instead.
@@ -59,22 +59,22 @@ This is a **bare-metal, register-level Arduino core** — no Zephyr, no nRF Conn
 
 | Category | Feature | Status |
 |---|---|---|
-| **Wireless** | BLE advertising, scanning, connections | ✅ |
-| | BLE 2M/coded PHY | ✅ |
-| | BLE SMP legacy pairing (phone fallback) | ✅ |
-| | BLE Channel Sounding (phase ranging) | ✅ |
-| | BLE Channel Sounding (2-board, 57-62cm) | ✅ |
-| | Thread: leader, child, router [¹](#thread-experimental) | ⚠️ |
-| | Thread: UDP communication [¹](#thread-experimental) | ⚠️ |
-| | Thread: PSK Joiner/Commissioner [¹](#thread-experimental) | ⚠️ |
-| | Thread: CSL sleepy end device [¹](#thread-experimental) | ⚠️ |
-| | Zigbee: coordinator, router, end-device [²](#zigbee-status) | ⚠️ |
-| | Zigbee: 2-board join [²](#zigbee-status) | ⚠️ |
-| **Matter** | On/off light over Thread [³](#matter-experimental) | ⚠️ |
-| | Encrypted IM (AES-CTR) [³](#matter-experimental) | ⚠️ |
-| | PASE SPAKE2+ commissioning [³](#matter-experimental) | ⚠️ |
-| | CASE Sigma protocol + fragmentation [³](#matter-experimental) | ⚠️ |
-| | Software secp256r1 ECC [³](#matter-experimental) | ⚠️ |
+| **Wireless** | BLE: advertising, scanning, connections [¹](#ble-status) | ✅ |
+| | BLE: 1M, 2M, Coded PHY [¹](#ble-status) | ✅ |
+| | BLE: ATT/GATT + Bluefruit API [¹](#ble-status) | ✅ |
+| | BLE: pairing & bonding [¹](#ble-status) | ⚠️ |
+| | BLE: channel sounding [¹](#ble-status) | ⚠️ |
+| | Thread: leader, child, router [²](#thread-experimental) | ⚠️ |
+| | Thread: UDP communication [²](#thread-experimental) | ⚠️ |
+| | Thread: PSK Joiner/Commissioner [²](#thread-experimental) | ⚠️ |
+| | Thread: CSL sleepy end device [²](#thread-experimental) | ⚠️ |
+| | Zigbee: coordinator, router, end-device [³](#zigbee-status) | ⚠️ |
+| | Zigbee: 2-board join [³](#zigbee-status) | ⚠️ |
+| **Matter** | On/off light over Thread [⁴](#matter-experimental) | ⚠️ |
+| | Encrypted IM (AES-CTR) [⁴](#matter-experimental) | ⚠️ |
+| | PASE SPAKE2+ commissioning [⁴](#matter-experimental) | ⚠️ |
+| | CASE Sigma protocol + fragmentation [⁴](#matter-experimental) | ⚠️ |
+| | Software secp256r1 ECC [⁴](#matter-experimental) | ⚠️ |
 | **Crypto** | CRACEN hardware RNG | ✅ |
 | | CRACEN IKG key generation (0 ms) | ✅ |
 | | ECDSA sign (~0.84 s) / verify (~1.76 s) | ✅ |
@@ -93,6 +93,50 @@ This is a **bare-metal, register-level Arduino core** — no Zephyr, no nRF Conn
 | | DPPI hardware event system | ✅ |
 | | Tamper detection | ✅ |
 | | KMU key management | ✅ |
+
+---
+
+<a id="ble-status"></a>
+## BLE — Production Quality
+
+BLE is the most mature wireless stack in this core. The entire controller is written from scratch against the nRF54L15 datasheet — Link Layer state machine, radio scheduling, ATT/GATT, L2CAP, SMP security, and the Bluefruit-compatible Arduino API are all implemented at register level.
+
+The nRF54L15 radio supports LE 1M, LE 2M, LE Coded PHYs, and Channel Sounding. It does **not** support LE Audio (isochronous channels), Periodic Advertising with Response, or Direction Finding (AoA/AoD) — those features don't exist in silicon, so they'll never be available on this chip.
+
+### What's fully implemented
+
+- [x] Advertising — connectable, scannable, non-connectable, and directed
+- [x] Scanning — active and passive, with whitelist filtering
+- [x] Connections — central and peripheral simultaneously, up to 20 concurrent links
+- [x] LE 1M, LE 2M, and LE Coded PHY (S2 and S8 coding)
+- [x] PHY update procedure (negotiate 1M ↔ 2M ↔ Coded mid-connection)
+- [x] Data Length Extension — up to 251-byte payloads
+- [x] ATT/GATT server and client — full Bluefruit API (services, characteristics, descriptors)
+- [x] L2CAP connection-oriented channels
+- [x] LE Ping and connection parameter update
+- [x] Simultaneous central and peripheral roles
+- [x] DPPI-driven background advertising — radio events scheduled via hardware without CPU intervention
+
+### What's partially implemented
+
+- [ ] **SMP legacy pairing** (Just Works, Passkey) — functional for phone fallback, but bonding persistence needs work
+- [ ] **LE Secure Connections** — the crypto primitives are all done (secp256r1 keygen, f4 confirm, f5 key derivation, f6 DHKey check, g2 numeric comparison, ECDH shared secret). What's missing is the full SMP LESC handshake flow plumbed through the Link Layer state machine — pairing currently stays in legacy mode even when both sides support LESC.
+- [ ] **Channel Sounding — Mode 2 (PBR / phase-based ranging)** — works on two-board setups, achieving ~57–62 cm accuracy. Requires the VPR RISC-V coprocessor to handle DFE IQ sample capture and processing at radio speed. The M33 CPU alone can't keep up with the subevent timing. Initiator and reflector roles are implemented, but the procedure setup currently uses a hardcoded internal demo profile rather than the full CS configuration workflow.
+- [ ] **Channel Sounding — Mode 1 (RTT)** — radio registers configured, raw RTT subevents fire, but timing calibration and distance extraction haven't been validated. No end-to-end RTT distance measurement demo exists yet.
+- [ ] **Channel Sounding — Mode 3 (hybrid RTT+PBR)** — data structures for hybrid steps exist, but the combined mode hasn't been tested.
+- [ ] **Channel Sounding security** — CS step encryption (AES-CCM per-step) is not yet implemented. All CS procedures run unencrypted.
+- [ ] **OOB pairing** — scaffolded in the SMP layer but never tested with a real OOB data source.
+
+### What the nRF54L15 silicon does not support
+
+These are hardware limitations — no implementation work will add them:
+
+- ❌ LE Audio / isochronous channels (CIS, BIS)
+- ❌ Periodic Advertising with Response (PAwR)
+- ❌ Direction Finding (AoA / AoD via CTE)
+- ❌ LE Power Control
+
+For production applications needing any of the partially-implemented or missing features, Nordic's Zephyr-based **nRF Connect SDK** is the recommended path — it ships with a fully validated Bluetooth LE controller, complete LESC support, certified channel sounding, and all the qualification listings this bare-metal core will never have.
 
 ---
 
