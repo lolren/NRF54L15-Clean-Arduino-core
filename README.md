@@ -41,17 +41,17 @@ void loop() {}
 | | BLE SMP legacy pairing (phone fallback) | ✅ |
 | | BLE Channel Sounding (phase ranging) | ✅ |
 | | BLE Channel Sounding (2-board, 57-62cm) | ✅ |
-| | Thread: leader, child, router | ✅ |
-| | Thread: UDP communication | ✅ |
-| | Thread: PSK Joiner/Commissioner | ✅ |
-| | Thread: CSL sleepy end device | ✅ |
-| | Zigbee: coordinator, router, end-device | ✅ |
-| | Zigbee: 2-board join | ✅ |
-| **Matter** | On/off light over Thread | ✅ |
-| | Encrypted IM (AES-CTR) | ✅ |
-| | PASE SPAKE2+ commissioning | ✅ |
-| | CASE Sigma protocol + fragmentation | ✅ |
-| | Software secp256r1 ECC | ✅ |
+| | Thread: leader, child, router [¹](#thread-experimental) | ⚠️ |
+| | Thread: UDP communication [¹](#thread-experimental) | ⚠️ |
+| | Thread: PSK Joiner/Commissioner [¹](#thread-experimental) | ⚠️ |
+| | Thread: CSL sleepy end device [¹](#thread-experimental) | ⚠️ |
+| | Zigbee: coordinator, router, end-device [²](#zigbee-status) | ⚠️ |
+| | Zigbee: 2-board join [²](#zigbee-status) | ⚠️ |
+| **Matter** | On/off light over Thread [³](#matter-experimental) | ⚠️ |
+| | Encrypted IM (AES-CTR) [³](#matter-experimental) | ⚠️ |
+| | PASE SPAKE2+ commissioning [³](#matter-experimental) | ⚠️ |
+| | CASE Sigma protocol + fragmentation [³](#matter-experimental) | ⚠️ |
+| | Software secp256r1 ECC [³](#matter-experimental) | ⚠️ |
 | **Crypto** | CRACEN hardware RNG | ✅ |
 | | CRACEN IKG key generation (0 ms) | ✅ |
 | | ECDSA sign (~0.84 s) / verify (~1.76 s) | ✅ |
@@ -73,17 +73,126 @@ void loop() {}
 
 ---
 
-## ⚠️ Known Limitations
+## Thread & Matter & Zigbee Status
+
+These three protocol stacks are in active development. Thread and Matter are the least mature — they compile and pass local smoke tests but haven't been validated end-to-end against real commissioners. Zigbee is further along with functional coordinator/router/end-device roles and 16 example sketches, but still has gaps. BLE is production-quality and remains the primary focus.
+
+---
+
+<a id="thread-experimental"></a>
+### 🧵 Thread — Experimental
+
+The Thread stack is an early-stage port of OpenThread core that compiles, links, and can form/join partitions on two-board setups. It is **not** production-ready.
+
+**What works:**
+- [x] Compile and link (FTD, `OPENTHREAD_FTD=1`)
+- [x] Import operational datasets from TLV hex
+- [x] Form new partition as Leader
+- [x] Attach as Child when a parent is reachable
+- [x] Router role upgrade
+- [x] UDP transport — checked single-frame payloads up to 63 bytes
+- [x] Basic two-board ping/pong smoke tests
+
+**What doesn't (yet):**
+- [ ] End-to-end validation against a real commissioner (Apple Home, Google Home, HA Matter Server)
+- [ ] SRP client / service registration (`OPENTHREAD_CONFIG_SRP_CLIENT_ENABLE=0`)
+- [ ] mDNS / DNS-SD advertising (`OPENTHREAD_CONFIG_MULTICAST_DNS_ENABLE=0`)
+- [ ] DNS client (`OPENTHREAD_CONFIG_DNS_CLIENT_ENABLE=0`)
+- [ ] Border Agent / Router roles
+- [ ] DTLS / secure transport layer
+- [ ] Standard MeshCoP Joiner/Commissioner (disabled at compile time)
+- [ ] Fragmented UDP payloads (> 63 bytes) — experimental only
+- [ ] Power management (CSL sleepy end device is scaffolded but not validated)
+- [ ] Production soak testing on reference networks
+
+**Known issues:**
+- Devices fall back to Leader when they can't find an existing parent on the imported dataset's channel — this is correct Thread FTD protocol behavior, but means a single device on an empty channel forms its own isolated partition
+- No `otThreadSetRouterEligible(false)` API exposed through the Arduino wrapper yet — the raw OpenThread call works but requires accessing the `otInstance` pointer
+
+---
+
+<a id="matter-experimental"></a>
+### 🏠 Matter — Early Experimental
+
+The Matter support is a **compile-time and minimal-runtime smoke test**, not a functional Matter device. The CHIP SDK header scaffolding is in place, and the On/Off Light data model initializes correctly, but critical network-layer subsystems are not implemented.
+
+**What works:**
+- [x] Compile and link against staged CHIP headers
+- [x] On/Off Light device type + data model initialization
+- [x] Commissioning window opens (PASE SPAKE2+ seed generated)
+- [x] Local readiness check passes (`ready_for_on_network_commissioning=1`)
+- [x] Manual pairing code and QR code generation
+- [x] Encrypted IM layer (AES-CTR) compiles
+- [x] CASE Sigma protocol state machine (partial, compiles)
+- [x] Software secp256r1 ECC (Barrett reduction, ~0.84s sign / ~1.76s verify)
+
+**What doesn't (yet):**
+- [ ] mDNS/DNS-SD commissioning advertisement (`_matterc._udp` service not published)
+- [ ] SRP operational service registration
+- [ ] Platform DNSSD bridge
+- [ ] Operational discovery responder
+- [ ] Full CASE session establishment (scaffolded but not validated)
+- [ ] End-to-end commissioning against Apple Home / Google Home / HA Matter Server
+- [ ] Any real commissioner interaction — never tested on live hardware against a commissioner
+- [ ] Cluster persistence across reboots
+- [ ] Multi-endpoint support (single On/Off Light endpoint only)
+
+**Honest assessment:** The build menu option is named "Experimental Compile Target" for a reason. It proves the code links and state machines initialize — nothing more. Commissioning window opens locally, but the device is invisible on the network because mDNS/SRP service discovery isn't compiled in. This is a compile-time smoke test, not a commissionable Matter device.
+
+---
+
+<a id="zigbee-status"></a>
+### 📡 Zigbee — Good But Imperfect
+
+Zigbee is the most mature of the three protocol stacks. It has a from-scratch 802.15.4 MAC, NWK, APS, and ZCL implementation with 16 example sketches covering coordinator, router, and end-device roles across lights, sensors, and interoperability demos.
+
+**What works:**
+- [x] Coordinator, Router, and End-Device roles
+- [x] 2-board join (end device → coordinator)
+- [x] MAC association/disassociation
+- [x] Network formation and addressing
+- [x] APS data transfer and acknowledgements
+- [x] ZCL On/Off cluster (client and server)
+- [x] ZCL Level Control cluster
+- [x] ZCL Identify cluster
+- [x] ZCL Temperature Measurement cluster
+- [x] ZCL Color Control cluster (scaffolded)
+- [x] Basic security (NWK key, link key, APS encryption)
+- [x] Rejoin with persistence
+- [x] Binding table (static, 8 entries)
+- [x] End-device timeout / keepalive
+- [x] 16 example sketches
+
+**What doesn't (yet):**
+- [ ] ZCL Groups cluster
+- [ ] ZCL Scenes cluster
+- [ ] ZCL Reporting (attribute reporting engine)
+- [ ] ZCL Alarms
+- [ ] OTA firmware upgrade
+- [ ] Green Power
+- [ ] Touchlink commissioning
+- [ ] Inter-PAN communication
+- [ ] Trust Center link key update / re-keying
+- [ ] Install code-based commissioning
+- [ ] Multi-hop routing (tree routing only)
+- [ ] Network-wide security key rotation
+- [ ] Production soak testing with commercial Zigbee coordinators (Hue, Home Assistant ZHA/Z2M)
+
+**Known issues:**
+- Binding table is static — entries added at compile time, no runtime ZDO bind/unbind handling
+- No coordinator failover — if the coordinator goes down, the network stalls
+- Routing is basic tree routing; AODV/route discovery is not implemented
+- Security is pre-configured — no dynamic trust center join flow
+
+---
+
+## ⚠️ Other Known Limitations
 
 | Limitation | Detail |
 |---|---|
-| **Thread attach** | Common two-board demo partition race is mitigated with child-first attach + deterministic leader fallback; still experimental and needs longer soak/reference-network validation |
-| **Thread UDP fragmentation** | Two-board staged UDP smoke validates checked single-frame payloads through 63 bytes; larger fragmented UDP payloads are still experimental |
-| **Standard Thread commissioning** | MeshCoP Joiner/Commissioner examples now compile and report support status, but the staged core still ships those roles disabled until DTLS/secure transport is enabled and tested |
 | **BLE LE Secure Connections** | Faster software secp256r1 does not enable LESC by itself. The controller still only implements legacy SMP confirm/random/key-distribution, so SC-only centrals still need the missing LESC Public Key / DHKey Check / f4-f5-f6-g2 flow |
 | **CRACEN PK engine** | Hardware ECDSA / P-256 acceleration still needs proprietary Nordic microcode |
 | **ECDSA speed** | Software ECC now uses Barrett reduction and measures about 0.84 s sign / 1.76 s verify on board — workable for demos, still much slower than dedicated hardware |
-| **OpenThread radio** | Radio/diag examples now compile with the staged core; PAL is still experimental and needs longer two-board soak before production use |
 
 ---
 
