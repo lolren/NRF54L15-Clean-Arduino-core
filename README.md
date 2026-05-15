@@ -21,6 +21,29 @@ void loop() {}
 
 ---
 
+## What to Expect From This Core
+
+This is a **bare-metal, register-level Arduino core** — no Zephyr, no nRF Connect SDK, no vendor HAL. Every peripheral driver is written from scratch against the nRF54L15 datasheet. That means:
+
+**Strengths:**
+- Full control over the hardware — no opaque vendor layers
+- Small binary footprint (no RTOS overhead unless you opt into Thread/Matter)
+- BLE is production-quality: advertising, scanning, connections, 2M/coded PHY, channel sounding all work
+- All standard Arduino peripherals verified: GPIO, PWM, ADC, I2C, SPI, UART, I2S, PDM
+- VPR RISC-V coprocessor fully usable via the SoftPeripheral SDK
+- Crypto: AES-CCM, AES-ECB, PBKDF2 all hardware-accelerated through CRACEN
+
+**Limitations you should know about:**
+- ECC (secp256r1) is **software-only** — the CRACEN PK engine needs proprietary Nordic microcode that isn't publicly available. Thread/Matter pairing takes 2–5 seconds of CPU-bound crypto. See [Why Software ECC](#-why-software-ecc-and-what-it-means-for-pairing)
+- Thread and Matter are **experimental compile targets**, not functional protocol stacks. See [Thread](#thread-experimental) and [Matter](#matter-experimental) status sections
+- Zigbee is **functional but incomplete** — coordinator/router/end-device roles work, but many ZCL clusters are missing. See [Zigbee status](#zigbee-status)
+- BLE LE Secure Connections not yet implemented (legacy pairing only)
+- P2 GPIO port lacks interrupt/wake capability (hardware limitation of the nRF54L15)
+
+**Who this core is for:** Developers who want bare-metal access to the nRF54L15, are comfortable reading datasheets, and don't mind that some protocol stacks are still maturing. If you need production Thread/Matter/Zigbee today, use Nordic's nRF Connect SDK instead.
+
+---
+
 ## Supported Boards
 
 | Board | Identifier |
@@ -216,7 +239,7 @@ role instead of always behaving like `MAX`.
 2. **Tools → Board → Boards Manager** → search "nRF54L15" → Install
 3. **Tools → Board** → select your board
 
-### Arduino CLI
+### Arduino CLI — Linux
 ```bash
 arduino-cli config add board_manager.additional_urls \
   https://raw.githubusercontent.com/lolren/nrf54-arduino-core/main/package_nrf54l15clean_index.json
@@ -224,24 +247,35 @@ arduino-cli config add board_manager.additional_urls \
 arduino-cli core update-index
 arduino-cli core install nrf54l15clean:nrf54l15clean
 
-# Compile and upload
+# Compile and upload (port is usually /dev/ttyACM0)
 arduino-cli compile --fqbn nrf54l15clean:nrf54l15clean:xiao_nrf54l15 MySketch
 arduino-cli upload -p /dev/ttyACM0 --fqbn nrf54l15clean:nrf54l15clean:xiao_nrf54l15 MySketch
 ```
 
-If `arduino-cli core install nrf54l15clean:nrf54l15clean` says `Platform
-'nrf54l15clean:nrf54l15clean' not found` right after the custom index is
-downloaded, check for a sketchbook override at
-`~/Arduino/hardware/nrf54l15clean` on Linux/macOS or
-`%USERPROFILE%\\Documents\\Arduino\\hardware\\nrf54l15clean` on Windows. A
-manual core copy in the sketchbook takes precedence over Boards Manager and
-makes the packaged core appear unmanaged until that folder is moved or removed.
+### Arduino CLI — Windows (PowerShell)
+```powershell
+arduino-cli config add board_manager.additional_urls https://raw.githubusercontent.com/lolren/nrf54-arduino-core/main/package_nrf54l15clean_index.json
 
-### Linux udev (for upload)
+arduino-cli core update-index
+arduino-cli core install nrf54l15clean:nrf54l15clean
+
+# Find your COM port first:
+arduino-cli board list
+
+# Compile and upload (e.g. COM3)
+arduino-cli compile --fqbn nrf54l15clean:nrf54l15clean:xiao_nrf54l15 MySketch
+arduino-cli upload -p COM3 --fqbn nrf54l15clean:nrf54l15clean:xiao_nrf54l15 MySketch
+```
+
+> **Troubleshooting:** If `core install` says "Platform not found" right after the index downloaded, you probably have a manual copy of the core in your sketchbook folder (`~/Arduino/hardware/nrf54l15clean` on Linux, `%USERPROFILE%\Documents\Arduino\hardware\nrf54l15clean` on Windows). The sketchbook copy takes precedence over Boards Manager and hides the packaged version. Move or delete that folder and try again.
+
+### Linux: udev rules for upload permissions
 ```bash
-# From the installed package:
 ~/.arduino15/packages/nrf54l15clean/hardware/nrf54l15clean/*/tools/setup/install_linux_host_deps.sh --udev
 ```
+
+### Windows: CMSIS-DAP driver
+Windows 10/11 should recognize the XIAO nRF54L15 as a CMSIS-DAP device automatically. If upload fails, install the [Zadig](https://zadig.akeo.ie/) tool and replace the driver for the CMSIS-DAP interface with WinUSB.
 
 ---
 
@@ -272,18 +306,30 @@ All features accessible through one header:
 
 ---
 
-## 📊 Performance
+## 🔐 Why Software ECC (And What It Means for Pairing)
 
-| Operation | Time | Method |
+The nRF54L15 has a hardware crypto accelerator called **CRACEN** that includes a PK engine for P-256 ECDSA. In theory this would make ECC operations nearly instant. In practice, the PK engine requires **proprietary Nordic microcode firmware** to operate — firmware that isn't publicly available outside Nordic's closed nRF Connect SDK.
+
+So we ship a from-scratch software secp256r1 implementation using Barrett reduction. It's optimized but it's still software running on a 128 MHz Cortex-M33:
+
+| Operation | Time | What It Means |
 |---|---|---|
-| Field multiply (100x) | 12 ms | 256-bit schoolbook multiply + Barrett reduction |
-| Public-key derive / keygen | 785 ms | Software secp256r1 scalar multiply |
-| ECDSA sign | 839 ms | Software secp256r1 |
-| ECDSA verify | 1764 ms | Software secp256r1, two scalar multiplies |
-| ECDH shared secret | 903 ms | Software secp256r1 |
-| CRACEN IKG keygen | 0 ms | Hardware DRBG |
+| CRACEN IKG keygen | 0 ms | Hardware DRBG feeds the RNG instantly — this works |
+| Field multiply (100×) | 12 ms | Barrett reduction at ~12 µs per multiply |
+| ECDSA sign | ~0.84 s | Thread Joiner sign, Matter PASE init |
+| ECDH shared secret | ~0.90 s | Thread link key exchange |
+| ECDSA verify | ~1.76 s | Thread Commissioner verify, Matter CASE |
+| Public-key derive | ~0.79 s | Key generation at boot |
 
-This speedup makes software P-256 practical for staged Matter flows and other on-device crypto work. It does not, by itself, turn on BLE LE Secure Connections: the SMP LESC message flow is still not implemented in the controller.
+### Real-world impact on Thread and Matter pairing
+
+- **Thread Joiner:** Needs one ECDSA sign + one ECDH. Expect **~2 seconds** of crypto overhead before the device even sends its first join request.
+- **Matter PASE:** Needs ECDSA sign + ECDH key agreement. Expect **~3 seconds** of crypto before the commissioning window handshake completes.
+- **Overall pairing time:** The CPU will spend 2–5 seconds crunching elliptic curve math before any network exchange begins. This is slow but workable for demos and development. It would be frustrating in a production device.
+
+If Nordic ever releases the CRACEN PK microcode publicly (or if a community reverse-engineering effort succeeds), these numbers drop to near-zero and pairing becomes instant. Until then, software ECC is the only option for a fully open-source, no-NDA core.
+
+Software ECC does **not** enable BLE LE Secure Connections by itself — the SMP LESC message flow (Public Key exchange, DHKey Check, f4/f5/f6/g2 key derivation) is a separate protocol layer that still needs implementing in the BLE controller.
 
 ---
 
