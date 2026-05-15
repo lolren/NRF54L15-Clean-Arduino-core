@@ -211,7 +211,7 @@ The Matter support is a **compile-time and minimal-runtime smoke test**, not a f
 <a id="zigbee-status"></a>
 ### 📡 Zigbee — Good But Imperfect
 
-Zigbee is the most mature of the three protocol stacks. It has a from-scratch 802.15.4 MAC, NWK, APS, and ZCL implementation with 16 example sketches covering coordinator, router, and end-device roles across lights, sensors, and interoperability demos.
+Zigbee is the most mature of the three 802.15.4 stacks (Thread, Matter, and Zigbee). It has a from-scratch 802.15.4 MAC, NWK, APS, and ZCL implementation with 16 example sketches covering coordinator, router, and end-device roles across lights, sensors, and interoperability demos.
 
 **What works:**
 - [x] Coordinator, Router, and End-Device roles
