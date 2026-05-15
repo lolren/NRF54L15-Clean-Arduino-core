@@ -876,6 +876,67 @@ constexpr uint32_t kBleAdvRequestStartWaitMaxUs = 210U;
 constexpr uint32_t kBleAdvRequestListenMaxUs = 2500U;
 constexpr uint32_t kBleScanRspListenMaxUs = 2500U;
 
+static void ensureBleGrtcLfclkRunning(void) {
+  // The GRTC clock source defaults to SystemLFCLK (CLKCFG reset = 0x00010001).
+  // On a cold power-on boot the LFCLK is not running, which causes the GRTC
+  // syscounter to stall and breaks all BLE timing.  Start LFRC first (fast
+  // warm-up) and then switch to LFXO for accuracy.
+  auto* clock =
+      reinterpret_cast<NRF_CLOCK_Type*>(static_cast<uintptr_t>(nrf54l15::CLOCK_BASE));
+  if (clock == nullptr) {
+    return;
+  }
+
+  const uint32_t stat = clock->LFCLK.STAT;
+  const uint32_t state =
+      (stat & CLOCK_LFCLK_STAT_STATE_Msk) >> CLOCK_LFCLK_STAT_STATE_Pos;
+  if (state == CLOCK_LFCLK_STAT_STATE_Running) {
+    // LFCLK already running; nothing to do.  On a warm reset the CLOCK
+    // peripheral may retain its pre-reset LFCLK configuration.
+    return;
+  }
+
+  // Start LFRC first so the GRTC has a clock source immediately.
+  clock->EVENTS_LFCLKSTARTED = 0U;
+  clock->LFCLK.SRC =
+      (CLOCK_LFCLK_SRC_SRC_LFRC << CLOCK_LFCLK_SRC_SRC_Pos) &
+      CLOCK_LFCLK_SRC_SRC_Msk;
+  __asm volatile("dsb 0xF" ::: "memory");
+  clock->TASKS_LFCLKSTART = CLOCK_TASKS_LFCLKSTART_TASKS_LFCLKSTART_Trigger;
+
+  // LFRC starts in microseconds.  A short spin is sufficient.
+  uint32_t spin = 200000UL;
+  while (spin-- > 0U) {
+    if ((clock->EVENTS_LFCLKSTARTED != 0U) &&
+        (((clock->LFCLK.STAT & CLOCK_LFCLK_STAT_STATE_Msk) >>
+          CLOCK_LFCLK_STAT_STATE_Pos) == CLOCK_LFCLK_STAT_STATE_Running)) {
+      break;
+    }
+  }
+
+  // Now start the accurate LFXO crystal.  Crystal startup can take
+  // 250-500 ms; use a generous spin budget (about 800 ms at 64 MHz
+  // with roughly 5 cycles per iteration).
+  clock->EVENTS_LFCLKSTARTED = 0U;
+  clock->LFCLK.SRC =
+      (CLOCK_LFCLK_SRC_SRC_LFXO << CLOCK_LFCLK_SRC_SRC_Pos) &
+      CLOCK_LFCLK_SRC_SRC_Msk;
+  __asm volatile("dsb 0xF" ::: "memory");
+  clock->TASKS_LFCLKSTART = CLOCK_TASKS_LFCLKSTART_TASKS_LFCLKSTART_Trigger;
+
+  spin = 10000000UL;
+  while (spin-- > 0U) {
+    const uint32_t s = clock->LFCLK.STAT;
+    if ((clock->EVENTS_LFCLKSTARTED != 0U) &&
+        (((s & CLOCK_LFCLK_STAT_STATE_Msk) >>
+          CLOCK_LFCLK_STAT_STATE_Pos) == CLOCK_LFCLK_STAT_STATE_Running) &&
+        (((s & CLOCK_LFCLK_STAT_SRC_Msk) >>
+          CLOCK_LFCLK_STAT_SRC_Pos) == CLOCK_LFCLK_STAT_SRC_LFXO)) {
+      break;
+    }
+  }
+}
+
 void initBleGrtc() {
   static bool initialized = false;
   const uint32_t irqState = halEnterCritical();
@@ -890,9 +951,19 @@ void initBleGrtc() {
     return;
   }
 
+  // Ensure the LFCLK is running before the GRTC starts.  The GRTC's
+  // default clock source is SystemLFCLK (CLKCFG reset = 0x00010001),
+  // which follows whatever LFCLK source the CLOCK peripheral provides.
+  // On a cold power-on boot the LFCLK is not started, so we must start
+  // it here (LFRC first for fast warm-up, then LFXO for accuracy).
+  ensureBleGrtcLfclkRunning();
+
+  // Clear AUTOEN before OR-ing in the desired bits so we don't carry
+  // a stale POR default into the write.
   uint32_t mode = grtc->MODE;
-  mode &= ~GRTC_MODE_SYSCOUNTEREN_Msk;
+  mode &= ~(GRTC_MODE_SYSCOUNTEREN_Msk | GRTC_MODE_AUTOEN_Msk);
   mode |= (GRTC_MODE_SYSCOUNTEREN_Enabled << GRTC_MODE_SYSCOUNTEREN_Pos);
+  mode |= (GRTC_MODE_AUTOEN_CpuActive << GRTC_MODE_AUTOEN_Pos);
   grtc->MODE = mode;
   __asm volatile("dsb 0xF" ::: "memory");
 

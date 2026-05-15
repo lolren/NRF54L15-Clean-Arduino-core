@@ -58,9 +58,10 @@ extern "C" void __attribute__((weak)) yield(void) {
     }
     return;
 #else
-    // Balanced profile: SysTick fires every 1ms, providing a guaranteed
-    // periodic wake source.  WFI here is safe and drops idle current from
-    // ~1 mA (busy-spin) to ~3 µA while loop() is idle.
+    // Balanced profile keeps the foreground loop pump-driven. SysTick is
+    // CPU-clocked on this target and is not a safe standalone wake source once
+    // WFI gates the CPU clock. Low Power builds use the GRTC-backed delay path
+    // when real tickless sleep is needed.
     if ((__get_PRIMASK() & 1U) != 0U) {
         __asm volatile("nop");
         return;
@@ -77,9 +78,8 @@ extern "C" void __attribute__((weak)) yield(void) {
             return;
         }
     }
-    const uint32_t restoreRaw = nrf54l15_core_enter_idle_cpu_scaling();
-    __asm volatile("wfi");
-    nrf54l15_core_exit_idle_cpu_scaling(restoreRaw);
+    __asm volatile("nop");
+    return;
 #endif
 }
 
