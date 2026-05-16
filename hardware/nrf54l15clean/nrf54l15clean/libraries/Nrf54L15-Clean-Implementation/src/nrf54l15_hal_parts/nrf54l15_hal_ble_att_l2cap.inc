@@ -1491,10 +1491,10 @@ bool BleRadio::buildL2capSmpResponse(const uint8_t* l2capPayload,
       if (peerRequestedSecureConnections) {
         smpSecureConnectionsActive_ = true;
         smpPairingRsp_[3] |= kSmpAuthReqSecureConnectionsMask;
-        initiatorKeyDist &= static_cast<uint8_t>(kSmpKeyDistIdKeyMask |
-                                                 kSmpKeyDistSignKeyMask);
-        responderKeyDist &= static_cast<uint8_t>(kSmpKeyDistIdKeyMask |
-                                                 kSmpKeyDistSignKeyMask);
+        // LE Secure Connections derives the link key from DHKey. Do not ask
+        // for optional ID/signing key packets until this core sends them.
+        initiatorKeyDist = 0U;
+        responderKeyDist = 0U;
       }
       smpPairingRsp_[5] = initiatorKeyDist;
       smpPairingRsp_[6] = responderKeyDist;
@@ -1961,6 +1961,19 @@ bool BleRadio::buildL2capSmpResponse(const uint8_t* l2capPayload,
       if (smpLength != 2U) {
         return buildSmpPairingFailed(kSmpReasonInvalidParameters);
       }
+      if ((connectionRole_ == BleConnectionRole::kCentral) && smpStkValid_) {
+        emitBleTrace("SMP_SECURITY_REQUEST_RX_BONDED");
+        if (!connectionEncSessionValid_ &&
+            !connectionEncRxEnabled_ &&
+            !connectionEncTxEnabled_ &&
+            !connectionEncKeyDerivationPending_ &&
+            !connectionEncStartReqPending_ &&
+            !connectionEncStartReqTxPending_ &&
+            !connectionEncAwaitingStartRsp_) {
+          maybeQueueCentralLinkSetupRequest();
+        }
+        return false;
+      }
       if (smpPairingState_ == kSmpPairingStateIdle) {
         uint8_t pairingReq[kSmpPairingRequestLen] = {0};
         const uint8_t peerAuthReq = smp[1];
@@ -1971,8 +1984,10 @@ bool BleRadio::buildL2capSmpResponse(const uint8_t* l2capPayload,
             ((peerAuthReq & kSmpAuthReqBondingMask) != 0U) ? 0x01U : 0x00U;
         if ((peerAuthReq & kSmpAuthReqSecureConnectionsMask) != 0U) {
           pairingReq[3] |= kSmpAuthReqSecureConnectionsMask;
-          pairingReq[5] = kSmpKeyDistIdKeyMask | kSmpKeyDistSignKeyMask;
-          pairingReq[6] = kSmpKeyDistIdKeyMask | kSmpKeyDistSignKeyMask;
+          // SC does not need distributed EncKey, and this core currently keeps
+          // ID/signing key exchange local to avoid stalling bond persistence.
+          pairingReq[5] = 0U;
+          pairingReq[6] = 0U;
         } else {
           pairingReq[5] = kSmpKeyDistEncKeyMask | kSmpKeyDistIdKeyMask;
           pairingReq[6] = kSmpKeyDistEncKeyMask | kSmpKeyDistIdKeyMask;

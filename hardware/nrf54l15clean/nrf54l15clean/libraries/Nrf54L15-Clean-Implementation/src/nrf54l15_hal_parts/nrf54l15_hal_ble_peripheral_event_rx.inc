@@ -976,6 +976,12 @@ bool BleRadio::pollConnectionEventInternal(BleConnectionEvent* event,
       (connectionLastTxLlid_ == kBlePduDataStartOrComplete) &&
       (connectionLastTxPlainLength_ >= (kBleL2capHeaderLen + 1U)) &&
       (readLe16(&connectionLastTxPlainPayload_[2]) == kBleL2capCidAtt);
+  const bool lastTxWasEncryptedEmptyAck =
+      connectionEncSessionValid_ &&
+      connectionTxHistoryValid_ &&
+      connectionLastTxWasEncrypted_ &&
+      (connectionLastTxLlid_ == 0x01U) &&
+      (connectionLastTxLength_ == 0U);
   const bool peerAdvancedToNewUnencryptedAttProcedure =
       packetIsNew &&
       (llid == kBlePduDataStartOrComplete) &&
@@ -995,7 +1001,7 @@ bool BleRadio::pollConnectionEventInternal(BleConnectionEvent* event,
       ((readLe16(&connectionPendingTxPayload_[2]) == kBleL2capCidAtt) ||
        (readLe16(&connectionPendingTxPayload_[2]) == kBleL2capCidSmp) ||
        (readLe16(&connectionPendingTxPayload_[2]) == kBleL2capCidLeSignaling));
-  const bool peerAdvancedToEncryptedDataAfterStartRsp =
+  const bool firstEncryptedDataAfterStartRsp =
       connectionEncSessionValid_ &&
       packetIsNew &&
       (llid == kBlePduDataStartOrComplete) &&
@@ -1004,11 +1010,22 @@ bool BleRadio::pollConnectionEventInternal(BleConnectionEvent* event,
       (connectionLastTxLlid_ == kBlePduLlControl) &&
       (connectionLastTxPlainLength_ == 1U) &&
       (connectionLastTxPlainPayload_[0] == kBleLlCtrlStartEncRsp);
+  const bool earlyEncryptedDataAfterStartTransition =
+      connectionEncSessionValid_ &&
+      connectionEncRxEnabled_ &&
+      packetIsNew &&
+      (llid == kBlePduDataStartOrComplete) &&
+      (rxLengthRaw >= kBleMicLen) &&
+      (connectionEncRxCounter_ <= 1ULL);
+  const bool peerAdvancedToEncryptedDataAfterStartRsp =
+      firstEncryptedDataAfterStartRsp;
   if (!peerAckedLastTx &&
       connectionTxHistoryValid_ &&
       packetIsNew &&
        (lastTxWasEarlyLlControlResponse ||
        peerAdvancedToEncryptedDataAfterStartRsp ||
+       (lastTxWasEncryptedEmptyAck &&
+        peerAdvancedToNewEncryptedDataProcedure) ||
        ((lastTxWasAttServerResponse || lastTxHadAttPayload) &&
         (peerAdvancedToNewUnencryptedAttProcedure ||
          peerAdvancedToNewEncryptedDataProcedure)) ||
@@ -1090,7 +1107,8 @@ bool BleRadio::pollConnectionEventInternal(BleConnectionEvent* event,
       !connectionEncKeyDerivationPending_ &&
       packetIsNew &&
       (llid == kBlePduDataStartOrComplete) &&
-      (rxLengthRaw >= kBleMicLen);
+      (rxLengthRaw >= kBleMicLen) &&
+      !earlyEncryptedDataAfterStartTransition;
 
   const bool sessionEncryptionPossible =
       connectionEncSessionValid_ &&

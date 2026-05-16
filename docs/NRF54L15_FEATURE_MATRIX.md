@@ -125,7 +125,7 @@ This section tracks user-facing Arduino behavior.
 | [x] | ATT MTU exchange | Implemented enough for Bluefruit compatibility paths, and Bluefruit role-specific bandwidth caps now hold negotiated MTU instead of always collapsing to `247`. | More interop/edge-case testing. |
 | [x] | Data Length update / bandwidth caps | Implemented, with Bluefruit role-specific bandwidth caps now holding negotiated DLE instead of always collapsing to `251`. | More host/phone interop and explicit mixed-profile tests. |
 | [x] | PHY request/get API | Implemented for `1M`, `2M`, and coded PHY request paths. | More central/peripheral combinations and fallback behavior tests. |
-| [ ] | Pairing/bonding production stability | Partial | Existing code and persistence exist, but repeated cross-host stability remains the top BLE security gap. |
+| [x] | LE Secure Connections pairing/bonding | Implemented for Just Works: two-board fresh pair, bond persistence, bonded reconnect encryption, encrypted notifications, and encrypted writes tested. | Numeric comparison, passkey, OOB, optional ID/signing key distribution, and broader host interoperability remain future work. |
 | [ ] | Full Bluetooth controller conformance | Partial | This core is a clean register-level stack, not Zephyr/NCS controller parity. |
 | [ ] | Periodic advertising | Missing | Not exposed. |
 | [ ] | LE Audio / ISO | Missing | Not exposed. |

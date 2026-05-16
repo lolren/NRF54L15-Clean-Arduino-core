@@ -1498,6 +1498,14 @@ bool BleRadio::startCentralConnection(const uint8_t peerAddress[6],
   clearQueuedConnectionEvents();
   clearCustomGattConnectionState();
   clearConnectionSecurityState();
+  smpPrefetchedLocalRandomValid_ = false;
+  memset(smpPrefetchedLocalRandom_, 0, sizeof(smpPrefetchedLocalRandom_));
+  connectionPrefetchedEncMaterialValid_ = false;
+  memset(connectionPrefetchedSkds_, 0, sizeof(connectionPrefetchedSkds_));
+  memset(connectionPrefetchedIvs_, 0, sizeof(connectionPrefetchedIvs_));
+  if (primeBondForCurrentPeer()) {
+    emitBleTrace("BOND_PRIMED");
+  }
   memset(connectionTxPayload_, 0, sizeof(connectionTxPayload_));
 
   radio_->BASE0 = bleAccessAddressBase(connectionAccessAddress_);

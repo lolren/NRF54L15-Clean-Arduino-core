@@ -277,6 +277,29 @@ role instead of always behaving like `MAX`.
 
 ---
 
+## BLE bandwidth note
+
+Bluefruit `BANDWIDTH_*` profiles now cap negotiated ATT MTU and Data Length per
+role instead of always behaving like `MAX`.
+
+- `NORMAL` now stays at `MTU=23` / `DataLength=27` even if the peer is `MAX`.
+- `MAX` to `MAX` still negotiates `MTU=247` / `DataLength=251`.
+- `requestDataLengthUpdate()` now follows the active role's bandwidth cap, not
+  just the raw silicon maximum.
+
+## BLE Secure Connections note
+
+LE Secure Connections Just Works is implemented for the clean BLE path. The
+included `BLE > Security > BlePairPeripheral` and `BLE > Security >
+BlePairCentral` examples exercise fresh pairing, bond persistence, bonded
+reconnect encryption, encrypted notifications, and encrypted writes.
+
+This is not a Bluetooth qualification claim. Numeric comparison, passkey, OOB,
+optional identity/signing key distribution, and broader host interoperability are
+still tracked as future work.
+
+---
+
 ## 📦 Installation
 
 ### Arduino IDE

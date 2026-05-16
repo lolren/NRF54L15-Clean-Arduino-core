@@ -344,9 +344,28 @@ bool BleRadio::pollCentralConnectionEvent(BleConnectionEvent* event,
     }
   }
 
-  const bool rxDoneSeen =
+  bool rxDoneSeen =
       followRxAlreadyDone ||
       waitRadioRxDoneBudgeted(radio_, followListenUs, spinLimit / 2U + 1U);
+  if (!rxDoneSeen &&
+      ((radio_->EVENTS_RXREADY != 0U) || (radio_->EVENTS_ADDRESS != 0U))) {
+    // On some turnarounds the peer response has already started before the
+    // timeout budget expires, but CRC completion lands a little later than the
+    // normal fast path expects. Give an in-progress RX one short grace window
+    // instead of immediately converting that event into a supervision miss.
+    uint8_t observedLength = rxPacket_[1];
+    if (observedLength == 0U) {
+      observedLength = 8U;
+    }
+    uint32_t rxCompletionGraceUs =
+        bleDataPduAirTimeUsOnPhy(observedLength, connectionCurrentRxPhy_) +
+        400U;
+    if (rxCompletionGraceUs < 800U) {
+      rxCompletionGraceUs = 800U;
+    }
+    rxDoneSeen = waitRadioRxDoneBudgeted(radio_, rxCompletionGraceUs,
+                                         spinLimit / 2U + 1U);
+  }
   if (!rxDoneSeen) {
     uint8_t timeoutFlags = 0U;
     if (radio_->EVENTS_RXREADY != 0U) {
@@ -634,6 +653,7 @@ bool BleRadio::pollCentralConnectionEvent(BleConnectionEvent* event,
     if (lastTxHadAttPayload && peerAdvancedToNewAttServerProgress) {
       ++encDebug_.connImplicitAttProgressAckCount;
     }
+    emitBleTrace("CENTRAL_IMPLICIT_ATT_ACK");
   }
   if (peerAckedLastTx) {
     connectionTxSn_ ^= 0x01U;
@@ -804,6 +824,18 @@ bool BleRadio::pollCentralConnectionEvent(BleConnectionEvent* event,
       connectionEncTxEnabled_ &&
       (currentRxIsAttServerPush ||
        (currentRxIsAttServerResponse && currentRxPeerMoreData));
+  if (packetIsNew && currentRxIsAttServerResponse) {
+    if (rxAttOpcode == kAttOpWriteRsp) {
+      emitBleTrace("ATT_WRITE_RSP_RX");
+    } else if (rxAttOpcode == kAttOpErrorRsp) {
+      emitBleTrace("ATT_ERROR_RSP_RX");
+    } else {
+      emitBleTrace("ATT_SERVER_RSP_RX");
+    }
+  } else if (packetIsNew && currentRxIsAttServerPush) {
+    emitBleTrace((rxAttOpcode == kAttOpHandleValueInd) ? "ATT_IND_RX"
+                                                       : "ATT_NOTIFY_RX");
+  }
   uint8_t originalRxPayload[kBleDataPduMaxPayload] = {0};
   const bool restoreOriginalPacketAfterTurnaround =
       (rxLength > 0U) && (rxLength <= kBleDataPduMaxPayload);
@@ -861,6 +893,7 @@ bool BleRadio::pollCentralConnectionEvent(BleConnectionEvent* event,
         connectionPendingTxLlid_ = 0x01U;
         connectionPendingTxLength_ = 0U;
         connectionPendingTxValid_ = false;
+        emitBleTrace("CENTRAL_FOLLOW_TX_HVCFM");
       } else if (!followMustAckPeerServerPush &&
                  !currentFollowupPeerMoreData &&
                  connectionFreshTxAllowed_ &&
@@ -873,6 +906,9 @@ bool BleRadio::pollCentralConnectionEvent(BleConnectionEvent* event,
         connectionPendingTxLlid_ = 0x01U;
         connectionPendingTxLength_ = 0U;
         connectionPendingTxValid_ = false;
+        emitBleTrace("CENTRAL_FOLLOW_TX_PENDING");
+      } else if (connectionPendingTxValid_) {
+        emitBleTrace("CENTRAL_FOLLOW_HOLD_PENDING");
       }
 
       connectionLastTxLlid_ = txFollowLlid;
@@ -885,8 +921,6 @@ bool BleRadio::pollCentralConnectionEvent(BleConnectionEvent* event,
       }
 
       const bool txFollowHasFollowingPayload =
-          (txFollowLlid == 0x01U) &&
-          (txFollowLength == 0U) &&
           (connectionPendingTxValid_ ||
            (connectionCustomNotificationQueueCount_ > 0U));
       txPacket_[0] = static_cast<uint8_t>((txFollowLlid & 0x03U) |
@@ -988,6 +1022,9 @@ bool BleRadio::pollCentralConnectionEvent(BleConnectionEvent* event,
       }
       const bool followRxAlreadyDone =
           (radio_->EVENTS_CRCOK != 0U) || (radio_->EVENTS_CRCERROR != 0U);
+      if (followRxAlreadyDone) {
+        followRxEndTimestampUs = bleTimingUs();
+      }
       if (encryptFollowTx) {
         connectionEncTxCounter_ =
             (followTxCounter + 1ULL) & kBleEncPacketCounterMask;
@@ -1041,10 +1078,27 @@ bool BleRadio::pollCentralConnectionEvent(BleConnectionEvent* event,
         break;
       }
       const uint32_t remainingUs = followListenUs - elapsedUsAfterTx;
-      const bool followRxDone =
+      bool followRxDone =
           followRxAlreadyDone ||
           waitRadioRxDoneBudgeted(radio_, remainingUs, spinLimit / 2U + 1U,
                                   &followRxEndTimestampUs);
+      if (!followRxDone &&
+          ((radio_->EVENTS_RXREADY != 0U) || (radio_->EVENTS_ADDRESS != 0U))) {
+        uint8_t observedLength = rxPacket_[1];
+        if (observedLength == 0U) {
+          observedLength = 8U;
+        }
+        uint32_t rxCompletionGraceUs =
+            bleDataPduAirTimeUsOnPhy(observedLength, connectionCurrentRxPhy_) +
+            400U;
+        if (rxCompletionGraceUs < 800U) {
+          rxCompletionGraceUs = 800U;
+        }
+        followRxDone =
+            waitRadioRxDoneBudgeted(radio_, rxCompletionGraceUs,
+                                    spinLimit / 2U + 1U,
+                                    &followRxEndTimestampUs);
+      }
       if (!followRxDone) {
         radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
         waitRadioDisabledBudgeted(radio_, kBleConnDisableWaitUs,

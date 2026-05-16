@@ -406,6 +406,17 @@ void appendTraceBuffer(const char* message) {
   if (message == nullptr) {
     return;
   }
+  if ((strcmp(message, "CENTRAL_EVT_RX_TIMEOUT") == 0) ||
+      (strcmp(message, "EVT_RX_TIMEOUT") == 0)) {
+    return;
+  }
+  if (g_traceBufferCount > 0U) {
+    const uint8_t lastIndex = static_cast<uint8_t>(
+        (g_traceBufferHead + kTraceBufferDepth - 1U) % kTraceBufferDepth);
+    if (strcmp(g_traceBuffer[lastIndex], message) == 0) {
+      return;
+    }
+  }
   char* slot = g_traceBuffer[g_traceBufferHead];
   size_t i = 0U;
   for (; i < (kTraceBufferEntryLen - 1U) && message[i] != '\0'; ++i) {
@@ -417,6 +428,12 @@ void appendTraceBuffer(const char* message) {
   if (g_traceBufferCount < kTraceBufferDepth) {
     ++g_traceBufferCount;
   }
+}
+
+void clearTraceBuffer() {
+  g_traceBufferHead = 0U;
+  g_traceBufferCount = 0U;
+  memset(g_traceBuffer, 0, sizeof(g_traceBuffer));
 }
 
 void dumpTraceBuffer() {
@@ -609,6 +626,13 @@ void handleCmd(const char* c) {
     Serial.println("ble_pair bond-cleared");
     return;
   }
+  if (strcmp(c,"reboot")==0) {
+    Serial.println("ble_pair rebooting");
+    Serial.flush();
+    delay(50);
+    NVIC_SystemReset();
+    return;
+  }
   Serial.print("ble_pair ? ");
   Serial.println(c);
 }
@@ -689,7 +713,7 @@ void setup() {
     g_writeHandle = kPeerWriteHandle;
   }
   printStatus();
-  Serial.println("ble_pair cmd: status clear sc enc disc trace keyprobe");
+  Serial.println("ble_pair cmd: status clear reboot sc enc disc trace keyprobe");
 }
 
 // ─── Loop ───────────────────────────────────────────────────
@@ -709,8 +733,9 @@ void loop() {
       g_prevConnected = connected;
       if (connected) {
         Serial.println("ble_pair connected");
-        // If no bond, request pairing
-        if (!g_ble.hasBondRecord()) {
+        // On a fresh peer this starts pairing; on a bonded peer it asks the
+        // central to re-enable link-layer encryption.
+        if (!g_ble.isConnectionEncrypted()) {
           delay(50);
           const bool queued = g_ble.sendSmpSecurityRequest();
           g_lastSecurityRequestMs = millis();
@@ -737,7 +762,7 @@ void loop() {
       BleAdvInteraction adv;
       g_ble.advertiseInteractEvent(&adv, 350U, 350000UL, 700000UL);
     } else {
-      if (!encrypted && !g_ble.hasBondRecord() &&
+      if (!encrypted &&
           (millis() - g_lastSecurityRequestMs) >= kPairRetryMs) {
         const bool queued = g_ble.sendSmpSecurityRequest();
         g_lastSecurityRequestMs = millis();
@@ -769,6 +794,7 @@ void loop() {
     if (connected != g_prevConnected) {
       g_prevConnected = connected;
       if (connected) {
+        clearTraceBuffer();
         Serial.println("ble_pair central: connected");
         g_centralSeen = true;
         g_ble.setPreferredConnectionParameters(kTestConnIntervalUnits,
@@ -777,6 +803,7 @@ void loop() {
                                                kTestConnTimeoutUnits);
       } else {
         Serial.println("ble_pair central: disconnected");
+        dumpTraceBuffer();
         printEncDiag();
         printDisconnectDebug();
         g_centralSeen = false;

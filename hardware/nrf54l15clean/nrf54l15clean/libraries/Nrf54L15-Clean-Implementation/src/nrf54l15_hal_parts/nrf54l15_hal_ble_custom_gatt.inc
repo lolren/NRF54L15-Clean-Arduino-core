@@ -530,8 +530,10 @@ bool BleRadio::notifyCustomGattCharacteristic(uint16_t valueHandle, bool indicat
 
 bool BleRadio::sendSmpSecurityRequest() {
   const uint32_t irqState = bleEnterCritical();
-  // No-op if already bonded/keyed, encryption is up, or not connected.
-  if (!connected_ || smpStkValid_ || connectionEncSessionValid_) {
+  // Security Request is a peripheral-to-central hint. It is still valid when a
+  // bond is already loaded: the central should start link-layer encryption.
+  if (!connected_ || connectionRole_ == BleConnectionRole::kCentral ||
+      connectionEncSessionValid_ || smpPairingState_ != kSmpPairingStateIdle) {
     bleExitCritical(irqState);
     return false;
   }

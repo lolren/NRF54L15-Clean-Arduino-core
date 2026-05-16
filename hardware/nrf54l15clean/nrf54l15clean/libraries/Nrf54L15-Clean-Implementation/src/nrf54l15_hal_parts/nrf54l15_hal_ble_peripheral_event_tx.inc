@@ -353,6 +353,28 @@
            (opcode == kBleLlCtrlPauseEncReq) ||
            (opcode == kBleLlCtrlPauseEncRsp);
   };
+  auto emitAttTxChoiceTrace = [&](const uint8_t* payload, uint8_t length,
+                                  const char* fallbackTag) {
+    if (payload == nullptr ||
+        length < (kBleL2capHeaderLen + 1U) ||
+        readLe16(&payload[2]) != kBleL2capCidAtt) {
+      if (fallbackTag != nullptr) {
+        emitBleTrace(fallbackTag);
+      }
+      return;
+    }
+
+    const uint8_t opcode = payload[4];
+    if (opcode == kAttOpWriteRsp) {
+      emitBleTrace("ATT_WRITE_RSP_TX");
+    } else if (opcode == kAttOpHandleValueNtf) {
+      emitBleTrace("ATT_NOTIFY_TX");
+    } else if (opcode == kAttOpHandleValueInd) {
+      emitBleTrace("ATT_IND_TX");
+    } else if (fallbackTag != nullptr) {
+      emitBleTrace(fallbackTag);
+    }
+  };
   const bool pendingAttWriteResponseHasPriority =
       pendingTxIsAttWriteResponsePdu() &&
       !currentLlControlResponseIsSecurityCritical();
@@ -377,6 +399,7 @@
       connectionPendingTxLength_ = 0U;
       llControlHandledImmediate = false;
       l2capHandledImmediate = false;
+      emitAttTxChoiceTrace(connectionTxPayload_, txLength, "PERIPH_TX_PENDING");
     } else if (immediateLlControlResponseValid) {
       txLlid = kBlePduLlControl;
       txLength = immediateLlControlResponseLength;
@@ -385,6 +408,7 @@
       txLlid = kBlePduDataStartOrComplete;
       txLength = immediateL2capResponseLength;
       immediateL2capResponseSent = true;
+      emitAttTxChoiceTrace(connectionTxPayload_, txLength, "PERIPH_TX_IMMEDIATE");
     } else if (connectionPendingTxValid_ &&
                !suppressPendingServerPushForDeferredWrite) {
       txLlid = connectionPendingTxLlid_;
@@ -395,6 +419,10 @@
       connectionPendingTxValid_ = false;
       connectionPendingTxLlid_ = 0x01U;
       connectionPendingTxLength_ = 0U;
+      emitAttTxChoiceTrace(connectionTxPayload_, txLength, "PERIPH_TX_PENDING");
+    } else if (connectionPendingTxValid_ &&
+               suppressPendingServerPushForDeferredWrite) {
+      emitBleTrace("PERIPH_HOLD_SERVER_PUSH");
     } else {
       txLlid = 0x01U;
       txLength = 0U;
@@ -828,6 +856,9 @@
 
       uint32_t followRxEndTimestampUs = 0U;
       const bool processingPreservedFollowPacket = usePreservedFollowPacket;
+      if (processingPreservedFollowPacket) {
+        followRxEndTimestampUs = bleTimingUs();
+      }
       const bool followEndSeen =
           processingPreservedFollowPacket
               ? true
@@ -835,7 +866,25 @@
                                         spinLimit / 2U + 1U,
                                         &followRxEndTimestampUs);
       usePreservedFollowPacket = false;
-      if (!followEndSeen) {
+      bool followEndSeenWithGrace = followEndSeen;
+      if (!followEndSeenWithGrace &&
+          ((radio_->EVENTS_RXREADY != 0U) || (radio_->EVENTS_ADDRESS != 0U))) {
+        uint8_t observedLength = rxPacket_[1];
+        if (observedLength == 0U) {
+          observedLength = 8U;
+        }
+        uint32_t rxCompletionGraceUs =
+            bleDataPduAirTimeUsOnPhy(observedLength, connectionCurrentRxPhy_) +
+            400U;
+        if (rxCompletionGraceUs < 800U) {
+          rxCompletionGraceUs = 800U;
+        }
+        followEndSeenWithGrace =
+            waitRadioRxDoneBudgeted(radio_, rxCompletionGraceUs,
+                                    spinLimit / 2U + 1U,
+                                    &followRxEndTimestampUs);
+      }
+      if (!followEndSeenWithGrace) {
         ++encDebug_.connFollowupRxTimeoutCount;
         radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
         waitRadioDisabledBudgeted(radio_, kBleConnDisableWaitUs, spinLimit / 2U + 1U);
@@ -1336,10 +1385,6 @@
                 }
               }
             }
-          }
-
-          if (processingPreservedFollowPacket) {
-            break;
           }
 
           if (!terminateInd) {
