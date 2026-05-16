@@ -3115,6 +3115,7 @@ class BleRadio {
   bool bondRecordValid_;
   bool bondStorageLoaded_;
   bool bondKeyPrimedForConnection_;
+  bool connectionBondedEncryptionRequested_;
   BleTraceCallback traceCallback_;
   void* traceCallbackContext_;
   bool smpBondingRequested_;

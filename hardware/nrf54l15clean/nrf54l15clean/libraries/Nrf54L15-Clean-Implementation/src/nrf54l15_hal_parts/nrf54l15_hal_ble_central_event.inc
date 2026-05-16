@@ -239,6 +239,14 @@ bool BleRadio::pollCentralConnectionEvent(BleConnectionEvent* event,
                                      spinLimit / 2U + 1U);
   }
   if (!txOk) {
+    if ((canSendNewPayloadThisEvent || promotePendingTxAfterEmptyAck) &&
+        (txLength > 0U) && !connectionPendingTxValid_) {
+      memcpy(connectionPendingTxPayload_, connectionTxPayload_, txLength);
+      connectionPendingTxLlid_ = txLlid;
+      connectionPendingTxLength_ = txLength;
+      connectionPendingTxValid_ = true;
+      emitBleTrace("CENTRAL_TX_REQUEUED");
+    }
     radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
     waitRadioDisabledBudgeted(radio_, kBleConnTxDisableWaitUs,
                               spinLimit / 2U + 1U);

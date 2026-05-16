@@ -1235,6 +1235,7 @@ void BleRadio::clearSmpPairingState() {
   memset(smpSecureConnectionsReceivedDhKeyCheck_, 0,
          sizeof(smpSecureConnectionsReceivedDhKeyCheck_));
   bondKeyPrimedForConnection_ = false;
+  connectionBondedEncryptionRequested_ = false;
 }
 
 void BleRadio::clearEncryptionState() {
@@ -1502,6 +1503,7 @@ bool BleRadio::primeBondForCurrentPeer() {
   smpBondingRequested_ = true;
   smpExpectInitiatorEncKey_ = false;
   bondKeyPrimedForConnection_ = true;
+  connectionBondedEncryptionRequested_ = false;
   return true;
 }
 

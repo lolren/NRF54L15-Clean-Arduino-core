@@ -1570,6 +1570,12 @@ bool BleRadio::buildL2capSmpResponse(const uint8_t* l2capPayload,
       memset(smpSecureConnectionsReceivedDhKeyCheck_, 0,
              sizeof(smpSecureConnectionsReceivedDhKeyCheck_));
 
+      if (!smpSecureConnectionsLocalKeyReady_ &&
+          !ensureSecureConnectionsLocalKeypair()) {
+        smpSecureConnectionsDeferredPublicKey_ = true;
+        return false;
+      }
+
       if (memcmp(&smpSecureConnectionsPeerPublicKey_[1],
                  &smpSecureConnectionsPublicKey_[1], 32U) == 0) {
         emitBleTrace("SMP_SC_PUBKEY_REJECTED");
@@ -1891,14 +1897,9 @@ bool BleRadio::buildL2capSmpResponse(const uint8_t* l2capPayload,
           if (smpSecureConnectionsPublicKeySent_) {
             return false;
           }
-          smpSecureConnectionsWireFormatBigEndian_ = true;
-          uint8_t localPublicKey[kSmpPairingPublicKeyLen] = {0};
-          buildSecureConnectionsWirePublicKeyFromInternalLe(
-              smpSecureConnectionsPublicKey_,
-              smpSecureConnectionsWireFormatBigEndian_, localPublicKey);
-          localPublicKey[0] = kSmpCodePairingPublicKey;
-          smpSecureConnectionsPublicKeySent_ = true;
-          return buildSmpResponse(localPublicKey, sizeof(localPublicKey));
+          smpSecureConnectionsWireFormatBigEndian_ = false;
+          smpSecureConnectionsDeferredPublicKey_ = true;
+          return false;
         }
         if (smpPairingState_ == kSmpPairingStateRandomSent) {
           return false;
@@ -1930,14 +1931,9 @@ bool BleRadio::buildL2capSmpResponse(const uint8_t* l2capPayload,
       smpPairingState_ = kSmpPairingStateRspSent;
       emitBleTrace("SMP_PAIRING_RESPONSE_RX");
       if (smpSecureConnectionsActive_) {
-        smpSecureConnectionsWireFormatBigEndian_ = true;
-        uint8_t localPublicKey[kSmpPairingPublicKeyLen] = {0};
-        buildSecureConnectionsWirePublicKeyFromInternalLe(
-            smpSecureConnectionsPublicKey_,
-            smpSecureConnectionsWireFormatBigEndian_, localPublicKey);
-        localPublicKey[0] = kSmpCodePairingPublicKey;
-        smpSecureConnectionsPublicKeySent_ = true;
-        return buildSmpResponse(localPublicKey, sizeof(localPublicKey));
+        smpSecureConnectionsWireFormatBigEndian_ = false;
+        smpSecureConnectionsDeferredPublicKey_ = true;
+        return false;
       }
 
       {
@@ -1963,6 +1959,7 @@ bool BleRadio::buildL2capSmpResponse(const uint8_t* l2capPayload,
       }
       if ((connectionRole_ == BleConnectionRole::kCentral) && smpStkValid_) {
         emitBleTrace("SMP_SECURITY_REQUEST_RX_BONDED");
+        connectionBondedEncryptionRequested_ = true;
         if (!connectionEncSessionValid_ &&
             !connectionEncRxEnabled_ &&
             !connectionEncTxEnabled_ &&

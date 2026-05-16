@@ -278,16 +278,14 @@
       maybeQueueCentralLinkSetupRequest();
     }
 
-    // Peripheral-initiated SMP Security Request: ask the central to start
-    // LE Secure Connections Just Works pairing. Only sent when no key is
-    // already available and no SMP handshake is in progress.
+    // Peripheral-initiated SMP Security Request: with no key it starts pairing;
+    // with a loaded bond it asks the central to start link-layer encryption.
     if ((deferredLength == 0U) &&
         !connectionPendingTxValid_ &&
         !encryptionProcedureBusy &&
         !connectionEncStartReqTxPending_ &&
         !connectionEncAwaitingStartRsp_ &&
         !connectionEncStartReqPending_ &&
-        !smpStkValid_ &&
         (smpPairingState_ == kSmpPairingStateIdle) &&
         !connectionEncSessionValid_ &&
         connectionSmpSecurityRequestPending_) {

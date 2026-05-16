@@ -1039,8 +1039,11 @@ void BleRadio::maybeQueueCentralLinkSetupRequest() {
         smpSecureConnectionsDhKeyCheckSent_ &&
         !smpSecureConnectionsDeferredDhKeyCheck_ &&
         !smpSecureConnectionsReceivedDhKeyCheckValid_;
+    const bool bondedReconnectMayEncrypt =
+        !bondKeyPrimedForConnection_ || connectionBondedEncryptionRequested_;
     const bool centralEncryptionReady =
         smpStkValid_ &&
+        bondedReconnectMayEncrypt &&
         !connectionEncSessionValid_ &&
         !connectionEncRxEnabled_ &&
         !connectionEncTxEnabled_ &&
@@ -1125,6 +1128,7 @@ void BleRadio::maybeQueueCentralLinkSetupRequest() {
       connectionPendingTxLlid_ = kBlePduLlControl;
       connectionPendingTxLength_ = 23U;
       connectionPendingTxValid_ = true;
+      connectionBondedEncryptionRequested_ = false;
       if (smpPairingState_ != kSmpPairingStateIdle) {
         smpPairingState_ = kSmpPairingStateIdle;
       }

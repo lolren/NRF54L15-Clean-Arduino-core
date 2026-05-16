@@ -223,6 +223,7 @@ BleRadio::BleRadio(uint32_t radioBase, uint32_t ficrBase)
       bondRecordValid_(false),
       bondStorageLoaded_(false),
       bondKeyPrimedForConnection_(false),
+      connectionBondedEncryptionRequested_(false),
       traceCallback_(nullptr),
       traceCallbackContext_(nullptr),
       smpBondingRequested_(false),

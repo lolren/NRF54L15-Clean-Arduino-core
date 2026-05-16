@@ -30,7 +30,7 @@ This is a **bare-metal, register-level Arduino core** — no Zephyr, no nRF Conn
 **Strengths:**
 - Full control over the hardware — no opaque vendor layers
 - Small binary footprint (no RTOS overhead unless you opt into Thread/Matter)
-- BLE is production-quality for advertising, scanning, connections, and GATT. Pairing is legacy-only (LESC crypto is done but not plumbed). Channel sounding works on two-board in Mode 2/PBR only. See [BLE status](#ble-status)
+- BLE is production-quality for advertising, scanning, connections, GATT, and the current LE Secure Connections Just Works path. Channel sounding works on two-board in Mode 2/PBR only. See [BLE status](#ble-status)
 - All standard Arduino peripherals verified: GPIO, PWM, ADC, I2C, SPI, UART, I2S, PDM
 - VPR RISC-V coprocessor fully usable via the SoftPeripheral SDK
 - Crypto: AES-CCM, AES-ECB, PBKDF2 all hardware-accelerated through CRACEN
@@ -39,7 +39,7 @@ This is a **bare-metal, register-level Arduino core** — no Zephyr, no nRF Conn
 - ECC (secp256r1) is **software-only** — the CRACEN PK engine needs proprietary Nordic microcode that isn't publicly available. Thread/Matter pairing takes 2–5 seconds of CPU-bound crypto. See [Why Software ECC](#-why-software-ecc-and-what-it-means-for-pairing)
 - Thread and Matter are **experimental compile targets**, not functional protocol stacks. See [Thread](#thread-experimental) and [Matter](#matter-experimental) status sections
 - Zigbee is **functional but incomplete** — coordinator/router/end-device roles work, but many ZCL clusters are missing. See [Zigbee status](#zigbee-status)
-- BLE LE Secure Connections crypto is done but the SMP handshake isn't plumbed yet (legacy pairing only). See [BLE status](#ble--production-quality)
+- BLE LE Secure Connections currently covers Just Works pairing/bonding on the clean BLE path. Numeric comparison, passkey, OOB, and broad host interoperability still need more work. See [BLE status](#ble--production-quality)
 - P2 GPIO port lacks interrupt/wake capability (hardware limitation of the nRF54L15)
 
 **Who this core is for:** Developers who want bare-metal access to the nRF54L15, are comfortable reading datasheets, and don't mind that some protocol stacks are still maturing. If you need production Thread/Matter/Zigbee today, use Nordic's nRF Connect SDK instead.
@@ -118,11 +118,11 @@ The nRF54L15 radio supports LE 1M, LE 2M, LE Coded PHYs, and Channel Sounding. I
 - [x] LE Ping and connection parameter update
 - [x] Simultaneous central and peripheral roles
 - [x] DPPI-driven background advertising — radio events scheduled via hardware without CPU intervention
+- [x] LE Secure Connections Just Works pairing/bonding — two-board fresh pair, bond persistence, bonded reconnect encryption, encrypted notifications, and encrypted writes
 
 ### What's partially implemented
 
-- [ ] **SMP legacy pairing** (Just Works, Passkey) — functional for phone fallback, but bonding persistence needs work
-- [ ] **LE Secure Connections** — the crypto primitives are all done (secp256r1 keygen, f4 confirm, f5 key derivation, f6 DHKey check, g2 numeric comparison, ECDH shared secret). What's missing is the full SMP LESC handshake flow plumbed through the Link Layer state machine — pairing currently stays in legacy mode even when both sides support LESC.
+- [ ] **SMP authenticated pairing modes** — LE Secure Connections Just Works is implemented, but numeric comparison, passkey, OOB, optional identity/signing key distribution, and wider phone/host interoperability are still future work.
 - [ ] **Channel Sounding — Mode 2 (PBR / phase-based ranging)** — works on two-board setups, achieving ~57–62 cm accuracy. Requires the VPR RISC-V coprocessor to handle DFE IQ sample capture and processing at radio speed. The M33 CPU alone can't keep up with the subevent timing. Initiator and reflector roles are implemented, but the procedure setup currently uses a hardcoded internal demo profile rather than the full CS configuration workflow.
 - [ ] **Channel Sounding — Mode 1 (RTT)** — radio registers configured, raw RTT subevents fire, but timing calibration and distance extraction haven't been validated. No end-to-end RTT distance measurement demo exists yet.
 - [ ] **Channel Sounding — Mode 3 (hybrid RTT+PBR)** — data structures for hybrid steps exist, but the combined mode hasn't been tested.
@@ -138,7 +138,7 @@ These are hardware limitations — no implementation work will add them:
 - ❌ Direction Finding (AoA / AoD via CTE)
 - ❌ LE Power Control
 
-For production applications needing any of the partially-implemented or missing features, Nordic's Zephyr-based **nRF Connect SDK** is the recommended path — it ships with a fully validated Bluetooth LE controller, complete LESC support, certified channel sounding, and all the qualification listings this bare-metal core will never have.
+For production applications needing certification-level Bluetooth behavior, Nordic's Zephyr-based **nRF Connect SDK** is still the safer path — it ships with a fully validated Bluetooth LE controller, certified channel sounding support, and qualification listings this bare-metal core does not claim.
 
 ---
 
@@ -259,21 +259,9 @@ Zigbee is the most mature of the three 802.15.4 stacks (Thread, Matter, and Zigb
 
 | Limitation | Detail |
 |---|---|
-| **BLE LE Secure Connections** | Faster software secp256r1 does not enable LESC by itself. The controller still only implements legacy SMP confirm/random/key-distribution, so SC-only centrals still need the missing LESC Public Key / DHKey Check / f4-f5-f6-g2 flow |
+| **BLE LE Secure Connections** | Just Works pairing/bonding is implemented on the clean BLE path. Numeric comparison, passkey, OOB, optional identity/signing key distribution, and broad host interoperability still need work. |
 | **CRACEN PK engine** | Hardware ECDSA / P-256 acceleration still needs proprietary Nordic microcode |
 | **ECDSA speed** | Software ECC now uses Barrett reduction and measures about 0.84 s sign / 1.76 s verify on board — workable for demos, still much slower than dedicated hardware |
-
----
-
-## BLE bandwidth note
-
-Bluefruit `BANDWIDTH_*` profiles now cap negotiated ATT MTU and Data Length per
-role instead of always behaving like `MAX`.
-
-- `NORMAL` now stays at `MTU=23` / `DataLength=27` even if the peer is `MAX`.
-- `MAX` to `MAX` still negotiates `MTU=247` / `DataLength=251`.
-- `requestDataLengthUpdate()` now follows the active role's bandwidth cap, not
-  just the raw silicon maximum.
 
 ---
 
@@ -398,7 +386,7 @@ So we ship a from-scratch software secp256r1 implementation using Barrett reduct
 
 If Nordic ever releases the CRACEN PK microcode publicly (or if a community reverse-engineering effort succeeds), these numbers drop to near-zero and pairing becomes instant. Until then, software ECC is the only option for a fully open-source, no-NDA core.
 
-Software ECC does **not** enable BLE LE Secure Connections by itself — the SMP LESC message flow (Public Key exchange, DHKey Check, f4/f5/f6/g2 key derivation) is a separate protocol layer that still needs implementing in the BLE controller.
+Software ECC is also used by BLE LE Secure Connections. The Just Works SC message flow is now plumbed through the clean BLE controller, but authenticated SC modes and broader interoperability still need more validation.
 
 ---
 
