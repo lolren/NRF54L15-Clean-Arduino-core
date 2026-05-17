@@ -96,6 +96,15 @@ path for low-power advertising. The current implementation manually emits legacy
 advertising events from sketch code. Zephyr schedules controller-side advertising
 with different timing, wake, and RF state handling.
 
+Update from discussion #71: the XIAO AdvCurrent benchmark is now close to the
+Zephyr reference when measured with a good battery-pad/PPK2 connection. The last
+identified avoidable loss was the foreground Bluefruit random advertising delay
+being served inside the immediate radio call, after the scheduler had already
+woken for the interval boundary. The fix moved that random delay into the
+foreground scheduler and disables the radio-level random-delay sleep for
+Bluefruit-managed events, so the core wakes at the final TX time instead of
+burning the random-delay window immediately before TX.
+
 If Zephyr-like low-power advertising is the target, the next engineering work is
 not another sketch tweak. The next work is to fix the BLE core paths above or to
 port a proper controller implementation.

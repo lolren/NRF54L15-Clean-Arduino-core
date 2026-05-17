@@ -2379,7 +2379,8 @@ class BleRadio {
   bool advertiseOnce(BleAdvertisingChannel channel,
                      uint32_t spinLimit = 600000UL);
   bool advertiseEvent(uint32_t interChannelDelayUs = 350U,
-                      uint32_t spinLimit = 600000UL);
+                      uint32_t spinLimit = 600000UL,
+                      bool applyRandomDelay = true);
   // First controller-offload milestone: one legacy non-connectable advertising
   // packet on one primary advertising channel with fixed interval scheduling.
   // Optional Bluetooth random advertising delay is applied inside the
@@ -2420,7 +2421,8 @@ class BleRadio {
   bool advertiseInteractEvent(BleAdvInteraction* interaction,
                               uint32_t interChannelDelayUs = 350U,
                               uint32_t requestListenSpinLimit = 250000UL,
-                              uint32_t spinLimit = 700000UL);
+                              uint32_t spinLimit = 700000UL,
+                              bool applyRandomDelay = true);
 
   bool initiateConnection(const uint8_t peerAddress[6], bool peerAddressRandom,
                           uint16_t intervalUnits = 24U,

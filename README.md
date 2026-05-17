@@ -105,6 +105,8 @@ BLE is the most mature wireless stack in this core. The entire controller is wri
 
 The nRF54L15 radio supports LE 1M, LE 2M, LE Coded PHYs, and Channel Sounding. It does **not** support LE Audio (isochronous channels), Periodic Advertising with Response, or Direction Finding (AoA/AoD) — those features don't exist in silicon, so they'll never be available on this chip.
 
+Full BLE-compliance work is paused while the remaining power and interoperability regressions are closed. The resume checklist is kept in [`docs/BLE_COMPLIANCE_RESUME.md`](docs/BLE_COMPLIANCE_RESUME.md) so future BLE work starts from the known-good test matrix instead of rediscovering old regressions.
+
 ### What's fully implemented
 
 - [x] Advertising — connectable, scannable, non-connectable, and directed

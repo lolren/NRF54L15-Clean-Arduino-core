@@ -471,6 +471,7 @@ class BluefruitCompatManager {
         last_connection_role_(BleConnectionRole::kNone),
         last_connection_edge_ms_(0UL),
         next_adv_due_us_(0U),
+        adv_random_state_(0U),
         adv_started_ms_(0UL),
         scan_rsp_name_added_(false),
         characteristic_count_(0U),
@@ -650,6 +651,7 @@ class BluefruitCompatManager {
   void advertisingStarted() {
     adv_started_ms_ = schedulerTimeMs();
     next_adv_due_us_ = 0U;
+    adv_random_state_ = 0U;
   }
 
   BLEConnection* connection() { return &connection_; }
@@ -914,12 +916,22 @@ class BluefruitCompatManager {
   static constexpr unsigned long kDeferredLinkRequestRetryMs = 500UL;
   static constexpr uint8_t kDeferredLinkRequestMaxAttempts = 20U;
 
+  uint32_t foregroundAdvertisingRandomDelayUs() {
+    if (adv_random_state_ == 0U) {
+      adv_random_state_ =
+          static_cast<uint32_t>(schedulerTimeUs()) ^ 0x5A17B1E5UL;
+    }
+    adv_random_state_ = adv_random_state_ * 1103515245UL + 12345UL;
+    return adv_random_state_ % 10001UL;
+  }
+
   BleRadio radio_;
   bool started_;
   bool last_connected_;
   BleConnectionRole last_connection_role_;
   unsigned long last_connection_edge_ms_;
   uint64_t next_adv_due_us_;
+  uint32_t adv_random_state_;
   unsigned long adv_started_ms_;
   bool scan_rsp_name_added_;
   BLECharacteristic* characteristics_[kMaxCharacteristics];
@@ -1410,12 +1422,23 @@ class BluefruitCompatManager {
       g_bluefruitMaybeAdvertiseIntervalUnitsMax = intervalUnits;
     }
 
+    const uint32_t intervalUs = static_cast<uint32_t>(intervalUnits) * 625UL;
+    const uint32_t advDelayUs = foregroundAdvertisingRandomDelayUs();
+    const uint64_t scheduledNextDueUs =
+        nowUs + static_cast<uint64_t>(intervalUs) + advDelayUs;
+    // Foreground advertising is pump-driven by the Arduino scheduler. Schedule
+    // the BLE-spec random advertising delay here and call the radio with its
+    // internal delay disabled, otherwise the core wakes at the interval
+    // boundary and burns the whole random-delay window immediately before TX.
+    next_adv_due_us_ = scheduledNextDueUs;
+
     if (advType == BLE_GAP_ADV_TYPE_CONNECTABLE_SCANNABLE_UNDIRECTED ||
         advType == BLE_GAP_ADV_TYPE_NONCONNECTABLE_SCANNABLE_UNDIRECTED) {
-      (void)radio_.advertiseInteractEvent(nullptr, 120U);
+      (void)radio_.advertiseInteractEvent(nullptr, 120U, 250000UL, 700000UL,
+                                          false);
       ++g_bluefruitMaybeAdvertiseConnectableEventCount;
     } else {
-      (void)radio_.advertiseEvent();
+      (void)radio_.advertiseEvent(350U, 600000UL, false);
       ++g_bluefruitMaybeAdvertiseNonconnEventCount;
     }
 
@@ -1433,7 +1456,6 @@ class BluefruitCompatManager {
       }
     }
     g_bluefruitMaybeAdvertiseLastEventUs = nowUs;
-    next_adv_due_us_ = nowUs + (static_cast<uint32_t>(intervalUnits) * 625UL);
   }
 
   void maybeDispatchRssiUpdate() {
@@ -1568,6 +1590,7 @@ class BluefruitCompatManager {
         Bluefruit.Advertising.running_ = true;
         adv_started_ms_ = schedulerTimeMs();
         next_adv_due_us_ = 0U;
+        adv_random_state_ = 0U;
       }
     } else if (last_connection_role_ == BleConnectionRole::kCentral) {
       central_data_length_request_pending_ = false;

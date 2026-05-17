@@ -214,3 +214,26 @@ Use mode 5 when:
 These patterns are still built on the raw Arduino BLE path in this core, not a full
 Zephyr-style BLE controller scheduler. The power floor now comes from matching the
 board-level RF gating and `SYSTEM OFF` behavior, not from controller parity.
+
+## Discussion #71 AdvCurrent Finding
+
+The May 17, 2026 AdvCurrent comparison showed that the large current spikes were
+from a loose PPK2/battery-pad connection, not from the BLE controller itself. The
+remaining Arduino-side gap was the charge immediately before a
+connectable/scannable foreground advertising event.
+
+The cause was Bluefruit scheduler state, not RF_SW:
+
+- foreground Bluefruit advertising uses `advertiseInteractEvent()`, not the
+  non-connectable DPPI background advertiser
+- `advertiseInteractEvent()` applies the BLE random advertising delay before TX
+- Bluefruit updated `next_adv_due_us_` after the radio call, so during that
+  random delay the core considered advertising overdue
+- the low-power `delay()` path then skipped WFI and busy-spun the CPU for that
+  random-delay window
+
+The fix is to keep the BLE random advertising delay in the Bluefruit foreground
+scheduler instead of inside the immediate radio call. The scheduler now wakes at
+the final event time and asks the radio to transmit without an additional
+internal random-delay sleep. That removes the visible pre-TX plateau while still
+preserving the BLE random advertising delay between foreground events.

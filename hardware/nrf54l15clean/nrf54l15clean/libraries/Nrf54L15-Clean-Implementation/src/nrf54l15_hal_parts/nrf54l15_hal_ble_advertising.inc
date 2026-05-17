@@ -136,9 +136,12 @@ bool BleRadio::advertiseOnce(BleAdvertisingChannel channel, uint32_t spinLimit) 
   return ok;
 }
 
-bool BleRadio::advertiseEvent(uint32_t interChannelDelayUs, uint32_t spinLimit) {
-  const uint32_t advDelayUs = bleAdvertisingRandomDelayUs(address_);
-  bleAdvertisingDelayUs(advDelayUs);
+bool BleRadio::advertiseEvent(uint32_t interChannelDelayUs, uint32_t spinLimit,
+                              bool applyRandomDelay) {
+  if (applyRandomDelay) {
+    const uint32_t advDelayUs = bleAdvertisingRandomDelayUs(address_);
+    bleAdvertisingDelayUs(advDelayUs);
+  }
 
   if (!beginUnconnectedRadioActivity(1500000UL)) {
     return false;
@@ -2063,9 +2066,12 @@ bool BleRadio::advertiseInteractOnce(BleAdvertisingChannel channel,
 bool BleRadio::advertiseInteractEvent(BleAdvInteraction* interaction,
                                       uint32_t interChannelDelayUs,
                                       uint32_t requestListenSpinLimit,
-                                      uint32_t spinLimit) {
-  const uint32_t advDelayUs = bleAdvertisingRandomDelayUs(address_);
-  bleAdvertisingDelayUs(advDelayUs);
+                                      uint32_t spinLimit,
+                                      bool applyRandomDelay) {
+  if (applyRandomDelay) {
+    const uint32_t advDelayUs = bleAdvertisingRandomDelayUs(address_);
+    bleAdvertisingDelayUs(advDelayUs);
+  }
   const uint64_t eventStartUs = nrf54l15_core_monotonic_time_us();
 
   if (!beginUnconnectedRadioActivity(1500000UL)) {
