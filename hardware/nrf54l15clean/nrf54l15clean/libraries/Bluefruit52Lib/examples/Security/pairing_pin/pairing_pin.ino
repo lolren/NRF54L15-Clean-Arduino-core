@@ -31,7 +31,8 @@ BLEUart bleuart; // uart over ble
 void setup()
 {
   Serial.begin(115200);
-  while ( !Serial ) delay(10);   // for nrf52840 with native usb
+  const uint32_t serialWaitStart = millis();
+  while (!Serial && (millis() - serialWaitStart) < 1500UL) delay(10);
   
   Serial.println("Bluefruit52 BLEUART Example");
   Serial.println("---------------------------\n");

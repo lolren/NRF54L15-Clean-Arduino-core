@@ -14,6 +14,11 @@
 //   Board B: set ROLE = CENTRAL
 //
 // Serial commands:  status, clear
+//
+// Optional compile-time validation:
+//   -DBLE_PAIR_USE_STATIC_PIN=1
+//   Peripheral sketch becomes DisplayOnly with fixed PIN 123456.
+//   Central becomes KeyboardOnly with the same fixed PIN.
 
 #include <Arduino.h>
 #include <Preferences.h>
@@ -31,7 +36,19 @@ constexpr DemoRole ROLE = DemoRole::CENTRAL;
 
 namespace {
 
+#if !defined(BLE_PAIR_USE_STATIC_PIN)
+#define BLE_PAIR_USE_STATIC_PIN 0
+#endif
+
+constexpr uint8_t kIoCapDisplayOnly = 0x00U;
+constexpr uint8_t kIoCapKeyboardOnly = 0x02U;
+constexpr uint8_t kIoCapNoInputNoOutput = 0x03U;
+constexpr char kStaticPin[] = "123456";
+#if BLE_PAIR_USE_STATIC_PIN
+constexpr char kAdvName[] = "X54-PAIR-PIN";
+#else
 constexpr char kAdvName[] = "X54-PAIR";
+#endif
 constexpr int8_t kTxPowerDbm = 0;
 constexpr uint32_t kStatusMs = 3000U;
 constexpr uint32_t kNotifyMs = 4000U;
@@ -115,7 +132,11 @@ extern volatile uint8_t g_ble_central_rxtimeout_hdr3;
 
 // ─── Bond persistence ─────────────────────────────────────────
 
+#if BLE_PAIR_USE_STATIC_PIN
+static constexpr char kNs[] = "ble_pair_pin";
+#else
 static constexpr char kNs[] = "ble_pair";
+#endif
 static constexpr char kBondKey[] = "bond";
 
 bool loadBond(BleBondRecord* out, void*) {
@@ -686,6 +707,18 @@ void setup() {
   g_ble.setTraceCallback(onBleTrace, nullptr);
   g_ble.loadAddressFromFicr(true);
   g_ble.setBondPersistenceCallbacks(loadBond, saveBond, clearBondStored, nullptr);
+#if BLE_PAIR_USE_STATIC_PIN
+  g_ble.setSecurityFixedPasskey(kStaticPin);
+  g_ble.setSecurityIoCapabilities(
+      (ROLE == DemoRole::PERIPHERAL) ? kIoCapDisplayOnly
+                                     : kIoCapKeyboardOnly);
+  Serial.print("ble_pair security=static-pin pin=");
+  Serial.println(kStaticPin);
+#else
+  g_ble.setSecurityFixedPasskey(nullptr);
+  g_ble.setSecurityIoCapabilities(kIoCapNoInputNoOutput);
+  Serial.println("ble_pair security=justworks");
+#endif
 
   if (ROLE == DemoRole::PERIPHERAL) {
     g_ble.setAdvertisingName(kAdvName, true);

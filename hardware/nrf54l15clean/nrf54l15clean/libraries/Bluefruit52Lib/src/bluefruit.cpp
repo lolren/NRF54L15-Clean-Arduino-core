@@ -500,6 +500,12 @@ class BluefruitCompatManager {
         rssi_monitor_threshold_(0xFFU),
         last_reported_rssi_dbm_(0),
         last_reported_rssi_valid_(false),
+        security_pairing_in_progress_(false),
+        security_secured_callback_pending_(false),
+        security_secured_callback_fired_(false),
+        security_seen_procedure_active_(false),
+        security_last_encrypted_(false),
+        security_secured_callback_timeout_ms_(0UL),
         scan_report_data_{0},
         scan_report_len_(0U) {
     memset(characteristics_, 0, sizeof(characteristics_));
@@ -524,6 +530,7 @@ class BluefruitCompatManager {
     radio_.clearCustomGatt();
     radio_.setGattDeviceName(Bluefruit.device_name_);
     radio_.setGattAppearance(Bluefruit.appearance_);
+    radio_.setSecurityIoCapabilities(Bluefruit.Security.io_caps_);
     radio_.setPreferredConnectionParameters(Bluefruit.Periph.conn_interval_min_,
                                             Bluefruit.Periph.conn_interval_max_,
                                             Bluefruit.Periph.conn_latency_,
@@ -775,6 +782,7 @@ class BluefruitCompatManager {
             break;
           }
         }
+        maybeDispatchSecurityCallbacks();
         for (uint8_t i = 0U; i < characteristic_count_; ++i) {
           if (characteristics_[i] != nullptr) {
             characteristics_[i]->pollCccdState();
@@ -791,6 +799,7 @@ class BluefruitCompatManager {
           }
           handleCentralConnectionEvent(event);
         }
+        maybeDispatchSecurityCallbacks();
         dispatchDeferredUserCallbacks();
       }
     }
@@ -967,6 +976,12 @@ class BluefruitCompatManager {
   uint8_t rssi_monitor_threshold_;
   int8_t last_reported_rssi_dbm_;
   bool last_reported_rssi_valid_;
+  bool security_pairing_in_progress_;
+  bool security_secured_callback_pending_;
+  bool security_secured_callback_fired_;
+  bool security_seen_procedure_active_;
+  bool security_last_encrypted_;
+  unsigned long security_secured_callback_timeout_ms_;
 
   static void gattWriteThunk(uint16_t valueHandle, const uint8_t* value,
                              uint8_t valueLength, bool withResponse, void* context) {
@@ -1489,6 +1504,103 @@ class BluefruitCompatManager {
     invokeBluefruitUserCallback(Bluefruit.rssi_callback_, 0U, currentRssiDbm);
   }
 
+  void maybeDispatchSecurityCallbacks() {
+    if (!radio_.isConnected()) {
+      return;
+    }
+    if (radio_.connectionRole() == BleConnectionRole::kCentral &&
+        central_connect_callback_pending_) {
+      return;
+    }
+
+    const bool encrypted = radio_.isConnectionEncrypted();
+    const bool pairingActive = radio_.isPairingInProgress();
+    const bool procedureActive = radio_.isSecurityProcedureActive();
+    if (procedureActive) {
+      security_seen_procedure_active_ = true;
+    }
+    if (pairingActive) {
+      security_pairing_in_progress_ = true;
+      security_secured_callback_pending_ = true;
+    }
+
+    uint8_t passkey[6] = {0};
+    bool matchRequest = false;
+    if (radio_.getPendingPairingPasskey(passkey, &matchRequest)) {
+      bool accept = !matchRequest;
+      if (Bluefruit.Security.pair_passkey_callback_ != nullptr) {
+        ScopedBluefruitUserCallback scope;
+        accept = Bluefruit.Security.pair_passkey_callback_(0U, passkey,
+                                                           matchRequest);
+      }
+      (void)radio_.replyPendingPairingPasskey(accept);
+      return;
+    }
+
+    uint8_t failureReason = 0U;
+    if (radio_.consumePairingFailureReason(&failureReason)) {
+      if (Bluefruit.Security.pair_complete_callback_ != nullptr) {
+        invokeBluefruitUserCallback(Bluefruit.Security.pair_complete_callback_,
+                                    0U, failureReason);
+      }
+      security_pairing_in_progress_ = false;
+      security_secured_callback_pending_ = false;
+      security_secured_callback_fired_ = false;
+      security_seen_procedure_active_ = false;
+      security_secured_callback_timeout_ms_ = 0UL;
+      security_last_encrypted_ = encrypted;
+      return;
+    }
+
+    if (security_secured_callback_pending_ &&
+        !security_secured_callback_fired_ &&
+        encrypted && !security_last_encrypted_ &&
+        Bluefruit.Security.secured_callback_ != nullptr) {
+      invokeBluefruitUserCallback(Bluefruit.Security.secured_callback_, 0U);
+      security_secured_callback_fired_ = true;
+      if (!security_pairing_in_progress_) {
+        security_secured_callback_pending_ = false;
+        security_seen_procedure_active_ = false;
+        security_secured_callback_timeout_ms_ = 0UL;
+      }
+    }
+
+    if (security_pairing_in_progress_ && !procedureActive) {
+      if (encrypted &&
+          !security_secured_callback_fired_ &&
+          Bluefruit.Security.secured_callback_ != nullptr) {
+        invokeBluefruitUserCallback(Bluefruit.Security.secured_callback_, 0U);
+        security_secured_callback_fired_ = true;
+      }
+      if (Bluefruit.Security.pair_complete_callback_ != nullptr) {
+        invokeBluefruitUserCallback(
+            Bluefruit.Security.pair_complete_callback_, 0U,
+            encrypted ? BLE_GAP_SEC_STATUS_SUCCESS : 0x08U);
+      }
+      security_pairing_in_progress_ = false;
+      security_secured_callback_pending_ = false;
+      security_secured_callback_fired_ = false;
+      security_seen_procedure_active_ = false;
+      security_secured_callback_timeout_ms_ = 0UL;
+    } else if (!security_pairing_in_progress_ &&
+               security_secured_callback_pending_ &&
+               !security_secured_callback_fired_) {
+      const bool timeoutReached =
+          security_secured_callback_timeout_ms_ != 0UL &&
+          static_cast<int32_t>(millis() - security_secured_callback_timeout_ms_) >= 0;
+      if ((security_seen_procedure_active_ && !procedureActive) || timeoutReached) {
+        if (Bluefruit.Security.secured_callback_ != nullptr) {
+          invokeBluefruitUserCallback(Bluefruit.Security.secured_callback_, 0U);
+        }
+        security_secured_callback_pending_ = false;
+        security_seen_procedure_active_ = false;
+        security_secured_callback_timeout_ms_ = 0UL;
+      }
+    }
+
+    security_last_encrypted_ = encrypted;
+  }
+
   void handleConnectionEdge(bool connected) {
     if (connected) {
       last_connection_edge_ms_ = millis();
@@ -1499,6 +1611,12 @@ class BluefruitCompatManager {
       rssi_monitor_threshold_ = 0xFFU;
       last_reported_rssi_dbm_ = 0;
       last_reported_rssi_valid_ = false;
+      security_pairing_in_progress_ = false;
+      security_secured_callback_pending_ = false;
+      security_secured_callback_fired_ = false;
+      security_seen_procedure_active_ = false;
+      security_last_encrypted_ = radio_.isConnectionEncrypted();
+      security_secured_callback_timeout_ms_ = 0UL;
       if (Bluefruit.auto_conn_led_) {
         digitalWrite(LED_BUILTIN, kLedOnState);
       }
@@ -1536,6 +1654,10 @@ class BluefruitCompatManager {
           central_connect_callback_pending_ = true;
           central_connect_callback_not_before_ms_ = millis() + 2000UL;
         }
+        if (radio_.hasBondRecord()) {
+          security_secured_callback_pending_ = true;
+          security_secured_callback_timeout_ms_ = millis() + 2500UL;
+        }
       }
       return;
     }
@@ -1551,6 +1673,12 @@ class BluefruitCompatManager {
     rssi_monitor_threshold_ = 0xFFU;
     last_reported_rssi_dbm_ = 0;
     last_reported_rssi_valid_ = false;
+    security_pairing_in_progress_ = false;
+    security_secured_callback_pending_ = false;
+    security_secured_callback_fired_ = false;
+    security_seen_procedure_active_ = false;
+    security_last_encrypted_ = false;
+    security_secured_callback_timeout_ms_ = 0UL;
     deferred_connection_phy_request_pending_ = false;
     deferred_connection_data_length_request_pending_ = false;
     deferred_connection_mtu_request_pending_ = false;
@@ -1610,6 +1738,69 @@ class BluefruitCompatManager {
 BluefruitCompatManager& manager() {
   static BluefruitCompatManager instance;
   return instance;
+}
+
+BLESecurity::BLESecurity()
+    : secured_callback_(nullptr),
+      pair_passkey_callback_(nullptr),
+      pair_complete_callback_(nullptr),
+      io_caps_(0x03U),
+      fixed_pin_valid_(false),
+      fixed_pin_{0} {}
+
+void BLESecurity::setSecuredCallback(secured_callback_t fp) {
+  secured_callback_ = fp;
+}
+
+void BLESecurity::setPairPasskeyCallback(pair_passkey_callback_t fp) {
+  pair_passkey_callback_ = fp;
+}
+
+void BLESecurity::setPairCompleteCallback(pair_complete_callback_t fp) {
+  pair_complete_callback_ = fp;
+}
+
+void BLESecurity::setIOCaps(uint8_t ioCaps) {
+  if (ioCaps > 0x04U) {
+    ioCaps = 0x03U;
+  }
+  io_caps_ = ioCaps;
+  manager().radio().setSecurityIoCapabilities(ioCaps);
+}
+
+void BLESecurity::setIOCaps(bool display, bool yesNo, bool keyboard) {
+  uint8_t ioCaps = 0x03U;
+  if (display && keyboard) {
+    ioCaps = 0x04U;
+  } else if (keyboard) {
+    ioCaps = 0x02U;
+  } else if (display && yesNo) {
+    ioCaps = 0x01U;
+  } else if (display) {
+    ioCaps = 0x00U;
+  }
+  setIOCaps(ioCaps);
+}
+
+void BLESecurity::setPIN(const char* pin) {
+  fixed_pin_valid_ = false;
+  memset(fixed_pin_, 0, sizeof(fixed_pin_));
+  manager().radio().setSecurityFixedPasskey(nullptr);
+  if (pin == nullptr || strlen(pin) != 6U) {
+    return;
+  }
+  for (size_t i = 0; i < 6U; ++i) {
+    if (pin[i] < '0' || pin[i] > '9') {
+      return;
+    }
+    fixed_pin_[i] = pin[i];
+  }
+  fixed_pin_[6] = '\0';
+  fixed_pin_valid_ = true;
+  manager().radio().setSecurityFixedPasskey(fixed_pin_);
+  if (io_caps_ == 0x03U) {
+    setIOCaps(0x00U);
+  }
 }
 
 void serviceBluefruitBeforePollingState() {
@@ -3238,10 +3429,7 @@ bool BLEConnection::requestPairing() const {
   if (!connected()) {
     return false;
   }
-  if (manager().radio().connectionRole() == BleConnectionRole::kPeripheral) {
-    return manager().radio().sendSmpSecurityRequest();
-  }
-  return false;
+  return manager().radio().requestPairing();
 }
 
 bool BLEConnection::monitorRssi(uint8_t threshold) const {

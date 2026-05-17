@@ -475,15 +475,43 @@ class BLEGatt {};
 
 class BLESecurity {
  public:
+  typedef void (*secured_callback_t)(uint16_t conn_hdl);
+  typedef bool (*pair_passkey_callback_t)(uint16_t conn_hdl,
+                                          uint8_t const passkey[6],
+                                          bool match_request);
+  typedef void (*pair_complete_callback_t)(uint16_t conn_hdl,
+                                           uint8_t auth_status);
+
+  BLESecurity();
+
+  void setSecuredCallback(secured_callback_t fp);
   template <typename T>
-  void setSecuredCallback(T) {}
+  void setSecuredCallback(T fp) {
+    setSecuredCallback(static_cast<secured_callback_t>(fp));
+  }
+  void setPairPasskeyCallback(pair_passkey_callback_t fp);
   template <typename T>
-  void setPairPasskeyCallback(T) {}
+  void setPairPasskeyCallback(T fp) {
+    setPairPasskeyCallback(static_cast<pair_passkey_callback_t>(fp));
+  }
+  void setPairCompleteCallback(pair_complete_callback_t fp);
   template <typename T>
-  void setPairCompleteCallback(T) {}
-  void setIOCaps(uint8_t) {}
-  void setIOCaps(bool, bool, bool) {}
-  void setPIN(const char*) {}
+  void setPairCompleteCallback(T fp) {
+    setPairCompleteCallback(static_cast<pair_complete_callback_t>(fp));
+  }
+  void setIOCaps(uint8_t ioCaps);
+  void setIOCaps(bool display, bool yesNo, bool keyboard);
+  void setPIN(const char* pin);
+
+ private:
+  secured_callback_t secured_callback_;
+  pair_passkey_callback_t pair_passkey_callback_;
+  pair_complete_callback_t pair_complete_callback_;
+  uint8_t io_caps_;
+  bool fixed_pin_valid_;
+  char fixed_pin_[7];
+
+  friend class BluefruitCompatManager;
 };
 
 enum {

@@ -292,8 +292,12 @@
       writeLe16(&connectionTxPayload_[0], 2U);           // L2CAP length = 2
       writeLe16(&connectionTxPayload_[2], kBleL2capCidSmp);
       connectionTxPayload_[4] = kSmpCodeSecurityRequest; // opcode 0x0B
-      connectionTxPayload_[5] =
+      uint8_t authReq =
           static_cast<uint8_t>(0x01U | kSmpAuthReqSecureConnectionsMask);
+      if (smpLocalIoCapabilities_ != kSmpIoCapNoInputNoOutput) {
+        authReq |= kSmpAuthReqMitmMask;
+      }
+      connectionTxPayload_[5] = authReq;
       deferredLlid = kBlePduDataStartOrComplete;
       deferredLength = 6U;
       connectionSmpSecurityRequestPending_ = false;

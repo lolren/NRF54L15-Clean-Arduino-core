@@ -1400,31 +1400,18 @@ bool BleRadio::buildL2capSmpResponse(const uint8_t* l2capPayload,
   };
   auto buildSmpPairingFailed = [&](uint8_t reason) -> bool {
     latchSecureConnectionsDebugState();
+    smpPairingFailureReasonPending_ = true;
+    smpLastPairingFailureReason_ = reason;
     clearConnectionSecurityState();
     uint8_t failed[2] = {kSmpCodePairingFailed, reason};
     emitBleTrace("SMP_PAIRING_FAILED");
     return buildSmpResponse(failed, sizeof(failed));
   };
-  auto prepareLocalPairingRandom = [&]() -> bool {
-    const uint32_t seed = micros() ^ connectionAccessAddress_ ^
-                          static_cast<uint32_t>(connectionEventCounter_ << 16U);
-    if (smpPrefetchedLocalRandomValid_) {
-      memcpy(smpLocalRandom_, smpPrefetchedLocalRandom_, sizeof(smpLocalRandom_));
-      smpPrefetchedLocalRandomValid_ = false;
-      ++encDebug_.encRandomPrefetchUseCount;
-      return true;
-    }
-    if (fillBleSecurityRandomBytes(smpLocalRandom_, sizeof(smpLocalRandom_),
-                                   seed, kBleSecurityRandomSpinLimit)) {
-      ++encDebug_.encRandomHardwareCount;
-      return true;
-    }
-    ++encDebug_.encRandomFallbackCount;
-    return true;
-  };
-
   if (smpCode == kSmpCodePairingFailed) {
     latchSecureConnectionsDebugState();
+    smpPairingFailureReasonPending_ = true;
+    smpLastPairingFailureReason_ =
+        (smpLength >= 2U) ? smp[1] : kSmpReasonUnspecified;
     clearConnectionSecurityState();
     emitBleTrace("SMP_PAIRING_FAILED_RX");
     return false;
@@ -1463,8 +1450,10 @@ bool BleRadio::buildL2capSmpResponse(const uint8_t* l2capPayload,
       }
       memcpy(smpPairingReq_, smp, kSmpPairingRequestLen);
       smpLocalInitiator_ = false;
+      smpPairingFailureReasonPending_ = false;
+      smpLastPairingFailureReason_ = 0U;
       smpPairingRsp_[0] = kSmpCodePairingResponse;
-      smpPairingRsp_[1] = kSmpIoCapNoInputNoOutput;
+      smpPairingRsp_[1] = smpLocalIoCapabilities_;
       smpPairingRsp_[2] = 0x00U;
       const uint8_t peerBonding = smp[3] & kSmpAuthReqBondingMask;
       const bool peerRequestedMitm =
@@ -1472,6 +1461,10 @@ bool BleRadio::buildL2capSmpResponse(const uint8_t* l2capPayload,
       const bool peerRequestedSecureConnections =
           (smp[3] & kSmpAuthReqSecureConnectionsMask) != 0U;
       smpPairingRsp_[3] = (peerBonding != 0U) ? 0x01U : 0x00U;
+      if (peerRequestedMitm &&
+          smpLocalIoCapabilities_ != kSmpIoCapNoInputNoOutput) {
+        smpPairingRsp_[3] |= kSmpAuthReqMitmMask;
+      }
       smpBondingRequested_ = (peerBonding != 0U);
       smpPairingRsp_[4] = maxKeySize;
       uint8_t initiatorKeyDist = 0x00U;
@@ -1508,10 +1501,19 @@ bool BleRadio::buildL2capSmpResponse(const uint8_t* l2capPayload,
         if (!ensureSecureConnectionsLocalKeypair()) {
           return buildSmpPairingFailed(kSmpReasonUnspecified);
         }
+        const uint8_t pairAlg = resolveCurrentSecureConnectionsPairAlgorithm();
+        if (!secureConnectionsPairAlgorithmSupported(pairAlg)) {
+          emitBleTrace("SMP_SC_ALG_UNSUPPORTED");
+          return buildSmpPairingFailed(
+              (pairAlg == kSmpScPairAlgOob) ? kSmpReasonOobNotAvailable
+                                            : kSmpReasonAuthRequirements);
+        }
         emitBleTrace("SMP_SC_REQUEST_RX");
       }
-      if (peerRequestedMitm) {
+      if (peerRequestedMitm &&
+          ((smpPairingRsp_[3] & kSmpAuthReqMitmMask) == 0U)) {
         emitBleTrace("SMP_MITM_REQUEST_NO_IO_FALLBACK");
+        return buildSmpPairingFailed(kSmpReasonAuthRequirements);
       }
 
       // Precompute local confirm material here so confirm/random stages avoid
@@ -1520,7 +1522,8 @@ bool BleRadio::buildL2capSmpResponse(const uint8_t* l2capPayload,
         return buildSmpPairingFailed(kSmpReasonUnspecified);
       }
       if (!peerRequestedSecureConnections) {
-        const uint8_t tk[16] = {0};
+        uint8_t tk[16] = {0};
+        buildLegacyTemporaryKey(tk);
         const uint8_t iat = connectionPeerAddressRandom_ ? 0x01U : 0x00U;
         const uint8_t rat =
             (addressType_ == BleAddressType::kRandomStatic) ? 0x01U : 0x00U;
@@ -1580,6 +1583,9 @@ bool BleRadio::buildL2capSmpResponse(const uint8_t* l2capPayload,
                  &smpSecureConnectionsPublicKey_[1], 32U) == 0) {
         emitBleTrace("SMP_SC_PUBKEY_REJECTED");
         return buildSmpPairingFailed(kSmpReasonUnspecified);
+      }
+      if (!prepareSecureConnectionsPasskey()) {
+        return buildSmpPairingFailed(kSmpReasonAuthRequirements);
       }
 
       emitBleTrace("SMP_SC_PUBKEY_RX");
@@ -1677,6 +1683,7 @@ bool BleRadio::buildL2capSmpResponse(const uint8_t* l2capPayload,
 
       memcpy(smpPeerRandom_, &smp[1], sizeof(smpPeerRandom_));
       if (smpSecureConnectionsActive_) {
+        const uint8_t pairAlg = resolveCurrentSecureConnectionsPairAlgorithm();
         const bool requireLocalConfirmSent =
             !smpLocalInitiator_ || secureConnectionsInitiatorTransmitsConfirm();
         if (requireLocalConfirmSent && !smpSecureConnectionsConfirmSent_) {
@@ -1685,9 +1692,16 @@ bool BleRadio::buildL2capSmpResponse(const uint8_t* l2capPayload,
 
         if (smpLocalInitiator_ || secureConnectionsResponderVerifiesRandom()) {
           uint8_t expectedRemoteConfirm[16] = {0};
+          uint8_t confirmZ = 0U;
+          if (pairAlg == kSmpScPairAlgPasskey) {
+            if (!prepareSecureConnectionsPasskey()) {
+              return buildSmpPairingFailed(kSmpReasonAuthRequirements);
+            }
+            confirmZ = secureConnectionsPasskeyRoundZ();
+          }
           if (!bleSecureConnectionsF4(&smpSecureConnectionsPeerPublicKey_[1],
                                       &smpSecureConnectionsPublicKey_[1],
-                                      smpPeerRandom_, 0U,
+                                      smpPeerRandom_, confirmZ,
                                       expectedRemoteConfirm)) {
             return buildSmpPairingFailed(kSmpReasonUnspecified);
           }
@@ -1698,6 +1712,85 @@ bool BleRadio::buildL2capSmpResponse(const uint8_t* l2capPayload,
         }
 
         emitBleTrace("SMP_SC_RANDOM_RX");
+        if (pairAlg == kSmpScPairAlgPasskey) {
+          if (smpLocalInitiator_) {
+            if (advanceSecureConnectionsPasskeyRound()) {
+              if (!computeSecureConnectionsLocalConfirm()) {
+                return buildSmpPairingFailed(kSmpReasonUnspecified);
+              }
+              uint8_t localConfirm[17] = {0};
+              localConfirm[0] = kSmpCodePairingConfirm;
+              memcpy(&localConfirm[1], smpLocalConfirm_,
+                     sizeof(smpLocalConfirm_));
+              smpSecureConnectionsConfirmSent_ = true;
+              smpPairingState_ = kSmpPairingStateConfirmSent;
+              emitBleTrace("SMP_SC_CONFIRM_TX");
+              return buildSmpResponse(localConfirm, sizeof(localConfirm));
+            }
+            smpSecureConnectionsDeferredDhKeyCheck_ = true;
+            return false;
+          }
+
+          if (smpSecureConnectionsRandomSent_) {
+            smpPairingState_ = kSmpPairingStateRandomSent;
+            return false;
+          }
+
+          uint8_t localRandom[17] = {0};
+          localRandom[0] = kSmpCodePairingRandom;
+          memcpy(&localRandom[1], smpLocalRandom_, sizeof(smpLocalRandom_));
+          smpSecureConnectionsRandomSent_ = true;
+          const bool hasMoreRounds = advanceSecureConnectionsPasskeyRound();
+          if (!hasMoreRounds) {
+            smpSecureConnectionsDeferredDhKeyCheck_ = true;
+            smpPairingState_ = kSmpPairingStateRandomSent;
+          } else {
+            smpPairingState_ = kSmpPairingStateRspSent;
+          }
+          emitBleTrace("SMP_SC_RANDOM_TX");
+          return buildSmpResponse(localRandom, sizeof(localRandom));
+        }
+
+        if (pairAlg == kSmpScPairAlgNumericComparison) {
+          uint32_t passkey = 0UL;
+          if (smpLocalInitiator_) {
+            if (!bleSecureConnectionsG2(&smpSecureConnectionsPublicKey_[1],
+                                        &smpSecureConnectionsPeerPublicKey_[1],
+                                        smpLocalRandom_, smpPeerRandom_,
+                                        &passkey)) {
+              return buildSmpPairingFailed(kSmpReasonUnspecified);
+            }
+            smpPendingUserPasskeyValue_ = passkey;
+            smpPendingUserPasskeyMatchRequest_ = true;
+            smpPendingUserPasskey_ = true;
+            emitBleTrace("SMP_SC_NUMCOMP_PENDING");
+            return false;
+          }
+
+          if (!bleSecureConnectionsG2(&smpSecureConnectionsPeerPublicKey_[1],
+                                      &smpSecureConnectionsPublicKey_[1],
+                                      smpPeerRandom_, smpLocalRandom_,
+                                      &passkey)) {
+            return buildSmpPairingFailed(kSmpReasonUnspecified);
+          }
+          smpPendingUserPasskeyValue_ = passkey;
+          smpPendingUserPasskeyMatchRequest_ = true;
+          smpPendingUserPasskey_ = true;
+          if (smpSecureConnectionsRandomSent_) {
+            smpPairingState_ = kSmpPairingStateRandomSent;
+            emitBleTrace("SMP_SC_NUMCOMP_PENDING");
+            return false;
+          }
+
+          uint8_t localRandom[17] = {0};
+          localRandom[0] = kSmpCodePairingRandom;
+          memcpy(&localRandom[1], smpLocalRandom_, sizeof(smpLocalRandom_));
+          smpSecureConnectionsRandomSent_ = true;
+          smpPairingState_ = kSmpPairingStateRandomSent;
+          emitBleTrace("SMP_SC_RANDOM_TX");
+          emitBleTrace("SMP_SC_NUMCOMP_PENDING");
+          return buildSmpResponse(localRandom, sizeof(localRandom));
+        }
         if (smpLocalInitiator_) {
           smpSecureConnectionsDeferredDhKeyCheck_ = true;
           return false;
@@ -1717,7 +1810,8 @@ bool BleRadio::buildL2capSmpResponse(const uint8_t* l2capPayload,
         return buildSmpResponse(localRandom, sizeof(localRandom));
       }
 
-      const uint8_t tk[16] = {0};
+      uint8_t tk[16] = {0};
+      buildLegacyTemporaryKey(tk);
       const uint8_t iat = connectionPeerAddressRandom_ ? 0x01U : 0x00U;
       const uint8_t rat =
           (addressType_ == BleAddressType::kRandomStatic) ? 0x01U : 0x00U;
@@ -1910,6 +2004,8 @@ bool BleRadio::buildL2capSmpResponse(const uint8_t* l2capPayload,
         return buildSmpResponse(localConfirm, sizeof(localConfirm));
       }
       memcpy(smpPairingRsp_, smp, kSmpPairingResponseLen);
+      smpPairingFailureReasonPending_ = false;
+      smpLastPairingFailureReason_ = 0U;
       smpBondingRequested_ =
           ((smpPairingReq_[3] & kSmpAuthReqBondingMask) != 0U) &&
           ((smpPairingRsp_[3] & kSmpAuthReqBondingMask) != 0U);
@@ -1931,13 +2027,26 @@ bool BleRadio::buildL2capSmpResponse(const uint8_t* l2capPayload,
       smpPairingState_ = kSmpPairingStateRspSent;
       emitBleTrace("SMP_PAIRING_RESPONSE_RX");
       if (smpSecureConnectionsActive_) {
+        if ((smpPairingReq_[3] & kSmpAuthReqMitmMask) != 0U &&
+            (smpPairingRsp_[3] & kSmpAuthReqMitmMask) == 0U) {
+          emitBleTrace("SMP_SC_MITM_DOWNGRADE");
+          return buildSmpPairingFailed(kSmpReasonAuthRequirements);
+        }
+        const uint8_t pairAlg = resolveCurrentSecureConnectionsPairAlgorithm();
+        if (!secureConnectionsPairAlgorithmSupported(pairAlg)) {
+          emitBleTrace("SMP_SC_ALG_UNSUPPORTED");
+          return buildSmpPairingFailed(
+              (pairAlg == kSmpScPairAlgOob) ? kSmpReasonOobNotAvailable
+                                            : kSmpReasonAuthRequirements);
+        }
         smpSecureConnectionsWireFormatBigEndian_ = false;
         smpSecureConnectionsDeferredPublicKey_ = true;
         return false;
       }
 
       {
-        const uint8_t tk[16] = {0};
+        uint8_t tk[16] = {0};
+        buildLegacyTemporaryKey(tk);
         const uint8_t iat =
             (addressType_ == BleAddressType::kRandomStatic) ? 0x01U : 0x00U;
         const uint8_t rat = connectionPeerAddressRandom_ ? 0x01U : 0x00U;
@@ -1975,10 +2084,14 @@ bool BleRadio::buildL2capSmpResponse(const uint8_t* l2capPayload,
         uint8_t pairingReq[kSmpPairingRequestLen] = {0};
         const uint8_t peerAuthReq = smp[1];
         pairingReq[0] = kSmpCodePairingRequest;
-        pairingReq[1] = kSmpIoCapNoInputNoOutput;
+        pairingReq[1] = smpLocalIoCapabilities_;
         pairingReq[2] = 0x00U;
         pairingReq[3] =
             ((peerAuthReq & kSmpAuthReqBondingMask) != 0U) ? 0x01U : 0x00U;
+        if ((peerAuthReq & kSmpAuthReqMitmMask) != 0U &&
+            smpLocalIoCapabilities_ != kSmpIoCapNoInputNoOutput) {
+          pairingReq[3] |= kSmpAuthReqMitmMask;
+        }
         if ((peerAuthReq & kSmpAuthReqSecureConnectionsMask) != 0U) {
           pairingReq[3] |= kSmpAuthReqSecureConnectionsMask;
           // SC does not need distributed EncKey, and this core currently keeps

@@ -823,6 +823,16 @@ bool BleRadio::computeSecureConnectionsDhKey() {
   return true;
 }
 
+void BleRadio::buildLegacyTemporaryKey(uint8_t outTk[16]) const {
+  if (outTk == nullptr) {
+    return;
+  }
+  memset(outTk, 0, 16U);
+  if (smpFixedPasskeyValid_) {
+    writeLe32(&outTk[0], smpFixedPasskeyValue_);
+  }
+}
+
 bool BleRadio::computeSecureConnectionsLocalConfirm() {
   if (!smpSecureConnectionsActive_ || !smpSecureConnectionsLocalKeyReady_ ||
       !smpSecureConnectionsPeerPublicKeyValid_) {
@@ -832,9 +842,17 @@ bool BleRadio::computeSecureConnectionsLocalConfirm() {
     return true;
   }
 
+  uint8_t z = 0U;
+  if (resolveCurrentSecureConnectionsPairAlgorithm() == kSmpScPairAlgPasskey) {
+    if (!prepareSecureConnectionsPasskey()) {
+      return false;
+    }
+    z = secureConnectionsPasskeyRoundZ();
+  }
+
   if (!bleSecureConnectionsF4(&smpSecureConnectionsPublicKey_[1],
                               &smpSecureConnectionsPeerPublicKey_[1],
-                              smpLocalRandom_, 0U, smpLocalConfirm_)) {
+                              smpLocalRandom_, z, smpLocalConfirm_)) {
     return false;
   }
 
@@ -845,22 +863,6 @@ bool BleRadio::computeSecureConnectionsLocalConfirm() {
 namespace {
 
 constexpr uint32_t kBleDeferredSmpResponseSpinLimit = 0UL;
-
-constexpr uint8_t kSmpIoCapDisplayOnly = 0x00U;
-constexpr uint8_t kSmpIoCapDisplayYesNo = 0x01U;
-constexpr uint8_t kSmpIoCapKeyboardOnly = 0x02U;
-constexpr uint8_t kSmpIoCapKeyboardDisplay = 0x04U;
-
-constexpr uint8_t kSmpScIoActionNone = 0x00U;
-constexpr uint8_t kSmpScIoActionOob = 0x01U;
-constexpr uint8_t kSmpScIoActionInput = 0x02U;
-constexpr uint8_t kSmpScIoActionDisplay = 0x03U;
-constexpr uint8_t kSmpScIoActionNumericComparison = 0x04U;
-
-constexpr uint8_t kSmpScPairAlgJustWorks = 0x00U;
-constexpr uint8_t kSmpScPairAlgOob = 0x01U;
-constexpr uint8_t kSmpScPairAlgPasskey = 0x02U;
-constexpr uint8_t kSmpScPairAlgNumericComparison = 0x03U;
 
 constexpr uint8_t kSmpScInitIoActions[5][5] = {
     {kSmpScIoActionNone, kSmpScIoActionNone, kSmpScIoActionInput,
@@ -941,14 +943,329 @@ uint8_t resolveSecureConnectionsPairAlgorithm(bool localInitiator,
   }
 }
 
+void formatPairingPasskey(uint32_t passkey, uint8_t outPasskey[6]) {
+  if (outPasskey == nullptr) {
+    return;
+  }
+  if (passkey > 999999UL) {
+    passkey %= 1000000UL;
+  }
+  outPasskey[0] = static_cast<uint8_t>('0' + ((passkey / 100000UL) % 10UL));
+  outPasskey[1] = static_cast<uint8_t>('0' + ((passkey / 10000UL) % 10UL));
+  outPasskey[2] = static_cast<uint8_t>('0' + ((passkey / 1000UL) % 10UL));
+  outPasskey[3] = static_cast<uint8_t>('0' + ((passkey / 100UL) % 10UL));
+  outPasskey[4] = static_cast<uint8_t>('0' + ((passkey / 10UL) % 10UL));
+  outPasskey[5] = static_cast<uint8_t>('0' + (passkey % 10UL));
+}
+
+bool parseFixedPasskeyString(const char* pin, uint32_t* outPasskey) {
+  if (pin == nullptr || outPasskey == nullptr || strlen(pin) != 6U) {
+    return false;
+  }
+
+  uint32_t value = 0UL;
+  for (size_t i = 0U; i < 6U; ++i) {
+    if (pin[i] < '0' || pin[i] > '9') {
+      return false;
+    }
+    value = (value * 10UL) + static_cast<uint32_t>(pin[i] - '0');
+  }
+
+  *outPasskey = value;
+  return true;
+}
+
 }  // namespace
+
+void BleRadio::setSecurityIoCapabilities(uint8_t ioCaps) {
+  if (ioCaps > kSmpIoCapKeyboardDisplay) {
+    ioCaps = kSmpIoCapNoInputNoOutput;
+  }
+  const uint32_t irqState = bleEnterCritical();
+  smpLocalIoCapabilities_ = ioCaps;
+  bleExitCritical(irqState);
+}
+
+void BleRadio::setSecurityFixedPasskey(const char* pin) {
+  uint32_t passkey = 0UL;
+  const bool valid = parseFixedPasskeyString(pin, &passkey);
+  const uint32_t irqState = bleEnterCritical();
+  smpFixedPasskeyValid_ = valid;
+  smpFixedPasskeyValue_ = valid ? passkey : 0UL;
+  bleExitCritical(irqState);
+}
+
+bool BleRadio::prepareLocalPairingRandom() {
+  const uint32_t seed =
+      micros() ^ connectionAccessAddress_ ^
+      static_cast<uint32_t>(connectionEventCounter_ << 16U);
+  if (smpPrefetchedLocalRandomValid_) {
+    memcpy(smpLocalRandom_, smpPrefetchedLocalRandom_, sizeof(smpLocalRandom_));
+    smpPrefetchedLocalRandomValid_ = false;
+    ++encDebug_.encRandomPrefetchUseCount;
+    return true;
+  }
+  if (fillBleSecurityRandomBytes(smpLocalRandom_, sizeof(smpLocalRandom_),
+                                 seed, kBleSecurityRandomSpinLimit)) {
+    ++encDebug_.encRandomHardwareCount;
+    return true;
+  }
+  ++encDebug_.encRandomFallbackCount;
+  return true;
+}
+
+bool BleRadio::requestPairing() {
+  const uint32_t irqState = bleEnterCritical();
+  if (!connected_ || connectionEncSessionValid_ || connectionEncRxEnabled_ ||
+      connectionEncTxEnabled_ || connectionEncKeyDerivationPending_ ||
+      connectionEncStartReqPending_ || connectionEncStartReqTxPending_ ||
+      connectionEncAwaitingStartRsp_ ||
+      smpPairingState_ != kSmpPairingStateIdle ||
+      smpPendingUserPasskey_ || smpDeferredPairingFailed_) {
+    bleExitCritical(irqState);
+    return false;
+  }
+
+  smpPairingFailureReasonPending_ = false;
+  smpLastPairingFailureReason_ = 0U;
+
+  if (connectionRole_ == BleConnectionRole::kPeripheral) {
+    connectionSmpSecurityRequestPending_ = true;
+    bleExitCritical(irqState);
+    return true;
+  }
+
+  if (connectionRole_ != BleConnectionRole::kCentral) {
+    bleExitCritical(irqState);
+    return false;
+  }
+
+  clearSmpPairingState();
+
+  uint8_t pairingReq[kSmpPairingRequestLen] = {0};
+  pairingReq[0] = kSmpCodePairingRequest;
+  pairingReq[1] = smpLocalIoCapabilities_;
+  pairingReq[2] = 0x00U;
+  pairingReq[3] = static_cast<uint8_t>(0x01U | kSmpAuthReqSecureConnectionsMask);
+  if (smpLocalIoCapabilities_ != kSmpIoCapNoInputNoOutput) {
+    pairingReq[3] |= kSmpAuthReqMitmMask;
+  }
+  pairingReq[4] = 16U;
+  pairingReq[5] = 0U;
+  pairingReq[6] = 0U;
+
+  if (!queuePendingSmpL2capResponse(pairingReq, kSmpPairingRequestLen)) {
+    bleExitCritical(irqState);
+    return false;
+  }
+
+  memcpy(smpPairingReq_, pairingReq, sizeof(smpPairingReq_));
+  smpLocalInitiator_ = true;
+  smpBondingRequested_ = true;
+  smpSecureConnectionsActive_ = true;
+  smpKeySize_ = 16U;
+  smpPairingState_ = kSmpPairingStateReqSent;
+  emitBleTrace("SMP_PAIRING_REQUEST_TX");
+  bleExitCritical(irqState);
+  return true;
+}
+
+uint8_t BleRadio::resolveCurrentSecureConnectionsIoAction() const {
+  return resolveSecureConnectionsIoAction(
+      smpLocalInitiator_, smpPairingReq_[1], smpPairingRsp_[1],
+      smpPairingReq_[3], smpPairingRsp_[3], smpPairingReq_[2],
+      smpPairingRsp_[2]);
+}
+
+uint8_t BleRadio::resolveCurrentSecureConnectionsPairAlgorithm() const {
+  return resolveSecureConnectionsPairAlgorithm(smpLocalInitiator_,
+                                               smpPairingReq_,
+                                               smpPairingRsp_);
+}
+
+bool BleRadio::secureConnectionsPairAlgorithmSupported(uint8_t pairAlg) const {
+  if (pairAlg == kSmpScPairAlgJustWorks ||
+      pairAlg == kSmpScPairAlgNumericComparison) {
+    return true;
+  }
+  if (pairAlg == kSmpScPairAlgPasskey) {
+    const uint8_t ioAction = resolveCurrentSecureConnectionsIoAction();
+    return (ioAction == kSmpScIoActionDisplay) ||
+           ((ioAction == kSmpScIoActionInput) && smpFixedPasskeyValid_);
+  }
+  return false;
+}
+
+bool BleRadio::prepareSecureConnectionsPasskey() {
+  if (!smpSecureConnectionsActive_) {
+    return false;
+  }
+  if (resolveCurrentSecureConnectionsPairAlgorithm() != kSmpScPairAlgPasskey) {
+    return true;
+  }
+  if (smpSecureConnectionsPasskeyValid_) {
+    return true;
+  }
+
+  const uint8_t ioAction = resolveCurrentSecureConnectionsIoAction();
+  uint32_t passkey = 0UL;
+  if (smpFixedPasskeyValid_) {
+    passkey = smpFixedPasskeyValue_;
+  } else {
+    if (ioAction != kSmpScIoActionDisplay) {
+      return false;
+    }
+    uint8_t rawPasskey[4] = {0};
+    const uint32_t seed =
+        micros() ^ connectionAccessAddress_ ^
+        static_cast<uint32_t>(connectionEventCounter_ << 16U);
+    if (!fillBleSecurityRandomBytes(rawPasskey, sizeof(rawPasskey), seed,
+                                    kBleSecurityRandomSpinLimit)) {
+      ++encDebug_.encRandomFallbackCount;
+    } else {
+      ++encDebug_.encRandomHardwareCount;
+    }
+    passkey = readLe32(rawPasskey);
+    passkey %= 1000000UL;
+  }
+
+  smpSecureConnectionsPasskeyValue_ = passkey;
+  smpSecureConnectionsPasskeyRound_ = 0U;
+  smpSecureConnectionsPasskeyValid_ = true;
+  if (ioAction == kSmpScIoActionDisplay) {
+    smpPendingUserPasskeyValue_ = passkey;
+    smpPendingUserPasskeyMatchRequest_ = false;
+    smpPendingUserPasskey_ = true;
+  }
+  return true;
+}
+
+uint8_t BleRadio::secureConnectionsPasskeyRoundZ() const {
+  if (!smpSecureConnectionsPasskeyValid_) {
+    return 0U;
+  }
+  const uint8_t bit =
+      static_cast<uint8_t>((smpSecureConnectionsPasskeyValue_ >>
+                            smpSecureConnectionsPasskeyRound_) &
+                           0x01UL);
+  return static_cast<uint8_t>(0x80U | bit);
+}
+
+bool BleRadio::advanceSecureConnectionsPasskeyRound() {
+  ++smpSecureConnectionsPasskeyRound_;
+  if (smpSecureConnectionsPasskeyRound_ >= 20U) {
+    return false;
+  }
+  if (!prepareLocalPairingRandom()) {
+    return false;
+  }
+  memset(smpPeerConfirm_, 0, sizeof(smpPeerConfirm_));
+  memset(smpPeerRandom_, 0, sizeof(smpPeerRandom_));
+  memset(smpLocalConfirm_, 0, sizeof(smpLocalConfirm_));
+  smpSecureConnectionsLocalConfirmReady_ = false;
+  smpSecureConnectionsConfirmSent_ = false;
+  smpSecureConnectionsRandomSent_ = false;
+  return true;
+}
+
+bool BleRadio::isPairingInProgress() const {
+  const uint32_t irqState = bleEnterCritical();
+  const bool active =
+      (smpPairingState_ != kSmpPairingStateIdle) ||
+      smpPendingUserPasskey_ ||
+      smpDeferredPairingFailed_ ||
+      smpSecureConnectionsDeferredPublicKey_ ||
+      smpSecureConnectionsDeferredConfirm_ ||
+      smpSecureConnectionsDeferredRandom_ ||
+      smpSecureConnectionsDeferredDhKeyCheck_;
+  bleExitCritical(irqState);
+  return active;
+}
+
+bool BleRadio::isSecurityProcedureActive() const {
+  const uint32_t irqState = bleEnterCritical();
+  const bool active =
+      (smpPairingState_ != kSmpPairingStateIdle) ||
+      smpPendingUserPasskey_ ||
+      smpDeferredPairingFailed_ ||
+      smpSecureConnectionsDeferredPublicKey_ ||
+      smpSecureConnectionsDeferredConfirm_ ||
+      smpSecureConnectionsDeferredRandom_ ||
+      smpSecureConnectionsDeferredDhKeyCheck_ ||
+      connectionBondedEncryptionRequested_ ||
+      connectionEncKeyDerivationPending_ ||
+      connectionEncStartReqPending_ ||
+      connectionEncStartReqTxPending_ ||
+      connectionEncAwaitingStartRsp_;
+  bleExitCritical(irqState);
+  return active;
+}
+
+bool BleRadio::getPendingPairingPasskey(uint8_t outPasskey[6],
+                                        bool* outMatchRequest) const {
+  if (outPasskey == nullptr || outMatchRequest == nullptr) {
+    return false;
+  }
+  const uint32_t irqState = bleEnterCritical();
+  if (!smpPendingUserPasskey_) {
+    bleExitCritical(irqState);
+    return false;
+  }
+  formatPairingPasskey(smpPendingUserPasskeyValue_, outPasskey);
+  *outMatchRequest = smpPendingUserPasskeyMatchRequest_;
+  bleExitCritical(irqState);
+  return true;
+}
+
+bool BleRadio::replyPendingPairingPasskey(bool accept) {
+  const uint32_t irqState = bleEnterCritical();
+  if (!smpPendingUserPasskey_) {
+    bleExitCritical(irqState);
+    return false;
+  }
+
+  const bool matchRequest = smpPendingUserPasskeyMatchRequest_;
+  smpPendingUserPasskey_ = false;
+  smpPendingUserPasskeyMatchRequest_ = false;
+  smpPendingUserPasskeyValue_ = 0UL;
+  if (!matchRequest) {
+    bleExitCritical(irqState);
+    return true;
+  }
+  if (accept) {
+    smpSecureConnectionsDeferredDhKeyCheck_ = true;
+  } else {
+    smpDeferredPairingFailed_ = true;
+    smpDeferredPairingFailedReason_ =
+        matchRequest ? kSmpReasonNumericComparisonFailed
+                     : kSmpReasonPasskeyEntryFailed;
+  }
+  bleExitCritical(irqState);
+  serviceBackgroundConnection(kBleDeferredSmpResponseSpinLimit);
+  return true;
+}
+
+bool BleRadio::consumePairingFailureReason(uint8_t* outReason) {
+  if (outReason == nullptr) {
+    return false;
+  }
+  const uint32_t irqState = bleEnterCritical();
+  if (!smpPairingFailureReasonPending_) {
+    bleExitCritical(irqState);
+    return false;
+  }
+  *outReason = smpLastPairingFailureReason_;
+  smpPairingFailureReasonPending_ = false;
+  smpLastPairingFailureReason_ = 0U;
+  bleExitCritical(irqState);
+  return true;
+}
 
 bool BleRadio::secureConnectionsInitiatorTransmitsConfirm() const {
   if (!smpSecureConnectionsActive_) {
     return false;
   }
-  const uint8_t pairAlg = resolveSecureConnectionsPairAlgorithm(
-      smpLocalInitiator_, smpPairingReq_, smpPairingRsp_);
+  const uint8_t pairAlg = resolveCurrentSecureConnectionsPairAlgorithm();
   return pairAlg != kSmpScPairAlgJustWorks &&
          pairAlg != kSmpScPairAlgNumericComparison;
 }
@@ -957,8 +1274,7 @@ bool BleRadio::secureConnectionsResponderVerifiesRandom() const {
   if (!smpSecureConnectionsActive_) {
     return false;
   }
-  const uint8_t pairAlg = resolveSecureConnectionsPairAlgorithm(
-      smpLocalInitiator_, smpPairingReq_, smpPairingRsp_);
+  const uint8_t pairAlg = resolveCurrentSecureConnectionsPairAlgorithm();
   return pairAlg != kSmpScPairAlgJustWorks &&
          pairAlg != kSmpScPairAlgNumericComparison;
 }
@@ -975,7 +1291,13 @@ bool BleRadio::computeSecureConnectionsCheckValues() {
     return true;
   }
 
-  uint8_t zeroR[16] = {0};
+  uint8_t r[16] = {0};
+  if (resolveCurrentSecureConnectionsPairAlgorithm() == kSmpScPairAlgPasskey) {
+    if (!prepareSecureConnectionsPasskey()) {
+      return false;
+    }
+    writeLe32(&r[0], smpSecureConnectionsPasskeyValue_);
+  }
   const uint8_t localType =
       (addressType_ == BleAddressType::kRandomStatic) ? 0x01U : 0x00U;
   const uint8_t peerType = connectionPeerAddressRandom_ ? 0x01U : 0x00U;
@@ -1003,13 +1325,13 @@ bool BleRadio::computeSecureConnectionsCheckValues() {
     return false;
   }
   if (!bleSecureConnectionsF6(smpSecureConnectionsMacKey_, smpLocalRandom_,
-                              smpPeerRandom_, zeroR, localIoCaps, localType,
+                              smpPeerRandom_, r, localIoCaps, localType,
                               address_, peerType, connectionPeerAddress_,
                               smpSecureConnectionsLocalDhKeyCheck_)) {
     return false;
   }
   if (!bleSecureConnectionsF6(smpSecureConnectionsMacKey_, smpPeerRandom_,
-                              smpLocalRandom_, zeroR, peerIoCaps, peerType,
+                              smpLocalRandom_, r, peerIoCaps, peerType,
                               connectionPeerAddress_, localType, address_,
                               smpSecureConnectionsPeerDhKeyCheck_)) {
     return false;
@@ -1072,6 +1394,21 @@ void BleRadio::serviceSecureConnectionsWork() {
     return;
   }
 
+  if (smpDeferredPairingFailed_) {
+    const uint8_t fail[2] = {kSmpCodePairingFailed,
+                             smpDeferredPairingFailedReason_};
+    if (queuePendingSmpL2capResponse(fail, sizeof(fail))) {
+      const uint8_t reason = smpDeferredPairingFailedReason_;
+      latchSecureConnectionsDebugState();
+      smpPairingFailureReasonPending_ = true;
+      smpLastPairingFailureReason_ = reason;
+      clearConnectionSecurityState();
+      emitBleTrace("SMP_PAIRING_FAILED");
+      serviceBackgroundConnection(kBleDeferredSmpResponseSpinLimit);
+    }
+    return;
+  }
+
   if (smpSecureConnectionsDeferredPublicKey_) {
     if (ensureSecureConnectionsLocalKeypair()) {
       uint8_t localPublicKey[kSmpPairingPublicKeyLen] = {0};
@@ -1110,7 +1447,9 @@ void BleRadio::serviceSecureConnectionsWork() {
     if (queuePendingSmpL2capResponse(localRandom, sizeof(localRandom))) {
       smpSecureConnectionsDeferredRandom_ = false;
       smpSecureConnectionsRandomSent_ = true;
-      if (!smpLocalInitiator_) {
+      if (!smpLocalInitiator_ &&
+          resolveCurrentSecureConnectionsPairAlgorithm() !=
+              kSmpScPairAlgPasskey) {
         smpSecureConnectionsDeferredDhKeyCheck_ = true;
       }
       smpPairingState_ = kSmpPairingStateRandomSent;
@@ -1192,6 +1531,11 @@ void BleRadio::clearSmpPairingState() {
   smpLocalInitiator_ = false;
   smpExpectInitiatorEncKey_ = false;
   smpExpectInitiatorIdKey_ = false;
+  smpPendingUserPasskey_ = false;
+  smpPendingUserPasskeyMatchRequest_ = false;
+  smpDeferredPairingFailed_ = false;
+  smpDeferredPairingFailedReason_ = 0U;
+  smpPendingUserPasskeyValue_ = 0UL;
   smpPeerLtkValid_ = false;
   smpPeerLtkAwaitMasterId_ = false;
   smpPeerIrkValid_ = false;
@@ -1203,6 +1547,9 @@ void BleRadio::clearSmpPairingState() {
   memset(smpEncReqRand_, 0, sizeof(smpEncReqRand_));
   smpEncReqEdiv_ = 0U;
   smpKeySize_ = 16U;
+  if (!smpFixedPasskeyValid_) {
+    smpFixedPasskeyValue_ = 0UL;
+  }
   smpSecureConnectionsActive_ = false;
   smpSecureConnectionsPeerPublicKeyValid_ = false;
   smpSecureConnectionsDhKeyReady_ = false;
@@ -1218,9 +1565,12 @@ void BleRadio::clearSmpPairingState() {
   smpSecureConnectionsDeferredConfirm_ = false;
   smpSecureConnectionsDeferredRandom_ = false;
   smpSecureConnectionsDeferredDhKeyCheck_ = false;
+  smpSecureConnectionsPasskeyValid_ = false;
+  smpSecureConnectionsPasskeyRound_ = 0U;
   smpSecureConnectionsLocalKeypairTimeUs_ = 0U;
   smpSecureConnectionsDhKeyTimeUs_ = 0U;
   smpSecureConnectionsCheckValuesTimeUs_ = 0U;
+  smpSecureConnectionsPasskeyValue_ = 0UL;
   smpSecureConnectionsCooperateHookCount_ = 0U;
   smpSecureConnectionsBackgroundServiceCount_ = 0U;
   memset(smpSecureConnectionsPeerPublicKey_, 0,

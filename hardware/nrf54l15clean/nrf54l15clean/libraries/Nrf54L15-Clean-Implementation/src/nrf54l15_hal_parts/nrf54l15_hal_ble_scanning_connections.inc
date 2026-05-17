@@ -1348,6 +1348,8 @@ bool BleRadio::startConnectionFromConnectInd(const uint8_t* payload, uint8_t len
   clearQueuedConnectionEvents();
   clearCustomGattConnectionState();
   clearConnectionSecurityState();
+  smpPairingFailureReasonPending_ = false;
+  smpLastPairingFailureReason_ = 0U;
   smpPrefetchedLocalRandomValid_ = false;
   memset(smpPrefetchedLocalRandom_, 0, sizeof(smpPrefetchedLocalRandom_));
   connectionPrefetchedEncMaterialValid_ = false;
@@ -1498,6 +1500,8 @@ bool BleRadio::startCentralConnection(const uint8_t peerAddress[6],
   clearQueuedConnectionEvents();
   clearCustomGattConnectionState();
   clearConnectionSecurityState();
+  smpPairingFailureReasonPending_ = false;
+  smpLastPairingFailureReason_ = 0U;
   smpPrefetchedLocalRandomValid_ = false;
   memset(smpPrefetchedLocalRandom_, 0, sizeof(smpPrefetchedLocalRandom_));
   connectionPrefetchedEncMaterialValid_ = false;

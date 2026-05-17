@@ -2455,11 +2455,20 @@ class BleRadio {
   bool isConnected() const;
   BleConnectionRole connectionRole() const;
   bool isConnectionEncrypted() const;
+  void setSecurityIoCapabilities(uint8_t ioCaps);
+  void setSecurityFixedPasskey(const char* pin);
+  bool requestPairing();
   // Send an SMP Security Request (peripheral → central) to prompt the central
   // to initiate LE legacy JustWorks pairing.  Call once after each connection
   // when no stored bond is expected.  Returns false if a bond is already primed
   // or encryption is already in progress.
   bool sendSmpSecurityRequest();
+  bool isPairingInProgress() const;
+  bool isSecurityProcedureActive() const;
+  bool getPendingPairingPasskey(uint8_t outPasskey[6],
+                                bool* outMatchRequest) const;
+  bool replyPendingPairingPasskey(bool accept);
+  bool consumePairingFailureReason(uint8_t* outReason);
   bool getConnectionInfo(BleConnectionInfo* info) const;
   void getEncryptionDebugCounters(BleEncryptionDebugCounters* out) const;
   void clearEncryptionDebugCounters();
@@ -2747,9 +2756,17 @@ class BleRadio {
   void captureSecureConnectionsDebugState(BleSecureConnectionsDebugState* out) const;
   void latchSecureConnectionsDebugState();
   bool ensureSecureConnectionsLocalKeypair();
+  bool prepareLocalPairingRandom();
+  void buildLegacyTemporaryKey(uint8_t outTk[16]) const;
   bool computeSecureConnectionsDhKey();
   bool computeSecureConnectionsLocalConfirm();
   bool computeSecureConnectionsCheckValues();
+  uint8_t resolveCurrentSecureConnectionsIoAction() const;
+  uint8_t resolveCurrentSecureConnectionsPairAlgorithm() const;
+  bool secureConnectionsPairAlgorithmSupported(uint8_t pairAlg) const;
+  bool prepareSecureConnectionsPasskey();
+  uint8_t secureConnectionsPasskeyRoundZ() const;
+  bool advanceSecureConnectionsPasskeyRound();
   bool secureConnectionsInitiatorTransmitsConfirm() const;
   bool secureConnectionsResponderVerifiesRandom() const;
   bool buildSmpL2capResponse(const uint8_t* smpPayload, uint8_t smpLength,
@@ -3128,6 +3145,11 @@ class BleRadio {
   bool smpLocalInitiator_;
   bool smpExpectInitiatorEncKey_;
   bool smpExpectInitiatorIdKey_;
+  uint8_t smpLocalIoCapabilities_;
+  bool smpPendingUserPasskey_;
+  bool smpPendingUserPasskeyMatchRequest_;
+  bool smpDeferredPairingFailed_;
+  bool smpPairingFailureReasonPending_;
   bool smpPeerLtkValid_;
   bool smpPeerLtkAwaitMasterId_;
   bool smpPeerIrkValid_;
@@ -3139,6 +3161,11 @@ class BleRadio {
   uint8_t smpEncReqRand_[8];
   uint16_t smpEncReqEdiv_;
   uint8_t smpKeySize_;
+  uint8_t smpDeferredPairingFailedReason_;
+  uint8_t smpLastPairingFailureReason_;
+  bool smpFixedPasskeyValid_;
+  uint32_t smpFixedPasskeyValue_;
+  uint32_t smpPendingUserPasskeyValue_;
   bool smpSecureConnectionsActive_;
   bool smpSecureConnectionsLocalKeyReady_;
   bool smpSecureConnectionsPeerPublicKeyValid_;
@@ -3155,9 +3182,12 @@ class BleRadio {
   bool smpSecureConnectionsDeferredConfirm_;
   bool smpSecureConnectionsDeferredRandom_;
   bool smpSecureConnectionsDeferredDhKeyCheck_;
+  bool smpSecureConnectionsPasskeyValid_;
+  uint8_t smpSecureConnectionsPasskeyRound_;
   uint32_t smpSecureConnectionsLocalKeypairTimeUs_;
   uint32_t smpSecureConnectionsDhKeyTimeUs_;
   uint32_t smpSecureConnectionsCheckValuesTimeUs_;
+  uint32_t smpSecureConnectionsPasskeyValue_;
   uint32_t smpSecureConnectionsCooperateHookCount_;
   uint32_t smpSecureConnectionsBackgroundServiceCount_;
   uint8_t smpSecureConnectionsPrivateKey_[32];
