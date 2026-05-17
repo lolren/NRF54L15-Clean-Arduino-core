@@ -11,6 +11,9 @@ not regress, and what to test first when resuming.
 - [x] Peripheral and central connections on the clean BLE path
 - [x] ATT/GATT server and client through the Bluefruit-compatible API
 - [x] NUS/BLEUart receive and notify/write paths
+- [x] Bluefruit default central/peripheral link verified at MTU 23 / Data
+      Length 27, including central connect callback, CCCD enable, and notify
+      delivery on two nRF54 boards
 - [x] PHY selection and update APIs: 1M, 2M, Coded S2/S8
 - [x] Data Length Extension up to 251 bytes when requested
 - [x] ATT MTU exchange up to 247 bytes when requested
@@ -27,6 +30,11 @@ not regress, and what to test first when resuming.
 - [ ] Plain non-secure central/peripheral must remain independent from the LE
       Secure Connections path. Issue #68 showed this can regress when security
       changes leak into the unencrypted link setup.
+- [ ] Central setup must stay foreground-pumped until the deferred central
+      connect callback has run and any active central sync procedure has
+      completed. Letting the background connection service take over too early
+      can stall the default 23/27 link before CCCD or service discovery
+      completes.
 - [ ] Default Bluefruit MTU/Data Length behavior must stay Bluefruit-compatible:
       if a sketch does not request a larger value, the user-visible default
       should remain MTU 23 and Data Length 27. Issue #68 covers this.

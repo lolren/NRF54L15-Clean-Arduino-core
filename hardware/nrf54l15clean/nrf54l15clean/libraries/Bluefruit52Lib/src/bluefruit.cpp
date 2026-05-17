@@ -801,9 +801,13 @@ class BluefruitCompatManager {
     }
 
     if (connected) {
+      const bool centralForegroundSetupActive =
+          (radio_.connectionRole() == BleConnectionRole::kCentral) &&
+          (central_connect_callback_pending_ || centralSyncProcedureActive());
       const bool backgroundReady =
           static_cast<int32_t>(millis() - last_connection_edge_ms_) >=
-          static_cast<int32_t>(kBleNoWfiDuringSetupMs);
+              static_cast<int32_t>(kBleNoWfiDuringSetupMs) &&
+          !centralForegroundSetupActive;
       if (backgroundReady) {
         if (!radio_.isBackgroundConnectionServiceEnabled()) {
           radio_.setBackgroundConnectionServiceEnabled(true);
@@ -890,6 +894,10 @@ class BluefruitCompatManager {
       return remainingUs;
     }
     if (radio_.isConnected()) {
+      if (radio_.connectionRole() == BleConnectionRole::kCentral &&
+          (central_connect_callback_pending_ || centralSyncProcedureActive())) {
+        return 1U;
+      }
       if (radio_.isBackgroundConnectionServiceEnabled()) {
         return 0U;
       }
