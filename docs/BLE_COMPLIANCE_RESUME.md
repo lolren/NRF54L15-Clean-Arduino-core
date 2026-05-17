@@ -29,7 +29,7 @@ not regress, and what to test first when resuming.
       changes leak into the unencrypted link setup.
 - [ ] Default Bluefruit MTU/Data Length behavior must stay Bluefruit-compatible:
       if a sketch does not request a larger value, the user-visible default
-      should remain MTU 23 and Data Length 27. Issue #69 covers this.
+      should remain MTU 23 and Data Length 27. Issue #68 covers this.
 - [ ] BLEUart/NUS web-device CLI bridge must keep both RX and TX working.
 - [ ] Serial and HardwareSerial are not part of BLE but have repeatedly been
       broken by timing changes; do not touch UART code while resuming BLE unless

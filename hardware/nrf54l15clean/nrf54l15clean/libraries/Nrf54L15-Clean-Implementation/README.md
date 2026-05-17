@@ -252,9 +252,9 @@ to drive the next return transition.
 Current controller note:
 
 - the connection controller only negotiates symmetric link PHY today
-- the controller now automatically asks for max data length during connection
-  bring-up and again after PHY changes, so long-PDU sketches do not need to
-  manually babysit `requestDataLengthUpdate()` just to get back to `251` bytes
+- link-capacity upgrades now stay policy-driven: default Bluefruit links remain
+  at MTU `23` / Data Length `27`, and wider MTU/DLE are only negotiated when a
+  sketch explicitly asks for them or opts into a higher bandwidth profile
 - if you pass different TX/RX masks, the API narrows them to their common
   symmetric subset; if there is no common subset, the call fails
 
@@ -1014,7 +1014,7 @@ Examples:
   - Legacy connection bring-up and data-channel event polling
   - Symmetric LE PHY update procedure on connected links (`1M`, `2M`, `coded`)
   - Runtime PHY preference helpers (`requestPHY`, `getPHY`, `requestPreferredPhy`, `setPreferredPhyOptions`, `currentTxPhy`, `currentRxPhy`)
-  - Automatic LL data-length renegotiation to max payload during connection bring-up and after symmetric PHY transitions
+  - LL data-length renegotiation when the sketch or selected bandwidth profile explicitly opts into a wider link, including after symmetric PHY transitions
   - LL control response subset (`FEATURE_REQ`, `VERSION_IND`, `LENGTH_REQ`, `PHY_REQ`, `PING_REQ`, unknown-op fallback)
   - LL control strict opcode-length validation with malformed-request reject path
   - LL connection update/channel-map instant validation and safer retransmission gating

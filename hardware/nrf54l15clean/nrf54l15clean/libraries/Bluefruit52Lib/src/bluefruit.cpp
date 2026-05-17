@@ -481,6 +481,9 @@ class BluefruitCompatManager {
         central_sync_procedure_depth_(0U),
         central_data_length_request_pending_(false),
         central_mtu_request_pending_(false),
+        central_explicit_data_length_request_(false),
+        central_explicit_mtu_request_valid_(false),
+        central_explicit_requested_mtu_(kDefaultAttMtu),
         deferred_connection_phy_request_pending_(false),
         deferred_connection_data_length_request_pending_(false),
         deferred_connection_mtu_request_pending_(false),
@@ -624,6 +627,43 @@ class BluefruitCompatManager {
     deferred_connection_mtu_next_ms_ =
         millis() + kDeferredLinkRequestInitialDelayMs;
     return true;
+  }
+
+  void noteExplicitCentralDataLengthRequest() {
+    if (radio_.isConnected() &&
+        radio_.connectionRole() == BleConnectionRole::kCentral) {
+      central_explicit_data_length_request_ = true;
+    }
+  }
+
+  void noteExplicitCentralMtuRequest(uint16_t mtu) {
+    if (!radio_.isConnected() ||
+        radio_.connectionRole() != BleConnectionRole::kCentral) {
+      return;
+    }
+    if (mtu < kDefaultAttMtu) {
+      mtu = kDefaultAttMtu;
+    } else if (mtu > 247U) {
+      mtu = 247U;
+    }
+    central_explicit_mtu_request_valid_ = true;
+    central_explicit_requested_mtu_ = mtu;
+  }
+
+  uint16_t centralAutomaticMtuCeiling() const {
+    uint16_t mtu = central_explicit_mtu_request_valid_
+                       ? central_explicit_requested_mtu_
+                       : Bluefruit.central_requested_mtu_;
+    if (mtu < kDefaultAttMtu) {
+      mtu = kDefaultAttMtu;
+    } else if (mtu > 247U) {
+      mtu = 247U;
+    }
+    return mtu;
+  }
+
+  uint16_t centralAutomaticDataLengthCeiling() const {
+    return preferredBleDataLengthFromMtu(centralAutomaticMtuCeiling());
   }
 
   bool registerCharacteristic(BLECharacteristic* characteristic) {
@@ -957,6 +997,9 @@ class BluefruitCompatManager {
   uint8_t central_sync_procedure_depth_;
   bool central_data_length_request_pending_;
   bool central_mtu_request_pending_;
+  bool central_explicit_data_length_request_;
+  bool central_explicit_mtu_request_valid_;
+  uint16_t central_explicit_requested_mtu_;
   bool deferred_connection_phy_request_pending_;
   bool deferred_connection_data_length_request_pending_;
   bool deferred_connection_mtu_request_pending_;
@@ -1607,6 +1650,9 @@ class BluefruitCompatManager {
       connection_.handle_ = 0U;
       last_connection_role_ = radio_.connectionRole();
       pending_connect_valid_ = false;
+      central_explicit_data_length_request_ = false;
+      central_explicit_mtu_request_valid_ = false;
+      central_explicit_requested_mtu_ = kDefaultAttMtu;
       rssi_monitor_enabled_ = false;
       rssi_monitor_threshold_ = 0xFFU;
       last_reported_rssi_dbm_ = 0;
@@ -1723,6 +1769,9 @@ class BluefruitCompatManager {
     } else if (last_connection_role_ == BleConnectionRole::kCentral) {
       central_data_length_request_pending_ = false;
       central_mtu_request_pending_ = false;
+      central_explicit_data_length_request_ = false;
+      central_explicit_mtu_request_valid_ = false;
+      central_explicit_requested_mtu_ = kDefaultAttMtu;
       central_link_config_not_before_ms_ = 0UL;
       if (Bluefruit.Central.disconnect_callback_ != nullptr) {
         invokeBluefruitUserCallback(Bluefruit.Central.disconnect_callback_, 0U, reason);
@@ -1833,8 +1882,15 @@ bool waitForLinkValueCapacity(uint16_t valueLen,
 
   const uint16_t requiredAttMtu = static_cast<uint16_t>(3U + valueLen);
   const uint16_t requiredDataLength = static_cast<uint16_t>(7U + valueLen);
+  if (linkValueFitsCurrentConnection(valueLen)) {
+    return true;
+  }
   if ((requiredAttMtu <= 23U) && (requiredDataLength <= 27U)) {
     return true;
+  }
+  if ((requiredAttMtu > manager().centralAutomaticMtuCeiling()) ||
+      (requiredDataLength > manager().centralAutomaticDataLengthCeiling())) {
+    return false;
   }
 
   unsigned long nextDataLengthRequestMs = 0UL;
@@ -3402,6 +3458,7 @@ bool BLEConnection::requestDataLengthUpdate() {
   if (!connected()) {
     return false;
   }
+  manager().noteExplicitCentralDataLengthRequest();
   if (ScopedBluefruitUserCallback::active()) {
     return manager().deferConnectionDataLengthUpdate();
   }
@@ -3412,6 +3469,7 @@ bool BLEConnection::requestMtuExchange(uint16_t mtu) {
   if (!connected()) {
     return false;
   }
+  manager().noteExplicitCentralMtuRequest(mtu);
   if (ScopedBluefruitUserCallback::active()) {
     return manager().deferConnectionMtuExchange(mtu);
   }
