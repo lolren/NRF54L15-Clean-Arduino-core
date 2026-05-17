@@ -1081,6 +1081,10 @@ enum class BoardAntennaPath : uint8_t {
 
 class BoardControl {
  public:
+  static bool hasRfSwitch();
+  static bool hasSwitchedBatterySense();
+  static bool hasImuMicPowerGate();
+
   // Control the desired active RF switch path on P2.05:
   // - ceramic/external actively drive RF_SW_CTL
   // - control-high-impedance releases control pin (no active drive)

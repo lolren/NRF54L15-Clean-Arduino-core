@@ -103,7 +103,7 @@ This is a **bare-metal, register-level Arduino core** — no Zephyr, no nRF Conn
 
 BLE is the most mature wireless stack in this core. The entire controller is written from scratch against the nRF54L15 datasheet — Link Layer state machine, radio scheduling, ATT/GATT, L2CAP, SMP security, and the Bluefruit-compatible Arduino API are all implemented at register level.
 
-The nRF54L15 radio supports LE 1M, LE 2M, LE Coded PHYs, and Channel Sounding. It does **not** support LE Audio (isochronous channels), Periodic Advertising with Response, or Direction Finding (AoA/AoD) — those features don't exist in silicon, so they'll never be available on this chip.
+The nRF54L15 radio supports LE 1M, LE 2M, LE Coded PHYs, and Channel Sounding.
 
 Full BLE-compliance work is paused while the remaining power and interoperability regressions are closed. The resume checklist is kept in [`docs/BLE_COMPLIANCE_RESUME.md`](docs/BLE_COMPLIANCE_RESUME.md) so future BLE work starts from the known-good test matrix instead of rediscovering old regressions.
 
@@ -130,15 +130,6 @@ Full BLE-compliance work is paused while the remaining power and interoperabilit
 - [ ] **Channel Sounding — Mode 3 (hybrid RTT+PBR)** — data structures for hybrid steps exist, but the combined mode hasn't been tested.
 - [ ] **Channel Sounding security** — CS step encryption (AES-CCM per-step) is not yet implemented. All CS procedures run unencrypted.
 - [ ] **OOB pairing** — scaffolded in the SMP layer but never tested with a real OOB data source.
-
-### What the nRF54L15 silicon does not support
-
-These are hardware limitations — no implementation work will add them:
-
-- ❌ LE Audio / isochronous channels (CIS, BIS)
-- ❌ Periodic Advertising with Response (PAwR)
-- ❌ Direction Finding (AoA / AoD via CTE)
-- ❌ LE Power Control
 
 For production applications needing certification-level Bluetooth behavior, Nordic's Zephyr-based **nRF Connect SDK** is still the safer path — it ships with a fully validated Bluetooth LE controller, certified channel sounding support, and qualification listings this bare-metal core does not claim.
 
@@ -408,3 +399,11 @@ find hardware/.../examples -name "*.ino" -exec dirname {} \; | sort -u | \
 ## 📝 License
 
 MIT — see source files for details. Third-party components (OpenThread, CHIP headers) retain their original licenses.
+
+---
+
+## Credits
+
+Thank you to [@lyusupov](https://github.com/lyusupov) and [@msfujino](https://github.com/msfujino) for the testing, feedback, and technical discussion that helped shape this core.
+
+A special thank you to [@msfujino](https://github.com/msfujino) for spending so much time testing across real hardware and reporting regressions carefully. This core would not be as polished without msfujino.

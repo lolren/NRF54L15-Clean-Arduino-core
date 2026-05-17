@@ -6,6 +6,18 @@
 namespace xiao_nrf54l15::hal_internal {
 namespace {
 
+#if !defined(NRF54L15_BOARD_HAS_RF_SWITCH)
+#define NRF54L15_BOARD_HAS_RF_SWITCH 0
+#endif
+
+#if !defined(NRF54L15_BOARD_HAS_SWITCHED_BATTERY_SENSE)
+#define NRF54L15_BOARD_HAS_SWITCHED_BATTERY_SENSE 0
+#endif
+
+#if !defined(NRF54L15_BOARD_HAS_IMU_MIC_POWER_GATE)
+#define NRF54L15_BOARD_HAS_IMU_MIC_POWER_GATE 0
+#endif
+
 #if defined(NRF54L15_CLEAN_ANTENNA_EXTERNAL)
 constexpr BoardAntennaPath kDefaultBoardAntennaPath =
     BoardAntennaPath::kExternal;
@@ -41,13 +53,31 @@ void setBoardDesiredAntennaPath(BoardAntennaPath path) {
 namespace xiao_nrf54l15 {
 using namespace hal_internal;
 
+bool BoardControl::hasRfSwitch() {
+  return NRF54L15_BOARD_HAS_RF_SWITCH != 0;
+}
+
+bool BoardControl::hasSwitchedBatterySense() {
+  return NRF54L15_BOARD_HAS_SWITCHED_BATTERY_SENSE != 0;
+}
+
+bool BoardControl::hasImuMicPowerGate() {
+  return NRF54L15_BOARD_HAS_IMU_MIC_POWER_GATE != 0;
+}
+
 bool BoardControl::setAntennaPath(BoardAntennaPath path) {
+  if (!hasRfSwitch()) {
+    return path == BoardAntennaPath::kCeramic;
+  }
   xiaoNrf54l15SetAntenna(boardAntennaSelectionFromPath(path));
   setBoardDesiredAntennaPath(path);
   return true;
 }
 
 BoardAntennaPath BoardControl::antennaPath() {
+  if (!hasRfSwitch()) {
+    return BoardAntennaPath::kCeramic;
+  }
   switch (xiaoNrf54l15GetAntenna()) {
     case XIAO_NRF54L15_ANTENNA_EXTERNAL:
       return BoardAntennaPath::kExternal;
@@ -60,27 +90,49 @@ BoardAntennaPath BoardControl::antennaPath() {
 }
 
 bool BoardControl::setImuMicEnabled(bool enable) {
+  if (!hasImuMicPowerGate()) {
+    (void)enable;
+    return false;
+  }
   return arduinoXiaoNrf54l15SetImuMicEnable(enable ? 1U : 0U) != 0U;
 }
 
 bool BoardControl::imuMicEnabled() {
+  if (!hasImuMicPowerGate()) {
+    return false;
+  }
   return arduinoXiaoNrf54l15GetImuMicEnable() != 0U;
 }
 
 bool BoardControl::setRfSwitchPowerEnabled(bool enable) {
+  if (!hasRfSwitch()) {
+    (void)enable;
+    return false;
+  }
   return arduinoXiaoNrf54l15SetRfSwitchPower(enable ? 1U : 0U) != 0U;
 }
 
 bool BoardControl::rfSwitchPowerEnabled() {
+  if (!hasRfSwitch()) {
+    return false;
+  }
   return arduinoXiaoNrf54l15GetRfSwitchPower() != 0U;
 }
 
 bool BoardControl::enableRfPath(BoardAntennaPath path) {
+  if (!hasRfSwitch()) {
+    return path == BoardAntennaPath::kCeramic;
+  }
   return setRfSwitchPowerEnabled(true) && setAntennaPath(path);
 }
 
 bool BoardControl::collapseRfPathIdle(BoardAntennaPath idlePath,
                                       bool disablePower) {
+  if (!hasRfSwitch()) {
+    (void)idlePath;
+    (void)disablePower;
+    return true;
+  }
   xiaoNrf54l15SetAntenna(boardAntennaSelectionFromPath(idlePath));
   if (!disablePower) {
     return true;
@@ -93,6 +145,10 @@ void BoardControl::enterLowestPowerState() {
 }
 
 bool BoardControl::setBatterySenseEnabled(bool enable) {
+  if (!hasSwitchedBatterySense()) {
+    (void)enable;
+    return false;
+  }
   if (!Gpio::configure(kPinVbatEnable, GpioDirection::kOutput,
                        GpioPull::kDisabled)) {
     return false;
@@ -103,6 +159,12 @@ bool BoardControl::setBatterySenseEnabled(bool enable) {
 bool BoardControl::sampleBatteryMilliVolts(int32_t* outMilliVolts,
                                            uint32_t settleDelayUs,
                                            uint32_t spinLimit) {
+  if (!hasSwitchedBatterySense()) {
+    (void)outMilliVolts;
+    (void)settleDelayUs;
+    (void)spinLimit;
+    return false;
+  }
   if (outMilliVolts == nullptr) {
     return false;
   }
@@ -158,6 +220,14 @@ bool BoardControl::sampleBatteryPercent(uint8_t* outPercent,
                                         int32_t fullMilliVolts,
                                         uint32_t settleDelayUs,
                                         uint32_t spinLimit) {
+  if (!hasSwitchedBatterySense()) {
+    (void)outPercent;
+    (void)emptyMilliVolts;
+    (void)fullMilliVolts;
+    (void)settleDelayUs;
+    (void)spinLimit;
+    return false;
+  }
   if (outPercent == nullptr || fullMilliVolts <= emptyMilliVolts) {
     return false;
   }
