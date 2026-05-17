@@ -19,6 +19,9 @@
 //   -DBLE_PAIR_USE_STATIC_PIN=1
 //   Peripheral sketch becomes DisplayOnly with fixed PIN 123456.
 //   Central becomes KeyboardOnly with the same fixed PIN.
+//   -DBLE_PAIR_USE_NUMERIC_COMPARISON=1
+//   Both sketches become DisplayYesNo and auto-ack the same six-digit
+//   numeric-comparison value after logging it to Serial.
 
 #include <Arduino.h>
 #include <Preferences.h>
@@ -39,12 +42,24 @@ namespace {
 #if !defined(BLE_PAIR_USE_STATIC_PIN)
 #define BLE_PAIR_USE_STATIC_PIN 0
 #endif
+#if !defined(BLE_PAIR_USE_NUMERIC_COMPARISON)
+#define BLE_PAIR_USE_NUMERIC_COMPARISON 0
+#endif
+#if !defined(BLE_PAIR_AUTO_ACCEPT_PROMPTS)
+#define BLE_PAIR_AUTO_ACCEPT_PROMPTS 1
+#endif
+#if BLE_PAIR_USE_STATIC_PIN && BLE_PAIR_USE_NUMERIC_COMPARISON
+#error "BLE_PAIR_USE_STATIC_PIN and BLE_PAIR_USE_NUMERIC_COMPARISON are mutually exclusive"
+#endif
 
 constexpr uint8_t kIoCapDisplayOnly = 0x00U;
+constexpr uint8_t kIoCapDisplayYesNo = 0x01U;
 constexpr uint8_t kIoCapKeyboardOnly = 0x02U;
 constexpr uint8_t kIoCapNoInputNoOutput = 0x03U;
 constexpr char kStaticPin[] = "123456";
-#if BLE_PAIR_USE_STATIC_PIN
+#if BLE_PAIR_USE_NUMERIC_COMPARISON
+constexpr char kAdvName[] = "X54-PAIR-NC";
+#elif BLE_PAIR_USE_STATIC_PIN
 constexpr char kAdvName[] = "X54-PAIR-PIN";
 #else
 constexpr char kAdvName[] = "X54-PAIR";
@@ -88,6 +103,8 @@ constexpr bool kEnableBackgroundConnService =
     (BLE_PAIR_ENABLE_BACKGROUND_CONN_SERVICE != 0);
 constexpr bool kVerboseLinkLogs = (BLE_PAIR_VERBOSE_LINK_LOGS != 0);
 constexpr bool kQuietTest = (BLE_PAIR_QUIET_TEST != 0);
+constexpr bool kAutoAcceptSecurityPrompts =
+    (BLE_PAIR_AUTO_ACCEPT_PROMPTS != 0);
 constexpr uint8_t kTraceBufferDepth = 48U;
 constexpr uint8_t kTraceBufferEntryLen = 40U;
 constexpr uint16_t kSvcUuid = 0x5A00U;
@@ -116,6 +133,9 @@ bool g_centralSeen = false;
 char g_traceBuffer[kTraceBufferDepth][kTraceBufferEntryLen] = {};
 uint8_t g_traceBufferHead = 0U;
 uint8_t g_traceBufferCount = 0U;
+uint8_t g_lastPromptPasskey[6] = {0};
+bool g_lastPromptValid = false;
+bool g_lastPromptMatchRequest = false;
 
 extern "C" {
 extern volatile uint32_t g_ble_central_posttx_observe_count;
@@ -132,7 +152,9 @@ extern volatile uint8_t g_ble_central_rxtimeout_hdr3;
 
 // ─── Bond persistence ─────────────────────────────────────────
 
-#if BLE_PAIR_USE_STATIC_PIN
+#if BLE_PAIR_USE_NUMERIC_COMPARISON
+static constexpr char kNs[] = "ble_pair_nc";
+#elif BLE_PAIR_USE_STATIC_PIN
 static constexpr char kNs[] = "ble_pair_pin";
 #else
 static constexpr char kNs[] = "ble_pair";
@@ -185,6 +207,68 @@ void printAddr(const uint8_t a[6]) {
     Serial.print(a[i], HEX);
     if (i < 5) Serial.print(':');
   }
+}
+
+void clearPromptState() {
+  memset(g_lastPromptPasskey, 0, sizeof(g_lastPromptPasskey));
+  g_lastPromptValid = false;
+  g_lastPromptMatchRequest = false;
+}
+
+void printPasskey(const uint8_t passkey[6]) {
+  if (passkey == nullptr) {
+    return;
+  }
+  for (size_t i = 0; i < 6U; ++i) {
+    Serial.write(passkey[i]);
+  }
+}
+
+void servicePairingPrompt() {
+  uint8_t passkey[6] = {0};
+  bool matchRequest = false;
+  if (!g_ble.getPendingPairingPasskey(passkey, &matchRequest)) {
+    return;
+  }
+
+  const bool repeated = g_lastPromptValid &&
+                        (g_lastPromptMatchRequest == matchRequest) &&
+                        (memcmp(g_lastPromptPasskey, passkey,
+                                sizeof(g_lastPromptPasskey)) == 0);
+  if (!repeated) {
+    Serial.print("ble_pair prompt type=");
+    Serial.print(matchRequest ? "numcmp" : "passkey");
+    Serial.print(" value=");
+    printPasskey(passkey);
+    Serial.print(" auto=");
+    Serial.println(kAutoAcceptSecurityPrompts ? 1 : 0);
+  }
+
+  const bool accept = kAutoAcceptSecurityPrompts;
+  if (g_ble.replyPendingPairingPasskey(accept) && !repeated) {
+    Serial.print("ble_pair prompt-");
+    if (matchRequest) {
+      Serial.println(accept ? "accepted" : "rejected");
+    } else {
+      Serial.println("acked");
+    }
+  }
+
+  memcpy(g_lastPromptPasskey, passkey, sizeof(g_lastPromptPasskey));
+  g_lastPromptValid = true;
+  g_lastPromptMatchRequest = matchRequest;
+}
+
+void servicePairingFailure() {
+  uint8_t reason = 0U;
+  if (!g_ble.consumePairingFailureReason(&reason)) {
+    return;
+  }
+  Serial.print("ble_pair pairing-failed reason=0x");
+  if (reason < 16U) {
+    Serial.print('0');
+  }
+  Serial.println(reason, HEX);
 }
 
 void printStatus() {
@@ -707,7 +791,11 @@ void setup() {
   g_ble.setTraceCallback(onBleTrace, nullptr);
   g_ble.loadAddressFromFicr(true);
   g_ble.setBondPersistenceCallbacks(loadBond, saveBond, clearBondStored, nullptr);
-#if BLE_PAIR_USE_STATIC_PIN
+#if BLE_PAIR_USE_NUMERIC_COMPARISON
+  g_ble.setSecurityFixedPasskey(nullptr);
+  g_ble.setSecurityIoCapabilities(kIoCapDisplayYesNo);
+  Serial.println("ble_pair security=numeric-comparison");
+#elif BLE_PAIR_USE_STATIC_PIN
   g_ble.setSecurityFixedPasskey(kStaticPin);
   g_ble.setSecurityIoCapabilities(
       (ROLE == DemoRole::PERIPHERAL) ? kIoCapDisplayOnly
@@ -755,6 +843,8 @@ void loop() {
   // BLE runs via ISR callbacks - no polling needed
   delay(1);
   pollCmds();
+  servicePairingPrompt();
+  servicePairingFailure();
 
   const bool connected = g_ble.isConnected();
   const bool encrypted = g_ble.isConnectionEncrypted();
@@ -764,6 +854,7 @@ void loop() {
     // Connection state tracking
     if (connected != g_prevConnected) {
       g_prevConnected = connected;
+      clearPromptState();
       if (connected) {
         Serial.println("ble_pair connected");
         // On a fresh peer this starts pairing; on a bonded peer it asks the
@@ -826,6 +917,7 @@ void loop() {
   if (ROLE == DemoRole::CENTRAL) {
     if (connected != g_prevConnected) {
       g_prevConnected = connected;
+      clearPromptState();
       if (connected) {
         clearTraceBuffer();
         Serial.println("ble_pair central: connected");

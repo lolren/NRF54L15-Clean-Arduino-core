@@ -16,6 +16,9 @@ not regress, and what to test first when resuming.
 - [x] ATT MTU exchange up to 247 bytes when requested
 - [x] LE Secure Connections Just Works fresh pair, bond save/load, encrypted
       reconnect, encrypted notifications, and encrypted writes on two boards
+- [x] LE Secure Connections fixed-PIN and numeric-comparison validation on the
+      raw HAL `BlePairPeripheral` / `BlePairCentral` demos, including fresh
+      re-pair, bond save/load, and encrypted post-pair GATT traffic
 - [x] Low-power BLE advertising current is now close to the Zephyr reference
       for the msfujino AdvCurrent test from discussion #71
 
@@ -37,8 +40,8 @@ not regress, and what to test first when resuming.
 
 ## Remaining BLE Compliance Work
 
-- [ ] SMP authenticated LE Secure Connections: passkey entry, numeric
-      comparison, OOB, and negative/error cases
+- [ ] SMP authenticated LE Secure Connections: passkey entry against non-core
+      peers, OOB, negative/error cases, and broader host interoperability
 - [ ] Identity, signing, privacy, IRK/RPA resolution, and bond database behavior
       against phone/desktop hosts
 - [ ] Formal ATT/GATT edge cases: long read/write, prepare/execute write,
@@ -62,6 +65,11 @@ Run these before changing BLE again:
 - [ ] Compile and run the non-secure central/peripheral MTU/DLE pair at:
       MTU 23/Data Length 27, MTU 128/Data Length 132, MTU 247/Data Length 251
 - [ ] Compile and run `BlePairPeripheral` + `BlePairCentral` fresh pair
+- [ ] Compile and run `BlePairPeripheral` + `BlePairCentral` with
+      `-DBLE_PAIR_USE_STATIC_PIN=1`
+- [ ] Compile and run `BlePairPeripheral` + `BlePairCentral` with
+      `-DBLE_PAIR_USE_NUMERIC_COMPARISON=1` and confirm both boards log the
+      same six-digit value before encrypted traffic resumes
 - [ ] Reboot both boards and confirm bonded encrypted reconnect without clearing
       storage
 - [ ] Run BLEUart/NUS against Makerdiary Web Device CLI and verify RX and TX
