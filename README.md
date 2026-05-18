@@ -64,7 +64,8 @@ This is a **bare-metal, register-level Arduino core** — no Zephyr, no nRF Conn
 | **Wireless** | BLE: advertising, scanning, connections [¹](#ble-status) | ✅ |
 | | BLE: 1M, 2M, Coded PHY [¹](#ble-status) | ✅ |
 | | BLE: ATT/GATT + Bluefruit API [¹](#ble-status) | ✅ |
-| | BLE: pairing & bonding [¹](#ble-status) | ⚠️ |
+| | BLE: LE Secure Connections Just Works + bonding [¹](#ble-status) | ✅ |
+| | BLE: authenticated/OOB pairing + host interop [¹](#ble-status) | ⚠️ |
 | | BLE: channel sounding [¹](#ble-status) | ⚠️ |
 | | Thread: leader, child, router [²](#thread-experimental) | ⚠️ |
 | | Thread: UDP communication [²](#thread-experimental) | ⚠️ |
