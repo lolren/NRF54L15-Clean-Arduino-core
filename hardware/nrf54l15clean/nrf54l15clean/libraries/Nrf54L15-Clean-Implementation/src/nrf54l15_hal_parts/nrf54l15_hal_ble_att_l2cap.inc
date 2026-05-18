@@ -1398,6 +1398,26 @@ bool BleRadio::buildL2capSmpResponse(const uint8_t* l2capPayload,
     return buildSmpL2capResponse(smpData, smpDataLen, outPayload,
                                  outPayloadLength);
   };
+  auto buildLocalSecureConnectionsPublicKeyResponse = [&]() -> bool {
+    if (smpSecureConnectionsPublicKeySent_ ||
+        !smpSecureConnectionsLocalKeyReady_) {
+      return false;
+    }
+
+    uint8_t localPublicKey[kSmpPairingPublicKeyLen] = {0};
+    buildSecureConnectionsWirePublicKeyFromInternalLe(
+        smpSecureConnectionsPublicKey_,
+        smpSecureConnectionsWireFormatBigEndian_, localPublicKey);
+    localPublicKey[0] = kSmpCodePairingPublicKey;
+    if (!buildSmpResponse(localPublicKey, sizeof(localPublicKey))) {
+      return false;
+    }
+
+    smpSecureConnectionsPublicKeySent_ = true;
+    smpSecureConnectionsDeferredPublicKey_ = false;
+    emitBleTrace("SMP_SC_PUBKEY_TX");
+    return true;
+  };
   auto buildSmpPairingFailed = [&](uint8_t reason) -> bool {
     latchSecureConnectionsDebugState();
     smpPairingFailureReasonPending_ = true;
@@ -1592,15 +1612,21 @@ bool BleRadio::buildL2capSmpResponse(const uint8_t* l2capPayload,
       if (smpLocalInitiator_) {
         smpSecureConnectionsDeferredConfirm_ =
             secureConnectionsInitiatorTransmitsConfirm();
+        if (buildLocalSecureConnectionsPublicKeyResponse()) {
+          return true;
+        }
         if (!smpSecureConnectionsPublicKeySent_) {
           smpSecureConnectionsDeferredPublicKey_ = true;
         }
         return false;
       }
 
-      smpSecureConnectionsDeferredPublicKey_ = true;
       smpSecureConnectionsDeferredConfirm_ =
           !secureConnectionsInitiatorTransmitsConfirm();
+      if (buildLocalSecureConnectionsPublicKeyResponse()) {
+        return true;
+      }
+      smpSecureConnectionsDeferredPublicKey_ = true;
       return false;
     }
 
@@ -1992,6 +2018,14 @@ bool BleRadio::buildL2capSmpResponse(const uint8_t* l2capPayload,
             return false;
           }
           smpSecureConnectionsWireFormatBigEndian_ = false;
+          if (!smpSecureConnectionsLocalKeyReady_ &&
+              !ensureSecureConnectionsLocalKeypair()) {
+            smpSecureConnectionsDeferredPublicKey_ = true;
+            return false;
+          }
+          if (buildLocalSecureConnectionsPublicKeyResponse()) {
+            return true;
+          }
           smpSecureConnectionsDeferredPublicKey_ = true;
           return false;
         }

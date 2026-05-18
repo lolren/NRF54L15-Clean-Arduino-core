@@ -406,6 +406,16 @@ void printDisconnectDebug() {
   Serial.print(" lastrx_op=0x");
   if (dbg.lastRxOpcode < 16U) Serial.print('0');
   Serial.print(dbg.lastRxOpcode, HEX);
+  Serial.print(" exp_rxsn=");
+  Serial.print(dbg.expectedRxSn);
+  Serial.print(" txsn=");
+  Serial.print(dbg.txSn);
+  Serial.print(" lastsn=");
+  Serial.print(dbg.lastRxSn);
+  Serial.print(" lastnesn=");
+  Serial.print(dbg.lastRxNesn);
+  Serial.print(" new=");
+  Serial.print(dbg.lastPacketIsNew);
   Serial.print(" ack=");
   Serial.print(dbg.lastPeerAckedLastTx);
   Serial.println();
@@ -642,6 +652,18 @@ void logSmpEvent(const BleConnectionEvent& evt) {
       if (evt.payload[i] < 16U) Serial.print('0');
       Serial.print(evt.payload[i], HEX);
     }
+    Serial.print(" new=");
+    Serial.print(evt.packetIsNew ? 1 : 0);
+    Serial.print(" ack=");
+    Serial.print(evt.peerAckedLastTx ? 1 : 0);
+    Serial.print(" rxsn=");
+    Serial.print(evt.rxSn);
+    Serial.print(" rxnesn=");
+    Serial.print(evt.rxNesn);
+    Serial.print(" txsn=");
+    Serial.print(evt.txSn);
+    Serial.print(" txnesn=");
+    Serial.print(evt.txNesn);
     printed = true;
   }
   if ((evt.txLlid == 0x02U) && (evt.txPayloadLength >= 5U) &&
@@ -661,6 +683,10 @@ void logSmpEvent(const BleConnectionEvent& evt) {
       if (evt.txPayload[i] < 16U) Serial.print('0');
       Serial.print(evt.txPayload[i], HEX);
     }
+    Serial.print(" txsn=");
+    Serial.print(evt.txSn);
+    Serial.print(" txnesn=");
+    Serial.print(evt.txNesn);
     printed = true;
   }
   if (printed) {

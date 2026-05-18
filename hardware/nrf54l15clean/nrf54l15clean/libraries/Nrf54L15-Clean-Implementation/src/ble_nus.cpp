@@ -124,9 +124,38 @@ void BleNordicUart::service(const BleConnectionEvent* event) {
   }
 
   if (event == nullptr) {
-    BleConnectionEvent deferred{};
-    while (ble_.consumeDeferredConnectionEvent(&deferred)) {
-      service(&deferred);
+    // Connected custom-GATT writes are deferred through the BLE idle-service
+    // path so user callbacks do not run inside the link-layer event handler.
+    // When background connection service is enabled, only dispatch the
+    // deferred application work here; re-entering full background connection
+    // polling from a sketch-owned NUS service loop can stall return to the
+    // sketch before it reaches its connected-state logic.
+    if (ble_.isBackgroundConnectionServiceEnabled()) {
+      nrf54l15_clean_ble_application_work_service();
+    } else {
+      nrf54l15_clean_ble_idle_service();
+    }
+
+    // Do not drain the whole deferred-event queue during the first
+    // post-CONNECT_IND service call. The sketch has not yet had a chance to
+    // observe the new link and switch into its connected-state logic; pulling
+    // all ATT traffic through here can make the entire CCCD/write exchange
+    // happen while the sketch still thinks it is disconnected.
+    //
+    // After that first safe pass, replay queued connection events even when
+    // background connection service is enabled. The background helper keeps
+    // the controller aligned to anchors, but it does not itself drain the
+    // sketch-facing event queue. Leaving replay disabled here can strand a
+    // queued ATT write/CCCD event and its deferred RX callback until the link
+    // drops, which is exactly the failure mode seen on the more timing-
+    // sensitive bridge board.
+    const bool newlyConnectedForegroundPass = ble_.isConnected() && !connected_;
+    const bool replayDeferredEvents = !newlyConnectedForegroundPass;
+    if (replayDeferredEvents) {
+      BleConnectionEvent deferred{};
+      while (ble_.consumeDeferredConnectionEvent(&deferred)) {
+        service(&deferred);
+      }
     }
   }
 
@@ -170,6 +199,17 @@ void BleNordicUart::service(const BleConnectionEvent* event) {
   }
 
   connected_ = true;
+  if (event != nullptr) {
+    // Queue replay is also needed while handling a real foreground event.
+    // Some centrals can deliver the first CCCD/ATT traffic through the
+    // controller-owned deferred queue before the sketch ever gets an
+    // event==nullptr service pass. If we only replay in the idle path, that
+    // early write can stay stranded until disconnect and NUS TX never arms.
+    BleConnectionEvent deferred{};
+    while (ble_.consumeDeferredConnectionEvent(&deferred)) {
+      service(&deferred);
+    }
+  }
   while (queueNextNotification()) {
   }
 }
@@ -383,6 +423,14 @@ bool BleNordicUart::queueNextNotification() {
   }
   if (txCount_ == 0U) {
     lastQueueResult_ = 3U;
+    return false;
+  }
+  // The HAL may accept more than one queued notification, but this class only
+  // tracks a single "controller owns this chunk" state. Queue the next chunk
+  // only after the previous one has fully retired, otherwise the bookkeeping
+  // loses chunk boundaries and host-visible echo data becomes fragmented.
+  if (txNotificationInFlight_) {
+    lastQueueResult_ = 9U;
     return false;
   }
   if (!isNotifyEnabled()) {

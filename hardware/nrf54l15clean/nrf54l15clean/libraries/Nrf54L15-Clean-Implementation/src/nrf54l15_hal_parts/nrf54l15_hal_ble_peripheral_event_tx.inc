@@ -107,6 +107,95 @@
     return (opcode == kAttOpHandleValueNtf) ||
            (opcode == kAttOpHandleValueInd);
   };
+  auto canPreservePendingServerPushPdu = [&]() {
+    if (!pendingTxIsAttServerPushPdu()) {
+      return false;
+    }
+
+    const uint8_t opcode = connectionPendingTxPayload_[4];
+    const uint16_t handle = readLe16(&connectionPendingTxPayload_[5]);
+    if ((opcode == kAttOpHandleValueInd) &&
+        (handle == kHandleGattServiceChangedValue)) {
+      return true;
+    }
+    if ((opcode == kAttOpHandleValueNtf) &&
+        (handle == kHandleBatteryLevelValue)) {
+      return true;
+    }
+
+    BleCustomCharacteristicState* characteristic =
+        findCustomCharacteristicByValueHandle(handle);
+    if (characteristic == nullptr) {
+      return false;
+    }
+    const ptrdiff_t idx = (characteristic - &customGattCharacteristics_[0]);
+    if (idx < 0 ||
+        static_cast<uint8_t>(idx) >= customGattCharacteristicCount_) {
+      return false;
+    }
+    return connectionCustomNotificationQueueCount_ <
+           kCustomGattNotificationQueueDepth;
+  };
+  auto preservePendingServerPushPdu = [&]() {
+    if (!pendingTxIsAttServerPushPdu()) {
+      return false;
+    }
+
+    const uint8_t opcode = connectionPendingTxPayload_[4];
+    const uint16_t handle = readLe16(&connectionPendingTxPayload_[5]);
+    const bool indicate = (opcode == kAttOpHandleValueInd);
+    const uint8_t valueLength =
+        (connectionPendingTxLength_ >= 7U)
+            ? static_cast<uint8_t>(connectionPendingTxLength_ - 7U)
+            : 0U;
+    const uint8_t* value =
+        (valueLength > 0U) ? &connectionPendingTxPayload_[7] : nullptr;
+
+    if (indicate && (handle == kHandleGattServiceChangedValue)) {
+      connectionServiceChangedIndicationAwaitingConfirm_ = false;
+      connectionServiceChangedIndicationPending_ = true;
+      return true;
+    }
+    if (!indicate && (handle == kHandleBatteryLevelValue)) {
+      connectionBatteryNotificationPending_ = true;
+      return true;
+    }
+
+    BleCustomCharacteristicState* characteristic =
+        findCustomCharacteristicByValueHandle(handle);
+    if (characteristic == nullptr) {
+      return false;
+    }
+    const ptrdiff_t idx = (characteristic - &customGattCharacteristics_[0]);
+    if (idx < 0 ||
+        static_cast<uint8_t>(idx) >= customGattCharacteristicCount_ ||
+        connectionCustomNotificationQueueCount_ >=
+            kCustomGattNotificationQueueDepth) {
+      return false;
+    }
+
+    const uint8_t newTail =
+        (connectionCustomNotificationQueueTail_ == 0U)
+            ? static_cast<uint8_t>(kCustomGattNotificationQueueDepth - 1U)
+            : static_cast<uint8_t>(connectionCustomNotificationQueueTail_ - 1U);
+    BleQueuedCustomNotificationState& slot =
+        connectionCustomNotificationQueue_[newTail];
+    slot.valid = true;
+    slot.characteristicIndex = static_cast<uint8_t>(idx);
+    slot.indication = indicate;
+    slot.valueLength = valueLength;
+    memset(slot.value, 0, sizeof(slot.value));
+    if (valueLength > 0U && value != nullptr) {
+      memcpy(slot.value, value, valueLength);
+    }
+    connectionCustomNotificationQueueTail_ = newTail;
+    ++connectionCustomNotificationQueueCount_;
+    if (indicate &&
+        (connectionCustomIndicationAwaitingHandle_ == handle)) {
+      connectionCustomIndicationAwaitingHandle_ = 0U;
+    }
+    return true;
+  };
   auto pendingTxIsAttWriteResponsePdu = [&]() {
     if (!connectionPendingTxValid_ ||
         (connectionPendingTxLlid_ != kBlePduDataStartOrComplete) ||
@@ -141,10 +230,7 @@
     if (isCccdHandle || !isCustomValueHandle) {
       return false;
     }
-    if (rxAttOpcode == kAttOpWriteCmd) {
-      return true;
-    }
-    return ((connectionCurrentRxPhy_ & kBlePhyCoded) != 0U);
+    return true;
   };
   const bool currentRxNeedsDeferredCustomWriteResponse =
       customAttWriteNeedsDeferredL2capHandling();
@@ -716,6 +802,9 @@
   if (txOk) {
     connectionTxHistoryValid_ = true;
     connectionLastTxSn_ = txSnBit;
+    if (txPayloadIsNewPlain && txLength > 0U) {
+      connectionFreshTxAllowed_ = false;
+    }
     blePeriphTxTracePushPacket(txLlid, txLength,
                                txPayloadIsNewPlain ? &connectionTxPayload_[0]
                                                    : &connectionLastTxPlainPayload_[0]);
@@ -1008,6 +1097,9 @@
           connectionTxHistoryValid_ = true;
           connectionLastTxSn_ =
               static_cast<uint8_t>((txPacket_[0] >> 3U) & 0x01U);
+          if (txFollowLength > 0U) {
+            connectionFreshTxAllowed_ = false;
+          }
           blePeriphTxTracePushPacket(txFollowLlid, txFollowLength,
                                      &connectionLastTxPlainPayload_[0]);
           if (encryptFollowTx) {
@@ -1083,7 +1175,9 @@
             connectionPendingTxValid_ &&
             (connectionPendingTxLlid_ == kBlePduDataStartOrComplete) &&
             (connectionPendingTxLength_ >= kBleL2capHeaderLen) &&
-            ((readLe16(&connectionPendingTxPayload_[2]) == kBleL2capCidAtt) ||
+            (((readLe16(&connectionPendingTxPayload_[2]) == kBleL2capCidAtt) &&
+              (connectionPendingTxLength_ >= (kBleL2capHeaderLen + 1U)) &&
+              attOpcodeIsServerResponsePdu(connectionPendingTxPayload_[4])) ||
              (readLe16(&connectionPendingTxPayload_[2]) == kBleL2capCidSmp) ||
              (readLe16(&connectionPendingTxPayload_[2]) == kBleL2capCidLeSignaling));
         if (!peerAckedLastTxFollowMutable &&
@@ -1094,6 +1188,9 @@
         }
         if (peerAckedLastTxFollowMutable) {
           connectionTxSn_ ^= 0x01U;
+          connectionFreshTxAllowed_ = true;
+        } else {
+          connectionFreshTxAllowed_ = !connectionTxHistoryValid_;
         }
 
         uint8_t rxLengthFollow = rxLengthFollowRaw;
@@ -1313,14 +1410,12 @@
             if (isCccdHandle || !isCustomValueHandle) {
               return false;
             }
-            if (rxPacket_[2 + kBleL2capHeaderLen] == kAttOpWriteCmd) {
-              return true;
-            }
-            return ((connectionCurrentRxPhy_ & kBlePhyCoded) != 0U);
+            return true;
           };
           const bool followCanDisplacePendingServerPush =
               connectionPendingTxValid_ &&
-              pendingTxIsAttServerPushPdu();
+              pendingTxIsAttServerPushPdu() &&
+              canPreservePendingServerPushPdu();
           const bool followCarriesSmp =
               (((llidFollow == kBlePduDataStartOrComplete) &&
                 (rxLengthFollow >= kBleL2capHeaderLen) &&
@@ -1345,6 +1440,7 @@
                                          &responseLength, &followTerminate) &&
                   responseLength > 0U) {
                 if (followCanDisplacePendingServerPush) {
+                  (void)preservePendingServerPushPdu();
                   memcpy(connectionPendingTxPayload_, followResponsePayload,
                          responseLength);
                 }
@@ -1373,6 +1469,9 @@
                 if ((responsePayload == followResponsePayload) &&
                     (!connectionPendingTxValid_ ||
                      followCanDisplacePendingServerPush)) {
+                  if (followCanDisplacePendingServerPush) {
+                    (void)preservePendingServerPushPdu();
+                  }
                   memcpy(connectionPendingTxPayload_, followResponsePayload,
                          responseLength);
                   connectionPendingTxLlid_ = kBlePduDataStartOrComplete;
@@ -1467,8 +1566,10 @@
                 connectionPendingTxValid_ &&
                 (connectionPendingTxLlid_ == kBlePduDataStartOrComplete) &&
                 (connectionPendingTxLength_ >= kBleL2capHeaderLen) &&
-                ((readLe16(&connectionPendingTxPayload_[2]) ==
-                  kBleL2capCidAtt) ||
+                (((readLe16(&connectionPendingTxPayload_[2]) ==
+                   kBleL2capCidAtt) &&
+                  (connectionPendingTxLength_ >= (kBleL2capHeaderLen + 1U)) &&
+                  attOpcodeIsServerResponsePdu(connectionPendingTxPayload_[4])) ||
                  (readLe16(&connectionPendingTxPayload_[2]) ==
                   kBleL2capCidSmp) ||
                  (readLe16(&connectionPendingTxPayload_[2]) ==

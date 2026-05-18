@@ -13,6 +13,7 @@ whether the echoed notifications were received by the host stack.
 
 from __future__ import annotations
 
+import asyncio
 import argparse
 import json
 import re
@@ -285,8 +286,9 @@ def resolve_cached_address_by_name(name: str) -> str:
 
 def scan_for_device(addr: str, name: str, timeout_s: int, log_path: Path) -> tuple[bool, str]:
     result = run(["bluetoothctl", "--timeout", str(timeout_s), "scan", "on"], check=False)
-    log_path.write_text(result.stdout + result.stderr, encoding="utf-8")
-    combined = result.stdout + result.stderr
+    stop = run(["bluetoothctl", "scan", "off"], check=False)
+    combined = result.stdout + result.stderr + "\n--- scan off ---\n" + stop.stdout + stop.stderr
+    log_path.write_text(combined, encoding="utf-8")
 
     resolved_addr = addr
     if name:
@@ -308,6 +310,12 @@ def scan_for_device(addr: str, name: str, timeout_s: int, log_path: Path) -> tup
     if not found and name:
         found = name in combined
     return found, resolved_addr
+
+
+def remove_device(addr: str) -> None:
+    if not addr:
+        return
+    run(["bluetoothctl", "remove", addr], check=False)
 
 
 def ascii_packet(index: int) -> bytes:
@@ -431,10 +439,19 @@ def main() -> int:
     )
     parser.add_argument("--skip-upload", action="store_true")
     parser.add_argument("--skip-btmon", action="store_true")
+    parser.add_argument(
+        "--transport",
+        default="bleak",
+        choices=("bleak", "gatttool"),
+        help="BLE central transport to use for the regression run",
+    )
     args = parser.parse_args()
 
     try:
-        import pexpect  # type: ignore  # noqa: F401
+        if args.transport == "gatttool":
+            import pexpect  # type: ignore  # noqa: F401
+        else:
+            from bleak import BleakClient  # type: ignore  # noqa: F401
     except Exception as exc:
         raise SystemExit(f"Missing Python dependency: {exc}") from exc
 
@@ -466,44 +483,86 @@ def main() -> int:
         scan_found, resolved_addr = scan_for_device(
             args.addr, args.name, args.scan_timeout, args.outdir / "scan.log"
         )
-
-        session = GatttoolSession(resolved_addr, args.addr_type, args.outdir / "gatttool.log")
-        session.connect(25.0)
-        connected = True
-
-        session.send("characteristics")
-        found = session.wait_for_patterns([NUS_RX_UUID, NUS_TX_UUID], 10.0)
-        if not all(found.values()):
-            raise RuntimeError(f"Could not resolve NUS characteristics from gatttool output: {found}")
-        gatt_log = session.log_text()
-        rx_handle, tx_handle = parse_handles(gatt_log)
-        if rx_handle is None or tx_handle is None:
-            raise RuntimeError("Could not resolve NUS RX/TX handles from gatttool output")
-
-        session.send(f"char-desc 0x{tx_handle:04x} 0x{min(tx_handle + 2, 0xFFFF):04x}")
-        found = session.wait_for_patterns(
-            [r"uuid\s*[:=]\s*(?:0x2902|00002902-0000-1000-8000-00805f9b34fb)"],
-            8.0,
-        )
-        if not all(found.values()):
-            raise RuntimeError("Could not resolve NUS TX CCCD from gatttool output")
-        tx_cccd_handle = parse_cccd_handle(session.log_text())
-        if tx_cccd_handle is None:
-            raise RuntimeError("Could not resolve NUS TX CCCD handle from gatttool output")
-
-        notify_stream_start = len(session.log_text())
-        session.write_request(tx_cccd_handle, "0100", 8.0)
-        time.sleep(1.0)
-
+        remove_device(resolved_addr)
+        time.sleep(0.5)
         echoed_packets = [ascii_packet(index) for index in range(args.iterations)]
-        for packet in echoed_packets:
-            session.write_request(rx_handle, packet.hex(), 8.0)
-            time.sleep(args.inter_packet_delay)
+        if args.transport == "gatttool":
+            session = GatttoolSession(resolved_addr, args.addr_type, args.outdir / "gatttool.log")
+            session.connect(25.0)
+            connected = True
 
-        time.sleep(args.post_write_delay)
-        gatt_log = session.log_text()[notify_stream_start:]
-        notify_stream = parse_notification_stream(gatt_log)
-        banner_seen = READY_BANNER in notify_stream
+            session.send("characteristics")
+            found = session.wait_for_patterns([NUS_RX_UUID, NUS_TX_UUID], 10.0)
+            if not all(found.values()):
+                raise RuntimeError(f"Could not resolve NUS characteristics from gatttool output: {found}")
+            gatt_log = session.log_text()
+            rx_handle, tx_handle = parse_handles(gatt_log)
+            if rx_handle is None or tx_handle is None:
+                raise RuntimeError("Could not resolve NUS RX/TX handles from gatttool output")
+
+            session.send(f"char-desc 0x{tx_handle:04x} 0x{min(tx_handle + 2, 0xFFFF):04x}")
+            found = session.wait_for_patterns(
+                [r"uuid\s*[:=]\s*(?:0x2902|00002902-0000-1000-8000-00805f9b34fb)"],
+                8.0,
+            )
+            if not all(found.values()):
+                raise RuntimeError("Could not resolve NUS TX CCCD from gatttool output")
+            tx_cccd_handle = parse_cccd_handle(session.log_text())
+            if tx_cccd_handle is None:
+                raise RuntimeError("Could not resolve NUS TX CCCD handle from gatttool output")
+
+            notify_stream_start = len(session.log_text())
+            session.write_request(tx_cccd_handle, "0100", 8.0)
+            time.sleep(1.0)
+
+            for packet in echoed_packets:
+                session.write_request(rx_handle, packet.hex(), 8.0)
+                time.sleep(args.inter_packet_delay)
+
+            time.sleep(args.post_write_delay)
+            gatt_log = session.log_text()[notify_stream_start:]
+            notify_stream = parse_notification_stream(gatt_log)
+            banner_seen = READY_BANNER in notify_stream
+        else:
+            async def run_bleak_session() -> tuple[bool, Optional[int], Optional[int], Optional[int], bytes]:
+                from bleak import BleakClient
+
+                notifications = bytearray()
+
+                def on_notification(_: object, data: bytearray) -> None:
+                    notifications.extend(bytes(data))
+
+                async with BleakClient(resolved_addr, timeout=25.0) as client:
+                    services = client.services
+                    if services is None:
+                        raise RuntimeError("Bleak did not resolve services")
+
+                    rx_char = services.get_characteristic(NUS_RX_UUID)
+                    tx_char = services.get_characteristic(NUS_TX_UUID)
+                    if rx_char is None or tx_char is None:
+                        raise RuntimeError("Could not resolve NUS RX/TX characteristics via Bleak")
+
+                    cccd_handle: Optional[int] = None
+                    for descriptor in tx_char.descriptors:
+                        if descriptor.uuid.lower() == "00002902-0000-1000-8000-00805f9b34fb":
+                            cccd_handle = descriptor.handle
+                            break
+
+                    await client.start_notify(tx_char, on_notification)
+                    await asyncio.sleep(1.0)
+
+                    for packet in echoed_packets:
+                        await client.write_gatt_char(rx_char, packet, response=True)
+                        await asyncio.sleep(args.inter_packet_delay)
+
+                    await asyncio.sleep(args.post_write_delay)
+                    await client.stop_notify(tx_char)
+                    return True, rx_char.handle, tx_char.handle, cccd_handle, bytes(notifications)
+
+            connected, rx_handle, tx_handle, tx_cccd_handle, notify_stream = asyncio.run(
+                run_bleak_session()
+            )
+            banner_seen = READY_BANNER in notify_stream
 
     except Exception as exc:
         failure = str(exc)

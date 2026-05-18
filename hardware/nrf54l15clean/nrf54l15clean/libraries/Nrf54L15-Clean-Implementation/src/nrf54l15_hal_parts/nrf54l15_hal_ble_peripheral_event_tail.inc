@@ -59,6 +59,9 @@
             }
 
             connectionTxHistoryValid_ = true;
+            if (txFollowCanUseFreshPayload && txFollowLength > 0U) {
+              connectionFreshTxAllowed_ = false;
+            }
             radio_->EVENTS_DISABLED = 0U;
             radio_->EVENTS_CRCOK = 0U;
             radio_->EVENTS_CRCERROR = 0U;

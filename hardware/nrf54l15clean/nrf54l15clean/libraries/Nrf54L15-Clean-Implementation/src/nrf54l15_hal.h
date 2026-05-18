@@ -12,6 +12,7 @@
 #include "xiao_nrf54l15_pins.h"
 
 extern "C" void nrf54l15_clean_ble_idle_service(void);
+extern "C" void nrf54l15_clean_ble_application_work_service(void);
 extern "C" void nrf54l15_clean_ble_yield_service(void);
 extern "C" uint32_t nrf54l15_clean_ble_idle_sleep_cap_us(void);
 extern "C" void nrf54l15_secp256r1_cooperate_hook(void);
@@ -2533,6 +2534,7 @@ class BleRadio {
   }
 
  private:
+  friend void ::nrf54l15_clean_ble_application_work_service(void);
   friend void ::nrf54l15_clean_ble_idle_service(void);
   friend void ::nrf54l15_clean_ble_yield_service(void);
   friend void ::nrf54l15_secp256r1_cooperate_hook(void);
@@ -2620,6 +2622,7 @@ class BleRadio {
       const BleBackgroundAdvertisingRestartState& state);
   void snapshotBackgroundAdvertisingRfPathRestoreState();
   void restoreBackgroundAdvertisingRfPathRestoreState();
+  void quiesceBackgroundAdvertisingForConnectionHandoff();
   bool buildExtendedAdvertisingPackets(uint32_t auxOffsetUs,
                                        uint32_t* actualAuxOffsetUs = nullptr);
   bool buildExtendedScannableAdvertisingPackets(

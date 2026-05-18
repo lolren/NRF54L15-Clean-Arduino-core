@@ -43,6 +43,8 @@ using namespace xiao_nrf54l15;
 static BleRadio g_ble;
 static BleNordicUart g_nus(g_ble);
 static PowerManager g_power;
+static uint16_t g_diagServiceHandle = 0U;
+static uint16_t g_diagValueHandle = 0U;
 
 static bool g_wasConnected = false;
 static bool g_bannerSent = false;  // True once welcome banner has been sent.
@@ -106,6 +108,24 @@ volatile uint32_t g_dbgLatePollCount = 0U;
 volatile uint32_t g_dbgConnRxTimeoutCount = 0U;
 volatile uint32_t g_dbgConnMissedEventCountLast = 0U;
 volatile uint32_t g_dbgConnMissedEventCountMax = 0U;
+volatile uint32_t g_debugStage = 0U;
+volatile uint32_t g_debugCheckpoint = 0U;
+volatile uint32_t g_debugBannerAttemptCount = 0U;
+volatile uint32_t g_debugBannerWriteCount = 0U;
+volatile uint32_t g_debugPumpAttemptCount = 0U;
+volatile uint32_t g_debugPumpWriteCount = 0U;
+volatile uint32_t g_debugNotifyEnabledCount = 0U;
+volatile uint32_t g_debugNusTxCount = 0U;
+volatile uint32_t g_debugNusLastQueueResult = 0U;
+volatile uint32_t g_debugNusSentCount = 0U;
+volatile uint32_t g_debugNusRetiredCount = 0U;
+volatile uint32_t g_debugNusInFlight = 0U;
+volatile uint32_t g_debugNusAwaitingAck = 0U;
+volatile uint32_t g_debugUnconnectedLoopCount = 0U;
+volatile uint32_t g_debugAdvConnectIndCount = 0U;
+volatile uint32_t g_debugPostAdvConnectedCount = 0U;
+volatile uint32_t g_debugPostAdvDisconnectedCount = 0U;
+volatile uint32_t g_debugDisconnectedRxPending = 0U;
 
 // 0 dBm: good for general-purpose probe work within a few metres.
 static constexpr int8_t kTxPowerDbm = 0;
@@ -133,6 +153,8 @@ static constexpr uint32_t kStatusPeriodMs = 2000UL;
 static constexpr bool kVerboseStatus =
     (NRF54L15_LOOPBACK_VERBOSE_STATUS != 0);
 static constexpr uint32_t kConnectionPollTimeoutUs = 450000UL;
+static constexpr uint32_t kForegroundPollTimeoutUs =
+    kEnableBleBgService ? 0UL : kConnectionPollTimeoutUs;
 static constexpr uint32_t kConnectionWarmupMs = 500UL;
 #ifndef NRF54L15_LOOPBACK_REQUEST_SECURITY
 #define NRF54L15_LOOPBACK_REQUEST_SECURITY 0
@@ -145,11 +167,60 @@ static constexpr uint8_t kAddress[6] = {0x37, 0x00, 0x15, 0x54, 0xDE, 0xC0};
 static constexpr bool kUseFixedAddress = false;
 static constexpr char kGattName[] = "X54 NUS Loopback";
 static constexpr char kBanner[] = "X54 NUS loopback ready\r\n";
+static constexpr uint16_t kDiagServiceUuid = 0xFFF0U;
+static constexpr uint16_t kDiagValueUuid = 0xFFF1U;
 static const uint8_t kNusAdvPayload[] = {
     2, 0x01, 0x06,
     7, 0x09, 'X', '5', '4', '-', 'L', 'B',
     5, 0xFF, 0x34, 0x12, 0x54, 0x15,
 };
+
+static void writeLe32(uint8_t* out, uint32_t value) {
+  if (out == nullptr) {
+    return;
+  }
+  out[0] = static_cast<uint8_t>(value & 0xFFU);
+  out[1] = static_cast<uint8_t>((value >> 8U) & 0xFFU);
+  out[2] = static_cast<uint8_t>((value >> 16U) & 0xFFU);
+  out[3] = static_cast<uint8_t>((value >> 24U) & 0xFFU);
+}
+
+static void writeLe16(uint8_t* out, uint16_t value) {
+  if (out == nullptr) {
+    return;
+  }
+  out[0] = static_cast<uint8_t>(value & 0xFFU);
+  out[1] = static_cast<uint8_t>((value >> 8U) & 0xFFU);
+}
+
+static void snapshotNusDebug(uint32_t stage) {
+  g_debugStage = stage;
+  if (g_nus.isNotifyEnabled()) {
+    ++g_debugNotifyEnabledCount;
+  }
+  g_debugNusTxCount = g_nus.debugTxCount();
+  g_debugNusLastQueueResult = g_nus.debugLastQueueResult();
+  g_debugNusSentCount = g_nus.debugNotificationSentCount();
+  g_debugNusRetiredCount = g_nus.debugNotificationRetiredCount();
+  g_debugNusInFlight = g_nus.debugTxNotificationInFlight() ? 1U : 0U;
+  g_debugNusAwaitingAck = g_nus.debugTxNotificationAwaitingAck() ? 1U : 0U;
+
+  if (g_diagValueHandle != 0U) {
+    uint8_t diag[20] = {0};
+    writeLe16(&diag[0], static_cast<uint16_t>(g_debugStage & 0xFFFFU));
+    writeLe16(&diag[2], static_cast<uint16_t>(g_debugUnconnectedLoopCount & 0xFFFFU));
+    writeLe16(&diag[4], static_cast<uint16_t>(g_debugAdvConnectIndCount & 0xFFFFU));
+    writeLe16(&diag[6], static_cast<uint16_t>(g_debugPostAdvConnectedCount & 0xFFFFU));
+    writeLe16(&diag[8], static_cast<uint16_t>(g_debugPostAdvDisconnectedCount & 0xFFFFU));
+    writeLe16(&diag[10], static_cast<uint16_t>(g_debugDisconnectedRxPending & 0xFFFFU));
+    writeLe16(&diag[12], static_cast<uint16_t>(g_debugBannerAttemptCount & 0xFFFFU));
+    writeLe16(&diag[14], static_cast<uint16_t>(g_debugBannerWriteCount & 0xFFFFU));
+    writeLe16(&diag[16], static_cast<uint16_t>(g_debugPumpAttemptCount & 0xFFFFU));
+    writeLe16(&diag[18], static_cast<uint16_t>(g_debugPumpWriteCount & 0xFFFFU));
+    (void)g_ble.setCustomGattCharacteristicValue(g_diagValueHandle, diag,
+                                                 sizeof(diag));
+  }
+}
 
 static void printAddress(const uint8_t* addr) {
   if (addr == nullptr) {
@@ -218,10 +289,14 @@ static void queueBanner() {
   if (g_bannerSent || !g_nus.isNotifyEnabled()) {
     return;
   }
+  ++g_debugBannerAttemptCount;
+  snapshotNusDebug(42U);
   if (g_nus.availableForWrite() < static_cast<int>(sizeof(kBanner) - 1U)) {
     return;
   }
   g_nus.write(reinterpret_cast<const uint8_t*>(kBanner), sizeof(kBanner) - 1U);
+  ++g_debugBannerWriteCount;
+  snapshotNusDebug(43U);
   g_bannerSent = true;
 }
 
@@ -265,6 +340,11 @@ static void pumpLoopback(uint8_t maxBytes) {
     return;
   }
   const size_t written = g_nus.write(buf, count);
+  ++g_debugPumpAttemptCount;
+  if (written > 0U) {
+    ++g_debugPumpWriteCount;
+  }
+  snapshotNusDebug(50U);
   g_echoedBytes += static_cast<uint32_t>(written);
   if (written < count) {
     g_droppedBytes += static_cast<uint32_t>(count - written);
@@ -288,6 +368,30 @@ static void printTerminateStats(const BleConnectionEvent& evt) {
   Serial.print(g_nus.rxDroppedBytes());
   Serial.print(" nus_tx_drop=");
   Serial.print(g_nus.txDroppedBytes());
+  Serial.print(" dbg_stage=");
+  Serial.print(g_debugStage);
+  Serial.print(" dbg_banner_try=");
+  Serial.print(g_debugBannerAttemptCount);
+  Serial.print(" dbg_banner_wr=");
+  Serial.print(g_debugBannerWriteCount);
+  Serial.print(" dbg_pump_try=");
+  Serial.print(g_debugPumpAttemptCount);
+  Serial.print(" dbg_pump_wr=");
+  Serial.print(g_debugPumpWriteCount);
+  Serial.print(" dbg_notify_seen=");
+  Serial.print(g_debugNotifyEnabledCount);
+  Serial.print(" dbg_txcnt=");
+  Serial.print(g_debugNusTxCount);
+  Serial.print(" dbg_lastq=");
+  Serial.print(g_debugNusLastQueueResult);
+  Serial.print(" dbg_sent=");
+  Serial.print(g_debugNusSentCount);
+  Serial.print(" dbg_retired=");
+  Serial.print(g_debugNusRetiredCount);
+  Serial.print(" dbg_inflight=");
+  Serial.print(g_debugNusInFlight);
+  Serial.print(" dbg_ack=");
+  Serial.print(g_debugNusAwaitingAck);
   Serial.print("\r\n");
 
   BleEncryptionDebugCounters dbg{};
@@ -344,13 +448,23 @@ void setup() {
     g_power.setLatencyMode(PowerLatencyMode::kLowPower);
   }
   if (ok) {
+    uint8_t diag[20] = {0};
+    uint16_t diagServiceHandle = 0U;
+    uint16_t diagValueHandle = 0U;
     ok = (!kUseFixedAddress || g_ble.setDeviceAddress(kAddress, BleAddressType::kRandomStatic)) &&
          g_ble.setAdvertisingPduType(BleAdvPduType::kAdvInd) &&
          g_ble.setAdvertisingChannelSelectionAlgorithm2(true) &&
          g_ble.setGattDeviceName(kGattName) &&
          g_ble.setGattBatteryLevel(100U) &&
          g_ble.clearCustomGatt() &&
-         g_nus.begin();
+         g_nus.begin() &&
+         g_ble.addCustomGattService(kDiagServiceUuid, &diagServiceHandle) &&
+         g_ble.addCustomGattCharacteristic(diagServiceHandle, kDiagValueUuid,
+                                          static_cast<uint8_t>(kBleGattPropRead),
+                                          diag, sizeof(diag),
+                                          &diagValueHandle, nullptr);
+    g_diagServiceHandle = diagServiceHandle;
+    g_diagValueHandle = diagValueHandle;
   }
 
   Serial.print("BLE NUS loopback init: ");
@@ -378,6 +492,7 @@ void setup() {
     Serial.print("\r\n");
   }
   Serial.print("Advertised as X54-LB\r\n");
+  snapshotNusDebug(5U);
 }
 
 void loop() {
@@ -391,11 +506,16 @@ void loop() {
   }
 
   if (!g_ble.isConnected()) {
+    ++g_debugUnconnectedLoopCount;
+    snapshotNusDebug(10U);
     if (kVerboseStatus) {
       ++g_unconnectedLoopCount;
     }
     BleAdvInteraction adv{};
     const bool advOk = g_ble.advertiseInteractEvent(&adv, 350U, 350000UL, 700000UL);
+    if (adv.receivedConnectInd) {
+      ++g_debugAdvConnectIndCount;
+    }
     if (kVerboseStatus) {
       ++g_advertiseCallCount;
       if (advOk) {
@@ -413,16 +533,37 @@ void loop() {
     }
     g_lastPostAdvConnected = g_ble.isConnected() ? 1U : 0U;
     if (g_lastPostAdvConnected != 0U) {
+      ++g_debugPostAdvConnectedCount;
+      snapshotNusDebug(12U);
       if (kVerboseStatus) {
         ++g_advConnectedAfterEventCount;
       }
       if (kEnableBleBgService) {
+        g_debugCheckpoint = 14U;
+        snapshotNusDebug(14U);
+        Serial.print("DBG14 before bg enable\r\n");
         g_ble.setBackgroundConnectionServiceEnabled(true);
+        g_debugCheckpoint = 15U;
+        Serial.print("DBG15 after bg enable\r\n");
+        snapshotNusDebug(15U);
       }
     } else if (adv.receivedConnectInd && kVerboseStatus) {
       ++g_advConnectIndLostBeforeLoopCount;
+    } else {
+      ++g_debugPostAdvDisconnectedCount;
+      snapshotNusDebug(11U);
     }
-    g_nus.service();
+    if (g_lastPostAdvConnected == 0U && !adv.receivedConnectInd) {
+      g_debugCheckpoint = 16U;
+      snapshotNusDebug(16U);
+      Serial.print("DBG16 before nus service\r\n");
+      g_nus.service();
+      g_debugCheckpoint = 17U;
+      snapshotNusDebug(17U);
+      Serial.print("DBG17 after nus service\r\n");
+      g_debugDisconnectedRxPending = static_cast<uint32_t>(g_nus.available());
+      snapshotNusDebug((g_debugDisconnectedRxPending != 0U) ? 13U : g_debugStage);
+    }
 
     if (g_wasConnected) {
       g_wasConnected = false;
@@ -436,7 +577,7 @@ void loop() {
       }
     }
 
-    if (!g_ble.isConnected()) {
+    if (!g_ble.isConnected() && !adv.receivedConnectInd) {
       delay(100);
     }
     return;
@@ -450,6 +591,7 @@ void loop() {
     g_echoedBytes = 0U;
     g_droppedBytes = 0U;
     ++g_connectCount;
+    snapshotNusDebug(30U);
     Gpio::write(kPinUserLed, false);
     if (kEnableBleBgService) {
       g_ble.setBackgroundConnectionServiceEnabled(true);
@@ -461,7 +603,7 @@ void loop() {
 
   BleConnectionEvent evt{};
   const bool eventStarted =
-      g_ble.pollConnectionEvent(&evt, kConnectionPollTimeoutUs) && evt.eventStarted;
+      g_ble.pollConnectionEvent(&evt, kForegroundPollTimeoutUs) && evt.eventStarted;
 
   // The HAL deferred event queue is not flushed on disconnect. The first
   // pollConnectionEvent() of a new connection may return the previous

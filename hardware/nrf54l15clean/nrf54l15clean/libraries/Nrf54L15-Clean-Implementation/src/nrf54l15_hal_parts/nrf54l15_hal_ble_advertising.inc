@@ -847,6 +847,83 @@ bool BleRadio::beginBackgroundAdvertising3Channel(uint32_t intervalMs,
   return true;
 }
 
+void BleRadio::quiesceBackgroundAdvertisingForConnectionHandoff() {
+  const bool managedLatency = backgroundAdvertisingManageLatency_;
+  if (backgroundAdvertisingEnabled_ &&
+      backgroundAdvertisingLastStopReason_ == kBleBackgroundAdvStopReasonNone) {
+    backgroundAdvertisingLastStopReason_ = kBleBackgroundAdvStopReasonExplicit;
+  }
+
+  bleBackgroundDisableClockIrq();
+  NRF_CLOCK->EVENTS_XOTUNED = 0U;
+  NRF_CLOCK->EVENTS_XOTUNEERROR = 0U;
+  NRF_CLOCK->EVENTS_XOTUNEFAILED = 0U;
+  bleBackgroundAdvertisingConfigureRandomSource(false);
+  const uint32_t irqState = bleEnterCritical();
+  bleDisableCompare(kBleBackgroundAdvPrewarmCompareChannel, true);
+  bleDisableCompare(kBleBackgroundAdvTxCompareChannel, false);
+  bleDisableCompare(kBleBackgroundAdvCleanupCompareChannel, true);
+  bleDisableCompare(kBleBackgroundAdvStage1ServiceCompareChannel, true);
+  bleDisableCompare(kBleBackgroundAdvStage1TxCompareChannel, false);
+  bleDisableCompare(kBleBackgroundAdvStage2ServiceCompareChannel, true);
+  bleDisableCompare(kBleBackgroundAdvStage2TxCompareChannel, false);
+  bleDisableCompare(kBleBackgroundAdvFinalCleanupCompareChannel, true);
+  backgroundAdvertisingEnabled_ = false;
+  backgroundAdvertisingArmed_ = false;
+  backgroundAdvertisingInProgress_ = false;
+  backgroundAdvertisingDue_ = false;
+  backgroundAdvertisingThreeChannel_ = false;
+  backgroundAdvertisingRotateChannel_ = false;
+  backgroundAdvertisingRandomDelay_ = false;
+  backgroundAdvertisingManageRfPath_ = false;
+  backgroundAdvertisingRfPathCollapsed_ = false;
+  backgroundAdvertisingUseIrqTxKick_ =
+      bleBackgroundAdvertisingInitialUseIrqTxKick();
+  backgroundAdvertisingManageLatency_ = false;
+  backgroundAdvertisingConstlatHardwareVerified_ = false;
+  backgroundAdvertisingAwaitingHfxoTuned_ = false;
+  backgroundAdvertisingChannel_ = BleAdvertisingChannel::k37;
+  backgroundAdvertisingIntervalUs_ = 0U;
+  backgroundAdvertisingInterChannelDelayUs_ = 0U;
+  backgroundAdvertisingHfxoLeadUs_ = kBleBackgroundAdvDefaultHfxoLeadUs;
+  backgroundAdvertisingNextTxUs_ = 0U;
+  backgroundAdvertisingServiceUs_ = 0U;
+  backgroundAdvertisingEventStartTxUs_ = 0U;
+  backgroundAdvertisingRandomState_ = 0U;
+  backgroundAdvertisingPrimaryStage_ = 0U;
+  backgroundAdvertisingTxKickRetryCountCurrent_ = 0U;
+  backgroundAdvertisingPendingTxCompareChannel_ =
+      kBleBackgroundInvalidCompareChannel;
+  backgroundAdvertisingPendingServiceCompareChannel_ =
+      kBleBackgroundInvalidCompareChannel;
+  backgroundAdvertisingDebug_.enabled = 0U;
+  backgroundAdvertisingDebug_.threeChannel = 0U;
+  backgroundAdvertisingDebug_.rotatingChannel = 0U;
+  backgroundAdvertisingDebug_.rfPathManaged = 0U;
+  backgroundAdvertisingDebug_.rfPathActive =
+      BoardControl::rfSwitchPowerEnabled() ? 1U : 0U;
+  backgroundAdvertisingDebug_.latencyManaged = 0U;
+  backgroundAdvertisingDebug_.constlatActive =
+      bleBackgroundAdvertisingConstlatActive() ? 1U : 0U;
+  backgroundAdvertisingDebug_.currentStage = 0U;
+  if (!backgroundConnectionServiceEnabled_) {
+    g_bleBackgroundPendSvPending = 0U;
+    blePendSvClearPending();
+  }
+  if (g_bleBackgroundRadio == this && !backgroundServicesActive() &&
+      queuedConnectionEventCount_ == 0U &&
+      deferredConnectionEventCount_ == 0U &&
+      deferredGattWriteCount_ == 0U && deferredTraceCount_ == 0U) {
+    g_bleBackgroundRadio = nullptr;
+  }
+  NVIC->ICPR[static_cast<uint32_t>(kBleBackgroundGrtcIrq) >> 5U] =
+      (1UL << (static_cast<uint32_t>(kBleBackgroundGrtcIrq) & 0x1FUL));
+  bleExitCritical(irqState);
+
+  backgroundAdvertisingRestoreRfPathValid_ = false;
+  (void)bleBackgroundAdvertisingReleaseManagedLatency(managedLatency);
+}
+
 void BleRadio::stopBackgroundAdvertising() {
   if (backgroundAdvertisingEnabled_ &&
       backgroundAdvertisingLastStopReason_ == kBleBackgroundAdvStopReasonNone) {
@@ -1062,8 +1139,36 @@ void BleRadio::serviceBackgroundAdvertisingFromIrq() {
   if (NRF54L15_CLEAN_BLE_BACKGROUND_GRTC_IRQ_RUN == 0) {
     return;
   }
-  if (!backgroundAdvertisingEnabled_ || radio_ == nullptr || connected_ ||
-      backgroundAdvertisingInProgress_) {
+  auto clearStaleAdvertisingCompares = [&]() {
+    bleDisableCompare(kBleBackgroundAdvPrewarmCompareChannel, true);
+    bleDisableCompare(kBleBackgroundAdvTxCompareChannel, true);
+    bleDisableCompare(kBleBackgroundAdvCleanupCompareChannel, true);
+    bleDisableCompare(kBleBackgroundAdvStage1ServiceCompareChannel, true);
+    bleDisableCompare(kBleBackgroundAdvStage1TxCompareChannel, true);
+    bleDisableCompare(kBleBackgroundAdvStage2ServiceCompareChannel, true);
+    bleDisableCompare(kBleBackgroundAdvStage2TxCompareChannel, true);
+    bleDisableCompare(kBleBackgroundAdvFinalCleanupCompareChannel, true);
+  };
+  if (connected_) {
+    quiesceBackgroundAdvertisingForConnectionHandoff();
+    clearStaleAdvertisingCompares();
+    return;
+  }
+  if (!backgroundAdvertisingEnabled_ || radio_ == nullptr) {
+    // Background advertising may already be quiesced while this radio still
+    // owns g_bleBackgroundRadio for pending connection or deferred GATT work.
+    // In that state, stale advertising compare events must still be cleared
+    // here; otherwise the shared GRTC IRQ can keep retriggering and starve the
+    // foreground code that is supposed to drain those pending queues.
+    clearStaleAdvertisingCompares();
+    if (!backgroundConnectionServiceEnabled_) {
+      bleBackgroundDisableCompare();
+      bleDisableCompare(kBleBackgroundConnPrewarmCompareChannel, true);
+      bleDisableCompare(kBleBackgroundConnRxCompareChannel, true);
+    }
+    return;
+  }
+  if (backgroundAdvertisingInProgress_) {
     return;
   }
 
@@ -1196,6 +1301,10 @@ bool BleRadio::serviceBackgroundAdvertising() {
   const uint32_t irqState = bleEnterCritical();
   if (!backgroundAdvertisingEnabled_ || radio_ == nullptr || connected_) {
     bleExitCritical(irqState);
+    if (connected_) {
+      quiesceBackgroundAdvertisingForConnectionHandoff();
+      return false;
+    }
     backgroundAdvertisingLastStopReason_ = kBleBackgroundAdvStopReasonInvalidState;
     stopBackgroundAdvertising();
     return false;

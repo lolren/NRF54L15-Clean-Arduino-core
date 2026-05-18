@@ -1381,8 +1381,7 @@ bool BleRadio::startConnectionFromConnectInd(const uint8_t* payload, uint8_t len
       1250UL + (static_cast<uint32_t>(winOffset) * 1250UL);
   connectionNextEventUs_ = nowUs + ((offsetUs > 0U) ? offsetUs : kBleConnFirstEventFallbackUs);
 
-  // Do not add extra background-advertising or RF-path work here unless it is
-  // proven safe against the first connection-event anchor on hardware.
+  quiesceBackgroundAdvertisingForConnectionHandoff();
   connected_ = true;
   emitBleTrace("CONNECTED");
   return true;
@@ -1527,6 +1526,7 @@ bool BleRadio::startCentralConnection(const uint8_t peerAddress[6],
   const uint32_t nowUs =
       (connectIndEndUs != 0U) ? connectIndEndUs : bleTimingUs();
   connectionNextEventUs_ = nowUs + 1250UL;
+  quiesceBackgroundAdvertisingForConnectionHandoff();
   connected_ = true;
   maybeQueueCentralLinkSetupRequest();
   emitBleTrace("CONNECTED_CENTRAL");

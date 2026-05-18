@@ -1394,6 +1394,12 @@ void BleRadio::serviceSecureConnectionsWork() {
     return;
   }
 
+  if (smpLocalInitiator_ &&
+      (smpPairingState_ == kSmpPairingStateReqSent) &&
+      !smpSecureConnectionsLocalKeyReady_) {
+    (void)ensureSecureConnectionsLocalKeypair();
+  }
+
   if (smpDeferredPairingFailed_) {
     const uint8_t fail[2] = {kSmpCodePairingFailed,
                              smpDeferredPairingFailedReason_};

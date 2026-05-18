@@ -32,6 +32,42 @@ extern "C" void nrf54l15_clean_ble_idle_service(void) {
   g_bleIdleServiceActive = false;
 }
 
+extern "C" void nrf54l15_clean_ble_application_work_service(void) {
+  if (g_bleIdleServiceActive) {
+    return;
+  }
+  g_bleIdleServiceActive = true;
+
+  // Keep the lightweight helper responsible for arming or running the
+  // background connection scheduler. Without this step, sketches that enable
+  // background connection service immediately after CONNECT_IND can miss the
+  // first data event on slower or unlucky handshakes and become "connected"
+  // only long enough to stop advertising.
+  if (g_activeBleRadio != nullptr) {
+    g_activeBleRadio->serviceBackgroundConnection(0U);
+  }
+  if (g_bleBackgroundRadio != nullptr &&
+      g_bleBackgroundRadio != g_activeBleRadio) {
+    g_bleBackgroundRadio->serviceBackgroundConnection(0U);
+  }
+
+  // NUS-style foreground service loops need deferred GATT peer-write
+  // callbacks to run promptly so RX bytes reach sketch-owned ring buffers.
+  // Do not route this helper through the broader deferred-application policy:
+  // that path intentionally postpones noncritical work when the next
+  // connection event is close, which is reasonable for trace printing but can
+  // indefinitely starve RX callbacks on fast centrals.
+  if (g_activeBleRadio != nullptr) {
+    g_activeBleRadio->dispatchDeferredGattWrites();
+  }
+  if (g_bleBackgroundRadio != nullptr &&
+      g_bleBackgroundRadio != g_activeBleRadio) {
+    g_bleBackgroundRadio->dispatchDeferredGattWrites();
+  }
+
+  g_bleIdleServiceActive = false;
+}
+
 extern "C" void nrf54l15_clean_ble_yield_service(void) {
   // Same re-entry relaxation as idle_service: background connection polling
   // is safe to run during callbacks thanks to connectionServiceBusy_.

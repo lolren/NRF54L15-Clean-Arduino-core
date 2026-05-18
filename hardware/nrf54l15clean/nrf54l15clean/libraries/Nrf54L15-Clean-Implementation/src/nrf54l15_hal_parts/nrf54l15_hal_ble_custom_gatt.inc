@@ -581,6 +581,18 @@ bool BleRadio::isCustomGattNotificationQueued(uint16_t valueHandle, bool indicat
              (readLe16(&connectionPendingTxPayload_[5]) == valueHandle);
   }
 
+  if (!queued &&
+      connectionTxHistoryValid_ &&
+      !connectionFreshTxAllowed_ &&
+      (connectionLastTxPlainLlid_ == kBlePduDataStartOrComplete) &&
+      (connectionLastTxPlainLength_ >= 7U) &&
+      (readLe16(&connectionLastTxPlainPayload_[2]) == kBleL2capCidAtt)) {
+    const uint8_t expectedOpcode =
+        indicate ? kAttOpHandleValueInd : kAttOpHandleValueNtf;
+    queued = (connectionLastTxPlainPayload_[4] == expectedOpcode) &&
+             (readLe16(&connectionLastTxPlainPayload_[5]) == valueHandle);
+  }
+
   if (!queued && indicate &&
       (connectionCustomIndicationAwaitingHandle_ == valueHandle)) {
     queued = true;

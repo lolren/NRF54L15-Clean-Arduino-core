@@ -664,8 +664,39 @@ void BleRadio::serviceBackgroundConnection(uint32_t spinLimit) {
   if (!initialized_ || radio_ == nullptr || !connected_ || connectionServiceBusy_) {
     return;
   }
-  if (spinLimit == 0U && !timeReachedUs(bleTimingUs(), connectionNextEventUs_)) {
-    return;
+  if (spinLimit == 0U) {
+    const uint32_t nowUs = bleTimingUs();
+    if (!timeReachedUs(nowUs, connectionNextEventUs_)) {
+      if (backgroundConnectionServiceEnabled_ && connectionNextEventUs_ != 0U &&
+          !backgroundConnectionServiceArmed_) {
+        uint32_t wakeUs = connectionNextEventUs_;
+        if (connectionRole_ == BleConnectionRole::kPeripheral) {
+          const uint32_t rxStartUs =
+              (connectionNextEventUs_ > kBleConnRxStartLeadUs)
+                  ? static_cast<uint32_t>(connectionNextEventUs_ - kBleConnRxStartLeadUs)
+                  : connectionNextEventUs_;
+          wakeUs = (rxStartUs > kBleConnAnchorPrewaitUs)
+                       ? static_cast<uint32_t>(rxStartUs - kBleConnAnchorPrewaitUs)
+                       : rxStartUs;
+        } else {
+          wakeUs = (connectionNextEventUs_ > kBleConnAnchorPrewaitUs)
+                       ? static_cast<uint32_t>(connectionNextEventUs_ - kBleConnAnchorPrewaitUs)
+                       : connectionNextEventUs_;
+        }
+        backgroundConnectionWakeUs_ = wakeUs;
+        bleDisableCompare(kBleBackgroundConnPrewarmCompareChannel, true);
+        if (timeReachedUs(nowUs, wakeUs)) {
+          backgroundConnectionServiceDue_ = true;
+        } else {
+          backgroundConnectionServiceArmed_ = true;
+          backgroundConnectionServiceDue_ = false;
+          g_bleBackgroundRadio = this;
+          bleProgramCompare(kBleBackgroundConnPrewarmCompareChannel, wakeUs, true);
+          bleBackgroundEnableIrq();
+        }
+      }
+      return;
+    }
   }
 
   ++smpSecureConnectionsBackgroundServiceCount_;
@@ -684,6 +715,7 @@ void BleRadio::serviceBackgroundConnection(uint32_t spinLimit) {
   connectionServiceBusy_ = false;
 
   if (backgroundConnectionServiceEnabled_ && connected_ && connectionNextEventUs_ != 0U) {
+    const uint32_t nowUs = bleTimingUs();
     uint32_t wakeUs = connectionNextEventUs_;
     if (connectionRole_ == BleConnectionRole::kPeripheral) {
       const uint32_t rxStartUs =
@@ -699,10 +731,30 @@ void BleRadio::serviceBackgroundConnection(uint32_t spinLimit) {
                    : connectionNextEventUs_;
     }
     backgroundConnectionWakeUs_ = wakeUs;
-    backgroundConnectionServiceArmed_ = true;
-    backgroundConnectionServiceDue_ = false;
-    bleBackgroundEnableIrq();
-    bleProgramCompare(kBleBackgroundConnPrewarmCompareChannel, wakeUs, true);
+    bleDisableCompare(kBleBackgroundConnPrewarmCompareChannel, true);
+    if (timeReachedUs(nowUs, wakeUs)) {
+      // Programming a compare for a timestamp we have already reached can
+      // livelock the CPU in a back-to-back GRTC IRQ stream before the sketch
+      // regains control. Mark the service due and let foreground polling or
+      // the next idle/yield entry consume it instead.
+      backgroundConnectionServiceArmed_ = false;
+      backgroundConnectionServiceDue_ = true;
+    } else {
+      backgroundConnectionServiceArmed_ = true;
+      backgroundConnectionServiceDue_ = false;
+      g_bleBackgroundRadio = this;
+      bleProgramCompare(kBleBackgroundConnPrewarmCompareChannel, wakeUs, true);
+      bleBackgroundEnableIrq();
+    }
+  }
+
+  // When background connection service is already running in thread context,
+  // deliver deferred peer-write callbacks immediately instead of waiting for a
+  // later idle/yield pass. This keeps simple foreground loops such as NUS
+  // bridges from depending on an extra service call just to surface bytes
+  // that were already accepted and ACKed at the ATT layer.
+  if (!bleRunningInIsr()) {
+    dispatchDeferredGattWrites();
   }
 }
 
@@ -796,7 +848,11 @@ void BleRadio::snapshotDeferredConnectionEvent(const BleConnectionEvent& event) 
 
   const uint32_t irqState = bleEnterCritical();
   (void)enqueueConnectionEvent(event);
-  g_bleBackgroundRadio = this;
+  if (g_activeBleRadio != this) {
+    g_bleBackgroundRadio = this;
+  } else if (g_bleBackgroundRadio == this) {
+    g_bleBackgroundRadio = nullptr;
+  }
   bleExitCritical(irqState);
 }
 
@@ -832,7 +888,15 @@ bool BleRadio::enqueueDeferredGattWrite(BleGattWriteCallback callback, void* con
   deferredGattWriteTail_ =
       static_cast<uint8_t>((deferredGattWriteTail_ + 1U) % depth);
   ++deferredGattWriteCount_;
-  g_bleBackgroundRadio = this;
+  // Deferred peer-write callbacks for the currently active radio do not need
+  // the shared background GRTC owner slot unless a real background BLE
+  // service is armed. Claiming that slot unnecessarily keeps the IRQ path
+  // pointed at background advertising/connection cleanup even after the link
+  // has already dropped, which can starve the foreground code that should
+  // consume the queued connection event carrying the disconnect/ATT cleanup.
+  if (g_activeBleRadio != this || backgroundServicesActive()) {
+    g_bleBackgroundRadio = this;
+  }
   bleExitCritical(irqState);
   return true;
 }
@@ -880,7 +944,9 @@ bool BleRadio::enqueueDeferredTrace(const char* message) {
   deferredTraces_[deferredTraceTail_] = message;
   deferredTraceTail_ = static_cast<uint8_t>((deferredTraceTail_ + 1U) % depth);
   ++deferredTraceCount_;
-  g_bleBackgroundRadio = this;
+  if (g_activeBleRadio != this || backgroundServicesActive()) {
+    g_bleBackgroundRadio = this;
+  }
   bleExitCritical(irqState);
   return true;
 }
@@ -962,7 +1028,6 @@ void BleRadio::setBackgroundConnectionServiceEnabled(bool enabled) {
     stopBackgroundConnectionService();
     return;
   }
-
   const uint32_t irqState = bleEnterCritical();
   if (!initialized_ || radio_ == nullptr || !connected_) {
     backgroundConnectionServiceEnabled_ = false;
@@ -983,26 +1048,17 @@ void BleRadio::setBackgroundConnectionServiceEnabled(bool enabled) {
   backgroundConnectionRxPrepared_ = false;
   backgroundConnectionPreparedDataChannel_ = 0U;
   backgroundConnectionWakeUs_ = 0U;
-  g_bleBackgroundRadio = this;
-  if (connectionNextEventUs_ != 0U) {
-    uint32_t wakeUs = connectionNextEventUs_;
-    if (connectionRole_ == BleConnectionRole::kPeripheral) {
-      const uint32_t rxStartUs =
-          (connectionNextEventUs_ > kBleConnRxStartLeadUs)
-              ? static_cast<uint32_t>(connectionNextEventUs_ - kBleConnRxStartLeadUs)
-              : connectionNextEventUs_;
-      wakeUs = (rxStartUs > kBleConnAnchorPrewaitUs)
-                   ? static_cast<uint32_t>(rxStartUs - kBleConnAnchorPrewaitUs)
-                   : rxStartUs;
-    } else {
-      wakeUs = (connectionNextEventUs_ > kBleConnAnchorPrewaitUs)
-                   ? static_cast<uint32_t>(connectionNextEventUs_ - kBleConnAnchorPrewaitUs)
-                   : connectionNextEventUs_;
-    }
-    backgroundConnectionWakeUs_ = wakeUs;
-    backgroundConnectionServiceArmed_ = true;
-    bleBackgroundEnableIrq();
-    bleProgramCompare(kBleBackgroundConnPrewarmCompareChannel, wakeUs, true);
+  g_bleBackgroundPendSvPending = 0U;
+  blePendSvClearPending();
+  bleDisableCompare(kBleBackgroundConnPrewarmCompareChannel, true);
+  bleDisableCompare(kBleBackgroundConnRxCompareChannel, true);
+  NVIC->ICPR[static_cast<uint32_t>(kBleBackgroundGrtcIrq) >> 5U] =
+      (1UL << (static_cast<uint32_t>(kBleBackgroundGrtcIrq) & 0x1FUL));
+  if (g_bleBackgroundRadio == this && !backgroundAdvertisingEnabled_ &&
+      queuedConnectionEventCount_ == 0U &&
+      deferredConnectionEventCount_ == 0U &&
+      deferredGattWriteCount_ == 0U && deferredTraceCount_ == 0U) {
+    g_bleBackgroundRadio = nullptr;
   }
   bleExitCritical(irqState);
 }
@@ -1039,7 +1095,7 @@ void BleRadio::stopBackgroundConnectionService() {
   g_bleBackgroundPendSvPending = 0U;
   blePendSvClearPending();
   bleDisableCompare(kBleBackgroundConnPrewarmCompareChannel, false);
-  bleDisableCompare(kBleBackgroundConnRxCompareChannel, false);
+  bleDisableCompare(kBleBackgroundConnRxCompareChannel, true);
   if (g_bleBackgroundRadio == this && !backgroundAdvertisingEnabled_ &&
       queuedConnectionEventCount_ == 0U &&
       deferredConnectionEventCount_ == 0U &&

@@ -148,6 +148,17 @@ extern volatile uint8_t g_ble_central_rxtimeout_hdr0;
 extern volatile uint8_t g_ble_central_rxtimeout_hdr1;
 extern volatile uint8_t g_ble_central_rxtimeout_hdr2;
 extern volatile uint8_t g_ble_central_rxtimeout_hdr3;
+extern volatile uint32_t g_ble_periph_rx_trace_count;
+extern volatile uint8_t g_ble_periph_rx_trace_llid[32];
+extern volatile uint8_t g_ble_periph_rx_trace_len[32];
+extern volatile uint8_t g_ble_periph_rx_trace_flags[32];
+extern volatile uint8_t g_ble_periph_rx_trace_opcode[32];
+extern volatile uint16_t g_ble_periph_rx_trace_cid[32];
+extern volatile uint32_t g_ble_periph_tx_trace_count;
+extern volatile uint8_t g_ble_periph_tx_trace_llid[32];
+extern volatile uint8_t g_ble_periph_tx_trace_len[32];
+extern volatile uint8_t g_ble_periph_tx_trace_opcode[32];
+extern volatile uint16_t g_ble_periph_tx_trace_cid[32];
 }
 
 // ─── Bond persistence ─────────────────────────────────────────
@@ -408,6 +419,16 @@ void printDisconnectDebug() {
   Serial.print(" lastrx_op=0x");
   if (dbg.lastRxOpcode < 16U) Serial.print('0');
   Serial.print(dbg.lastRxOpcode, HEX);
+  Serial.print(" exp_rxsn=");
+  Serial.print(dbg.expectedRxSn);
+  Serial.print(" txsn=");
+  Serial.print(dbg.txSn);
+  Serial.print(" lastsn=");
+  Serial.print(dbg.lastRxSn);
+  Serial.print(" lastnesn=");
+  Serial.print(dbg.lastRxNesn);
+  Serial.print(" new=");
+  Serial.print(dbg.lastPacketIsNew);
   Serial.print(" ack=");
   Serial.print(dbg.lastPeerAckedLastTx);
   Serial.println();
@@ -436,6 +457,64 @@ void printDisconnectDebug() {
   Serial.print(" post_state=");
   Serial.print(g_ble_central_posttx_observe_state);
   Serial.println();
+}
+
+void printControllerTraceRing() {
+  const uint32_t rxCount = g_ble_periph_rx_trace_count;
+  const uint32_t txCount = g_ble_periph_tx_trace_count;
+  Serial.print("trace_dbg rx_count=");
+  Serial.print(rxCount);
+  Serial.print(" tx_count=");
+  Serial.println(txCount);
+
+  const uint8_t rxDump = (rxCount > 8U) ? 8U : static_cast<uint8_t>(rxCount);
+  const uint8_t rxStart =
+      (rxCount > rxDump)
+          ? static_cast<uint8_t>((rxCount - rxDump) & 0x1FU)
+          : 0U;
+  for (uint8_t i = 0U; i < rxDump; ++i) {
+    const uint8_t slot = static_cast<uint8_t>((rxStart + i) & 0x1FU);
+    Serial.print("trace_rx[");
+    Serial.print(i);
+    Serial.print("] llid=");
+    Serial.print(g_ble_periph_rx_trace_llid[slot]);
+    Serial.print(" len=");
+    Serial.print(g_ble_periph_rx_trace_len[slot]);
+    Serial.print(" flags=0x");
+    if (g_ble_periph_rx_trace_flags[slot] < 16U) Serial.print('0');
+    Serial.print(g_ble_periph_rx_trace_flags[slot], HEX);
+    Serial.print(" cid=0x");
+    if (g_ble_periph_rx_trace_cid[slot] < 0x1000U) Serial.print('0');
+    if (g_ble_periph_rx_trace_cid[slot] < 0x0100U) Serial.print('0');
+    if (g_ble_periph_rx_trace_cid[slot] < 0x0010U) Serial.print('0');
+    Serial.print(g_ble_periph_rx_trace_cid[slot], HEX);
+    Serial.print(" op=0x");
+    if (g_ble_periph_rx_trace_opcode[slot] < 16U) Serial.print('0');
+    Serial.println(g_ble_periph_rx_trace_opcode[slot], HEX);
+  }
+
+  const uint8_t txDump = (txCount > 8U) ? 8U : static_cast<uint8_t>(txCount);
+  const uint8_t txStart =
+      (txCount > txDump)
+          ? static_cast<uint8_t>((txCount - txDump) & 0x1FU)
+          : 0U;
+  for (uint8_t i = 0U; i < txDump; ++i) {
+    const uint8_t slot = static_cast<uint8_t>((txStart + i) & 0x1FU);
+    Serial.print("trace_tx[");
+    Serial.print(i);
+    Serial.print("] llid=");
+    Serial.print(g_ble_periph_tx_trace_llid[slot]);
+    Serial.print(" len=");
+    Serial.print(g_ble_periph_tx_trace_len[slot]);
+    Serial.print(" cid=0x");
+    if (g_ble_periph_tx_trace_cid[slot] < 0x1000U) Serial.print('0');
+    if (g_ble_periph_tx_trace_cid[slot] < 0x0100U) Serial.print('0');
+    if (g_ble_periph_tx_trace_cid[slot] < 0x0010U) Serial.print('0');
+    Serial.print(g_ble_periph_tx_trace_cid[slot], HEX);
+    Serial.print(" op=0x");
+    if (g_ble_periph_tx_trace_opcode[slot] < 16U) Serial.print('0');
+    Serial.println(g_ble_periph_tx_trace_opcode[slot], HEX);
+  }
 }
 
 void printEncDiag() {
@@ -626,6 +705,18 @@ void logSmpEvent(const BleConnectionEvent& evt) {
       if (evt.payload[i] < 16U) Serial.print('0');
       Serial.print(evt.payload[i], HEX);
     }
+    Serial.print(" new=");
+    Serial.print(evt.packetIsNew ? 1 : 0);
+    Serial.print(" ack=");
+    Serial.print(evt.peerAckedLastTx ? 1 : 0);
+    Serial.print(" rxsn=");
+    Serial.print(evt.rxSn);
+    Serial.print(" rxnesn=");
+    Serial.print(evt.rxNesn);
+    Serial.print(" txsn=");
+    Serial.print(evt.txSn);
+    Serial.print(" txnesn=");
+    Serial.print(evt.txNesn);
     printed = true;
   }
   if ((evt.txLlid == 0x02U) && (evt.txPayloadLength >= 5U) &&
@@ -645,6 +736,10 @@ void logSmpEvent(const BleConnectionEvent& evt) {
       if (evt.txPayload[i] < 16U) Serial.print('0');
       Serial.print(evt.txPayload[i], HEX);
     }
+    Serial.print(" txsn=");
+    Serial.print(evt.txSn);
+    Serial.print(" txnesn=");
+    Serial.print(evt.txNesn);
     printed = true;
   }
   if (printed) {
@@ -930,6 +1025,7 @@ void loop() {
         Serial.println("ble_pair central: disconnected");
         dumpTraceBuffer();
         printEncDiag();
+        printControllerTraceRing();
         printDisconnectDebug();
         g_centralSeen = false;
         g_ble.clearEncryptionDebugCounters();

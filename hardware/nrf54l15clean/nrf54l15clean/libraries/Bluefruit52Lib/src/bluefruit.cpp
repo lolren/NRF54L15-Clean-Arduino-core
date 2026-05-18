@@ -629,10 +629,16 @@ class BluefruitCompatManager {
     return true;
   }
 
-  void noteExplicitCentralDataLengthRequest() {
-    if (radio_.isConnected() &&
-        radio_.connectionRole() == BleConnectionRole::kCentral) {
+  void noteExplicitDataLengthRequest() {
+    if (!radio_.isConnected()) {
+      return;
+    }
+    const BleConnectionRole role = radio_.connectionRole();
+    if (role == BleConnectionRole::kCentral) {
       central_explicit_data_length_request_ = true;
+      radio_.setCentralPreferredDataLength(251U);
+    } else if (role == BleConnectionRole::kPeripheral) {
+      radio_.setPeripheralPreferredDataLength(251U);
     }
   }
 
@@ -663,6 +669,9 @@ class BluefruitCompatManager {
   }
 
   uint16_t centralAutomaticDataLengthCeiling() const {
+    if (central_explicit_data_length_request_) {
+      return 251U;
+    }
     return preferredBleDataLengthFromMtu(centralAutomaticMtuCeiling());
   }
 
@@ -3466,7 +3475,7 @@ bool BLEConnection::requestDataLengthUpdate() {
   if (!connected()) {
     return false;
   }
-  manager().noteExplicitCentralDataLengthRequest();
+  manager().noteExplicitDataLengthRequest();
   if (ScopedBluefruitUserCallback::active()) {
     return manager().deferConnectionDataLengthUpdate();
   }

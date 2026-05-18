@@ -122,6 +122,17 @@ extern "C" void nrf54l15_secp256r1_cooperate_hook(void) {
 }
 
 extern "C" void nrf54l15_ble_grtc_irq_service(void) {
+  // Foreground-only work for the currently active radio does not need the
+  // shared background-radio owner slot. If both owner pointers refer to the
+  // same radio and neither background advertising nor background connection
+  // service is enabled anymore, release the background owner here before we
+  // bounce back into background cleanup paths from the IRQ.
+  if (g_bleBackgroundRadio != nullptr &&
+      g_bleBackgroundRadio == g_activeBleRadio &&
+      !g_bleBackgroundRadio->isBackgroundAdvertisingEnabled() &&
+      !g_bleBackgroundRadio->isBackgroundConnectionServiceEnabled()) {
+    g_bleBackgroundRadio = nullptr;
+  }
   if (g_bleBackgroundRadio != nullptr) {
     g_bleBackgroundRadio->serviceBackgroundAdvertisingFromIrq();
     g_bleBackgroundRadio->serviceBackgroundConnectionFromIrq();

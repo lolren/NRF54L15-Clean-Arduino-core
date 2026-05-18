@@ -93,6 +93,12 @@ volatile uint8_t g_nusDiagChannelCount = 0U;
 volatile uint8_t g_nusDiagHop = 0U;
 volatile uint8_t g_nusDiagSca = 0U;
 volatile uint32_t g_nusDiagInfoCaptureCount = 0U;
+volatile uint32_t g_dbgLoopPhase = 0U;
+volatile uint32_t g_dbgDisconnectedEntries = 0U;
+volatile uint32_t g_dbgConnectedEntries = 0U;
+volatile uint32_t g_dbgStaleDrainEvents = 0U;
+volatile uint32_t g_dbgPollStartedCount = 0U;
+volatile uint32_t g_dbgPollEmptyCount = 0U;
 
 }  // namespace
 
@@ -402,12 +408,40 @@ void setup() {
 
 void loop() {
   if (!g_ble.isConnected()) {
+    g_dbgLoopPhase = 1U;
+    ++g_dbgDisconnectedEntries;
+    // Flush any deferred disconnect/ATT cleanup from the previous link before
+    // starting another advertising pass. Some centrals can drop the link after
+    // queuing a final terminateInd event plus a deferred peer-write callback.
+    // If we go straight back into advertising, the bridge can keep stale
+    // connected/notifying state and the next session never starts cleanly.
+    BleConnectionEvent staleEvent{};
+    while (g_ble.pollConnectionEvent(&staleEvent, 0U) &&
+           staleEvent.eventStarted) {
+      ++g_dbgStaleDrainEvents;
+      g_nus.service(&staleEvent);
+      staleEvent = {};
+    }
+    g_dbgLoopPhase = 2U;
+    g_nus.service();
+
+    g_dbgLoopPhase = 3U;
     BleAdvInteraction adv{};
     g_ble.advertiseInteractEvent(&adv, 350U, 350000UL, 700000UL);
+    const bool connectIndSeen = adv.receivedConnectInd;
     if (adv.receivedConnectInd) {
       captureAdvConnectDiag(adv);
     }
-    g_nus.service();
+    // Stay out of the NUS foreground service path only while the link is
+    // actually connected after this advertising pass. If advertiseInteractEvent()
+    // saw CONNECT_IND but the link has already fallen back to disconnected
+    // state, still run the service path so deferred terminate/ATT cleanup can
+    // clear any stale bridge-side session state before the next advertising
+    // attempt.
+    if (!g_ble.isConnected()) {
+      g_dbgLoopPhase = 4U;
+      g_nus.service();
+    }
 
     if (g_wasConnected) {
       g_wasConnected = false;
@@ -427,12 +461,14 @@ void loop() {
     // Only pace the advertising loop when still disconnected after
     // advertiseInteractEvent(). If a CONNECT_IND was just accepted, skip the
     // delay so the first pollConnectionEvent() reaches the anchor on time.
-    if (!g_ble.isConnected()) {
+    if (!g_ble.isConnected() && !connectIndSeen) {
       delay(100);
     }
     return;
   }
 
+  g_dbgLoopPhase = 10U;
+  ++g_dbgConnectedEntries;
   if (!g_wasConnected) {
     g_wasConnected = true;
     g_bannerSent = false;
@@ -455,6 +491,7 @@ void loop() {
   }
 
   // Keep BLE connection-event polling tight; missing anchors leads to 0x08 timeouts.
+  g_dbgLoopPhase = 11U;
   BleConnectionEvent evt{};
   const bool eventStarted =
       g_ble.pollConnectionEvent(&evt, kConnectionPollTimeoutUs) && evt.eventStarted;
@@ -469,6 +506,8 @@ void loop() {
   }
 
   if (!eventStarted) {
+    g_dbgLoopPhase = 12U;
+    ++g_dbgPollEmptyCount;
     g_nus.service();
     const uint32_t nowMs = millis();
     maybeRequestLinkSecurity(nowMs);
@@ -482,7 +521,10 @@ void loop() {
     return;
   }
 
+  g_dbgLoopPhase = 13U;
+  ++g_dbgPollStartedCount;
   g_nus.service(&evt);
+  g_nus.service();
   const uint32_t nowMs = millis();
   maybeRequestLinkSecurity(nowMs);
   if (evt.terminateInd) {

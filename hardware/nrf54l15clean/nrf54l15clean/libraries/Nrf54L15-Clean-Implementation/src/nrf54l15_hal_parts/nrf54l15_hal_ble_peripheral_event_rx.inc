@@ -374,18 +374,18 @@ bool BleRadio::pollConnectionEventInternal(BleConnectionEvent* event,
         (handle == kHandleGattServiceChangedCccd) ||
         (handle == kHandleBatteryLevelCccd) ||
         (findCustomCharacteristicByCccdHandle(handle) != nullptr);
-    const bool isCustomValueHandle =
-        (findCustomCharacteristicByValueHandle(handle) != nullptr);
-    if (!isCccdHandle && !isCustomValueHandle) {
+    if (!isCccdHandle &&
+        (findCustomCharacteristicByValueHandle(handle) == nullptr)) {
       return false;
     }
-    if (!isCccdHandle &&
-        ((connectionCurrentRxPhy_ & kBlePhyCoded) != 0U)) {
-      // Same-event write responses on coded PHY spend too much time in the
-      // ISR-side custom GATT value update path for larger payloads. Defer
-      // custom value writes to the normal response path so the link keeps the
-      // LL ACK timing and returns ATT WriteRsp on the next event instead of
-      // tearing down the connection.
+    if (!isCccdHandle) {
+      // Keep same-event ATT write turnaround limited to CCCD writes. Custom
+      // value writes feed sketch-level handlers and can queue server-push ATT
+      // PDUs (for example NUS TX notifications) as a side effect. Deferring
+      // them through the normal connection-event path keeps that state
+      // transition in one place and avoids losing the queued notification when
+      // a write response and a server-push notification compete in the same
+      // event.
       return false;
     }
 
@@ -531,6 +531,7 @@ bool BleRadio::pollConnectionEventInternal(BleConnectionEvent* event,
            sizeof(connectionLastTxEncryptedPayload_));
     connectionTxHistoryValid_ = true;
     connectionLastTxSn_ = static_cast<uint8_t>((txPacket_[0] >> 3U) & 0x01U);
+    connectionFreshTxAllowed_ = false;
     blePeriphTxTracePushPacket(txLlidFast, txLengthFast, &connectionTxPayload_[0]);
 
     if (event != nullptr) {
@@ -793,6 +794,7 @@ bool BleRadio::pollConnectionEventInternal(BleConnectionEvent* event,
            sizeof(connectionLastTxEncryptedPayload_));
     connectionTxHistoryValid_ = true;
     connectionLastTxSn_ = static_cast<uint8_t>((txPacket_[0] >> 3U) & 0x01U);
+    connectionFreshTxAllowed_ = false;
     blePeriphTxTracePushPacket(txLlidFast, txLengthFast, &connectionTxPayload_[0]);
     if (candidateAttImmediate) {
       ++encDebug_.connFastAttReadTurnaroundCount;
@@ -998,7 +1000,9 @@ bool BleRadio::pollConnectionEventInternal(BleConnectionEvent* event,
       connectionPendingTxValid_ &&
       (connectionPendingTxLlid_ == kBlePduDataStartOrComplete) &&
       (connectionPendingTxLength_ >= kBleL2capHeaderLen) &&
-      ((readLe16(&connectionPendingTxPayload_[2]) == kBleL2capCidAtt) ||
+      (((readLe16(&connectionPendingTxPayload_[2]) == kBleL2capCidAtt) &&
+        (connectionPendingTxLength_ >= (kBleL2capHeaderLen + 1U)) &&
+        attOpcodeIsServerResponsePdu(connectionPendingTxPayload_[4])) ||
        (readLe16(&connectionPendingTxPayload_[2]) == kBleL2capCidSmp) ||
        (readLe16(&connectionPendingTxPayload_[2]) == kBleL2capCidLeSignaling));
   const bool firstEncryptedDataAfterStartRsp =
@@ -1026,7 +1030,7 @@ bool BleRadio::pollConnectionEventInternal(BleConnectionEvent* event,
        peerAdvancedToEncryptedDataAfterStartRsp ||
        (lastTxWasEncryptedEmptyAck &&
         peerAdvancedToNewEncryptedDataProcedure) ||
-       ((lastTxWasAttServerResponse || lastTxHadAttPayload) &&
+       (lastTxWasAttServerResponse &&
         (peerAdvancedToNewUnencryptedAttProcedure ||
          peerAdvancedToNewEncryptedDataProcedure)) ||
        pendingTxIsRetryableL2capResponse)) {
@@ -1040,7 +1044,7 @@ bool BleRadio::pollConnectionEventInternal(BleConnectionEvent* event,
     peerAckedLastTx = true;
     implicitEmptyAck = true;
     if (peerAdvancedToEncryptedDataAfterStartRsp ||
-        ((lastTxWasAttServerResponse || lastTxHadAttPayload) &&
+        (lastTxWasAttServerResponse &&
          (peerAdvancedToNewUnencryptedAttProcedure ||
           peerAdvancedToNewEncryptedDataProcedure))) {
       ++encDebug_.connImplicitAttProgressAckCount;
@@ -1048,6 +1052,9 @@ bool BleRadio::pollConnectionEventInternal(BleConnectionEvent* event,
   }
   if (peerAckedLastTx) {
     connectionTxSn_ ^= 0x01U;
+    connectionFreshTxAllowed_ = true;
+  } else {
+    connectionFreshTxAllowed_ = !connectionTxHistoryValid_;
   }
 
   bool terminateInd = false;
