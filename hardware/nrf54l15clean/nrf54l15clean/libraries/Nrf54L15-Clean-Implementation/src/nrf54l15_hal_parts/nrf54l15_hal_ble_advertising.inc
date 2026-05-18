@@ -1661,18 +1661,13 @@ bool BleRadio::handleExtendedScanRequestAndMaybeRespond(
       ((RADIO_SHORTS_TXREADY_START_Enabled << RADIO_SHORTS_TXREADY_START_Pos) &
        RADIO_SHORTS_TXREADY_START_Msk) |
       ((RADIO_SHORTS_PHYEND_DISABLE_Enabled << RADIO_SHORTS_PHYEND_DISABLE_Pos) &
-       RADIO_SHORTS_PHYEND_DISABLE_Msk) |
-      ((RADIO_SHORTS_DISABLED_RXEN_Enabled << RADIO_SHORTS_DISABLED_RXEN_Pos) &
-       RADIO_SHORTS_DISABLED_RXEN_Msk) |
-      ((RADIO_SHORTS_RXREADY_START_Enabled << RADIO_SHORTS_RXREADY_START_Pos) &
-       RADIO_SHORTS_RXREADY_START_Msk) |
-      ((RADIO_SHORTS_ADDRESS_RSSISTART_Enabled
-        << RADIO_SHORTS_ADDRESS_RSSISTART_Pos) &
-       RADIO_SHORTS_ADDRESS_RSSISTART_Msk);
+       RADIO_SHORTS_PHYEND_DISABLE_Msk);
 
   const uint64_t txPhaseStartUs = nrf54l15_core_monotonic_time_us();
   radio_->TASKS_TXEN = RADIO_TASKS_TXEN_TASKS_TXEN_Trigger;
-  const bool txEndSeen = waitForEnd(spinLimit);
+  uint32_t txEndUs = 0U;
+  const bool txEndSeen = waitRadioEndBudgeted(radio_, 3000U, spinLimit,
+                                              &txEndUs);
   if (!txEndSeen) {
     radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
     waitDisabled(spinLimit / 2U + 1U);
@@ -1698,20 +1693,9 @@ bool BleRadio::handleExtendedScanRequestAndMaybeRespond(
   radio_->EVENTS_ADDRESS = 0U;
   radio_->EVENTS_CRCOK = 0U;
   radio_->EVENTS_CRCERROR = 0U;
-  radio_->SHORTS =
-      ((RADIO_SHORTS_RXREADY_START_Enabled << RADIO_SHORTS_RXREADY_START_Pos) &
-       RADIO_SHORTS_RXREADY_START_Msk) |
-      ((RADIO_SHORTS_ADDRESS_RSSISTART_Enabled
-        << RADIO_SHORTS_ADDRESS_RSSISTART_Pos) &
-       RADIO_SHORTS_ADDRESS_RSSISTART_Msk) |
-      ((RADIO_SHORTS_PHYEND_DISABLE_Enabled << RADIO_SHORTS_PHYEND_DISABLE_Pos) &
-       RADIO_SHORTS_PHYEND_DISABLE_Msk);
-
-  const uint32_t state =
-      (radio_->STATE & RADIO_STATE_STATE_Msk) >> RADIO_STATE_STATE_Pos;
-  if (state == RADIO_STATE_STATE_Disabled) {
-    radio_->TASKS_RXEN = RADIO_TASKS_RXEN_TASKS_RXEN_Trigger;
-  }
+  radio_->SHORTS = bleRadioShortsRxListen();
+  bleTriggerRxAtTargetUsCritical(
+      radio_, txEndUs + kBleAdvRequestRxenAfterTxUs);
 
   uint32_t rxEndUs = 0U;
   bool addressSeen = false;
@@ -1895,7 +1879,8 @@ bool BleRadio::advertiseInteractOncePrepared(BleAdvertisingChannel channel,
     return false;
   }
 
-  // Keep TX->RX turnaround in hardware to catch requests sent at T_IFS timing.
+  // Keep TX in hardware, then arm RX near T_IFS. Starting RX immediately after
+  // TX disable is safe but wastes receiver-on time on every advertising channel.
   clearRadioCoreEvents(radio_);
   memset(rxPacket_, 0, sizeof(rxPacket_));
   {
@@ -1909,18 +1894,13 @@ bool BleRadio::advertiseInteractOncePrepared(BleAdvertisingChannel channel,
       ((RADIO_SHORTS_TXREADY_START_Enabled << RADIO_SHORTS_TXREADY_START_Pos) &
        RADIO_SHORTS_TXREADY_START_Msk) |
       ((RADIO_SHORTS_PHYEND_DISABLE_Enabled << RADIO_SHORTS_PHYEND_DISABLE_Pos) &
-       RADIO_SHORTS_PHYEND_DISABLE_Msk) |
-      ((RADIO_SHORTS_DISABLED_RXEN_Enabled << RADIO_SHORTS_DISABLED_RXEN_Pos) &
-       RADIO_SHORTS_DISABLED_RXEN_Msk) |
-      ((RADIO_SHORTS_RXREADY_START_Enabled << RADIO_SHORTS_RXREADY_START_Pos) &
-       RADIO_SHORTS_RXREADY_START_Msk) |
-      ((RADIO_SHORTS_ADDRESS_RSSISTART_Enabled
-        << RADIO_SHORTS_ADDRESS_RSSISTART_Pos) &
-       RADIO_SHORTS_ADDRESS_RSSISTART_Msk);
+       RADIO_SHORTS_PHYEND_DISABLE_Msk);
 
   const uint64_t txPhaseStartUs = nrf54l15_core_monotonic_time_us();
   radio_->TASKS_TXEN = RADIO_TASKS_TXEN_TASKS_TXEN_Trigger;
-  const bool txEndSeen = waitForEnd(spinLimit);
+  uint32_t txEndUs = 0U;
+  const bool txEndSeen = waitRadioEndBudgeted(radio_, 3000U, spinLimit,
+                                              &txEndUs);
   if (!txEndSeen) {
     radio_->TASKS_DISABLE = RADIO_TASKS_DISABLE_TASKS_DISABLE_Trigger;
     (void)waitRadioDisabledBudgeted(radio_, kBleConnTxDisableWaitUs,
@@ -1957,21 +1937,9 @@ bool BleRadio::advertiseInteractOncePrepared(BleAdvertisingChannel channel,
   radio_->EVENTS_ADDRESS = 0U;
   radio_->EVENTS_CRCOK = 0U;
   radio_->EVENTS_CRCERROR = 0U;
-  radio_->SHORTS =
-      ((RADIO_SHORTS_RXREADY_START_Enabled << RADIO_SHORTS_RXREADY_START_Pos) &
-       RADIO_SHORTS_RXREADY_START_Msk) |
-      ((RADIO_SHORTS_ADDRESS_RSSISTART_Enabled
-        << RADIO_SHORTS_ADDRESS_RSSISTART_Pos) &
-       RADIO_SHORTS_ADDRESS_RSSISTART_Msk) |
-      ((RADIO_SHORTS_PHYEND_DISABLE_Enabled << RADIO_SHORTS_PHYEND_DISABLE_Pos) &
-       RADIO_SHORTS_PHYEND_DISABLE_Msk);
-
-  // Defensive fallback: if shortcut path did not enter RX, arm RX manually.
-  const uint32_t state =
-      (radio_->STATE & RADIO_STATE_STATE_Msk) >> RADIO_STATE_STATE_Pos;
-  if (state == RADIO_STATE_STATE_Disabled) {
-    radio_->TASKS_RXEN = RADIO_TASKS_RXEN_TASKS_RXEN_Trigger;
-  }
+  radio_->SHORTS = bleRadioShortsRxListen();
+  bleTriggerRxAtTargetUsCritical(
+      radio_, txEndUs + kBleAdvRequestRxenAfterTxUs);
 
   const uint64_t rxPhaseStartUs = nrf54l15_core_monotonic_time_us();
   uint32_t rxEndUs = 0U;

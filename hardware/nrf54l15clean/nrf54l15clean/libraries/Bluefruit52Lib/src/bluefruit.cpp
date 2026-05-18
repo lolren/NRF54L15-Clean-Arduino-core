@@ -28,6 +28,7 @@ constexpr uint8_t kAdTypeAppearance = 0x19U;
 constexpr uint8_t kAdTypeManufacturer = 0xFFU;
 constexpr uint8_t kLedOnState = LOW;
 constexpr uint8_t kLedOffState = HIGH;
+constexpr uint32_t kForegroundConnectableAdvInterChannelDelayUs = 40U;
 
 constexpr uint16_t kUuidDfuService = 0xFE59U;
 constexpr uint16_t kCompanyIdApple = 0x004CU;
@@ -1509,8 +1510,9 @@ class BluefruitCompatManager {
 
     if (advType == BLE_GAP_ADV_TYPE_CONNECTABLE_SCANNABLE_UNDIRECTED ||
         advType == BLE_GAP_ADV_TYPE_NONCONNECTABLE_SCANNABLE_UNDIRECTED) {
-      (void)radio_.advertiseInteractEvent(nullptr, 120U, 250000UL, 700000UL,
-                                          false);
+      (void)radio_.advertiseInteractEvent(
+          nullptr, kForegroundConnectableAdvInterChannelDelayUs, 250000UL,
+          700000UL, false);
       ++g_bluefruitMaybeAdvertiseConnectableEventCount;
     } else {
       (void)radio_.advertiseEvent(350U, 600000UL, false);

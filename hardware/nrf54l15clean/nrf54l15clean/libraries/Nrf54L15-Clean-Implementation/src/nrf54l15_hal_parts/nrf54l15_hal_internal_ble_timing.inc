@@ -869,10 +869,23 @@ constexpr uint32_t kBleConnTxenAfterRxUs = 100U;
 #define BLE_SCAN_RSP_TXEN_AFTER_RX_US 100U
 #endif
 constexpr uint32_t kBleScanRspTxenAfterRxUs = BLE_SCAN_RSP_TXEN_AFTER_RX_US;
-// Legacy advertising request/response exchanges should complete within hundreds
-// of microseconds around T_IFS. Bound RX listen windows so advertising cadence
-// does not become host-CPU-spin dependent.
-constexpr uint32_t kBleAdvRequestStartWaitMaxUs = 210U;
+// Advertising TX->RX turnaround can be power-optimized by arming RXEN close to
+// the BLE T_IFS point instead of letting DISABLED->RXEN start the receiver as
+// soon as TX has disabled.
+#ifndef BLE_ADV_REQUEST_RXEN_AFTER_TX_US
+#define BLE_ADV_REQUEST_RXEN_AFTER_TX_US 100U
+#endif
+constexpr uint32_t kBleAdvRequestRxenAfterTxUs =
+    BLE_ADV_REQUEST_RXEN_AFTER_TX_US;
+// Legacy advertising request/response exchanges should complete around T_IFS.
+// With RXEN delayed by kBleAdvRequestRxenAfterTxUs, a valid 1M SCAN_REQ /
+// CONNECT_IND should raise ADDRESS well before this default. Keep it tunable so
+// field reports can widen the window without reverting the lower-power path.
+#ifndef BLE_ADV_REQUEST_START_WAIT_MAX_US
+#define BLE_ADV_REQUEST_START_WAIT_MAX_US 130U
+#endif
+constexpr uint32_t kBleAdvRequestStartWaitMaxUs =
+    BLE_ADV_REQUEST_START_WAIT_MAX_US;
 constexpr uint32_t kBleAdvRequestListenMaxUs = 2500U;
 constexpr uint32_t kBleScanRspListenMaxUs = 2500U;
 
@@ -1118,6 +1131,22 @@ static inline void bleTriggerTxAtTargetUsCritical(NRF_RADIO_Type* radio,
     nowUs = bleTimingUs();
   }
   radio->TASKS_TXEN = RADIO_TASKS_TXEN_TASKS_TXEN_Trigger;
+  __DSB();
+  bleExitCritical(irqState);
+}
+
+static inline void bleTriggerRxAtTargetUsCritical(NRF_RADIO_Type* radio,
+                                                  uint32_t targetUs) {
+  if (radio == nullptr) {
+    return;
+  }
+
+  const uint32_t irqState = bleEnterCritical();
+  uint32_t nowUs = bleTimingUs();
+  while (static_cast<int32_t>(nowUs - targetUs) < 0) {
+    nowUs = bleTimingUs();
+  }
+  radio->TASKS_RXEN = RADIO_TASKS_RXEN_TASKS_RXEN_Trigger;
   __DSB();
   bleExitCritical(irqState);
 }
