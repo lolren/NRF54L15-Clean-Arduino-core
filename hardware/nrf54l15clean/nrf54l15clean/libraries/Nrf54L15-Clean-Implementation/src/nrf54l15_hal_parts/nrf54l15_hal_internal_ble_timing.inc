@@ -1250,10 +1250,10 @@ constexpr uint16_t kBlePreferredConnIntervalMaxUnits = 80U;
 constexpr uint16_t kBlePreferredConnLatency = 0U;
 constexpr uint16_t kBlePreferredConnTimeoutUnits = 500U;
 #else
-constexpr uint32_t kBleConnAnchorPrewaitUs = 360U;
+constexpr uint32_t kBleConnAnchorPrewaitUs = 240U;
 constexpr uint32_t kBleConnRxStartLeadUs = 2200U;
-constexpr uint32_t kBleConnRxStartLeadSyncedUs = 900U;
-constexpr uint32_t kBleConnRxListenBaseUs = 900U;
+constexpr uint32_t kBleConnRxStartLeadSyncedUs = 720U;
+constexpr uint32_t kBleConnRxListenBaseUs = 720U;
 constexpr uint32_t kBleConnRxListenMaxUs = 4500U;
 constexpr uint32_t kBleConnDisableWaitUs = 750U;
 constexpr uint32_t kBleConnTxDisableWaitUs = 750U;
