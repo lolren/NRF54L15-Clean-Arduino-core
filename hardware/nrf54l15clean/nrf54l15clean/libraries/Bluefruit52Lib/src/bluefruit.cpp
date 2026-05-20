@@ -874,10 +874,10 @@ class BluefruitCompatManager {
         Bluefruit.Scanner.rx_callback_ != nullptr) {
       return 1U;
     }
-    if (radio_.isBackgroundAdvertisingEnabled()) {
+    if (!radio_.isConnected() && radio_.isBackgroundAdvertisingEnabled()) {
       return 0U;
     }
-    if (Bluefruit.Advertising.running_) {
+    if (!radio_.isConnected() && Bluefruit.Advertising.running_) {
       if (next_adv_due_us_ == 0U) {
         ++g_bluefruitIdleCapAdvZeroDueCount;
         return 1U;
@@ -1690,6 +1690,10 @@ class BluefruitCompatManager {
       }
       if (last_connection_role_ == BleConnectionRole::kPeripheral) {
         radio_.setBackgroundConnectionServiceEnabled(true);
+        // restartOnDisconnect is a future policy; advertising is not active
+        // while a peripheral connection is established.
+        Bluefruit.Advertising.running_ = false;
+        next_adv_due_us_ = 0U;
         for (uint8_t i = 0U; i < characteristic_count_; ++i) {
           if (characteristics_[i] != nullptr) {
             characteristics_[i]->_notify_enabled = false;
@@ -1707,9 +1711,6 @@ class BluefruitCompatManager {
             invokeBluefruitUserCallback(c->_cccd_wr_cb, 0U, c,
                                         static_cast<uint16_t>(0U));
           }
-        }
-        if (!Bluefruit.Advertising.restart_on_disconnect_) {
-          Bluefruit.Advertising.running_ = false;
         }
       } else if (last_connection_role_ == BleConnectionRole::kCentral) {
         Bluefruit.Scanner.paused_ = true;
