@@ -13,6 +13,9 @@ bool BleRadio::pollConnectionEventInternal(BleConnectionEvent* event,
       (connectionIntervalUnits_ > 0U)
           ? (static_cast<uint32_t>(connectionIntervalUnits_) * 1250UL)
           : 1250UL;
+  const uint32_t rxStartLeadUs =
+      bleConnectionRxStartLeadUs(connectionSyncAttemptsRemaining_ > 0U,
+                                 connectionMissedEventCount_);
 
   uint32_t nowUs = bleTimingUs();
   // If application code stalled long enough that the current event window is
@@ -30,10 +33,11 @@ bool BleRadio::pollConnectionEventInternal(BleConnectionEvent* event,
     // hundred microseconds) can cause channel selection to advance even while
     // we're still within the valid RX window, leading to cascaded timeouts.
     const uint32_t listenBudgetUs =
-        bleConnectionRxListenUs(connectionIntervalUnits_, connectionSca_);
+        bleConnectionRxListenUs(connectionIntervalUnits_, connectionSca_, 1U,
+                                rxStartLeadUs);
     lateAllowanceUs =
-        (listenBudgetUs > kBleConnRxStartLeadUs)
-            ? static_cast<uint32_t>(listenBudgetUs - kBleConnRxStartLeadUs)
+        (listenBudgetUs > rxStartLeadUs)
+            ? static_cast<uint32_t>(listenBudgetUs - rxStartLeadUs)
             : 0U;
   }
   const bool useCurrentEventCounterForChannel =
@@ -82,7 +86,7 @@ bool BleRadio::pollConnectionEventInternal(BleConnectionEvent* event,
     return false;
   }
 
-  const uint32_t rxStartUs = connectionNextEventUs_ - kBleConnRxStartLeadUs;
+  const uint32_t rxStartUs = connectionNextEventUs_ - rxStartLeadUs;
   if (!timeReachedUs(nowUs, rxStartUs)) {
     const uint32_t prewaitStartUs =
         (rxStartUs > kBleConnAnchorPrewaitUs)
@@ -212,12 +216,13 @@ bool BleRadio::pollConnectionEventInternal(BleConnectionEvent* event,
           : 0xFFFFU;
   uint32_t rxListenUs = bleConnectionRxListenUs(connectionIntervalUnits_,
                                                 connectionSca_,
-                                                unsyncedEventCount);
+                                                unsyncedEventCount,
+                                                rxStartLeadUs);
   if (rxListenUs == 0U) {
     rxListenUs = intervalUsForListen;
   }
   uint32_t fullPacketListenUs =
-      kBleConnRxStartLeadUs +
+      rxStartLeadUs +
       bleDataPduAirTimeUsOnPhy(
           static_cast<uint8_t>(currentRxDataPduPayloadLength()),
           connectionCurrentRxPhy_) +

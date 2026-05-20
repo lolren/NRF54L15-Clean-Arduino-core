@@ -129,7 +129,7 @@ static constexpr uint8_t kBleBackgroundConnRxBridgeIndex = 4U;
 static constexpr uint8_t kBleBackgroundAdvStopPathGroup = 0U;
 static constexpr uint32_t kBleBackgroundAdvEventWindowUs = 1000U;
 static constexpr uint32_t kBleBackgroundAdvDefaultHfxoLeadUs = 1200U;
-static constexpr uint32_t kBleBackgroundConnDefaultHfxoLeadUs = 3000U;
+static constexpr uint32_t kBleBackgroundConnDefaultHfxoLeadUs = 1200U;
 static constexpr uint32_t kBleBackgroundConnHardwareWakeLeadUs = 40U;
 static constexpr uint32_t kBleBackgroundConnRxFallbackLeadUs = 16U;
 static constexpr uint32_t kBleBackgroundAdvFirstEventGuardUs = 1000U;
@@ -1226,6 +1226,7 @@ static inline void noteTxenLag(BleEncryptionDebugCounters* counters,
 #if defined(NRF54L15_CLEAN_BLE_TIMING_AGGRESSIVE) && (NRF54L15_CLEAN_BLE_TIMING_AGGRESSIVE == 1)
 constexpr uint32_t kBleConnAnchorPrewaitUs = 120U;
 constexpr uint32_t kBleConnRxStartLeadUs = 2200U;
+constexpr uint32_t kBleConnRxStartLeadSyncedUs = 360U;
 constexpr uint32_t kBleConnRxListenBaseUs = 420U;
 constexpr uint32_t kBleConnRxListenMaxUs = 2200U;
 constexpr uint32_t kBleConnDisableWaitUs = 450U;
@@ -1238,6 +1239,7 @@ constexpr uint16_t kBlePreferredConnTimeoutUnits = 600U;
 #elif defined(NRF54L15_CLEAN_BLE_TIMING_BALANCED) && (NRF54L15_CLEAN_BLE_TIMING_BALANCED == 1)
 constexpr uint32_t kBleConnAnchorPrewaitUs = 220U;
 constexpr uint32_t kBleConnRxStartLeadUs = 2200U;
+constexpr uint32_t kBleConnRxStartLeadSyncedUs = 560U;
 constexpr uint32_t kBleConnRxListenBaseUs = 560U;
 constexpr uint32_t kBleConnRxListenMaxUs = 3000U;
 constexpr uint32_t kBleConnDisableWaitUs = 550U;
@@ -1250,6 +1252,7 @@ constexpr uint16_t kBlePreferredConnTimeoutUnits = 500U;
 #else
 constexpr uint32_t kBleConnAnchorPrewaitUs = 360U;
 constexpr uint32_t kBleConnRxStartLeadUs = 2200U;
+constexpr uint32_t kBleConnRxStartLeadSyncedUs = 900U;
 constexpr uint32_t kBleConnRxListenBaseUs = 900U;
 constexpr uint32_t kBleConnRxListenMaxUs = 4500U;
 constexpr uint32_t kBleConnDisableWaitUs = 750U;

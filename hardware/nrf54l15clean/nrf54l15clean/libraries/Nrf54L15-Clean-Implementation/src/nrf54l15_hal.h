@@ -3069,6 +3069,7 @@ class BleRadio {
   bool backgroundConnectionServiceArmed_;
   bool backgroundConnectionServiceInProgress_;
   bool backgroundConnectionServiceDue_;
+  bool backgroundConnectionEventWakeArmed_;
   bool backgroundConnectionRxPrepared_;
   uint8_t deferredConnectionEventHead_;
   uint8_t deferredConnectionEventTail_;

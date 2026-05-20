@@ -151,6 +151,7 @@ BleRadio::BleRadio(uint32_t radioBase, uint32_t ficrBase)
       backgroundConnectionServiceArmed_(false),
       backgroundConnectionServiceInProgress_(false),
       backgroundConnectionServiceDue_(false),
+      backgroundConnectionEventWakeArmed_(false),
       backgroundConnectionRxPrepared_(false),
       deferredConnectionEventHead_(0U),
       deferredConnectionEventTail_(0U),

@@ -664,43 +664,95 @@ void BleRadio::serviceBackgroundConnection(uint32_t spinLimit) {
   if (!initialized_ || radio_ == nullptr || !connected_ || connectionServiceBusy_) {
     return;
   }
+
+  auto backgroundConnectionEventWakeUsForNextEvent = [&]() -> uint32_t {
+    uint32_t radioStartUs = connectionNextEventUs_;
+    if (connectionRole_ == BleConnectionRole::kPeripheral) {
+      const uint32_t rxStartLeadUs =
+          bleConnectionRxStartLeadUs(connectionSyncAttemptsRemaining_ > 0U,
+                                     connectionMissedEventCount_);
+      radioStartUs = (connectionNextEventUs_ > rxStartLeadUs)
+                         ? static_cast<uint32_t>(connectionNextEventUs_ - rxStartLeadUs)
+                         : connectionNextEventUs_;
+    }
+
+    uint32_t wakeUs =
+        (radioStartUs > kBleConnAnchorPrewaitUs)
+            ? static_cast<uint32_t>(radioStartUs - kBleConnAnchorPrewaitUs)
+            : radioStartUs;
+    return wakeUs;
+  };
+
+  auto backgroundConnectionPrewarmUsForEventWake = [](uint32_t eventWakeUs)
+      -> uint32_t {
+    return (eventWakeUs > kBleBackgroundConnDefaultHfxoLeadUs)
+               ? static_cast<uint32_t>(eventWakeUs -
+                                       kBleBackgroundConnDefaultHfxoLeadUs)
+               : eventWakeUs;
+  };
+
+  auto armBackgroundConnectionForNextEvent = [&](uint32_t nowUs) {
+    const uint32_t eventWakeUs = backgroundConnectionEventWakeUsForNextEvent();
+    const uint32_t prewarmUs =
+        backgroundConnectionPrewarmUsForEventWake(eventWakeUs);
+    bleDisableCompare(kBleBackgroundConnPrewarmCompareChannel, true);
+
+    if (!bleHfxoRunning() && (prewarmUs < eventWakeUs) &&
+        !timeReachedUs(nowUs, prewarmUs)) {
+      backgroundConnectionWakeUs_ = prewarmUs;
+      backgroundConnectionEventWakeArmed_ = false;
+      backgroundConnectionServiceArmed_ = true;
+      backgroundConnectionServiceDue_ = false;
+      g_bleBackgroundRadio = this;
+      bleProgramCompare(kBleBackgroundConnPrewarmCompareChannel, prewarmUs,
+                        true);
+      bleBackgroundEnableIrq();
+      return;
+    }
+
+    if (!bleHfxoRunning() && timeReachedUs(nowUs, prewarmUs)) {
+      (void)ClockControl::startHfxo(false, 0U);
+    }
+
+    if (timeReachedUs(nowUs, eventWakeUs)) {
+      backgroundConnectionWakeUs_ = eventWakeUs;
+      backgroundConnectionEventWakeArmed_ = false;
+      backgroundConnectionServiceArmed_ = false;
+      backgroundConnectionServiceDue_ = true;
+      return;
+    }
+
+    backgroundConnectionWakeUs_ = eventWakeUs;
+    backgroundConnectionEventWakeArmed_ = true;
+    backgroundConnectionServiceArmed_ = true;
+    backgroundConnectionServiceDue_ = false;
+    g_bleBackgroundRadio = this;
+    bleProgramCompare(kBleBackgroundConnPrewarmCompareChannel, eventWakeUs,
+                      true);
+    bleBackgroundEnableIrq();
+  };
+
   if (spinLimit == 0U) {
     const uint32_t nowUs = bleTimingUs();
-    if (!timeReachedUs(nowUs, connectionNextEventUs_)) {
+    if (!backgroundConnectionServiceDue_ &&
+        !timeReachedUs(nowUs, connectionNextEventUs_)) {
       if (backgroundConnectionServiceEnabled_ && connectionNextEventUs_ != 0U &&
           !backgroundConnectionServiceArmed_) {
-        uint32_t wakeUs = connectionNextEventUs_;
-        if (connectionRole_ == BleConnectionRole::kPeripheral) {
-          const uint32_t rxStartUs =
-              (connectionNextEventUs_ > kBleConnRxStartLeadUs)
-                  ? static_cast<uint32_t>(connectionNextEventUs_ - kBleConnRxStartLeadUs)
-                  : connectionNextEventUs_;
-          wakeUs = (rxStartUs > kBleConnAnchorPrewaitUs)
-                       ? static_cast<uint32_t>(rxStartUs - kBleConnAnchorPrewaitUs)
-                       : rxStartUs;
-        } else {
-          wakeUs = (connectionNextEventUs_ > kBleConnAnchorPrewaitUs)
-                       ? static_cast<uint32_t>(connectionNextEventUs_ - kBleConnAnchorPrewaitUs)
-                       : connectionNextEventUs_;
-        }
-        backgroundConnectionWakeUs_ = wakeUs;
-        bleDisableCompare(kBleBackgroundConnPrewarmCompareChannel, true);
-        if (timeReachedUs(nowUs, wakeUs)) {
-          backgroundConnectionServiceDue_ = true;
-        } else {
-          backgroundConnectionServiceArmed_ = true;
-          backgroundConnectionServiceDue_ = false;
-          g_bleBackgroundRadio = this;
-          bleProgramCompare(kBleBackgroundConnPrewarmCompareChannel, wakeUs, true);
-          bleBackgroundEnableIrq();
-        }
+        armBackgroundConnectionForNextEvent(nowUs);
       }
       return;
     }
   }
 
+  const bool manageConnectionHfxo = backgroundConnectionServiceEnabled_;
+  if (manageConnectionHfxo && !ClockControl::startHfxo(
+                                  true, (spinLimit == 0U) ? 1500000UL : spinLimit)) {
+    return;
+  }
+
   ++smpSecureConnectionsBackgroundServiceCount_;
   connectionServiceBusy_ = true;
+  backgroundConnectionEventWakeArmed_ = false;
   backgroundConnectionServiceInProgress_ = backgroundConnectionServiceEnabled_;
   BleConnectionEvent event{};
   resetConnectionEventStruct(&event);
@@ -713,39 +765,13 @@ void BleRadio::serviceBackgroundConnection(uint32_t spinLimit) {
   }
   backgroundConnectionServiceInProgress_ = false;
   connectionServiceBusy_ = false;
+  if (manageConnectionHfxo && bleHfxoRunning()) {
+    ClockControl::stopHfxo();
+  }
 
   if (backgroundConnectionServiceEnabled_ && connected_ && connectionNextEventUs_ != 0U) {
     const uint32_t nowUs = bleTimingUs();
-    uint32_t wakeUs = connectionNextEventUs_;
-    if (connectionRole_ == BleConnectionRole::kPeripheral) {
-      const uint32_t rxStartUs =
-          (connectionNextEventUs_ > kBleConnRxStartLeadUs)
-              ? static_cast<uint32_t>(connectionNextEventUs_ - kBleConnRxStartLeadUs)
-              : connectionNextEventUs_;
-      wakeUs = (rxStartUs > kBleConnAnchorPrewaitUs)
-                   ? static_cast<uint32_t>(rxStartUs - kBleConnAnchorPrewaitUs)
-                   : rxStartUs;
-    } else {
-      wakeUs = (connectionNextEventUs_ > kBleConnAnchorPrewaitUs)
-                   ? static_cast<uint32_t>(connectionNextEventUs_ - kBleConnAnchorPrewaitUs)
-                   : connectionNextEventUs_;
-    }
-    backgroundConnectionWakeUs_ = wakeUs;
-    bleDisableCompare(kBleBackgroundConnPrewarmCompareChannel, true);
-    if (timeReachedUs(nowUs, wakeUs)) {
-      // Programming a compare for a timestamp we have already reached can
-      // livelock the CPU in a back-to-back GRTC IRQ stream before the sketch
-      // regains control. Mark the service due and let foreground polling or
-      // the next idle/yield entry consume it instead.
-      backgroundConnectionServiceArmed_ = false;
-      backgroundConnectionServiceDue_ = true;
-    } else {
-      backgroundConnectionServiceArmed_ = true;
-      backgroundConnectionServiceDue_ = false;
-      g_bleBackgroundRadio = this;
-      bleProgramCompare(kBleBackgroundConnPrewarmCompareChannel, wakeUs, true);
-      bleBackgroundEnableIrq();
-    }
+    armBackgroundConnectionForNextEvent(nowUs);
   }
 
   // When background connection service is already running in thread context,
@@ -1034,6 +1060,7 @@ void BleRadio::setBackgroundConnectionServiceEnabled(bool enabled) {
     backgroundConnectionServiceArmed_ = false;
     backgroundConnectionServiceInProgress_ = false;
     backgroundConnectionServiceDue_ = false;
+    backgroundConnectionEventWakeArmed_ = false;
     backgroundConnectionRxPrepared_ = false;
     backgroundConnectionPreparedDataChannel_ = 0U;
     backgroundConnectionWakeUs_ = 0U;
@@ -1045,6 +1072,7 @@ void BleRadio::setBackgroundConnectionServiceEnabled(bool enabled) {
   backgroundConnectionServiceArmed_ = false;
   backgroundConnectionServiceInProgress_ = false;
   backgroundConnectionServiceDue_ = false;
+  backgroundConnectionEventWakeArmed_ = false;
   backgroundConnectionRxPrepared_ = false;
   backgroundConnectionPreparedDataChannel_ = 0U;
   backgroundConnectionWakeUs_ = 0U;
@@ -1061,6 +1089,9 @@ void BleRadio::setBackgroundConnectionServiceEnabled(bool enabled) {
     g_bleBackgroundRadio = nullptr;
   }
   bleExitCritical(irqState);
+  if (bleHfxoRunning()) {
+    ClockControl::stopHfxo();
+  }
 }
 
 bool BleRadio::isBackgroundConnectionServiceEnabled() const {
@@ -1075,6 +1106,39 @@ void BleRadio::serviceBackgroundConnectionFromIrq() {
 
   bleDisableCompare(kBleBackgroundConnPrewarmCompareChannel, true);
   backgroundConnectionServiceArmed_ = false;
+
+  if (!backgroundConnectionEventWakeArmed_) {
+    (void)ClockControl::startHfxo(false, 0U);
+
+    uint32_t radioStartUs = connectionNextEventUs_;
+    if (connectionRole_ == BleConnectionRole::kPeripheral) {
+      const uint32_t rxStartLeadUs =
+          bleConnectionRxStartLeadUs(connectionSyncAttemptsRemaining_ > 0U,
+                                     connectionMissedEventCount_);
+      radioStartUs = (connectionNextEventUs_ > rxStartLeadUs)
+                         ? static_cast<uint32_t>(connectionNextEventUs_ -
+                                                 rxStartLeadUs)
+                         : connectionNextEventUs_;
+    }
+    const uint32_t eventWakeUs =
+        (radioStartUs > kBleConnAnchorPrewaitUs)
+            ? static_cast<uint32_t>(radioStartUs - kBleConnAnchorPrewaitUs)
+            : radioStartUs;
+    const uint32_t nowUs = bleTimingUs();
+    if (!timeReachedUs(nowUs, eventWakeUs)) {
+      backgroundConnectionWakeUs_ = eventWakeUs;
+      backgroundConnectionEventWakeArmed_ = true;
+      backgroundConnectionServiceDue_ = false;
+      backgroundConnectionServiceArmed_ = true;
+      g_bleBackgroundRadio = this;
+      bleProgramCompare(kBleBackgroundConnPrewarmCompareChannel, eventWakeUs,
+                        true);
+      bleBackgroundEnableIrq();
+      return;
+    }
+  }
+
+  backgroundConnectionEventWakeArmed_ = false;
   backgroundConnectionServiceDue_ = true;
   serviceBackgroundConnection(120000UL);
 }
@@ -1089,6 +1153,7 @@ void BleRadio::stopBackgroundConnectionService() {
   backgroundConnectionServiceArmed_ = false;
   backgroundConnectionServiceInProgress_ = false;
   backgroundConnectionServiceDue_ = false;
+  backgroundConnectionEventWakeArmed_ = false;
   backgroundConnectionRxPrepared_ = false;
   backgroundConnectionPreparedDataChannel_ = 0U;
   backgroundConnectionWakeUs_ = 0U;

@@ -943,8 +943,16 @@ uint32_t bleConnectionWindowWideningUs(uint16_t intervalUnits,
   return static_cast<uint32_t>((wideningProduct + 999999ULL) / 1000000ULL);
 }
 
+uint32_t bleConnectionRxStartLeadUs(bool syncOrResyncActive,
+                                    uint16_t missedEventCount) {
+  return (syncOrResyncActive || missedEventCount > 0U)
+             ? kBleConnRxStartLeadUs
+             : kBleConnRxStartLeadSyncedUs;
+}
+
 uint32_t bleConnectionRxListenUs(uint16_t intervalUnits, uint8_t masterScaCode,
-                                 uint16_t unsyncedEventCount = 1U) {
+                                 uint16_t unsyncedEventCount = 1U,
+                                 uint32_t rxStartLeadUs = kBleConnRxStartLeadUs) {
   const uint32_t wideningUs =
       bleConnectionWindowWideningUs(intervalUnits, masterScaCode,
                                     unsyncedEventCount);
@@ -952,10 +960,10 @@ uint32_t bleConnectionRxListenUs(uint16_t intervalUnits, uint8_t masterScaCode,
   if (postAnchorListenUs > kBleConnRxListenMaxUs) {
     postAnchorListenUs = kBleConnRxListenMaxUs;
   }
-  // RX is armed kBleConnRxStartLeadUs before the nominal anchor. The radio
+  // RX is armed before the nominal anchor. The radio
   // budget must include this lead, otherwise the listen window can expire
   // before the expected packet arrival.
-  return kBleConnRxStartLeadUs + postAnchorListenUs;
+  return rxStartLeadUs + postAnchorListenUs;
 }
 
 uint32_t bleDataPduAirTimeUs(uint8_t payloadLength) {
