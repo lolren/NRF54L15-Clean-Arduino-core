@@ -597,7 +597,11 @@ class BLEClientCharacteristic {
   uint16_t read(void* buffer, uint16_t len);
   uint8_t read8();
   uint16_t write(const void* buffer, uint16_t len);
+  uint16_t write(const void* buffer, uint16_t len, bool withResponse);
+  uint16_t writeWithoutResponse(const void* buffer, uint16_t len);
   uint16_t write8(uint8_t value);
+  uint16_t write8(uint8_t value, bool withResponse);
+  uint16_t write8WithoutResponse(uint8_t value);
   bool enableNotify();
   bool disableNotify();
 
@@ -611,6 +615,7 @@ class BLEClientCharacteristic {
   uint16_t value_handle_;
   uint16_t end_handle_;
   uint16_t cccd_handle_;
+  uint8_t properties_;
   uint8_t last_value_[BLUEFRUIT_GATT_VALUE_MAX_LEN];
   uint8_t last_value_len_;
   bool pending_notify_callback_;

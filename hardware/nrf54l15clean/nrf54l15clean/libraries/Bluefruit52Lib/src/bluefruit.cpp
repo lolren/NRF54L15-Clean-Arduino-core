@@ -2236,7 +2236,8 @@ bool discoverServiceRangeSync(const BLEUuid& uuid, uint16_t* startHandle,
 
 bool discoverCharacteristicSync(uint16_t serviceStartHandle, uint16_t serviceEndHandle,
                                 const BLEUuid& uuid, uint16_t* declHandle,
-                                uint16_t* valueHandle, uint16_t* endHandle) {
+                                uint16_t* valueHandle, uint16_t* endHandle,
+                                uint8_t* properties) {
   ScopedCentralSyncProcedure scopedProcedure;
   if (declHandle == nullptr || valueHandle == nullptr || endHandle == nullptr ||
       serviceStartHandle == 0U || serviceEndHandle == 0U) {
@@ -2248,6 +2249,9 @@ bool discoverCharacteristicSync(uint16_t serviceStartHandle, uint16_t serviceEnd
   *declHandle = 0U;
   *valueHandle = 0U;
   *endHandle = 0U;
+  if (properties != nullptr) {
+    *properties = 0U;
+  }
 
   while (searchStart <= serviceEndHandle) {
     uint8_t request[7] = {kAttOpReadByTypeReq, 0U, 0U, 0U, 0U, 0U, 0U};
@@ -2281,6 +2285,7 @@ bool discoverCharacteristicSync(uint16_t serviceStartHandle, uint16_t serviceEnd
          offset = static_cast<uint8_t>(offset + entryLen)) {
       anyEntry = true;
       const uint16_t candidateDecl = readLe16(&wait.event.payload[offset]);
+      const uint8_t candidateProperties = wait.event.payload[offset + 2U];
       const uint16_t candidateValue = readLe16(&wait.event.payload[offset + 3U]);
       const uint8_t uuidLen = static_cast<uint8_t>(entryLen - 5U);
       const uint8_t* candidateUuid = &wait.event.payload[offset + 5U];
@@ -2295,6 +2300,9 @@ bool discoverCharacteristicSync(uint16_t serviceStartHandle, uint16_t serviceEnd
         *declHandle = candidateDecl;
         *valueHandle = candidateValue;
         *endHandle = serviceEndHandle;
+        if (properties != nullptr) {
+          *properties = candidateProperties;
+        }
       }
 
       lastDecl = candidateDecl;
@@ -3668,6 +3676,7 @@ BLEClientCharacteristic::BLEClientCharacteristic()
       value_handle_(0U),
       end_handle_(0U),
       cccd_handle_(0U),
+      properties_(0U),
       last_value_{0},
       last_value_len_(0U),
       pending_notify_callback_(false) {}
@@ -3707,6 +3716,7 @@ void BLEClientCharacteristic::resetDiscovery() {
   value_handle_ = 0U;
   end_handle_ = 0U;
   cccd_handle_ = 0U;
+  properties_ = 0U;
   last_value_len_ = 0U;
 }
 
@@ -3728,7 +3738,7 @@ bool BLEClientCharacteristic::discover() {
   if (!retryCentralProcedure([&]() {
         return discoverCharacteristicSync(service_->start_handle_, service_->end_handle_,
                                           uuid, &decl_handle_, &value_handle_,
-                                          &end_handle_);
+                                          &end_handle_, &properties_);
       })) {
     return false;
   }
@@ -3761,6 +3771,16 @@ uint8_t BLEClientCharacteristic::read8() {
 }
 
 uint16_t BLEClientCharacteristic::write(const void* buffer, uint16_t len) {
+  const bool supportsWrite =
+      (properties_ & xiao_nrf54l15::kBleGattPropWrite) != 0U;
+  const bool supportsWriteWithoutResponse =
+      (properties_ & xiao_nrf54l15::kBleGattPropWriteNoRsp) != 0U;
+  const bool withResponse = supportsWrite || !supportsWriteWithoutResponse;
+  return write(buffer, len, withResponse);
+}
+
+uint16_t BLEClientCharacteristic::write(const void* buffer, uint16_t len,
+                                        bool withResponse) {
   if (!discovered_ || buffer == nullptr || len == 0U ||
       len > BleRadio::kCustomGattMaxValueLength) {
     return 0U;
@@ -3768,12 +3788,26 @@ uint16_t BLEClientCharacteristic::write(const void* buffer, uint16_t len) {
   if (!waitForLinkValueCapacity(len)) {
     return 0U;
   }
-  return writeHandleSync(value_handle_, static_cast<const uint8_t*>(buffer), len, true) ? len
-                                                                                          : 0U;
+  return writeHandleSync(value_handle_, static_cast<const uint8_t*>(buffer), len,
+                         withResponse) ? len
+                                       : 0U;
+}
+
+uint16_t BLEClientCharacteristic::writeWithoutResponse(const void* buffer,
+                                                       uint16_t len) {
+  return write(buffer, len, false);
 }
 
 uint16_t BLEClientCharacteristic::write8(uint8_t value) {
   return write(&value, sizeof(value));
+}
+
+uint16_t BLEClientCharacteristic::write8(uint8_t value, bool withResponse) {
+  return write(&value, sizeof(value), withResponse);
+}
+
+uint16_t BLEClientCharacteristic::write8WithoutResponse(uint8_t value) {
+  return writeWithoutResponse(&value, sizeof(value));
 }
 
 bool BLEClientCharacteristic::enableNotify() {
