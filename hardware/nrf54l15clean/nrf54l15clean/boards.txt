@@ -73,11 +73,11 @@ xiao_nrf54l15.menu.clean_cpu.cpu128=128 MHz (Turbo)
 xiao_nrf54l15.menu.clean_cpu.cpu128.build.f_cpu=128000000L
 xiao_nrf54l15.menu.clean_cpu.cpu128.build.cpu_flags=-DARDUINO_NRF54_CPU_128M
 
-xiao_nrf54l15.menu.clean_power.balanced=Balanced (Default)
-xiao_nrf54l15.menu.clean_power.balanced.build.power_flags=
-
-xiao_nrf54l15.menu.clean_power.low=Low Power (WFI Idle)
+xiao_nrf54l15.menu.clean_power.low=Low Power (WFI Idle, Default)
 xiao_nrf54l15.menu.clean_power.low.build.power_flags=-DNRF54L15_CLEAN_POWER_LOW
+
+xiao_nrf54l15.menu.clean_power.balanced=Balanced
+xiao_nrf54l15.menu.clean_power.balanced.build.power_flags=
 
 xiao_nrf54l15.menu.clean_autogate.off=Disabled (Default)
 xiao_nrf54l15.menu.clean_autogate.off.build.auto_gate_flags=
@@ -261,11 +261,11 @@ holyiot_25007_nrf54l15.menu.clean_cpu.cpu128=128 MHz (Turbo)
 holyiot_25007_nrf54l15.menu.clean_cpu.cpu128.build.f_cpu=128000000L
 holyiot_25007_nrf54l15.menu.clean_cpu.cpu128.build.cpu_flags=-DARDUINO_NRF54_CPU_128M
 
-holyiot_25007_nrf54l15.menu.clean_power.balanced=Balanced (Default)
-holyiot_25007_nrf54l15.menu.clean_power.balanced.build.power_flags=
-
-holyiot_25007_nrf54l15.menu.clean_power.low=Low Power (WFI Idle)
+holyiot_25007_nrf54l15.menu.clean_power.low=Low Power (WFI Idle, Default)
 holyiot_25007_nrf54l15.menu.clean_power.low.build.power_flags=-DNRF54L15_CLEAN_POWER_LOW
+
+holyiot_25007_nrf54l15.menu.clean_power.balanced=Balanced
+holyiot_25007_nrf54l15.menu.clean_power.balanced.build.power_flags=
 
 holyiot_25007_nrf54l15.menu.clean_autogate.off=Disabled (Default)
 holyiot_25007_nrf54l15.menu.clean_autogate.off.build.auto_gate_flags=
@@ -432,11 +432,11 @@ holyiot_25008_nrf54l15.menu.clean_cpu.cpu128=128 MHz (Turbo)
 holyiot_25008_nrf54l15.menu.clean_cpu.cpu128.build.f_cpu=128000000L
 holyiot_25008_nrf54l15.menu.clean_cpu.cpu128.build.cpu_flags=-DARDUINO_NRF54_CPU_128M
 
-holyiot_25008_nrf54l15.menu.clean_power.balanced=Balanced (Default)
-holyiot_25008_nrf54l15.menu.clean_power.balanced.build.power_flags=
-
-holyiot_25008_nrf54l15.menu.clean_power.low=Low Power (WFI Idle)
+holyiot_25008_nrf54l15.menu.clean_power.low=Low Power (WFI Idle, Default)
 holyiot_25008_nrf54l15.menu.clean_power.low.build.power_flags=-DNRF54L15_CLEAN_POWER_LOW
+
+holyiot_25008_nrf54l15.menu.clean_power.balanced=Balanced
+holyiot_25008_nrf54l15.menu.clean_power.balanced.build.power_flags=
 
 holyiot_25008_nrf54l15.menu.clean_autogate.off=Disabled (Default)
 holyiot_25008_nrf54l15.menu.clean_autogate.off.build.auto_gate_flags=
@@ -609,11 +609,11 @@ generic_nrf54l15_module_36pin.menu.clean_cpu.cpu128=128 MHz (Turbo)
 generic_nrf54l15_module_36pin.menu.clean_cpu.cpu128.build.f_cpu=128000000L
 generic_nrf54l15_module_36pin.menu.clean_cpu.cpu128.build.cpu_flags=-DARDUINO_NRF54_CPU_128M
 
-generic_nrf54l15_module_36pin.menu.clean_power.balanced=Balanced (Default)
-generic_nrf54l15_module_36pin.menu.clean_power.balanced.build.power_flags=
-
-generic_nrf54l15_module_36pin.menu.clean_power.low=Low Power (WFI Idle)
+generic_nrf54l15_module_36pin.menu.clean_power.low=Low Power (WFI Idle, Default)
 generic_nrf54l15_module_36pin.menu.clean_power.low.build.power_flags=-DNRF54L15_CLEAN_POWER_LOW
+
+generic_nrf54l15_module_36pin.menu.clean_power.balanced=Balanced
+generic_nrf54l15_module_36pin.menu.clean_power.balanced.build.power_flags=
 
 generic_nrf54l15_module_36pin.menu.clean_autogate.off=Disabled (Default)
 generic_nrf54l15_module_36pin.menu.clean_autogate.off.build.auto_gate_flags=
@@ -780,11 +780,11 @@ nrf54l15dk_pca10156.menu.clean_cpu.cpu128=128 MHz (Turbo)
 nrf54l15dk_pca10156.menu.clean_cpu.cpu128.build.f_cpu=128000000L
 nrf54l15dk_pca10156.menu.clean_cpu.cpu128.build.cpu_flags=-DARDUINO_NRF54_CPU_128M
 
-nrf54l15dk_pca10156.menu.clean_power.balanced=Balanced (Default)
-nrf54l15dk_pca10156.menu.clean_power.balanced.build.power_flags=
-
-nrf54l15dk_pca10156.menu.clean_power.low=Low Power (WFI Idle)
+nrf54l15dk_pca10156.menu.clean_power.low=Low Power (WFI Idle, Default)
 nrf54l15dk_pca10156.menu.clean_power.low.build.power_flags=-DNRF54L15_CLEAN_POWER_LOW
+
+nrf54l15dk_pca10156.menu.clean_power.balanced=Balanced
+nrf54l15dk_pca10156.menu.clean_power.balanced.build.power_flags=
 
 nrf54l15dk_pca10156.menu.clean_autogate.off=Disabled (Default)
 nrf54l15dk_pca10156.menu.clean_autogate.off.build.auto_gate_flags=
