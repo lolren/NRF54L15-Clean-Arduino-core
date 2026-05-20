@@ -811,13 +811,15 @@ class BluefruitCompatManager {
     }
 
     if (connected) {
+      const BleConnectionRole role = radio_.connectionRole();
       const bool centralForegroundSetupActive =
-          (radio_.connectionRole() == BleConnectionRole::kCentral) &&
+          (role == BleConnectionRole::kCentral) &&
           (central_connect_callback_pending_ || centralSyncProcedureActive());
       const bool backgroundReady =
-          static_cast<int32_t>(millis() - last_connection_edge_ms_) >=
-              static_cast<int32_t>(kBleNoWfiDuringSetupMs) &&
-          !centralForegroundSetupActive;
+          (role == BleConnectionRole::kPeripheral) ||
+          (static_cast<int32_t>(millis() - last_connection_edge_ms_) >=
+               static_cast<int32_t>(kBleNoWfiDuringSetupMs) &&
+           !centralForegroundSetupActive);
       if (backgroundReady) {
         if (!radio_.isBackgroundConnectionServiceEnabled()) {
           radio_.setBackgroundConnectionServiceEnabled(true);
@@ -867,7 +869,8 @@ class BluefruitCompatManager {
     if (centralSyncProcedureActive() || pending_connect_valid_) {
       return 1U;
     }
-    if (Bluefruit.Scanner.running_ && !Bluefruit.Scanner.paused_ &&
+    if (!radio_.isConnected() &&
+        Bluefruit.Scanner.running_ && !Bluefruit.Scanner.paused_ &&
         Bluefruit.Scanner.rx_callback_ != nullptr) {
       return 1U;
     }
@@ -1686,6 +1689,7 @@ class BluefruitCompatManager {
         digitalWrite(LED_BUILTIN, kLedOnState);
       }
       if (last_connection_role_ == BleConnectionRole::kPeripheral) {
+        radio_.setBackgroundConnectionServiceEnabled(true);
         for (uint8_t i = 0U; i < characteristic_count_; ++i) {
           if (characteristics_[i] != nullptr) {
             characteristics_[i]->_notify_enabled = false;
@@ -3612,7 +3616,13 @@ bool BLEScanner::stop() {
   return manager().stopScanner();
 }
 
-void BLEScanner::resume() { paused_ = false; }
+void BLEScanner::resume() {
+  if (manager().radio().isConnected()) {
+    paused_ = true;
+    return;
+  }
+  paused_ = false;
+}
 
 bool BLEScanner::checkReportForUuid(const ble_gap_evt_adv_report_t* report,
                                     const BLEUuid& uuid) const {

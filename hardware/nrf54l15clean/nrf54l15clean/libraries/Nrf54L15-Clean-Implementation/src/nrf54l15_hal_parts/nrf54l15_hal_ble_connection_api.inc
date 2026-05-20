@@ -745,8 +745,12 @@ void BleRadio::serviceBackgroundConnection(uint32_t spinLimit) {
   }
 
   const bool manageConnectionHfxo = backgroundConnectionServiceEnabled_;
+  if (!ensureRfPathActiveForBle()) {
+    return;
+  }
   if (manageConnectionHfxo && !ClockControl::startHfxo(
                                   true, (spinLimit == 0U) ? 1500000UL : spinLimit)) {
+    releaseRfPathForBle();
     return;
   }
 
@@ -768,6 +772,7 @@ void BleRadio::serviceBackgroundConnection(uint32_t spinLimit) {
   if (manageConnectionHfxo && bleHfxoRunning()) {
     ClockControl::stopHfxo();
   }
+  releaseRfPathForBle();
 
   if (backgroundConnectionServiceEnabled_ && connected_ && connectionNextEventUs_ != 0U) {
     const uint32_t nowUs = bleTimingUs();
