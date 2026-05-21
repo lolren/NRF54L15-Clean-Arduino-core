@@ -111,6 +111,16 @@ extern "C" uint32_t nrf54l15_clean_ble_idle_sleep_cap_us(void) {
   return capUs;
 }
 
+extern "C" uint8_t nrf54l15_clean_low_power_micro_delay_sleep_allowed(void) {
+  if (g_activeBleRadio != nullptr && g_activeBleRadio->isConnected()) {
+    return 1U;
+  }
+  if (g_bleBackgroundRadio != nullptr && g_bleBackgroundRadio->isConnected()) {
+    return 1U;
+  }
+  return 0U;
+}
+
 extern "C" uint32_t nrf54l15_ble_grtc_reserved_cc_mask(void) {
   uint32_t mask = 0U;
   mask |= (1UL << kBleBackgroundCompareChannel);

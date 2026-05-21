@@ -20,6 +20,8 @@ extern void nrf54l15_ble_grtc_irq_service(void) __attribute__((weak));
 extern void nrf54l15_grtc_pwm_irq_service(void) __attribute__((weak));
 extern uint32_t nrf54l15_ble_grtc_reserved_cc_mask(void) __attribute__((weak));
 extern uint32_t nrf54l15_clean_ble_idle_sleep_cap_us(void) __attribute__((weak));
+extern uint8_t nrf54l15_clean_low_power_micro_delay_sleep_allowed(void)
+    __attribute__((weak));
 void nrf54l15_core_prepare_system_off_wake_timebase(void);
 void nrf54l15_core_prepare_system_off(void);
 void nrf54l15_core_disable_system_off_retention(void);
@@ -283,9 +285,11 @@ static NRF_GRTC_Type* const g_low_power_grtc =
 enum { kLowPowerDelayInvalidChannel = 0xFFU };
 static volatile uint8_t g_low_power_delay_fired = 0U;
 static volatile uint8_t g_low_power_timebase_initialized = 0U;
+static volatile uint8_t g_low_power_micro_delay_active = 0U;
 static uint8_t g_low_power_delay_channel = kLowPowerDelayInvalidChannel;
 static uint8_t g_low_power_monotonic_origin_valid = 0U;
 static uint64_t g_low_power_monotonic_origin_us = 0ULL;
+static const uint32_t kLowPowerMicroDelaySleepThresholdUs = 1000UL;
 
 static uint32_t lowPowerAllCcMask(void)
 {
@@ -873,6 +877,29 @@ void delaySystemOffNoRetention(unsigned long ms)
 
 void delayMicroseconds(unsigned int us)
 {
+#if defined(NRF54L15_CLEAN_POWER_LOW)
+    // Keep short timing waits busy/precise. Connected BLE paths can opt long
+    // waits into tickless idle so 1 ms marker/settle delays do not burn CPU.
+    if ((uint32_t)us >= kLowPowerMicroDelaySleepThresholdUs &&
+        g_low_power_micro_delay_active == 0U &&
+        nrf54l15_clean_low_power_micro_delay_sleep_allowed != 0 &&
+        nrf54l15_clean_low_power_micro_delay_sleep_allowed() != 0U &&
+        (__get_PRIMASK() & 1U) == 0U &&
+        __get_IPSR() == 0U) {
+        xiao_nrf54l15_board_state_t boardState;
+        g_low_power_micro_delay_active = 1U;
+        const uint8_t boardStateActive =
+            delayAutoBoardStateEnabled() ? delayBoardStateEnter(&boardState) : 0U;
+        initLowPowerTimebase();
+        const uint64_t targetUs =
+            readLowPowerCounterUs() + (uint64_t)((uint32_t)us);
+        delayUntilLowPowerCounterUs(targetUs);
+        delayBoardStateExit(&boardState, boardStateActive);
+        g_low_power_micro_delay_active = 0U;
+        return;
+    }
+#endif
+
     const unsigned long start = micros();
     while ((micros() - start) < (unsigned long)us) {
         __NOP();
