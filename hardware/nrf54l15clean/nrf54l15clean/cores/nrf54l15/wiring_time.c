@@ -498,15 +498,6 @@ static uint8_t delayBoardStateEnter(xiao_nrf54l15_board_state_t* state)
         return 0U;
     }
 
-    // Zephyr XIAO BLE examples keep RF_SW asserted between radio events.
-    // If a sketch does the same, keep that board state stable and only use
-    // CPU WFI sleep for delay(); toggling the RF switch every short sleep slice
-    // adds current and can skew RSSI/receive margins.
-    if (state->rfSwitchPower.isOutput != 0U &&
-        state->rfSwitchPower.outputHigh != 0U) {
-        return 0U;
-    }
-
     xiaoNrf54l15EnterLowestPowerBoardState();
     // Battery/IMU reads can use a short delay() as a settle window. Keep
     // those user-held rails alive while still collapsing the rest of the XIAO
@@ -811,9 +802,10 @@ void delay(unsigned long ms)
     const uint8_t boardStateActive =
         delayAutoBoardStateEnabled() ? delayBoardStateEnter(&boardState) : 0U;
     initLowPowerTimebase();
-    // Keep plain delay() Arduino-compatible. Sketches may hold board-control
-    // rails such as VBAT_EN, RF_SW, or IMU_MIC_EN asserted across delay()
-    // and expect that state to remain live during the sleep interval.
+    // Keep plain delay() Arduino-compatible for user-held settle rails such as
+    // VBAT_EN and IMU_MIC_EN while still collapsing XIAO RF_SW for low idle
+    // current. BLE paths that need RF_SW during radio events should use the
+    // BoardControl/BleRadio helpers rather than holding it through delay().
     // On XIAO, auto-collapse only when the USB bridge UART is idle. That keeps
     // plain delay() low-current for idle sketches while avoiding garbling
     // active bridge-backed Serial sessions.
