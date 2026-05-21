@@ -498,12 +498,26 @@ static uint8_t delayBoardStateEnter(xiao_nrf54l15_board_state_t* state)
         return 0U;
     }
 
+    // Zephyr XIAO BLE examples keep RF_SW asserted between radio events.
+    // If a sketch does the same, keep that board state stable and only use
+    // CPU WFI sleep for delay(); toggling the RF switch every short sleep slice
+    // adds current and can skew RSSI/receive margins.
+    if (state->rfSwitchPower.isOutput != 0U &&
+        state->rfSwitchPower.outputHigh != 0U) {
+        return 0U;
+    }
+
     xiaoNrf54l15EnterLowestPowerBoardState();
-    // Battery reads use VBAT_EN + a short delay() as a settle window. Keep
-    // that user-held rail alive while still collapsing the other XIAO rails.
+    // Battery/IMU reads can use a short delay() as a settle window. Keep
+    // those user-held rails alive while still collapsing the rest of the XIAO
+    // board state.
     if (state->batteryEnable.isOutput != 0U &&
         state->batteryEnable.outputHigh != 0U) {
         (void)arduinoXiaoNrf54l15SetBatteryEnable(1U);
+    }
+    if (state->imuMicEnable.isOutput != 0U &&
+        state->imuMicEnable.outputHigh != 0U) {
+        (void)arduinoXiaoNrf54l15SetImuMicEnable(1U);
     }
     return 1U;
 #else
