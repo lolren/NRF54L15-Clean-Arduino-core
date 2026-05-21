@@ -576,7 +576,7 @@ void BleRadio::clearQueuedConnectionEvents() {
 }
 
 void BleRadio::rememberLatestConnectionRssi(const BleConnectionEvent& event) {
-  if (!connected_ || !event.packetReceived) {
+  if (!connected_ || !event.packetReceived || !event.crcOk) {
     return;
   }
   latestConnectionRssiDbm_ = event.rssiDbm;

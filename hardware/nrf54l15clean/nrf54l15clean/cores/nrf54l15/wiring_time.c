@@ -46,7 +46,8 @@ volatile uint32_t g_nrf54l15_diag_grtc_delay_irq_count = 0U;
 volatile uint32_t g_nrf54l15_diag_ble_grtc_irq_service_count = 0U;
 volatile uint32_t g_nrf54l15_diag_delay_skipwfi_total_us = 0U;
 volatile uint32_t g_nrf54l15_diag_delay_skipwfi_max_us = 0U;
-static const uint16_t kLowPowerDelayTimeoutLfclk = 5U;
+// Match Zephyr's nRF GRTC System ON counter sleep timing.
+static const uint16_t kLowPowerDelayTimeoutLfclk = 0U;
 static const uint8_t kLowPowerDelayWakeLfclk = 4U;
 #if NRF54L15_GRTC_IRQ_GROUP == 2U
 static const IRQn_Type kLowPowerTickIrq = GRTC_2_IRQn;
@@ -497,6 +498,12 @@ static uint8_t delayBoardStateEnter(xiao_nrf54l15_board_state_t* state)
     }
 
     xiaoNrf54l15EnterLowestPowerBoardState();
+    // Battery reads use VBAT_EN + a short delay() as a settle window. Keep
+    // that user-held rail alive while still collapsing the other XIAO rails.
+    if (state->batteryEnable.isOutput != 0U &&
+        state->batteryEnable.outputHigh != 0U) {
+        (void)arduinoXiaoNrf54l15SetBatteryEnable(1U);
+    }
     return 1U;
 #else
     (void)state;
