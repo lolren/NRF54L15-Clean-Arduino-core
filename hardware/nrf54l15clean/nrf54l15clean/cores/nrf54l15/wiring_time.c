@@ -46,8 +46,9 @@ volatile uint32_t g_nrf54l15_diag_grtc_delay_irq_count = 0U;
 volatile uint32_t g_nrf54l15_diag_ble_grtc_irq_service_count = 0U;
 volatile uint32_t g_nrf54l15_diag_delay_skipwfi_total_us = 0U;
 volatile uint32_t g_nrf54l15_diag_delay_skipwfi_max_us = 0U;
-// Match Zephyr's nRF GRTC System ON counter sleep timing.
-static const uint16_t kLowPowerDelayTimeoutLfclk = 0U;
+// Keep a small non-zero GRTC timeout. TIMEOUT=0 can miss/hold System ON
+// compare wakeups on this bare-metal path and hang early setup delay() calls.
+static const uint16_t kLowPowerDelayTimeoutLfclk = 5U;
 static const uint8_t kLowPowerDelayWakeLfclk = 4U;
 #if NRF54L15_GRTC_IRQ_GROUP == 2U
 static const IRQn_Type kLowPowerTickIrq = GRTC_2_IRQn;
