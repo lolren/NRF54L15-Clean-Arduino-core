@@ -368,7 +368,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dist-dir", default=None, type=Path)
     parser.add_argument("--existing-index", default=None, type=Path)
     parser.add_argument("--archive-index", default=None, type=Path)
-    parser.add_argument("--stable-keep", default=16, type=int)
+    parser.add_argument("--stable-keep", default=32, type=int)
     parser.add_argument(
         "--host-tool-hosts",
         default="",
