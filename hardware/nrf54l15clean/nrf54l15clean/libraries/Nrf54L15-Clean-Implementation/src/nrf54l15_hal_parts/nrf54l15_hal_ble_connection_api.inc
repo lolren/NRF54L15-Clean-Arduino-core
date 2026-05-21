@@ -712,6 +712,10 @@ void BleRadio::serviceBackgroundConnection(uint32_t spinLimit) {
 
     if (!bleHfxoRunning() && timeReachedUs(nowUs, prewarmUs)) {
       (void)ClockControl::startHfxo(false, 0U);
+      // Match the HFXO prewarm window with the XIAO RF switch settle window.
+      // Enabling RF_SW only at event wake can depress the first RSSI sample
+      // even though packet timing still succeeds.
+      (void)ensureRfPathActiveForBle();
     }
 
     if (timeReachedUs(nowUs, eventWakeUs)) {
@@ -1097,6 +1101,7 @@ void BleRadio::setBackgroundConnectionServiceEnabled(bool enabled) {
   if (bleHfxoRunning()) {
     ClockControl::stopHfxo();
   }
+  releaseRfPathForBle();
 }
 
 bool BleRadio::isBackgroundConnectionServiceEnabled() const {
@@ -1114,6 +1119,10 @@ void BleRadio::serviceBackgroundConnectionFromIrq() {
 
   if (!backgroundConnectionEventWakeArmed_) {
     (void)ClockControl::startHfxo(false, 0U);
+    // Keep RF_SW on only for the radio prewarm/event window. This avoids the
+    // idle-current regression from holding the switch through delay(), but
+    // gives the antenna path time to settle before RSSI is sampled.
+    (void)ensureRfPathActiveForBle();
 
     uint32_t radioStartUs = connectionNextEventUs_;
     if (connectionRole_ == BleConnectionRole::kPeripheral) {
@@ -1173,4 +1182,5 @@ void BleRadio::stopBackgroundConnectionService() {
     g_bleBackgroundRadio = nullptr;
   }
   bleExitCritical(irqState);
+  releaseRfPathForBle();
 }
