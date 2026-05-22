@@ -660,21 +660,178 @@ bool BleRadio::dequeueConnectionEvent(BleConnectionEvent* event) {
   return true;
 }
 
+bool BleRadio::configureBackgroundConnectionHardware(bool enable) {
+  if (radio_ == nullptr) {
+    return false;
+  }
+
+  Dppic radioDomain(nrf54l15::DPPIC10_BASE);
+  Dppic periDomain(nrf54l15::DPPIC20_BASE);
+  Dppic lpDomain(nrf54l15::DPPIC30_BASE);
+  NRF_PPIB_Type* const ppib11 = blePpib11();
+  NRF_PPIB_Type* const ppib21 = blePpib21();
+  NRF_PPIB_Type* const ppib22 = blePpib22();
+  NRF_PPIB_Type* const ppib30 = blePpib30();
+  if (ppib11 == nullptr || ppib21 == nullptr || ppib22 == nullptr ||
+      ppib30 == nullptr) {
+    return false;
+  }
+
+  ppib30->EVENTS_RECEIVE[kBleBackgroundConnRxBridgeIndex] = 0U;
+  ppib22->EVENTS_RECEIVE[kBleBackgroundConnRxBridgeIndex] = 0U;
+  ppib21->EVENTS_RECEIVE[kBleBackgroundConnRxBridgeIndex] = 0U;
+  ppib11->EVENTS_RECEIVE[kBleBackgroundConnRxBridgeIndex] = 0U;
+
+  if (!enable) {
+    (void)lpDomain.disconnectPublish(
+        &NRF_GRTC->PUBLISH_COMPARE[kBleBackgroundConnRxCompareChannel]);
+    (void)lpDomain.disconnectSubscribe(
+        &ppib30->SUBSCRIBE_SEND[kBleBackgroundConnRxBridgeIndex]);
+    (void)lpDomain.enableChannel(kBleBackgroundConnLpRxDppiChannel, false);
+
+    (void)periDomain.disconnectPublish(
+        &ppib22->PUBLISH_RECEIVE[kBleBackgroundConnRxBridgeIndex]);
+    (void)periDomain.disconnectSubscribe(
+        &ppib21->SUBSCRIBE_SEND[kBleBackgroundConnRxBridgeIndex]);
+    (void)periDomain.enableChannel(kBleBackgroundConnPeriRxDppiChannel, false);
+
+    (void)radioDomain.disconnectPublish(
+        &ppib11->PUBLISH_RECEIVE[kBleBackgroundConnRxBridgeIndex]);
+    (void)radioDomain.disconnectSubscribe(&radio_->SUBSCRIBE_RXEN);
+    (void)radioDomain.enableChannel(kBleBackgroundConnRadioRxDppiChannel, false);
+    return true;
+  }
+
+  if (!lpDomain.configurePublish(
+          &NRF_GRTC->PUBLISH_COMPARE[kBleBackgroundConnRxCompareChannel],
+          kBleBackgroundConnLpRxDppiChannel, true) ||
+      !lpDomain.configureSubscribe(
+          &ppib30->SUBSCRIBE_SEND[kBleBackgroundConnRxBridgeIndex],
+          kBleBackgroundConnLpRxDppiChannel, true) ||
+      !lpDomain.enableChannel(kBleBackgroundConnLpRxDppiChannel, true)) {
+    return false;
+  }
+
+  if (!periDomain.configurePublish(
+          &ppib22->PUBLISH_RECEIVE[kBleBackgroundConnRxBridgeIndex],
+          kBleBackgroundConnPeriRxDppiChannel, true) ||
+      !periDomain.configureSubscribe(
+          &ppib21->SUBSCRIBE_SEND[kBleBackgroundConnRxBridgeIndex],
+          kBleBackgroundConnPeriRxDppiChannel, true) ||
+      !periDomain.enableChannel(kBleBackgroundConnPeriRxDppiChannel, true)) {
+    return false;
+  }
+
+  if (!radioDomain.configurePublish(
+          &ppib11->PUBLISH_RECEIVE[kBleBackgroundConnRxBridgeIndex],
+          kBleBackgroundConnRadioRxDppiChannel, true) ||
+      !radioDomain.configureSubscribe(&radio_->SUBSCRIBE_RXEN,
+                                      kBleBackgroundConnRadioRxDppiChannel,
+                                      true) ||
+      !radioDomain.enableChannel(kBleBackgroundConnRadioRxDppiChannel, true)) {
+    return false;
+  }
+
+  return true;
+}
+
+bool BleRadio::previewBackgroundConnectionDataChannel(
+    uint8_t* outDataChannel) const {
+  if (outDataChannel == nullptr || !connected_ || connectionChannelCount_ == 0U) {
+    return false;
+  }
+
+  const uint16_t eventCounter = connectionEventCounter_;
+  uint8_t dataChannel = 0U;
+  if (connectionUseChSel2_) {
+    const uint16_t prnE = bleCsa2PrnE(eventCounter, connectionChannelId_);
+    dataChannel = static_cast<uint8_t>(prnE % 37U);
+    if ((connectionChannelMap_[dataChannel >> 3U] &
+         (1U << (dataChannel & 0x07U))) == 0U) {
+      const uint8_t remapIndex =
+          static_cast<uint8_t>((static_cast<uint32_t>(connectionChannelCount_) *
+                                static_cast<uint32_t>(prnE)) >>
+                               16U);
+      dataChannel = remapChannelByIndex(connectionChannelMap_, remapIndex);
+    }
+  } else {
+    dataChannel = static_cast<uint8_t>(
+        (static_cast<uint32_t>(connectionHop_) *
+         static_cast<uint32_t>(eventCounter + 1U)) %
+        37U);
+    if ((connectionChannelMap_[dataChannel >> 3U] &
+         (1U << (dataChannel & 0x07U))) == 0U) {
+      const uint8_t remapIndex =
+          static_cast<uint8_t>(dataChannel % connectionChannelCount_);
+      dataChannel = remapChannelByIndex(connectionChannelMap_, remapIndex);
+    }
+  }
+
+  if (dataChannel > 36U) {
+    return false;
+  }
+  *outDataChannel = dataChannel;
+  return true;
+}
+
+bool BleRadio::prepareBackgroundConnectionReceiveWindow(uint32_t rxStartUs) {
+  if (!initialized_ || radio_ == nullptr || !connected_ ||
+      connectionRole_ != BleConnectionRole::kPeripheral ||
+      (connectionCurrentRxPhy_ & kBlePhyCoded) != 0U ||
+      connectionSyncAttemptsRemaining_ > 0U || connectionMissedEventCount_ > 0U ||
+      connectionUpdatePending_ || connectionPhyUpdatePending_ ||
+      connectionChannelMapPending_) {
+    return false;
+  }
+
+  const uint32_t nowUs = bleTimingUs();
+  if (timeReachedUs(nowUs + kBleBackgroundConnHardwareWakeLeadUs, rxStartUs)) {
+    return false;
+  }
+
+  uint8_t dataChannel = 0U;
+  if (!previewBackgroundConnectionDataChannel(&dataChannel) ||
+      !setDataChannel(dataChannel)) {
+    return false;
+  }
+
+  clearRadioCoreEvents(radio_);
+  memset(rxPacket_, 0, sizeof(rxPacket_));
+  radio_->PACKETPTR =
+      static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&rxPacket_[0]));
+  radio_->SHORTS = bleRadioShortsRxListen();
+
+  if (!configureBackgroundConnectionHardware(true)) {
+    return false;
+  }
+
+  bleProgramCompare(kBleBackgroundConnRxCompareChannel, rxStartUs, false);
+  backgroundConnectionRxPrepared_ = true;
+  backgroundConnectionPreparedDataChannel_ = dataChannel;
+  ++encDebug_.connBgRxHardwareArmCount;
+  return true;
+}
+
 void BleRadio::serviceBackgroundConnection(uint32_t spinLimit) {
   if (!initialized_ || radio_ == nullptr || !connected_ || connectionServiceBusy_) {
     return;
   }
 
-  auto backgroundConnectionEventWakeUsForNextEvent = [&]() -> uint32_t {
-    uint32_t radioStartUs = connectionNextEventUs_;
+  auto backgroundConnectionRxStartUsForNextEvent = [&]() -> uint32_t {
     if (connectionRole_ == BleConnectionRole::kPeripheral) {
       const uint32_t rxStartLeadUs =
           bleConnectionRxStartLeadUs(connectionSyncAttemptsRemaining_ > 0U,
                                      connectionMissedEventCount_);
-      radioStartUs = (connectionNextEventUs_ > rxStartLeadUs)
-                         ? static_cast<uint32_t>(connectionNextEventUs_ - rxStartLeadUs)
-                         : connectionNextEventUs_;
+      return (connectionNextEventUs_ > rxStartLeadUs)
+                 ? static_cast<uint32_t>(connectionNextEventUs_ -
+                                         rxStartLeadUs)
+                 : connectionNextEventUs_;
     }
+    return connectionNextEventUs_;
+  };
+
+  auto backgroundConnectionEventWakeUsForNextEvent = [&]() -> uint32_t {
+    const uint32_t radioStartUs = backgroundConnectionRxStartUsForNextEvent();
 
     uint32_t wakeUs =
         (radioStartUs > kBleConnAnchorPrewaitUs)
@@ -692,9 +849,26 @@ void BleRadio::serviceBackgroundConnection(uint32_t spinLimit) {
   };
 
   auto armBackgroundConnectionForNextEvent = [&](uint32_t nowUs) {
-    const uint32_t eventWakeUs = backgroundConnectionEventWakeUsForNextEvent();
+    uint32_t eventWakeUs = backgroundConnectionEventWakeUsForNextEvent();
+    const uint32_t rxStartUs = backgroundConnectionRxStartUsForNextEvent();
+    uint32_t prewarmBasisUs = eventWakeUs;
+    backgroundConnectionRxPrepared_ = false;
+    backgroundConnectionPreparedDataChannel_ = 0U;
+    bleDisableCompare(kBleBackgroundConnRxCompareChannel, true);
+
+    const uint32_t preparedWakeUs =
+        (connectionNextEventUs_ > kBleBackgroundConnHardwareWakeLeadUs)
+            ? static_cast<uint32_t>(connectionNextEventUs_ -
+                                    kBleBackgroundConnHardwareWakeLeadUs)
+            : connectionNextEventUs_;
+    if (!timeReachedUs(nowUs, preparedWakeUs) &&
+        prepareBackgroundConnectionReceiveWindow(rxStartUs)) {
+      eventWakeUs = preparedWakeUs;
+      prewarmBasisUs = rxStartUs;
+    }
+
     const uint32_t prewarmUs =
-        backgroundConnectionPrewarmUsForEventWake(eventWakeUs);
+        backgroundConnectionPrewarmUsForEventWake(prewarmBasisUs);
     bleDisableCompare(kBleBackgroundConnPrewarmCompareChannel, true);
 
     if (!bleHfxoRunning() && (prewarmUs < eventWakeUs) &&
@@ -809,6 +983,10 @@ bool BleRadio::disconnectWithReason(BleDisconnectReason reason, uint8_t errorCod
   waitDisabled(spinLimit);
   connected_ = false;
   connectionRole_ = BleConnectionRole::kNone;
+  backgroundConnectionRxPrepared_ = false;
+  backgroundConnectionPreparedDataChannel_ = 0U;
+  bleDisableCompare(kBleBackgroundConnRxCompareChannel, true);
+  (void)configureBackgroundConnectionHardware(false);
   connectionLastTxLlid_ = 0x01U;
   connectionLastTxLength_ = 0U;
   connectionLastTxSn_ = 0U;
@@ -1089,6 +1267,7 @@ void BleRadio::setBackgroundConnectionServiceEnabled(bool enabled) {
   blePendSvClearPending();
   bleDisableCompare(kBleBackgroundConnPrewarmCompareChannel, true);
   bleDisableCompare(kBleBackgroundConnRxCompareChannel, true);
+  (void)configureBackgroundConnectionHardware(false);
   NVIC->ICPR[static_cast<uint32_t>(kBleBackgroundGrtcIrq) >> 5U] =
       (1UL << (static_cast<uint32_t>(kBleBackgroundGrtcIrq) & 0x1FUL));
   if (g_bleBackgroundRadio == this && !backgroundAdvertisingEnabled_ &&
@@ -1135,9 +1314,16 @@ void BleRadio::serviceBackgroundConnectionFromIrq() {
                          : connectionNextEventUs_;
     }
     const uint32_t eventWakeUs =
-        (radioStartUs > kBleConnAnchorPrewaitUs)
-            ? static_cast<uint32_t>(radioStartUs - kBleConnAnchorPrewaitUs)
-            : radioStartUs;
+        backgroundConnectionRxPrepared_
+            ? ((connectionNextEventUs_ > kBleBackgroundConnHardwareWakeLeadUs)
+                   ? static_cast<uint32_t>(
+                         connectionNextEventUs_ -
+                         kBleBackgroundConnHardwareWakeLeadUs)
+                   : connectionNextEventUs_)
+            : ((radioStartUs > kBleConnAnchorPrewaitUs)
+                   ? static_cast<uint32_t>(radioStartUs -
+                                           kBleConnAnchorPrewaitUs)
+                   : radioStartUs);
     const uint32_t nowUs = bleTimingUs();
     if (!timeReachedUs(nowUs, eventWakeUs)) {
       backgroundConnectionWakeUs_ = eventWakeUs;
@@ -1175,6 +1361,7 @@ void BleRadio::stopBackgroundConnectionService() {
   blePendSvClearPending();
   bleDisableCompare(kBleBackgroundConnPrewarmCompareChannel, false);
   bleDisableCompare(kBleBackgroundConnRxCompareChannel, true);
+  (void)configureBackgroundConnectionHardware(false);
   if (g_bleBackgroundRadio == this && !backgroundAdvertisingEnabled_ &&
       queuedConnectionEventCount_ == 0U &&
       deferredConnectionEventCount_ == 0U &&

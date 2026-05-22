@@ -95,6 +95,7 @@ void clearUnownedBleBackgroundGrtcCompares() {
       kBleBackgroundAdvStage2ServiceCompareChannel,
       kBleBackgroundAdvStage2TxCompareChannel,
       kBleBackgroundAdvFinalCleanupCompareChannel,
+      kBleBackgroundConnRxCompareChannel,
   };
 
   for (uint8_t i = 0U; i < sizeof(kChannels); ++i) {
