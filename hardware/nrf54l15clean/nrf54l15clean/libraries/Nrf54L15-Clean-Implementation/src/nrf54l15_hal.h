@@ -2915,6 +2915,7 @@ class BleRadio {
   BleAdvPduType pduType_;
   bool useChSel2_;
   bool externalAntenna_;
+  int8_t txPowerDbm_;
   uint8_t address_[6];
   uint8_t advData_[kBleLegacyAdDataMaxLength];
   size_t advDataLen_;

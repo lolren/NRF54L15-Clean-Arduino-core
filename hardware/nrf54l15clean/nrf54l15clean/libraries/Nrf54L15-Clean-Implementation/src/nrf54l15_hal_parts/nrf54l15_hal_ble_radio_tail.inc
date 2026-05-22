@@ -79,6 +79,9 @@ bool BleRadio::configureBlePhy(uint8_t phy) {
 
   radio_->TIFS = 150U;
   radio_->DATAWHITE = bleDataWhiteValue(37U);
+  radio_->TXPOWER = ((txPowerRegFromDbm(txPowerDbm_)
+                      << RADIO_TXPOWER_TXPOWER_Pos) &
+                     RADIO_TXPOWER_TXPOWER_Msk);
   clearRadioCoreEvents(radio_);
   return true;
 }

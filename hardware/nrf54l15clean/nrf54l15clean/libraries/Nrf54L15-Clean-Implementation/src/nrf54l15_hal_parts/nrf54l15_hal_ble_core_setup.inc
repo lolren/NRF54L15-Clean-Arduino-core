@@ -6,6 +6,7 @@ BleRadio::BleRadio(uint32_t radioBase, uint32_t ficrBase)
       pduType_(BleAdvPduType::kAdvInd),
       useChSel2_(true),
       externalAntenna_(false),
+      txPowerDbm_(NRF54L15_CLEAN_BLE_DEFAULT_TX_DBM),
       address_{0},
       advData_{0},
       advDataLen_(0),
@@ -30,6 +31,7 @@ BleRadio::BleRadio(uint32_t radioBase, uint32_t ficrBase)
       rxPacket_{0},
       connectionTxPayload_{0},
       connected_(false),
+      rfPathOwnedByBle_(false),
       connectionRole_(BleConnectionRole::kNone),
       connectionPeerAddress_{0},
       connectionPeerAddressRandom_(false),
@@ -454,7 +456,7 @@ void BleRadio::releaseRfPathForBle() {
   if (!rfPathOwnedByBle_) {
     return;
   }
-  BoardControl::collapseRfPathIdle();
+  BoardControl::collapseRfPathIdle(boardDesiredAntennaPath(), true);
   rfPathOwnedByBle_ = false;
 }
 
@@ -630,6 +632,7 @@ bool BleRadio::setTxPowerDbm(int8_t dbm) {
   if (radio_ == nullptr) {
     return false;
   }
+  txPowerDbm_ = dbm;
   const uint32_t regValue = txPowerRegFromDbm(dbm);
   radio_->TXPOWER = ((regValue << RADIO_TXPOWER_TXPOWER_Pos) &
                      RADIO_TXPOWER_TXPOWER_Msk);
