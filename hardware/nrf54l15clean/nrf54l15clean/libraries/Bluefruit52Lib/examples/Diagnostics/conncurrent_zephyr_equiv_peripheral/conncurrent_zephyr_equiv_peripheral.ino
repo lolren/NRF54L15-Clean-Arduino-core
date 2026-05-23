@@ -25,7 +25,6 @@ using xiao_nrf54l15::BoardControl;
 // 1 lets the Arduino core power the RF switch only around BLE radio events.
 #define CONN_CURRENT_CORE_MANAGED_RF_SWITCH 0
 
-static constexpr uint8_t kPhy = 1U;
 static constexpr int8_t kTxPowerDbm = 8;
 static constexpr uint16_t kConnectionIntervalUnits = 40U;  // 40 * 1.25 ms = 50 ms
 static constexpr uint32_t kCommunicationIntervalMs = 1000UL;
@@ -146,9 +145,7 @@ static void connect_callback(uint16_t connHandle) {
   g_connected = false;
 
   BLEConnection* connection = Bluefruit.Connection(connHandle);
-  if (connection != nullptr) {
-    connection->requestPHY(kPhy);
-  }
+  (void)connection;
 
   Bluefruit.Periph.setConnInterval(kConnectionIntervalUnits,
                                    kConnectionIntervalUnits);

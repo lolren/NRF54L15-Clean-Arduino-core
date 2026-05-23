@@ -127,7 +127,6 @@ static void notify_callback(BLEClientCharacteristic* chr, uint8_t* data,
     memset(&g_rxBuffer[copyLen], 0, kPayloadLength - copyLen);
   }
 
-  delay(5);
   writeChar.writeWithoutResponse(g_txBuffer, kPayloadLength);
   g_notifyReceived = true;
 }
