@@ -115,7 +115,6 @@ static void disconnect_callback(uint16_t connHandle, uint8_t reason) {
   (void)reason;
   g_connected = false;
   g_notifyReceived = false;
-  Bluefruit.Scanner.start(0);
 }
 
 static void notify_callback(BLEClientCharacteristic* chr, uint8_t* data,
@@ -156,7 +155,6 @@ void setup() {
   Bluefruit.Central.setDisconnectCallback(disconnect_callback);
 
   Bluefruit.Scanner.setRxCallback(scan_callback);
-  Bluefruit.Scanner.restartOnDisconnect(true);
   Bluefruit.Scanner.filterUuid(dataService.uuid);
   Bluefruit.Scanner.useActiveScan(true);
   Bluefruit.Scanner.setIntervalMS(60, 30);
