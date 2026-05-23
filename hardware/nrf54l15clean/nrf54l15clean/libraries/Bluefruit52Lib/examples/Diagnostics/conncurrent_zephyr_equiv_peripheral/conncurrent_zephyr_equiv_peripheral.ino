@@ -222,6 +222,7 @@ void setup() {
   Bluefruit.Advertising.addFlags(BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE);
   Bluefruit.Advertising.addService(dataService);
   Bluefruit.ScanResponse.addName();
+  Bluefruit.Advertising.restartOnDisconnect(false);
   Bluefruit.Advertising.setIntervalMS(100, 150);
   Bluefruit.Advertising.setFastTimeout(30);
   Bluefruit.Advertising.start(0);
