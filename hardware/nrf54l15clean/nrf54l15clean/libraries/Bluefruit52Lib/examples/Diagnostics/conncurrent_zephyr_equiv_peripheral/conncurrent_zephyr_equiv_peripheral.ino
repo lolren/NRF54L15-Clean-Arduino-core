@@ -159,6 +159,7 @@ static void disconnect_callback(uint16_t connHandle, uint8_t reason) {
   g_connected = false;
   g_notifyEnabled = false;
   g_written = false;
+  Bluefruit.Advertising.start(0);
 }
 
 static void cccd_callback(uint16_t connHandle, BLECharacteristic* chr,
@@ -222,6 +223,8 @@ void setup() {
   Bluefruit.Advertising.addFlags(BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE);
   Bluefruit.Advertising.addService(dataService);
   Bluefruit.ScanResponse.addName();
+  // Match the Zephyr parity sketch: resume connectable advertising after the
+  // link drops so the pair can reconnect without a reset.
   Bluefruit.Advertising.restartOnDisconnect(false);
   Bluefruit.Advertising.setIntervalMS(100, 150);
   Bluefruit.Advertising.setFastTimeout(30);
