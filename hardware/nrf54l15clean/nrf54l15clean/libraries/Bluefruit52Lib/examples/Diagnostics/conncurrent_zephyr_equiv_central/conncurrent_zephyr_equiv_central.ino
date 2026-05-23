@@ -1,15 +1,16 @@
 /*
-  Connection Current Parity - Arduino Central
+  Connection Current Zephyr Equivalent - Central
 
-  Matches the Zephyr current-comparison central as closely as practical:
+  Pair this with conncurrent_zephyr_equiv_peripheral. It follows the Zephyr
+  central's BLE shape closely enough for current comparison:
   - active scan for the same 128-bit service UUID
   - 23-byte ATT MTU / default data length
-  - subscribe to notify
-  - reply with ATT Write Command / Write Without Response
-  - 1 second application cadence
+  - 50 ms connection interval target from the central side
+  - subscribe to the notify characteristic
+  - reply to each notify using ATT Write Command / Write Without Response
 
-  Only one green LED pulse remains: 5 ms after the first successful
-  application exchange.
+  Serial is disabled by default so opening the monitor is not part of the
+  current profile.
 */
 
 #include <bluefruit.h>
@@ -23,8 +24,6 @@ using xiao_nrf54l15::BoardControl;
 
 static constexpr int8_t kTxPowerDbm = 8;
 static constexpr uint8_t kPayloadLength = 16U;
-static constexpr uint32_t kConnectLedPulseMs = 5UL;
-static constexpr uint32_t kStartupSettleMs = 300UL;
 
 union Payload {
   uint32_t u32[kPayloadLength / 4U];
@@ -37,7 +36,6 @@ static uint8_t g_rxBuffer[kPayloadLength];
 static uint8_t g_txBuffer[kPayloadLength];
 static volatile bool g_connected = false;
 static volatile bool g_notifyReceived = false;
-static volatile bool g_pendingLedPulse = false;
 
 BLEClientService dataService("5500554c-0000-4dd1-be0c-40588193b485");
 BLEClientCharacteristic notifyChar("5500554c-0010-4dd1-be0c-40588193b485");
@@ -46,19 +44,6 @@ BLEClientCharacteristic writeChar("5500554c-0020-4dd1-be0c-40588193b485");
 static void setLedOff() {
 #if defined(LED_BUILTIN)
   pinMode(LED_BUILTIN, OUTPUT);
-  digitalWrite(LED_BUILTIN, HIGH);
-#endif
-}
-
-static void pulseConnectLedIfPending() {
-  if (!g_pendingLedPulse) {
-    return;
-  }
-
-  g_pendingLedPulse = false;
-#if defined(LED_BUILTIN)
-  digitalWrite(LED_BUILTIN, LOW);
-  delay(kConnectLedPulseMs);
   digitalWrite(LED_BUILTIN, HIGH);
 #endif
 }
@@ -117,6 +102,10 @@ static void connect_callback(uint16_t connHandle) {
     return;
   }
 
+  BLEConnection* connection = Bluefruit.Connection(connHandle);
+  if (connection != nullptr) {
+    connection->monitorRssi();
+  }
   g_notifyReceived = false;
   g_connected = true;
 }
@@ -141,7 +130,6 @@ static void notify_callback(BLEClientCharacteristic* chr, uint8_t* data,
   delay(5);
   writeChar.writeWithoutResponse(g_txBuffer, kPayloadLength);
   g_notifyReceived = true;
-  g_pendingLedPulse = true;
 }
 
 void setup() {
@@ -173,13 +161,10 @@ void setup() {
   Bluefruit.Scanner.filterUuid(dataService.uuid);
   Bluefruit.Scanner.useActiveScan(true);
   Bluefruit.Scanner.setIntervalMS(60, 30);
-  delay(kStartupSettleMs);
   Bluefruit.Scanner.start(0);
 }
 
 void loop() {
-  pulseConnectLedIfPending();
-
   if (!g_connected || !g_notifyReceived) {
     delay(1);
     return;
