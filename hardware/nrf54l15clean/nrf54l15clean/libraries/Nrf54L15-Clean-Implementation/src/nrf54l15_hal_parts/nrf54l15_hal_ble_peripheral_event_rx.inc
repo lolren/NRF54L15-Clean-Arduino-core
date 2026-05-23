@@ -226,7 +226,7 @@ bool BleRadio::pollConnectionEventInternal(BleConnectionEvent* event,
       bleDataPduAirTimeUsOnPhy(
           static_cast<uint8_t>(currentRxDataPduPayloadLength()),
           connectionCurrentRxPhy_) +
-      1200U;
+      kBleConnRxPacketMarginUs;
   if (((connectionCurrentRxPhy_ & kBlePhyCoded) == 0U) &&
       intervalUsForListen > 1000U) {
     const uint32_t capUs = intervalUsForListen - 1000U;

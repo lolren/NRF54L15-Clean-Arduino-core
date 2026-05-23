@@ -863,7 +863,7 @@ void BleRadio::serviceBackgroundConnection(uint32_t spinLimit) {
             : connectionNextEventUs_;
     if (!timeReachedUs(nowUs, preparedWakeUs) &&
         prepareBackgroundConnectionReceiveWindow(rxStartUs)) {
-      eventWakeUs = preparedWakeUs;
+      eventWakeUs = rxStartUs + kBleBackgroundConnRxFallbackLeadUs;
       prewarmBasisUs = rxStartUs;
     }
 
@@ -1315,11 +1315,8 @@ void BleRadio::serviceBackgroundConnectionFromIrq() {
     }
     const uint32_t eventWakeUs =
         backgroundConnectionRxPrepared_
-            ? ((connectionNextEventUs_ > kBleBackgroundConnHardwareWakeLeadUs)
-                   ? static_cast<uint32_t>(
-                         connectionNextEventUs_ -
-                         kBleBackgroundConnHardwareWakeLeadUs)
-                   : connectionNextEventUs_)
+            ? static_cast<uint32_t>(radioStartUs +
+                                    kBleBackgroundConnRxFallbackLeadUs)
             : ((radioStartUs > kBleConnAnchorPrewaitUs)
                    ? static_cast<uint32_t>(radioStartUs -
                                            kBleConnAnchorPrewaitUs)

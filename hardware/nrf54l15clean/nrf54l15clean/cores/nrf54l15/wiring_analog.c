@@ -431,11 +431,24 @@ static uint8_t saadc_wait_event(uintptr_t base, uintptr_t event_off, uint32_t sp
     return (*regptr(base, event_off) != 0U) ? 1U : 0U;
 }
 
+static void saadc_disconnect_all_channels(uintptr_t base)
+{
+    for (uint8_t ch = 0; ch < 8U; ++ch) {
+        const uintptr_t off = (uintptr_t)ch * SAADC_CH_STRIDE;
+        *regptr(base, SAADC_CH_PSELP + off) =
+            ((uint32_t)SAADC_CH_PSELP_CONNECT_NC << SAADC_CH_PSELP_CONNECT_Pos);
+        *regptr(base, SAADC_CH_PSELN + off) =
+            ((uint32_t)SAADC_CH_PSELN_CONNECT_NC << SAADC_CH_PSELN_CONNECT_Pos);
+        *regptr(base, SAADC_CH_CONFIG + off) = 0;
+    }
+}
+
 static void saadc_stop_and_disable(uintptr_t base)
 {
     *regptr(base, SAADC_TASKS_STOP) = 1UL;
     (void)saadc_wait_event(base, SAADC_EVENTS_STOPPED, kSaadcStopSpinLimit);
     *regptr(base, SAADC_ENABLE) = SAADC_ENABLE_DISABLED;
+    saadc_disconnect_all_channels(base);
 }
 
 static void gpio_write_raw(uint8_t port, uint8_t pin, uint8_t high)
@@ -1902,14 +1915,7 @@ static int saadc_sample_pin_once(uint8_t port, uint8_t pin, uint8_t resolution_b
     *regptr(base, SAADC_NOISESHAPE) = SAADC_NOISESHAPE_DISABLED;
     *regptr(base, SAADC_SAMPLERATE) = (SAADC_SAMPLERATE_MODE_Task << SAADC_SAMPLERATE_MODE_Pos);
 
-    for (uint8_t ch = 0; ch < 8U; ++ch) {
-        const uintptr_t off = (uintptr_t)ch * SAADC_CH_STRIDE;
-        *regptr(base, SAADC_CH_PSELP + off) =
-            ((uint32_t)SAADC_CH_PSELP_CONNECT_NC << SAADC_CH_PSELP_CONNECT_Pos);
-        *regptr(base, SAADC_CH_PSELN + off) =
-            ((uint32_t)SAADC_CH_PSELN_CONNECT_NC << SAADC_CH_PSELN_CONNECT_Pos);
-        *regptr(base, SAADC_CH_CONFIG + off) = 0;
-    }
+    saadc_disconnect_all_channels(base);
 
     uint32_t cfg = 0;
     cfg |= (7UL << SAADC_CH_CONFIG_GAIN_Pos);      // Gain = 2/8
@@ -1972,10 +1978,12 @@ static int saadc_sample_pin_once(uint8_t port, uint8_t pin, uint8_t resolution_b
     *regptr(base, SAADC_TASKS_STOP) = 1UL;
     if (!saadc_wait_event(base, SAADC_EVENTS_STOPPED, kSaadcStopSpinLimit)) {
         *regptr(base, SAADC_ENABLE) = SAADC_ENABLE_DISABLED;
+        saadc_disconnect_all_channels(base);
         return -1;
     }
 
     *regptr(base, SAADC_ENABLE) = SAADC_ENABLE_DISABLED;
+    saadc_disconnect_all_channels(base);
 
     if (*regptr(base, SAADC_RESULT_AMOUNT) < 2UL) {
         return -1;

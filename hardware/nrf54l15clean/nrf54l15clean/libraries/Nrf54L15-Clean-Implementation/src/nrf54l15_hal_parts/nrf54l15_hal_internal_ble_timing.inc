@@ -1271,6 +1271,7 @@ constexpr uint16_t kBlePreferredConnTimeoutUnits = 500U;
 // Post-ENC_RSP follow-up listen is only to catch a same-event START_ENC_REQ.
 // Keep this bounded, but long enough to tolerate controller/event jitter.
 constexpr uint32_t kBleConnFollowupRxListenMaxUs = 4000U;
+constexpr uint32_t kBleConnRxPacketMarginUs = 400U;
 constexpr uint32_t kBleConnFastCccdArmBudgetUs = 40U;
 constexpr uint32_t kBleConnResyncExtraListenUs = 2400U;
 constexpr uint32_t kBleConnResyncPostAnchorMaxUs = 10000U;

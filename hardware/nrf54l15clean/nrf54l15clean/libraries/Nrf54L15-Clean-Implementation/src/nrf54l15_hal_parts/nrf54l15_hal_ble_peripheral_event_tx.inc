@@ -694,6 +694,7 @@
   // During start encryption, some controllers send LL_START_ENC_REQ as a second
   // packet in a later connection event. Keep TX->RX turnaround in hardware while
   // awaiting LL_START_ENC_REQ so we can catch it without CPU latency.
+  const bool rxPeerMoreData = (((hdr0 >> 4U) & 0x01U) != 0U);
   const bool allowPlainFollowupTurnaround =
       !terminateInd &&
       !connectionEncSessionValid_ &&
@@ -704,7 +705,7 @@
       !connectionEncAwaitingStartRsp_ &&
       !connectionEncKeyDerivationPending_ &&
       packetIsNew &&
-      ((rxLength > 0U) || txHasFollowingPayload);
+      (rxPeerMoreData || txHasFollowingPayload);
   const bool allowQueuedDataBurstFollowup =
       allowPlainFollowupTurnaround && txHasFollowingPayload;
   const bool allowQueuedSmpFollowupTurnaround =
@@ -909,17 +910,16 @@
   // armed in hardware at the TX->RX boundary.
   if (doPostTxRxTurnaround && txOk && !terminateInd) {
     ++encDebug_.followupArmed;
-    uint32_t followListenUs = kBleConnFollowupRxListenMaxUs;
     const uint16_t rxPayloadLength = currentRxDataPduPayloadLength();
     const uint16_t txPayloadLength = currentTxDataPduPayloadLength();
-    const uint32_t dynamicFollowListenUs =
+    uint32_t followListenUs =
         bleDataPduAirTimeUsOnPhy(static_cast<uint8_t>(rxPayloadLength),
                                  connectionCurrentRxPhy_) +
         bleConnectionTxEndBudgetUsOnPhy(static_cast<uint8_t>(txPayloadLength),
                                         connectionCurrentTxPhy_) +
-        1200U;
-    if (followListenUs < dynamicFollowListenUs) {
-      followListenUs = dynamicFollowListenUs;
+        kBleConnRxPacketMarginUs;
+    if (followListenUs > kBleConnFollowupRxListenMaxUs) {
+      followListenUs = kBleConnFollowupRxListenMaxUs;
     }
     const uint32_t followIntervalUs =
         static_cast<uint32_t>(connectionIntervalUnits_) * 1250UL;

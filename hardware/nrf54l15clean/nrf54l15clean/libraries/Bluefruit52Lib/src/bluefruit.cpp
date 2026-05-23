@@ -830,12 +830,16 @@ class BluefruitCompatManager {
 
       maybeApplyDeferredConnectionRequests();
       maybeDispatchRssiUpdate();
+      const bool foregroundConnectionPolling =
+          !radio_.isBackgroundConnectionServiceEnabled();
       if (radio_.connectionRole() == BleConnectionRole::kPeripheral) {
-        for (uint8_t i = 0U; i < 2U && radio_.isConnected(); ++i) {
-          BleConnectionEvent event{};
-          if (!radio_.pollConnectionEvent(&event,
-                                          kBleIdleConnectionPollBudgetUs)) {
-            break;
+        if (foregroundConnectionPolling) {
+          for (uint8_t i = 0U; i < 2U && radio_.isConnected(); ++i) {
+            BleConnectionEvent event{};
+            if (!radio_.pollConnectionEvent(&event,
+                                            kBleIdleConnectionPollBudgetUs)) {
+              break;
+            }
           }
         }
         maybeDispatchSecurityCallbacks();
@@ -847,13 +851,15 @@ class BluefruitCompatManager {
       } else if (radio_.connectionRole() == BleConnectionRole::kCentral) {
         maybeDispatchCentralConnectCallback();
         processCentralBackgroundEvents(4U);
-        for (uint8_t i = 0U; i < 2U && radio_.isConnected(); ++i) {
-          BleConnectionEvent event{};
-          if (!radio_.pollConnectionEvent(&event,
-                                          kBleIdleConnectionPollBudgetUs)) {
-            break;
+        if (foregroundConnectionPolling) {
+          for (uint8_t i = 0U; i < 2U && radio_.isConnected(); ++i) {
+            BleConnectionEvent event{};
+            if (!radio_.pollConnectionEvent(&event,
+                                            kBleIdleConnectionPollBudgetUs)) {
+              break;
+            }
+            handleCentralConnectionEvent(event);
           }
-          handleCentralConnectionEvent(event);
         }
         maybeDispatchSecurityCallbacks();
         dispatchDeferredUserCallbacks();

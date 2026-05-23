@@ -331,14 +331,13 @@ bool BleRadio::pollCentralConnectionEvent(BleConnectionEvent* event,
     }
   }
 
-  uint32_t followListenUs = kBleConnFollowupRxListenMaxUs;
   const uint16_t rxPayloadLength = currentRxDataPduPayloadLength();
-  const uint32_t dynamicFollowListenUs =
+  uint32_t followListenUs =
       bleDataPduAirTimeUsOnPhy(static_cast<uint8_t>(rxPayloadLength),
                                connectionCurrentRxPhy_) +
-      1200U;
-  if (followListenUs < dynamicFollowListenUs) {
-    followListenUs = dynamicFollowListenUs;
+      kBleConnRxPacketMarginUs;
+  if (followListenUs > kBleConnFollowupRxListenMaxUs) {
+    followListenUs = kBleConnFollowupRxListenMaxUs;
   }
   const uint32_t intervalUs =
       (connectionIntervalUnits_ > 0U)
@@ -852,17 +851,16 @@ bool BleRadio::pollCentralConnectionEvent(BleConnectionEvent* event,
   }
 
   if (continueCentralTurnaround) {
-    uint32_t followListenUs = kBleConnFollowupRxListenMaxUs;
     const uint16_t rxPayloadLength = currentRxDataPduPayloadLength();
     const uint16_t txPayloadLength = currentTxDataPduPayloadLength();
-    const uint32_t dynamicFollowListenUs =
+    uint32_t followListenUs =
         bleDataPduAirTimeUsOnPhy(static_cast<uint8_t>(rxPayloadLength),
                                  connectionCurrentRxPhy_) +
         bleConnectionTxEndBudgetUsOnPhy(static_cast<uint8_t>(txPayloadLength),
                                         connectionCurrentTxPhy_) +
-        1200U;
-    if (followListenUs < dynamicFollowListenUs) {
-      followListenUs = dynamicFollowListenUs;
+        kBleConnRxPacketMarginUs;
+    if (followListenUs > kBleConnFollowupRxListenMaxUs) {
+      followListenUs = kBleConnFollowupRxListenMaxUs;
     }
     const uint32_t followIntervalUs =
         (connectionIntervalUnits_ > 0U)

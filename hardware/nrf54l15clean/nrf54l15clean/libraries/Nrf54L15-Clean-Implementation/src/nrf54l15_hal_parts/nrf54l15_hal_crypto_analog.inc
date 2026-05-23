@@ -1303,6 +1303,19 @@ Saadc::Saadc(uint32_t base)
       differential_(false),
       configured_(false) {}
 
+namespace {
+void saadcDisconnectAllChannels(uint32_t base) {
+  for (uint8_t channel = 0U; channel < 8U; ++channel) {
+    const uint32_t offset = static_cast<uint32_t>(channel) * saadc::CH_STRIDE;
+    reg32(base + saadc::CH_PSELP + offset) =
+        (saadc::CH_PSEL_CONNECT_NC << saadc::CH_PSEL_CONNECT_Pos);
+    reg32(base + saadc::CH_PSELN + offset) =
+        (saadc::CH_PSEL_CONNECT_NC << saadc::CH_PSEL_CONNECT_Pos);
+    reg32(base + saadc::CH_CONFIG + offset) = 0U;
+  }
+}
+}  // namespace
+
 bool Saadc::begin(AdcResolution resolution, uint32_t spinLimit) {
   return begin(resolution, AdcOversample::kBypass, spinLimit);
 }
@@ -1315,6 +1328,7 @@ bool Saadc::begin(AdcResolution resolution, AdcOversample oversample,
   configured_ = false;
 
   reg32(base_ + saadc::ENABLE) = saadc::ENABLE_DISABLED;
+  saadcDisconnectAllChannels(base_);
 
   reg32(base_ + saadc::RESOLUTION) = static_cast<uint32_t>(resolution_);
   reg32(base_ + saadc::OVERSAMPLE) = static_cast<uint32_t>(oversample_);
@@ -1339,7 +1353,11 @@ bool Saadc::calibrate(uint32_t spinLimit) {
 }
 
 void Saadc::end() {
+  clearEvent(base_, saadc::EVENTS_STOPPED);
+  reg32(base_ + saadc::TASKS_STOP) = 1;
+  (void)waitForEvent(base_, saadc::EVENTS_STOPPED, 300000UL);
   reg32(base_ + saadc::ENABLE) = saadc::ENABLE_DISABLED;
+  saadcDisconnectAllChannels(base_);
   differential_ = false;
   configured_ = false;
 }
@@ -1364,12 +1382,7 @@ bool Saadc::configureSingleEnded(uint8_t channel, const Pin& pin, AdcGain gain,
   }
 
   // Keep this HAL simple and deterministic: one active channel at a time.
-  for (uint8_t i = 0; i < 8U; ++i) {
-    reg32(base_ + saadc::CH_PSELP +
-          (static_cast<uint32_t>(i) * saadc::CH_STRIDE)) = 0;
-    reg32(base_ + saadc::CH_PSELN +
-          (static_cast<uint32_t>(i) * saadc::CH_STRIDE)) = 0;
-  }
+  saadcDisconnectAllChannels(base_);
 
   reg32(base_ + saadc::CH_PSELP +
         (static_cast<uint32_t>(channel) * saadc::CH_STRIDE)) =
@@ -1418,12 +1431,7 @@ bool Saadc::configureSingleEnded(uint8_t channel, AdcInternalInput input,
   }
 
   // Keep this HAL simple and deterministic: one active channel at a time.
-  for (uint8_t i = 0; i < 8U; ++i) {
-    reg32(base_ + saadc::CH_PSELP +
-          (static_cast<uint32_t>(i) * saadc::CH_STRIDE)) = 0;
-    reg32(base_ + saadc::CH_PSELN +
-          (static_cast<uint32_t>(i) * saadc::CH_STRIDE)) = 0;
-  }
+  saadcDisconnectAllChannels(base_);
 
   reg32(base_ + saadc::CH_PSELP +
         (static_cast<uint32_t>(channel) * saadc::CH_STRIDE)) =
@@ -1476,12 +1484,7 @@ bool Saadc::configureDifferential(uint8_t channel, const Pin& positivePin,
     tconv = 7U;
   }
 
-  for (uint8_t i = 0; i < 8U; ++i) {
-    reg32(base_ + saadc::CH_PSELP +
-          (static_cast<uint32_t>(i) * saadc::CH_STRIDE)) = 0;
-    reg32(base_ + saadc::CH_PSELN +
-          (static_cast<uint32_t>(i) * saadc::CH_STRIDE)) = 0;
-  }
+  saadcDisconnectAllChannels(base_);
 
   reg32(base_ + saadc::CH_PSELP +
         (static_cast<uint32_t>(channel) * saadc::CH_STRIDE)) =
