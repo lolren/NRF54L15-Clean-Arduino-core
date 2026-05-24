@@ -29,6 +29,19 @@ bool BleRadio::pollCentralConnectionEvent(BleConnectionEvent* event,
         ++connectionMissedEventCount_;
       }
       noteConnectionMissedEvent(&encDebug_, connectionMissedEventCount_);
+      if (centralMissingPeerDisconnectEvents_ != 0U &&
+          connectionMissedEventCount_ >= centralMissingPeerDisconnectEvents_) {
+        ++g_ble_central_missing_peer_fast_timeout_count;
+        g_ble_central_missing_peer_last_missed_count =
+            connectionMissedEventCount_;
+        if (event != nullptr) {
+          event->terminateInd = true;
+        }
+        emitBleTrace("CENTRAL_MISSING_PEER_FAST_TIMEOUT");
+        disconnectWithReason(BleDisconnectReason::kSupervisionTimeout, 0U,
+                             spinLimit / 2U + 1U);
+        return true;
+      }
       {
         const uint32_t intervalUs =
             (connectionIntervalUnits_ > 0U)
@@ -351,11 +364,37 @@ bool BleRadio::pollCentralConnectionEvent(BleConnectionEvent* event,
     }
   }
 
+  const bool canGateEmptyPollRxStart =
+      !followRxAlreadyDone &&
+      (txLength == 0U) &&
+      !txHasFollowingPayload &&
+      ((connectionCurrentRxPhy_ & kBlePhyCoded) == 0U);
+  const uint32_t initialFollowListenUs =
+      (canGateEmptyPollRxStart &&
+       (followListenUs > kBleConnFollowupRxStartDetectUs))
+          ? kBleConnFollowupRxStartDetectUs
+          : followListenUs;
+  if (canGateEmptyPollRxStart) {
+    ++g_ble_central_rxstart_gate_count;
+  }
   bool rxDoneSeen =
       followRxAlreadyDone ||
-      waitRadioRxDoneBudgeted(radio_, followListenUs, spinLimit / 2U + 1U);
-  if (!rxDoneSeen &&
-      ((radio_->EVENTS_RXREADY != 0U) || (radio_->EVENTS_ADDRESS != 0U))) {
+      waitRadioRxDoneBudgeted(radio_, initialFollowListenUs,
+                              spinLimit / 2U + 1U);
+  if (!rxDoneSeen && canGateEmptyPollRxStart) {
+    if (radio_->EVENTS_ADDRESS != 0U) {
+      ++g_ble_central_rxstart_gate_extend_count;
+      const uint32_t remainingFollowListenUs =
+          (followListenUs > initialFollowListenUs)
+              ? static_cast<uint32_t>(followListenUs - initialFollowListenUs)
+              : followListenUs;
+      rxDoneSeen = waitRadioRxDoneBudgeted(radio_, remainingFollowListenUs,
+                                           spinLimit / 2U + 1U);
+    } else {
+      ++g_ble_central_rxstart_gate_timeout_count;
+    }
+  }
+  if (!rxDoneSeen && (radio_->EVENTS_ADDRESS != 0U)) {
     // On some turnarounds the peer response has already started before the
     // timeout budget expires, but CRC completion lands a little later than the
     // normal fast path expects. Give an in-progress RX one short grace window
@@ -401,6 +440,19 @@ bool BleRadio::pollCentralConnectionEvent(BleConnectionEvent* event,
     clearRadioCoreEvents(radio_);
     connectionFreshTxAllowed_ = false;
     ++connectionMissedEventCount_;
+    if (centralMissingPeerDisconnectEvents_ != 0U &&
+        connectionMissedEventCount_ >= centralMissingPeerDisconnectEvents_) {
+      ++g_ble_central_missing_peer_fast_timeout_count;
+      g_ble_central_missing_peer_last_missed_count =
+          connectionMissedEventCount_;
+      if (event != nullptr) {
+        event->terminateInd = true;
+      }
+      emitBleTrace("CENTRAL_MISSING_PEER_FAST_TIMEOUT");
+      disconnectWithReason(BleDisconnectReason::kSupervisionTimeout, 0U,
+                           spinLimit / 2U + 1U);
+      return true;
+    }
 
     const uint32_t intervalUs =
         (connectionIntervalUnits_ > 0U)
@@ -1088,8 +1140,7 @@ bool BleRadio::pollCentralConnectionEvent(BleConnectionEvent* event,
           followRxAlreadyDone ||
           waitRadioRxDoneBudgeted(radio_, remainingUs, spinLimit / 2U + 1U,
                                   &followRxEndTimestampUs);
-      if (!followRxDone &&
-          ((radio_->EVENTS_RXREADY != 0U) || (radio_->EVENTS_ADDRESS != 0U))) {
+      if (!followRxDone && (radio_->EVENTS_ADDRESS != 0U)) {
         uint8_t observedLength = rxPacket_[1];
         if (observedLength == 0U) {
           observedLength = 8U;

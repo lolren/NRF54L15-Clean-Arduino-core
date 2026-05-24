@@ -108,6 +108,14 @@ volatile uint32_t __attribute__((used))
     g_bluefruitBleIdleDiagLastDwellBudgetUs = 0U;
 volatile uint32_t __attribute__((used))
     g_bluefruitBleIdleDiagLastScanRspBudgetUs = 0U;
+volatile uint32_t __attribute__((used))
+    g_bluefruitBleIdleDiagScanStartGapLastUs = 0U;
+volatile uint32_t __attribute__((used))
+    g_bluefruitBleIdleDiagScanStartGapMinUs = 0xFFFFFFFFUL;
+volatile uint32_t __attribute__((used))
+    g_bluefruitBleIdleDiagScanStartGapMaxUs = 0U;
+volatile uint32_t __attribute__((used))
+    g_bluefruitBleIdleDiagScanStartGapCount = 0U;
 volatile uint32_t __attribute__((used)) g_bluefruitBleIdleDiagLastRole = 0U;
 volatile uint32_t __attribute__((used))
     g_bluefruitBleIdleDiagLastDisconnectReason = 0U;
@@ -115,6 +123,10 @@ volatile uint32_t __attribute__((used)) g_bluefruitBleIdleDiagLastScanResult =
     0U;
 volatile uint32_t __attribute__((used))
     g_bluefruitBleIdleDiagLastConnectionEdgeMs = 0U;
+volatile uint32_t __attribute__((used))
+    g_bluefruitBleIdleDiagLastPrewarmStartRemainingUs = 0U;
+volatile uint32_t __attribute__((used))
+    g_bluefruitBleIdleDiagLastPrewarmSource = 0U;
 volatile uint32_t __attribute__((used)) g_bluefruitBleScanDiagFlags = 0U;
 volatile uint32_t __attribute__((used)) g_bluefruitBleScanDiagUuidSize = 0U;
 volatile uint8_t __attribute__((used)) g_bluefruitBleScanDiagLastReportLen = 0U;
@@ -569,6 +581,7 @@ class BluefruitCompatManager {
         next_adv_due_us_(0U),
         next_scan_due_us_(0U),
         armed_scan_wake_us_(0U),
+        scan_start_last_us_(0U),
         scan_prewarm_active_(false),
         adv_random_state_(0U),
         adv_started_ms_(0UL),
@@ -1310,11 +1323,23 @@ class BluefruitCompatManager {
   }
 
   uint32_t scannerIntervalUs() const {
-    return scannerUnitsToUs(Bluefruit.Scanner.interval_);
+    const bool useLowPower =
+        Bluefruit.Scanner.low_power_after_ms_ != 0U &&
+        Bluefruit.Scanner.low_power_interval_ != 0U &&
+        ((schedulerTimeMs() - Bluefruit.Scanner.started_ms_) >=
+         Bluefruit.Scanner.low_power_after_ms_);
+    return scannerUnitsToUs(useLowPower ? Bluefruit.Scanner.low_power_interval_
+                                        : Bluefruit.Scanner.interval_);
   }
 
   uint32_t scannerWindowUs(uint32_t intervalUs) const {
-    uint32_t windowUs = scannerUnitsToUs(Bluefruit.Scanner.window_);
+    const bool useLowPower =
+        Bluefruit.Scanner.low_power_after_ms_ != 0U &&
+        Bluefruit.Scanner.low_power_window_ != 0U &&
+        ((schedulerTimeMs() - Bluefruit.Scanner.started_ms_) >=
+         Bluefruit.Scanner.low_power_after_ms_);
+    uint32_t windowUs = scannerUnitsToUs(useLowPower ? Bluefruit.Scanner.low_power_window_
+                                                     : Bluefruit.Scanner.window_);
     if (windowUs > intervalUs) {
       windowUs = intervalUs;
     }
@@ -1359,6 +1384,7 @@ class BluefruitCompatManager {
   uint64_t next_adv_due_us_;
   uint64_t next_scan_due_us_;
   uint64_t armed_scan_wake_us_;
+  uint64_t scan_start_last_us_;
   bool scan_prewarm_active_;
   uint32_t adv_random_state_;
   unsigned long adv_started_ms_;
@@ -1684,6 +1710,16 @@ class BluefruitCompatManager {
           (remainingUs64 > 0xFFFFFFFFULL)
               ? 0xFFFFFFFFUL
               : static_cast<uint32_t>(remainingUs64);
+      // A valid prewarm window is only the last few hundred microseconds
+      // before the next scan slot. If prewarm is still latched while the
+      // next scan is much farther out, release HFXO/RF ownership and re-arm
+      // the wake compare instead of holding the unconnected radio path up for
+      // the whole rest interval.
+      if (scan_prewarm_active_ &&
+          remainingUs > kBleScannerPrewarmLeadUs) {
+        radio_.endForegroundUnconnectedRadioActivity();
+        scan_prewarm_active_ = false;
+      }
       updateBleIdleDiagSnapshot(nowUs, kBluefruitBleIdleDiagStageScanSleeping,
                                 remainingUs);
       const uint32_t scanWakeUs =
@@ -1699,6 +1735,8 @@ class BluefruitCompatManager {
         if (nrf54l15_ble_idle_wake_consume() != 0U &&
             radio_.beginForegroundUnconnectedRadioActivity(0U)) {
           scan_prewarm_active_ = true;
+          g_bluefruitBleIdleDiagLastPrewarmStartRemainingUs = remainingUs;
+          g_bluefruitBleIdleDiagLastPrewarmSource = 1U;
           armed_scan_wake_us_ = 0U;
         }
       } else if (armed_scan_wake_us_ != 0U) {
@@ -1709,6 +1747,8 @@ class BluefruitCompatManager {
           remainingUs <= kBleScannerPrewarmLeadUs &&
           radio_.beginForegroundUnconnectedRadioActivity(0U)) {
         scan_prewarm_active_ = true;
+        g_bluefruitBleIdleDiagLastPrewarmStartRemainingUs = remainingUs;
+        g_bluefruitBleIdleDiagLastPrewarmSource = 2U;
         nrf54l15_ble_idle_wake_cancel();
         armed_scan_wake_us_ = 0U;
       }
@@ -1728,6 +1768,19 @@ class BluefruitCompatManager {
     g_bluefruitBleIdleDiagLastWindowUs = windowUs;
     g_bluefruitBleIdleDiagLastDwellBudgetUs = dwellBudgetUs;
     g_bluefruitBleIdleDiagLastScanRspBudgetUs = scanRspBudgetUs;
+    if (scan_start_last_us_ != 0U) {
+      const uint32_t gapUs =
+          static_cast<uint32_t>(nowUs - scan_start_last_us_);
+      g_bluefruitBleIdleDiagScanStartGapLastUs = gapUs;
+      if (gapUs < g_bluefruitBleIdleDiagScanStartGapMinUs) {
+        g_bluefruitBleIdleDiagScanStartGapMinUs = gapUs;
+      }
+      if (gapUs > g_bluefruitBleIdleDiagScanStartGapMaxUs) {
+        g_bluefruitBleIdleDiagScanStartGapMaxUs = gapUs;
+      }
+      ++g_bluefruitBleIdleDiagScanStartGapCount;
+    }
+    scan_start_last_us_ = nowUs;
     updateBleIdleDiagSnapshot(nowUs, kBluefruitBleIdleDiagStageScanRunning, 0U);
     next_scan_due_us_ = nowUs + intervalUs;
 
@@ -2352,8 +2405,15 @@ class BluefruitCompatManager {
       if (Bluefruit.Central.disconnect_callback_ != nullptr) {
         invokeBluefruitUserCallback(Bluefruit.Central.disconnect_callback_, 0U, reason);
       }
-      if (Bluefruit.Scanner.restart_on_disconnect_ && Bluefruit.Scanner.running_) {
+      if (Bluefruit.Scanner.restart_on_disconnect_) {
+        Bluefruit.Scanner.running_ = true;
         next_scan_due_us_ = 0U;
+        if (Bluefruit.Scanner.low_power_after_ms_ != 0U) {
+          Bluefruit.Scanner.started_ms_ =
+              millis() - Bluefruit.Scanner.low_power_after_ms_;
+        } else {
+          Bluefruit.Scanner.started_ms_ = millis();
+        }
         Bluefruit.Scanner.paused_ = false;
       }
     }
@@ -4114,6 +4174,10 @@ bool BLECentral::connected() const {
          manager().radio().connectionRole() == BleConnectionRole::kCentral;
 }
 
+void BLECentral::setMissingPeerDisconnectEvents(uint16_t events) {
+  manager().radio().setCentralMissingPeerDisconnectEvents(events);
+}
+
 void BLECentral::clearBonds() {
   (void)manager().radio().clearBondRecord();
 }
@@ -4122,6 +4186,10 @@ BLEScanner::BLEScanner()
     : rx_callback_(nullptr),
       interval_(160U),
       window_(80U),
+      low_power_interval_(0U),
+      low_power_window_(0U),
+      low_power_after_ms_(0U),
+      started_ms_(0UL),
       timeout_s_(0U),
       active_scan_(false),
       restart_on_disconnect_(false),
@@ -4144,6 +4212,13 @@ void BLEScanner::setInterval(uint16_t interval, uint16_t window) {
 void BLEScanner::setIntervalMS(uint16_t interval_ms, uint16_t window_ms) {
   setInterval(MS1000TO625(interval_ms),
               (window_ms == 0U) ? 0U : MS1000TO625(window_ms));
+}
+
+void BLEScanner::setLowPowerBackoffMS(uint32_t after_ms, uint16_t interval_ms,
+                                      uint16_t window_ms) {
+  low_power_after_ms_ = after_ms;
+  low_power_interval_ = (interval_ms == 0U) ? 0U : MS1000TO625(interval_ms);
+  low_power_window_ = (window_ms == 0U) ? 0U : MS1000TO625(window_ms);
 }
 
 void BLEScanner::useActiveScan(bool enabled) { active_scan_ = enabled; }
@@ -4175,6 +4250,7 @@ void BLEScanner::start(uint16_t timeout) {
   }
   manager().resetScannerSchedule();
   timeout_s_ = timeout;
+  started_ms_ = millis();
   running_ = true;
   paused_ = false;
 }

@@ -17,6 +17,10 @@ extern "C" void nrf54l15_core_bootstrap_low_power_timebase(void);
 
 namespace {
 volatile bool g_loop_suspended = false;
+static volatile uint32_t* const kScbScr =
+    reinterpret_cast<volatile uint32_t*>(0xE000ED10UL);
+static constexpr uint32_t kScbScrSleepDeep_Msk = (1UL << 2);
+static constexpr uint32_t kScbScrSleepOnExit_Msk = (1UL << 1);
 
 #if defined(NRF54L15_CLEAN_POWER_LOW)
 void disableSysTickForLowPowerProfile() {
@@ -30,6 +34,22 @@ void disableSysTickForLowPowerProfile() {
     *kScbIcsr = kScbIcsrPendstclr;
     __DSB();
     __ISB();
+}
+
+void yieldWfiOnceIfAllowed() {
+    if ((__get_PRIMASK() & 1U) != 0U ||
+        nrf54l15_clean_ble_idle_yield_wfi_allowed == nullptr ||
+        nrf54l15_clean_ble_idle_yield_wfi_allowed() == 0U) {
+        __asm volatile("nop");
+        return;
+    }
+
+    const uint32_t restoreRaw = nrf54l15_core_enter_idle_cpu_scaling();
+    *kScbScr &= ~(kScbScrSleepDeep_Msk | kScbScrSleepOnExit_Msk);
+    __asm volatile("dsb 0xF" ::: "memory");
+    __asm volatile("isb 0xF" ::: "memory");
+    __asm volatile("wfi");
+    nrf54l15_core_exit_idle_cpu_scaling(restoreRaw);
 }
 #endif
 }  // namespace
@@ -50,12 +70,7 @@ extern "C" void __attribute__((weak)) yield(void) {
     nrf54l15_software_timer_service();
     nrf54l15_clean_yield_service();
 #if defined(NRF54L15_CLEAN_POWER_LOW)
-    // Keep low-power foreground BLE pump-driven until the disconnected scan
-    // scheduler is fully background-driven. The experimental yield()->WFI path
-    // starves active scan / reconnect work and prevents the parity pair from
-    // reconnecting reliably.
-    (void)nrf54l15_clean_ble_idle_yield_wfi_allowed;
-    __asm volatile("nop");
+    yieldWfiOnceIfAllowed();
     return;
 #else
     // Balanced profile keeps the foreground loop pump-driven. SysTick is

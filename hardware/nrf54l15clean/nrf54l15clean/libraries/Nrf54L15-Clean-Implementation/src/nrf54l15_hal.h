@@ -2506,6 +2506,8 @@ class BleRadio {
     endUnconnectedRadioActivity();
   }
   bool disconnect(uint32_t spinLimit = 300000UL);
+  void setCentralMissingPeerDisconnectEvents(uint16_t events);
+  uint16_t centralMissingPeerDisconnectEvents() const;
   bool pollConnectionEvent(BleConnectionEvent* event = nullptr,
                            uint32_t spinLimit = 400000UL);
   void setBackgroundConnectionServiceEnabled(bool enabled);
@@ -3010,6 +3012,7 @@ class BleRadio {
   bool connectionFreshTxAllowed_;
   uint16_t connectionEventCounter_;
   uint16_t connectionMissedEventCount_;
+  uint16_t centralMissingPeerDisconnectEvents_;
   uint32_t connectionNextEventUs_;
   uint32_t connectionFirstEventListenUs_;
   uint8_t connectionSyncAttemptsRemaining_;

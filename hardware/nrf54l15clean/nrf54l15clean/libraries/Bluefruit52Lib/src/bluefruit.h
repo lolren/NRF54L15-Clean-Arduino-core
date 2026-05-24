@@ -406,6 +406,7 @@ class BLECentral {
   }
   bool connect(const ble_gap_evt_adv_report_t* report);
   bool connected() const;
+  void setMissingPeerDisconnectEvents(uint16_t events);
   void clearBonds();
 
  private:
@@ -428,6 +429,8 @@ class BLEScanner {
   }
   void setInterval(uint16_t interval, uint16_t window = 0);
   void setIntervalMS(uint16_t interval_ms, uint16_t window_ms = 0);
+  void setLowPowerBackoffMS(uint32_t after_ms, uint16_t interval_ms,
+                            uint16_t window_ms);
   void useActiveScan(bool enabled);
   void restartOnDisconnect(bool enabled);
   void filterUuid(const BLEUuid& uuid);
@@ -455,6 +458,10 @@ class BLEScanner {
   rx_callback_t rx_callback_;
   uint16_t interval_;
   uint16_t window_;
+  uint16_t low_power_interval_;
+  uint16_t low_power_window_;
+  uint32_t low_power_after_ms_;
+  unsigned long started_ms_;
   uint16_t timeout_s_;
   bool active_scan_;
   bool restart_on_disconnect_;

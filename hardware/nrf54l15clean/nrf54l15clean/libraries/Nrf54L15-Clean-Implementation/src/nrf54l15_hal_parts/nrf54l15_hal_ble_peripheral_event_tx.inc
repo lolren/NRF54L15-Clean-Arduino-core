@@ -956,8 +956,7 @@
                                         &followRxEndTimestampUs);
       usePreservedFollowPacket = false;
       bool followEndSeenWithGrace = followEndSeen;
-      if (!followEndSeenWithGrace &&
-          ((radio_->EVENTS_RXREADY != 0U) || (radio_->EVENTS_ADDRESS != 0U))) {
+      if (!followEndSeenWithGrace && (radio_->EVENTS_ADDRESS != 0U)) {
         uint8_t observedLength = rxPacket_[1];
         if (observedLength == 0U) {
           observedLength = 8U;

@@ -54,6 +54,7 @@ BleRadio::BleRadio(uint32_t radioBase, uint32_t ficrBase)
       connectionFreshTxAllowed_(true),
       connectionEventCounter_(0),
       connectionMissedEventCount_(0U),
+      centralMissingPeerDisconnectEvents_(0U),
       connectionNextEventUs_(0),
       connectionFirstEventListenUs_(0),
       connectionSyncAttemptsRemaining_(0U),

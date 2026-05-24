@@ -1087,6 +1087,15 @@ bool BleRadio::disconnect(uint32_t spinLimit) {
   return disconnectWithReason(BleDisconnectReason::kApi, 0U, spinLimit);
 }
 
+void BleRadio::setCentralMissingPeerDisconnectEvents(uint16_t events) {
+  centralMissingPeerDisconnectEvents_ = events;
+  g_ble_central_missing_peer_threshold = events;
+}
+
+uint16_t BleRadio::centralMissingPeerDisconnectEvents() const {
+  return centralMissingPeerDisconnectEvents_;
+}
+
 bool BleRadio::disconnectWithReason(BleDisconnectReason reason, uint8_t errorCode,
                                     uint32_t spinLimit) {
   if (!initialized_ || radio_ == nullptr) {
@@ -1099,10 +1108,31 @@ bool BleRadio::disconnectWithReason(BleDisconnectReason reason, uint8_t errorCod
   waitDisabled(spinLimit);
   connected_ = false;
   connectionRole_ = BleConnectionRole::kNone;
+  backgroundConnectionServiceEnabled_ = false;
+  backgroundConnectionServiceArmed_ = false;
+  backgroundConnectionServiceInProgress_ = false;
+  backgroundConnectionServiceDue_ = false;
+  backgroundConnectionEventWakeArmed_ = false;
+  backgroundConnectionWakeUs_ = 0U;
+  g_bleBackgroundPendSvPending = 0U;
+  blePendSvClearPending();
   backgroundConnectionRxPrepared_ = false;
   backgroundConnectionPreparedDataChannel_ = 0U;
+  deferredConnectionEventHead_ = 0U;
+  deferredConnectionEventTail_ = 0U;
+  deferredConnectionEventCount_ = 0U;
+  deferredGattWriteHead_ = 0U;
+  deferredGattWriteTail_ = 0U;
+  deferredGattWriteCount_ = 0U;
+  deferredTraceHead_ = 0U;
+  deferredTraceTail_ = 0U;
+  deferredTraceCount_ = 0U;
+  bleDisableCompare(kBleBackgroundConnPrewarmCompareChannel, true);
   bleDisableCompare(kBleBackgroundConnRxCompareChannel, true);
   (void)configureBackgroundConnectionHardware(false);
+  if (g_bleBackgroundRadio == this && !backgroundAdvertisingEnabled_) {
+    g_bleBackgroundRadio = nullptr;
+  }
   connectionLastTxLlid_ = 0x01U;
   connectionLastTxLength_ = 0U;
   connectionLastTxSn_ = 0U;

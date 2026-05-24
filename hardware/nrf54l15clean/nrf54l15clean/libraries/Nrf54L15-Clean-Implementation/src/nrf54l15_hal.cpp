@@ -124,7 +124,7 @@ extern "C" void nrf54l15_secp256r1_cooperate_hook(void) {
 
 extern "C" void nrf54l15_ble_grtc_irq_service(void) {
   bleScanSleepWaitHandleTimeoutIrq();
-  if (g_bleBackgroundRadio == nullptr &&
+  if (!bleBackgroundOwnerBlocksIdleWake() &&
       g_bleIdleWakeArmed != 0U &&
       bleBackgroundCompareEventPending()) {
     g_bleIdleWakePending = 1U;

@@ -37,6 +37,80 @@ static bool bleWaitDisabledBudgeted(NRF_RADIO_Type* radio, uint32_t budgetUs) {
   return disabled;
 }
 
+struct BleActiveScanReqCacheEntry {
+  uint8_t address[6];
+  uint32_t lastUs;
+  uint8_t random;
+  uint8_t valid;
+};
+
+// In busy 2.4 GHz environments the scanner can otherwise re-issue SCAN_REQ
+// frames to the same background advertisers every second while the target peer
+// is absent. A larger cache and longer hold cut that repeated RF work without
+// delaying first discovery of new devices.
+static constexpr uint8_t kBleActiveScanReqCacheSlots = 32U;
+static constexpr uint32_t kBleActiveScanReqCacheHoldUs = 5000000UL;
+static BleActiveScanReqCacheEntry
+    g_bleActiveScanReqCache[kBleActiveScanReqCacheSlots] = {};
+volatile uint32_t __attribute__((used)) g_ble_scan_active_scan_req_count = 0U;
+volatile uint32_t __attribute__((used)) g_ble_scan_active_scan_req_skip_count = 0U;
+
+static bool bleActiveScanReqCacheMatch(const BleActiveScanReqCacheEntry& entry,
+                                       const uint8_t* address,
+                                       bool random,
+                                       uint32_t nowUs) {
+  if (address == nullptr || entry.valid == 0U ||
+      ((entry.random != 0U) != random) ||
+      !bleAddressEqual(entry.address, address)) {
+    return false;
+  }
+
+  return static_cast<uint32_t>(nowUs - entry.lastUs) <
+         kBleActiveScanReqCacheHoldUs;
+}
+
+static bool bleActiveScanReqRecentlySent(const uint8_t* address, bool random,
+                                         uint32_t nowUs) {
+  for (uint8_t i = 0U; i < kBleActiveScanReqCacheSlots; ++i) {
+    if (bleActiveScanReqCacheMatch(g_bleActiveScanReqCache[i], address,
+                                   random, nowUs)) {
+      g_bleActiveScanReqCache[i].lastUs = nowUs;
+      return true;
+    }
+  }
+
+  return false;
+}
+
+static void bleActiveScanReqRemember(const uint8_t* address, bool random,
+                                     uint32_t nowUs) {
+  if (address == nullptr) {
+    return;
+  }
+
+  uint8_t slot = 0U;
+  uint32_t oldestAge = 0U;
+  for (uint8_t i = 0U; i < kBleActiveScanReqCacheSlots; ++i) {
+    if (g_bleActiveScanReqCache[i].valid == 0U) {
+      slot = i;
+      oldestAge = 0xFFFFFFFFUL;
+      break;
+    }
+    const uint32_t age = static_cast<uint32_t>(nowUs -
+                                              g_bleActiveScanReqCache[i].lastUs);
+    if (age >= oldestAge) {
+      oldestAge = age;
+      slot = i;
+    }
+  }
+
+  memcpy(g_bleActiveScanReqCache[slot].address, address,
+         sizeof(g_bleActiveScanReqCache[slot].address));
+  g_bleActiveScanReqCache[slot].lastUs = nowUs;
+  g_bleActiveScanReqCache[slot].random = random ? 1U : 0U;
+  g_bleActiveScanReqCache[slot].valid = 1U;
+}
+
 bool BleRadio::scanOnce(BleAdvertisingChannel channel, BleScanPacket* packet,
                         uint32_t spinLimit) {
   if (!beginUnconnectedRadioActivity(1500000UL)) {
@@ -672,6 +746,16 @@ bool BleRadio::scanActiveOnceBudgeted(BleAdvertisingChannel channel,
     endUnconnectedRadioActivity();
     return true;
   }
+
+  const uint32_t scanReqNowUs = bleTimingUs();
+  if (bleActiveScanReqRecentlySent(advPayload, advertiserAddressRandom,
+                                   scanReqNowUs)) {
+    g_ble_scan_active_last_flags |= 0x10U;
+    ++g_ble_scan_active_scan_req_skip_count;
+    return finish(true, 10U);
+  }
+  bleActiveScanReqRemember(advPayload, advertiserAddressRandom, scanReqNowUs);
+  ++g_ble_scan_active_scan_req_count;
 
   txPacket_[0] = static_cast<uint8_t>(kBlePduScanReq |
                                       (((addressType_ == BleAddressType::kRandomStatic)

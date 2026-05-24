@@ -52,6 +52,12 @@ volatile uint8_t __attribute__((used)) g_ble_central_rxtimeout_hdr0 = 0U;
 volatile uint8_t __attribute__((used)) g_ble_central_rxtimeout_hdr1 = 0U;
 volatile uint8_t __attribute__((used)) g_ble_central_rxtimeout_hdr2 = 0U;
 volatile uint8_t __attribute__((used)) g_ble_central_rxtimeout_hdr3 = 0U;
+volatile uint32_t __attribute__((used)) g_ble_central_rxstart_gate_count = 0U;
+volatile uint32_t __attribute__((used)) g_ble_central_rxstart_gate_timeout_count = 0U;
+volatile uint32_t __attribute__((used)) g_ble_central_rxstart_gate_extend_count = 0U;
+volatile uint32_t __attribute__((used)) g_ble_central_missing_peer_fast_timeout_count = 0U;
+volatile uint32_t __attribute__((used)) g_ble_central_missing_peer_last_missed_count = 0U;
+volatile uint32_t __attribute__((used)) g_ble_central_missing_peer_threshold = 0U;
 volatile uint32_t __attribute__((used)) g_ble_periph_conn_trace_magic = 0x43545243UL;
 volatile uint32_t __attribute__((used)) g_ble_periph_conn_trace_count = 0U;
 volatile uint8_t __attribute__((used)) g_ble_periph_conn_trace_stage[16] = {0};
@@ -1147,13 +1153,41 @@ static inline bool bleRunningInIsr() {
   return (__get_IPSR() != 0U);
 }
 
+static inline bool bleAnyBackgroundCompareActive() {
+  const uint8_t kChannels[] = {
+      kBleBackgroundAdvPrewarmCompareChannel,
+      kBleBackgroundAdvTxCompareChannel,
+      kBleBackgroundConnPrewarmCompareChannel,
+      kBleBackgroundAdvCleanupCompareChannel,
+      kBleBackgroundAdvStage1ServiceCompareChannel,
+      kBleBackgroundAdvStage1TxCompareChannel,
+      kBleBackgroundAdvStage2ServiceCompareChannel,
+      kBleBackgroundAdvStage2TxCompareChannel,
+      kBleBackgroundAdvFinalCleanupCompareChannel,
+      kBleBackgroundConnRxCompareChannel,
+  };
+
+  for (uint8_t i = 0U; i < sizeof(kChannels); ++i) {
+    const uint8_t channel = kChannels[i];
+    if (bleCompareEnabled(channel) || bleCompareEventPending(channel)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+static inline bool bleBackgroundOwnerBlocksIdleWake() {
+  return g_bleBackgroundRadio != nullptr &&
+         (g_bleBackgroundPendSvPending != 0U || bleAnyBackgroundCompareActive());
+}
+
 extern "C" void nrf54l15_ble_idle_wake_arm(uint32_t targetUs) {
   if (NRF_GRTC == nullptr) {
     return;
   }
 
   const uint32_t irqState = halEnterCritical();
-  if (g_bleBackgroundRadio != nullptr) {
+  if (bleBackgroundOwnerBlocksIdleWake()) {
     halExitCritical(irqState);
     return;
   }
@@ -1171,7 +1205,7 @@ extern "C" void nrf54l15_ble_idle_wake_cancel(void) {
   }
 
   const uint32_t irqState = halEnterCritical();
-  if (g_bleBackgroundRadio == nullptr) {
+  if (!bleBackgroundOwnerBlocksIdleWake()) {
     g_bleIdleWakePending = 0U;
     g_bleIdleWakeArmed = 0U;
     bleBackgroundDisableCompare();
@@ -1344,6 +1378,7 @@ constexpr uint16_t kBlePreferredConnTimeoutUnits = 500U;
 // Keep this bounded, but long enough to tolerate controller/event jitter.
 constexpr uint32_t kBleConnFollowupRxListenMaxUs = 4000U;
 constexpr uint32_t kBleConnRxPacketMarginUs = 400U;
+constexpr uint32_t kBleConnFollowupRxStartDetectUs = 700U;
 constexpr uint32_t kBleConnFastCccdArmBudgetUs = 40U;
 constexpr uint32_t kBleConnResyncExtraListenUs = 2400U;
 constexpr uint32_t kBleConnResyncPostAnchorMaxUs = 10000U;

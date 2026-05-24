@@ -24,7 +24,6 @@ static constexpr int8_t kTxPowerDbm = 8;
 static constexpr uint8_t kPayloadLength = 16U;
 static constexpr uint32_t kConnectLedPulseMs = 5UL;
 static constexpr uint32_t kStartupSettleMs = 300UL;
-static constexpr char kPeripheralName[] = "XIAO_nRF54L15";
 
 union Payload {
   uint32_t u32[kPayloadLength / 4U];
@@ -42,9 +41,6 @@ static volatile bool g_pendingScanRestart = false;
 static volatile uint32_t g_scanCallbackCount = 0U;
 static volatile uint32_t g_notifyCount = 0U;
 static volatile uint32_t g_writeReplyCount = 0U;
-static volatile uint8_t g_lastReportAddrType = 0U;
-static volatile uint8_t g_lastReportAddr[6] = {0};
-static volatile uint8_t g_lastMatchFlags = 0U;
 
 BLEClientService dataService("5500554c-0000-4dd1-be0c-40588193b485");
 BLEClientCharacteristic notifyChar("5500554c-0010-4dd1-be0c-40588193b485");
@@ -110,22 +106,6 @@ static void scan_callback(ble_gap_evt_adv_report_t* report) {
     return;
   }
   ++g_scanCallbackCount;
-  g_lastReportAddrType = report->peer_addr.addr_type;
-  memcpy(const_cast<uint8_t*>(g_lastReportAddr), report->peer_addr.addr,
-         sizeof(g_lastReportAddr));
-  g_lastMatchFlags = 0U;
-  if (!Bluefruit.Scanner.checkReportForService(report, dataService.uuid)) {
-    char name[sizeof(kPeripheralName)] = {0};
-    const int nameLen = Bluefruit.Scanner.parseReportByType(
-        report, BLE_GAP_AD_TYPE_COMPLETE_LOCAL_NAME, name, sizeof(name) - 1U);
-    if (nameLen <= 0 || strcmp(name, kPeripheralName) != 0) {
-      Bluefruit.Scanner.resume();
-      return;
-    }
-    g_lastMatchFlags |= 0x02U;
-  } else {
-    g_lastMatchFlags |= 0x01U;
-  }
   Bluefruit.Central.connect(report);
 }
 
