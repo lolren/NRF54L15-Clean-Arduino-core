@@ -3,7 +3,8 @@ bool BleRadio::initiateConnection(const uint8_t peerAddress[6],
                                   uint16_t intervalUnits,
                                   uint16_t supervisionTimeoutUnits,
                                   uint8_t hopIncrement,
-                                  uint32_t perChannelScanSpinLimit) {
+                                  uint32_t perChannelScanSpinLimit,
+                                  BleAdvertisingChannel preferredChannel) {
   if (!initialized_ || radio_ == nullptr || connected_ || peerAddress == nullptr) {
     return false;
   }
@@ -21,23 +22,138 @@ bool BleRadio::initiateConnection(const uint8_t peerAddress[6],
       BleAdvertisingChannel::k38,
       BleAdvertisingChannel::k39,
   };
+  static constexpr uint32_t kConnectDisableSpinPadding = 60000UL;
+  static constexpr uint32_t kConnectFallbackMinListenSpin = 30000UL;
 
-  const uint32_t firstPassSpin = perChannelScanSpinLimit;
-  const uint32_t secondPassSpin =
-      (perChannelScanSpinLimit > 1U)
-          ? (perChannelScanSpinLimit / 2U)
-          : perChannelScanSpinLimit;
+  const auto isPrimaryAdvertisingChannel = [](BleAdvertisingChannel channel) {
+    return (channel == BleAdvertisingChannel::k37) ||
+           (channel == BleAdvertisingChannel::k38) ||
+           (channel == BleAdvertisingChannel::k39);
+  };
 
-  for (uint8_t pass = 0U; pass < 2U; ++pass) {
-    const uint32_t dwell = (pass == 0U) ? firstPassSpin : secondPassSpin;
-    for (uint8_t i = 0U; i < 3U; ++i) {
-      const uint8_t idx = static_cast<uint8_t>((scanCycleStartIndex_ + i) % 3U);
-      if (initiateConnectionOnce(kChannels[idx], peerAddress, peerAddressRandom,
-                                 intervalUnits, supervisionTimeoutUnits,
-                                 hopIncrement, dwell, dwell + 250000UL)) {
-        scanCycleStartIndex_ = static_cast<uint8_t>((idx + 1U) % 3U);
-        return true;
+  BleAdvertisingChannel channelOrder[3] = {
+      BleAdvertisingChannel::k37,
+      BleAdvertisingChannel::k38,
+      BleAdvertisingChannel::k39,
+  };
+  uint8_t orderCount = 0U;
+  const bool hasPreferredChannel = isPrimaryAdvertisingChannel(preferredChannel);
+  if (hasPreferredChannel) {
+    channelOrder[orderCount++] = preferredChannel;
+  }
+  for (uint8_t i = 0U; i < 3U; ++i) {
+    const uint8_t idx = static_cast<uint8_t>((scanCycleStartIndex_ + i) % 3U);
+    const BleAdvertisingChannel channel = kChannels[idx];
+    if (hasPreferredChannel && (channel == preferredChannel)) {
+      continue;
+    }
+    channelOrder[orderCount++] = channel;
+  }
+
+  for (uint8_t orderIdx = 0U; orderIdx < orderCount; ++orderIdx) {
+    const BleAdvertisingChannel channel = channelOrder[orderIdx];
+    uint32_t listenSpin = perChannelScanSpinLimit;
+    if (!hasPreferredChannel || (orderIdx != 0U)) {
+      listenSpin = (perChannelScanSpinLimit > 1U)
+                       ? (perChannelScanSpinLimit / (hasPreferredChannel ? 3U : 2U))
+                       : perChannelScanSpinLimit;
+      if (listenSpin < kConnectFallbackMinListenSpin) {
+        listenSpin = kConnectFallbackMinListenSpin;
       }
+    }
+    const uint32_t totalSpin = listenSpin + kConnectDisableSpinPadding;
+    if (initiateConnectionOnce(channel, peerAddress, peerAddressRandom,
+                               intervalUnits, supervisionTimeoutUnits,
+                               hopIncrement, listenSpin, totalSpin)) {
+      for (uint8_t idx = 0U; idx < 3U; ++idx) {
+        if (kChannels[idx] == channel) {
+          scanCycleStartIndex_ = static_cast<uint8_t>((idx + 1U) % 3U);
+          break;
+        }
+      }
+      return true;
+    }
+  }
+
+  scanCycleStartIndex_ = static_cast<uint8_t>((scanCycleStartIndex_ + 1U) % 3U);
+  endUnconnectedRadioActivity();
+  return false;
+}
+
+bool BleRadio::initiateConnectionBudgeted(
+    const uint8_t peerAddress[6], bool peerAddressRandom, uint16_t intervalUnits,
+    uint16_t supervisionTimeoutUnits, uint8_t hopIncrement,
+    uint32_t perChannelScanBudgetUs, BleAdvertisingChannel preferredChannel) {
+  if (!initialized_ || radio_ == nullptr || connected_ || peerAddress == nullptr) {
+    return false;
+  }
+  if (intervalUnits < 6U || intervalUnits > 3200U ||
+      supervisionTimeoutUnits < 10U ||
+      hopIncrement < 5U || hopIncrement > 16U) {
+    return false;
+  }
+  if (!beginUnconnectedRadioActivity(1500000UL)) {
+    return false;
+  }
+
+  static constexpr BleAdvertisingChannel kChannels[3] = {
+      BleAdvertisingChannel::k37,
+      BleAdvertisingChannel::k38,
+      BleAdvertisingChannel::k39,
+  };
+  static constexpr uint32_t kConnectFallbackMinListenBudgetUs = 5000UL;
+
+  const auto isPrimaryAdvertisingChannel = [](BleAdvertisingChannel channel) {
+    return (channel == BleAdvertisingChannel::k37) ||
+           (channel == BleAdvertisingChannel::k38) ||
+           (channel == BleAdvertisingChannel::k39);
+  };
+
+  if (perChannelScanBudgetUs == 0U) {
+    perChannelScanBudgetUs = kConnectFallbackMinListenBudgetUs;
+  }
+
+  BleAdvertisingChannel channelOrder[3] = {
+      BleAdvertisingChannel::k37,
+      BleAdvertisingChannel::k38,
+      BleAdvertisingChannel::k39,
+  };
+  uint8_t orderCount = 0U;
+  const bool hasPreferredChannel = isPrimaryAdvertisingChannel(preferredChannel);
+  if (hasPreferredChannel) {
+    channelOrder[orderCount++] = preferredChannel;
+  }
+  for (uint8_t i = 0U; i < 3U; ++i) {
+    const uint8_t idx = static_cast<uint8_t>((scanCycleStartIndex_ + i) % 3U);
+    const BleAdvertisingChannel channel = kChannels[idx];
+    if (hasPreferredChannel && (channel == preferredChannel)) {
+      continue;
+    }
+    channelOrder[orderCount++] = channel;
+  }
+
+  for (uint8_t orderIdx = 0U; orderIdx < orderCount; ++orderIdx) {
+    const BleAdvertisingChannel channel = channelOrder[orderIdx];
+    uint32_t listenBudgetUs = perChannelScanBudgetUs;
+    if (!hasPreferredChannel || (orderIdx != 0U)) {
+      listenBudgetUs =
+          (perChannelScanBudgetUs > 1U)
+              ? (perChannelScanBudgetUs / (hasPreferredChannel ? 3U : 2U))
+              : perChannelScanBudgetUs;
+      if (listenBudgetUs < kConnectFallbackMinListenBudgetUs) {
+        listenBudgetUs = kConnectFallbackMinListenBudgetUs;
+      }
+    }
+    if (initiateConnectionOnceBudgeted(channel, peerAddress, peerAddressRandom,
+                                       intervalUnits, supervisionTimeoutUnits,
+                                       hopIncrement, listenBudgetUs)) {
+      for (uint8_t idx = 0U; idx < 3U; ++idx) {
+        if (kChannels[idx] == channel) {
+          scanCycleStartIndex_ = static_cast<uint8_t>((idx + 1U) % 3U);
+          break;
+        }
+      }
+      return true;
     }
   }
 

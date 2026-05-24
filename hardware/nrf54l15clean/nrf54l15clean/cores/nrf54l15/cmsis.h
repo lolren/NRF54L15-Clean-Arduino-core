@@ -100,6 +100,8 @@ typedef enum IRQn {
     ECB00_IRQn            = 71,
     SPIM00_IRQn           = 74,
     EGU10_IRQn            = 135,
+    RADIO_0_IRQn          = 138,
+    RADIO_1_IRQn          = 139,
     SPIM20_IRQn            = 140,
     SPIM21_IRQn            = 141,
     TWIM20_IRQn            = 149,

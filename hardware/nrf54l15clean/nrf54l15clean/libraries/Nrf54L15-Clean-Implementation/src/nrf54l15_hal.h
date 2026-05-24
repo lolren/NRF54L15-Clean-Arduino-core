@@ -16,6 +16,9 @@ extern "C" void nrf54l15_clean_ble_application_work_service(void);
 extern "C" void nrf54l15_clean_ble_yield_service(void);
 extern "C" uint32_t nrf54l15_clean_ble_idle_sleep_cap_us(void);
 extern "C" void nrf54l15_secp256r1_cooperate_hook(void);
+extern "C" void nrf54l15_ble_idle_wake_arm(uint32_t targetUs);
+extern "C" void nrf54l15_ble_idle_wake_cancel(void);
+extern "C" uint8_t nrf54l15_ble_idle_wake_consume(void);
 
 namespace xiao_nrf54l15 {
 
@@ -2433,7 +2436,15 @@ class BleRadio {
                           uint16_t intervalUnits = 24U,
                           uint16_t supervisionTimeoutUnits = 200U,
                           uint8_t hopIncrement = 9U,
-                          uint32_t perChannelScanSpinLimit = 300000UL);
+                          uint32_t perChannelScanSpinLimit = 300000UL,
+                          BleAdvertisingChannel preferredChannel =
+                              static_cast<BleAdvertisingChannel>(0U));
+  bool initiateConnectionBudgeted(
+      const uint8_t peerAddress[6], bool peerAddressRandom,
+      uint16_t intervalUnits, uint16_t supervisionTimeoutUnits,
+      uint8_t hopIncrement, uint32_t perChannelScanBudgetUs,
+      BleAdvertisingChannel preferredChannel =
+          static_cast<BleAdvertisingChannel>(0U));
   bool queueAttRequest(const uint8_t* attPayload, uint8_t attPayloadLength);
   bool queueAttReadRequest(uint16_t handle);
   bool queueAttWriteRequest(uint16_t handle, const uint8_t* value,
@@ -2487,6 +2498,13 @@ class BleRadio {
   bool getLastDisconnectReason(uint8_t* outReason,
                                bool* outRemote = nullptr) const;
   bool getLatestConnectionRssiDbm(int8_t* outRssiDbm) const;
+  bool beginForegroundUnconnectedRadioActivity(
+      uint32_t spinLimit = 1500000UL) {
+    return beginUnconnectedRadioActivity(spinLimit);
+  }
+  void endForegroundUnconnectedRadioActivity() {
+    endUnconnectedRadioActivity();
+  }
   bool disconnect(uint32_t spinLimit = 300000UL);
   bool pollConnectionEvent(BleConnectionEvent* event = nullptr,
                            uint32_t spinLimit = 400000UL);
@@ -2499,6 +2517,8 @@ class BleRadio {
   bool scanOnce(BleAdvertisingChannel channel, BleScanPacket* packet,
                 uint32_t spinLimit = 900000UL);
   bool scanCycle(BleScanPacket* packet, uint32_t perChannelSpinLimit = 300000UL);
+  bool scanCycleBudgeted(BleScanPacket* packet,
+                         uint32_t perChannelListenBudgetUs);
   bool scanActiveOnce(BleAdvertisingChannel channel, BleActiveScanResult* result,
                       uint32_t advListenSpinLimit = 900000UL,
                       uint32_t scanRspListenSpinLimit = 300000UL,
@@ -2506,6 +2526,9 @@ class BleRadio {
   bool scanActiveCycle(BleActiveScanResult* result,
                        uint32_t perChannelAdvListenSpinLimit = 300000UL,
                        uint32_t scanRspListenSpinLimit = 300000UL);
+  bool scanActiveCycleBudgeted(BleActiveScanResult* result,
+                               uint32_t perChannelAdvListenBudgetUs,
+                               uint32_t scanRspListenBudgetUs);
   bool scanExtendedOnce(BleAdvertisingChannel channel,
                         BleExtendedScanResult* result,
                         uint32_t primaryListenSpinLimit = 900000UL,
@@ -2638,6 +2661,12 @@ class BleRadio {
                                      BleAdvInteraction* interaction,
                                      uint32_t requestListenSpinLimit,
                                      uint32_t spinLimit);
+  bool scanOnceBudgeted(BleAdvertisingChannel channel, BleScanPacket* packet,
+                        uint32_t listenBudgetUs);
+  bool scanActiveOnceBudgeted(BleAdvertisingChannel channel,
+                              BleActiveScanResult* result,
+                              uint32_t advListenBudgetUs,
+                              uint32_t scanRspListenBudgetUs);
   bool receivePacketOnCurrentChannel(uint32_t listenSpinLimit,
                                      uint32_t spinLimit,
                                      uint8_t* outHeader,
@@ -2646,6 +2675,13 @@ class BleRadio {
                                      int8_t* outRssiDbm,
                                      uint32_t* outStartUs = nullptr,
                                      uint32_t* outEndUs = nullptr);
+  bool receivePacketOnCurrentChannelBudgeted(uint32_t listenBudgetUs,
+                                             uint8_t* outHeader,
+                                             uint8_t* outPayloadLength,
+                                             const uint8_t** outPayload,
+                                             int8_t* outRssiDbm,
+                                             uint32_t* outStartUs = nullptr,
+                                             uint32_t* outEndUs = nullptr);
   bool handleExtendedScanRequestAndMaybeRespond(uint32_t requestListenSpinLimit,
                                                 uint32_t scanRspChainOffsetUs,
                                                 uint32_t spinLimit);
@@ -2660,6 +2696,13 @@ class BleRadio {
                               uint8_t hopIncrement,
                               uint32_t advListenSpinLimit,
                               uint32_t spinLimit);
+  bool initiateConnectionOnceBudgeted(BleAdvertisingChannel channel,
+                                      const uint8_t peerAddress[6],
+                                      bool peerAddressRandom,
+                                      uint16_t intervalUnits,
+                                      uint16_t supervisionTimeoutUnits,
+                                      uint8_t hopIncrement,
+                                      uint32_t advListenBudgetUs);
   bool handleRequestAndMaybeRespond(BleAdvertisingChannel channel,
                                     BleAdvInteraction* interaction,
                                     uint32_t requestListenSpinLimit,

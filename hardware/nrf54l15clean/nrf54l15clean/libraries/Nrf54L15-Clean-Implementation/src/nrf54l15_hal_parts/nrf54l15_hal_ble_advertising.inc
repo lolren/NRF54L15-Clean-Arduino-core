@@ -1699,38 +1699,11 @@ bool BleRadio::handleExtendedScanRequestAndMaybeRespond(
 
   uint32_t rxEndUs = 0U;
   bool addressSeen = false;
-  bool endSeen = false;
-  uint32_t rxListenStartUs = bleTimingUs();
-  uint8_t listenDivider = kBleConnMicrosPollDivider;
-  uint32_t listenSpinRemaining = requestListenSpinLimit;
-  while (true) {
-    if (!addressSeen && (radio_->EVENTS_ADDRESS != 0U)) {
-      addressSeen = true;
-      break;
-    }
-    if ((radio_->EVENTS_END != 0U) || (radio_->EVENTS_PHYEND != 0U)) {
-      endSeen = true;
-      rxEndUs = bleTimingUs();
-      break;
-    }
-
-    if (--listenDivider == 0U) {
-      listenDivider = kBleConnMicrosPollDivider;
-      const uint32_t elapsedUs =
-          static_cast<uint32_t>(bleTimingUs() - rxListenStartUs);
-      if (!addressSeen && (elapsedUs >= kBleAdvRequestStartWaitMaxUs)) {
-        ++g_bleAdvertiseInteractReqStartTimeoutCount;
-        break;
-      }
-    }
-
-    if (listenSpinRemaining > 0U) {
-      --listenSpinRemaining;
-      if (listenSpinRemaining == 0U) {
-        ++g_bleAdvertiseInteractReqSpinTimeoutCount;
-        break;
-      }
-    }
+  bool endSeen = waitRadioReceiveEndBudgeted(
+      radio_, kBleAdvRequestStartWaitMaxUs, requestListenSpinLimit,
+      &addressSeen, nullptr, &rxEndUs);
+  if (!endSeen && !addressSeen) {
+    ++g_bleAdvertiseInteractReqStartTimeoutCount;
   }
 
   if (!endSeen && addressSeen) {
@@ -1944,38 +1917,11 @@ bool BleRadio::advertiseInteractOncePrepared(BleAdvertisingChannel channel,
   const uint64_t rxPhaseStartUs = nrf54l15_core_monotonic_time_us();
   uint32_t rxEndUs = 0U;
   bool addressSeen = false;
-  bool endSeen = false;
-  const uint32_t rxListenStartUs = bleTimingUs();
-  uint8_t listenDivider = kBleConnMicrosPollDivider;
-  uint32_t listenSpinRemaining = requestListenSpinLimit;
-  while (true) {
-    if (!addressSeen && (radio_->EVENTS_ADDRESS != 0U)) {
-      addressSeen = true;
-      break;
-    }
-    if ((radio_->EVENTS_END != 0U) || (radio_->EVENTS_PHYEND != 0U)) {
-      endSeen = true;
-      rxEndUs = bleTimingUs();
-      break;
-    }
-
-    if (--listenDivider == 0U) {
-      listenDivider = kBleConnMicrosPollDivider;
-      const uint32_t elapsedUs =
-          static_cast<uint32_t>(bleTimingUs() - rxListenStartUs);
-      if (!addressSeen && (elapsedUs >= kBleAdvRequestStartWaitMaxUs)) {
-        ++g_bleAdvertiseInteractReqStartTimeoutCount;
-        break;
-      }
-    }
-
-    if (listenSpinRemaining > 0U) {
-      --listenSpinRemaining;
-      if (listenSpinRemaining == 0U) {
-        ++g_bleAdvertiseInteractReqSpinTimeoutCount;
-        break;
-      }
-    }
+  bool endSeen = waitRadioReceiveEndBudgeted(
+      radio_, kBleAdvRequestStartWaitMaxUs, requestListenSpinLimit,
+      &addressSeen, nullptr, &rxEndUs);
+  if (!endSeen && !addressSeen) {
+    ++g_bleAdvertiseInteractReqStartTimeoutCount;
   }
 
   if (!endSeen && addressSeen) {

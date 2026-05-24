@@ -1059,6 +1059,351 @@ bool waitRadioEndBudgeted(NRF_RADIO_Type* radio, uint32_t budgetUs, uint32_t spi
   return endSeen;
 }
 
+struct BleScanSleepWaitState {
+  volatile uint8_t active;
+  volatile uint8_t timeoutFired;
+  volatile uint8_t addressSeen;
+  volatile uint8_t endSeen;
+  volatile uint8_t disabledSeen;
+  volatile uint32_t radioBase;
+  volatile uint32_t addressTimestampUs;
+  volatile uint32_t endTimestampUs;
+};
+
+static BleScanSleepWaitState g_bleScanSleepWaitState = {};
+static volatile uint32_t* const kBleScanSleepScbScr =
+    reinterpret_cast<volatile uint32_t*>(0xE000ED10UL);
+static constexpr uint32_t kBleScanSleepScbScrSleepDeep_Msk = (1UL << 2);
+static constexpr uint32_t kBleScanSleepScbScrSleepOnExit_Msk = (1UL << 1);
+static constexpr IRQn_Type kBleScanSleepRadioIrq = RADIO_0_IRQn;
+static constexpr uint8_t kBleScanSleepTimeoutCompareChannel =
+    kBleBackgroundConnPrewarmCompareChannel;
+
+static inline void bleScanSleepWaitResetState(NRF_RADIO_Type* radio) {
+  g_bleScanSleepWaitState.active = 1U;
+  g_bleScanSleepWaitState.timeoutFired = 0U;
+  g_bleScanSleepWaitState.addressSeen = 0U;
+  g_bleScanSleepWaitState.endSeen = 0U;
+  g_bleScanSleepWaitState.disabledSeen = 0U;
+  g_bleScanSleepWaitState.radioBase =
+      static_cast<uint32_t>(reinterpret_cast<uintptr_t>(radio));
+  g_bleScanSleepWaitState.addressTimestampUs = 0U;
+  g_bleScanSleepWaitState.endTimestampUs = 0U;
+}
+
+static inline void bleScanSleepWaitDisarmState() {
+  g_bleScanSleepWaitState.active = 0U;
+  g_bleScanSleepWaitState.radioBase = 0U;
+}
+
+static inline void bleScanSleepWaitHandleRadioIrq(NRF_RADIO_Type* radio) {
+  if (radio == nullptr || g_bleScanSleepWaitState.active == 0U) {
+    return;
+  }
+  if (g_bleScanSleepWaitState.radioBase !=
+      static_cast<uint32_t>(reinterpret_cast<uintptr_t>(radio))) {
+    return;
+  }
+
+  uint32_t clearIntMask = 0U;
+  bool terminalEvent = false;
+  if (g_bleScanSleepWaitState.addressSeen == 0U &&
+      radio->EVENTS_ADDRESS != 0U) {
+    g_bleScanSleepWaitState.addressSeen = 1U;
+    g_bleScanSleepWaitState.addressTimestampUs = bleTimingUs();
+    clearIntMask |= RADIO_INTENCLR00_ADDRESS_Msk;
+  }
+  if (g_bleScanSleepWaitState.endSeen == 0U &&
+      (radio->EVENTS_PHYEND != 0U || radio->EVENTS_END != 0U)) {
+    g_bleScanSleepWaitState.endSeen = 1U;
+    g_bleScanSleepWaitState.endTimestampUs = bleTimingUs();
+    clearIntMask |= RADIO_INTENCLR00_END_Msk | RADIO_INTENCLR00_PHYEND_Msk;
+    terminalEvent = true;
+  }
+  if (g_bleScanSleepWaitState.disabledSeen == 0U &&
+      radio->EVENTS_DISABLED != 0U) {
+    g_bleScanSleepWaitState.disabledSeen = 1U;
+    clearIntMask |= RADIO_INTENCLR00_DISABLED_Msk;
+    terminalEvent = true;
+  }
+  if (clearIntMask != 0U) {
+    radio->INTENCLR00 = clearIntMask;
+  }
+  if (terminalEvent) {
+    NVIC_ClearPendingIRQ(kBleScanSleepRadioIrq);
+  }
+}
+
+static inline void bleScanSleepWaitHandleTimeoutIrq() {
+  if (g_bleScanSleepWaitState.active == 0U) {
+    return;
+  }
+  if (bleCompareEventPending(kBleScanSleepTimeoutCompareChannel)) {
+    bleDisableCompare(kBleScanSleepTimeoutCompareChannel, true);
+    g_bleScanSleepWaitState.timeoutFired = 1U;
+  }
+}
+
+static inline uint32_t bleScanSleepBeginIdle() {
+  *kBleScanSleepScbScr &=
+      ~(kBleScanSleepScbScrSleepDeep_Msk | kBleScanSleepScbScrSleepOnExit_Msk);
+  __DSB();
+  __ISB();
+  return 0U;
+}
+
+static inline void bleScanSleepEndIdle(uint32_t restoreRaw) {
+  (void)restoreRaw;
+}
+
+static inline void bleScanSleepWaitEnableRadioIrq(NRF_RADIO_Type* radio,
+                                                  bool watchAddress,
+                                                  bool watchEnd,
+                                                  bool watchDisabled) {
+  if (radio == nullptr) {
+    return;
+  }
+
+  uint32_t intenMask = 0U;
+  if (watchAddress) {
+    intenMask |= RADIO_INTENSET00_ADDRESS_Msk;
+  }
+  if (watchEnd) {
+    intenMask |= RADIO_INTENSET00_END_Msk | RADIO_INTENSET00_PHYEND_Msk;
+  }
+  if (watchDisabled) {
+    intenMask |= RADIO_INTENSET00_DISABLED_Msk;
+  }
+
+  radio->INTENCLR00 = 0xFFFFFFFFUL;
+  if (intenMask != 0U) {
+    radio->INTENSET00 = intenMask;
+  }
+  NVIC_ClearPendingIRQ(kBleScanSleepRadioIrq);
+  NVIC_SetPriority(kBleScanSleepRadioIrq, 3U);
+  NVIC_EnableIRQ(kBleScanSleepRadioIrq);
+}
+
+static inline void bleScanSleepWaitDisableRadioIrq(NRF_RADIO_Type* radio) {
+  if (radio != nullptr) {
+    radio->INTENCLR00 = 0xFFFFFFFFUL;
+  }
+  NVIC_DisableIRQ(kBleScanSleepRadioIrq);
+  NVIC_ClearPendingIRQ(kBleScanSleepRadioIrq);
+}
+
+static inline void bleScanSleepWaitArmTimeout(uint32_t deadlineUs) {
+  bleBackgroundEnableIrq();
+  bleProgramCompare(kBleScanSleepTimeoutCompareChannel, deadlineUs, true);
+}
+
+static inline void bleScanSleepWaitDisarmTimeout() {
+  bleDisableCompare(kBleScanSleepTimeoutCompareChannel, true);
+}
+
+static inline void bleScanSleepWaitWfi() {
+  const uint32_t restoreRaw = bleScanSleepBeginIdle();
+  __asm volatile("wfi");
+  bleScanSleepEndIdle(restoreRaw);
+}
+
+bool waitRadioEndBudgetedSleep(NRF_RADIO_Type* radio, uint32_t budgetUs,
+                               uint32_t* endTimestampUs = nullptr) {
+  if (radio == nullptr) {
+    return false;
+  }
+  if (budgetUs == 0U) {
+    return waitRadioEndBudgeted(radio, budgetUs, 240000UL, endTimestampUs);
+  }
+  if (radio->EVENTS_PHYEND != 0U || radio->EVENTS_END != 0U) {
+    if (endTimestampUs != nullptr) {
+      *endTimestampUs = bleTimingUs();
+    }
+    return true;
+  }
+
+  bleScanSleepWaitResetState(radio);
+  bleScanSleepWaitEnableRadioIrq(radio, false, true, false);
+  bleScanSleepWaitArmTimeout(bleTimingUs() + budgetUs);
+
+  while (true) {
+    if (radio->EVENTS_PHYEND != 0U || radio->EVENTS_END != 0U ||
+        g_bleScanSleepWaitState.endSeen != 0U) {
+      if (endTimestampUs != nullptr) {
+        *endTimestampUs = (g_bleScanSleepWaitState.endTimestampUs != 0U)
+                              ? g_bleScanSleepWaitState.endTimestampUs
+                              : bleTimingUs();
+      }
+      bleScanSleepWaitDisarmTimeout();
+      bleScanSleepWaitDisableRadioIrq(radio);
+      bleScanSleepWaitDisarmState();
+      return true;
+    }
+    if (g_bleScanSleepWaitState.timeoutFired != 0U) {
+      break;
+    }
+    bleScanSleepWaitWfi();
+  }
+
+  bleScanSleepWaitDisarmTimeout();
+  bleScanSleepWaitDisableRadioIrq(radio);
+  bleScanSleepWaitDisarmState();
+  const bool endSeen = (radio->EVENTS_PHYEND != 0U || radio->EVENTS_END != 0U);
+  if (endSeen && endTimestampUs != nullptr) {
+    *endTimestampUs = bleTimingUs();
+  }
+  return endSeen;
+}
+
+bool waitRadioReceiveEndBudgeted(NRF_RADIO_Type* radio, uint32_t budgetUs,
+                                 uint32_t spinLimit,
+                                 bool* outAddressSeen = nullptr,
+                                 uint32_t* outAddressTimestampUs = nullptr,
+                                 uint32_t* outEndTimestampUs = nullptr) {
+  if (outAddressSeen != nullptr) {
+    *outAddressSeen = false;
+  }
+  if (outAddressTimestampUs != nullptr) {
+    *outAddressTimestampUs = 0U;
+  }
+  if (radio == nullptr || (spinLimit == 0U && budgetUs == 0U)) {
+    return false;
+  }
+  bool addressSeen = false;
+  uint32_t addressTimestampUs = 0U;
+  const uint32_t startUs = bleTimingUs();
+  uint8_t divider = kBleConnMicrosPollDivider;
+  while (true) {
+    if (!addressSeen && (radio->EVENTS_ADDRESS != 0U)) {
+      addressSeen = true;
+      addressTimestampUs = bleTimingUs();
+    }
+    if ((radio->EVENTS_PHYEND != 0U) || (radio->EVENTS_END != 0U)) {
+      if (outAddressSeen != nullptr) {
+        *outAddressSeen = addressSeen;
+      }
+      if (outAddressTimestampUs != nullptr) {
+        *outAddressTimestampUs = addressTimestampUs;
+      }
+      if (outEndTimestampUs != nullptr) {
+        *outEndTimestampUs = bleTimingUs();
+      }
+      return true;
+    }
+
+    if (--divider == 0U) {
+      divider = kBleConnMicrosPollDivider;
+      const uint32_t elapsedUs = static_cast<uint32_t>(bleTimingUs() - startUs);
+      if ((budgetUs > 0U) && (elapsedUs >= budgetUs)) {
+        break;
+      }
+      if ((budgetUs == 0U) && (spinLimit == 0U)) {
+        break;
+      }
+    }
+
+    if (spinLimit > 0U) {
+      --spinLimit;
+      if (spinLimit == 0U) {
+        break;
+      }
+    }
+  }
+  if (outAddressSeen != nullptr) {
+    *outAddressSeen = addressSeen || (radio->EVENTS_ADDRESS != 0U);
+  }
+  if (outAddressTimestampUs != nullptr) {
+    *outAddressTimestampUs = addressTimestampUs;
+  }
+  const bool endSeen = (radio->EVENTS_PHYEND != 0U) || (radio->EVENTS_END != 0U);
+  if (endSeen && outEndTimestampUs != nullptr) {
+    *outEndTimestampUs = bleTimingUs();
+  }
+  return endSeen;
+}
+
+bool waitRadioReceiveEndBudgetedSleep(NRF_RADIO_Type* radio, uint32_t budgetUs,
+                                      bool* outAddressSeen = nullptr,
+                                      uint32_t* outAddressTimestampUs = nullptr,
+                                      uint32_t* outEndTimestampUs = nullptr) {
+  if (outAddressSeen != nullptr) {
+    *outAddressSeen = false;
+  }
+  if (outAddressTimestampUs != nullptr) {
+    *outAddressTimestampUs = 0U;
+  }
+  if (radio == nullptr) {
+    return false;
+  }
+  if (budgetUs == 0U) {
+    return waitRadioReceiveEndBudgeted(radio, budgetUs, 240000UL,
+                                       outAddressSeen, outAddressTimestampUs,
+                                       outEndTimestampUs);
+  }
+
+  if (radio->EVENTS_ADDRESS != 0U) {
+    if (outAddressSeen != nullptr) {
+      *outAddressSeen = true;
+    }
+    if (outAddressTimestampUs != nullptr) {
+      *outAddressTimestampUs = bleTimingUs();
+    }
+  }
+  if (radio->EVENTS_PHYEND != 0U || radio->EVENTS_END != 0U) {
+    if (outEndTimestampUs != nullptr) {
+      *outEndTimestampUs = bleTimingUs();
+    }
+    return true;
+  }
+
+  bleScanSleepWaitResetState(radio);
+  bleScanSleepWaitEnableRadioIrq(radio, true, true, false);
+  bleScanSleepWaitArmTimeout(bleTimingUs() + budgetUs);
+
+  while (true) {
+    if (g_bleScanSleepWaitState.addressSeen != 0U || radio->EVENTS_ADDRESS != 0U) {
+      if (outAddressSeen != nullptr) {
+        *outAddressSeen = true;
+      }
+      if (outAddressTimestampUs != nullptr && *outAddressTimestampUs == 0U) {
+        *outAddressTimestampUs =
+            (g_bleScanSleepWaitState.addressTimestampUs != 0U)
+                ? g_bleScanSleepWaitState.addressTimestampUs
+                : bleTimingUs();
+      }
+    }
+    if (radio->EVENTS_PHYEND != 0U || radio->EVENTS_END != 0U ||
+        g_bleScanSleepWaitState.endSeen != 0U) {
+      if (outEndTimestampUs != nullptr) {
+        *outEndTimestampUs = (g_bleScanSleepWaitState.endTimestampUs != 0U)
+                                 ? g_bleScanSleepWaitState.endTimestampUs
+                                 : bleTimingUs();
+      }
+      bleScanSleepWaitDisarmTimeout();
+      bleScanSleepWaitDisableRadioIrq(radio);
+      bleScanSleepWaitDisarmState();
+      return true;
+    }
+    if (g_bleScanSleepWaitState.timeoutFired != 0U) {
+      break;
+    }
+    bleScanSleepWaitWfi();
+  }
+
+  bleScanSleepWaitDisarmTimeout();
+  bleScanSleepWaitDisableRadioIrq(radio);
+  bleScanSleepWaitDisarmState();
+  const bool endSeen = (radio->EVENTS_PHYEND != 0U) || (radio->EVENTS_END != 0U);
+  if (outAddressSeen != nullptr) {
+    *outAddressSeen =
+        (*outAddressSeen != 0U) || (radio->EVENTS_ADDRESS != 0U);
+  }
+  if (endSeen && outEndTimestampUs != nullptr) {
+    *outEndTimestampUs = bleTimingUs();
+  }
+  return endSeen;
+}
+
 bool waitRadioDisabledBudgeted(NRF_RADIO_Type* radio, uint32_t budgetUs, uint32_t spinLimit) {
   if (radio == nullptr || (spinLimit == 0U && budgetUs == 0U)) {
     return false;
@@ -1093,6 +1438,59 @@ bool waitRadioDisabledBudgeted(NRF_RADIO_Type* radio, uint32_t budgetUs, uint32_
     }
   }
 
+  if (radio->EVENTS_DISABLED != 0U) {
+    return true;
+  }
+  const uint32_t state =
+      (radio->STATE & RADIO_STATE_STATE_Msk) >> RADIO_STATE_STATE_Pos;
+  return (state == RADIO_STATE_STATE_Disabled);
+}
+
+bool waitRadioDisabledBudgetedSleep(NRF_RADIO_Type* radio, uint32_t budgetUs) {
+  if (radio == nullptr) {
+    return false;
+  }
+  if (radio->EVENTS_DISABLED != 0U) {
+    return true;
+  }
+  const uint32_t initialState =
+      (radio->STATE & RADIO_STATE_STATE_Msk) >> RADIO_STATE_STATE_Pos;
+  if (initialState == RADIO_STATE_STATE_Disabled) {
+    return true;
+  }
+  if (budgetUs == 0U) {
+    return waitRadioDisabledBudgeted(radio, budgetUs, 240000UL);
+  }
+
+  bleScanSleepWaitResetState(radio);
+  bleScanSleepWaitEnableRadioIrq(radio, false, false, true);
+  bleScanSleepWaitArmTimeout(bleTimingUs() + budgetUs);
+
+  while (true) {
+    if (radio->EVENTS_DISABLED != 0U ||
+        g_bleScanSleepWaitState.disabledSeen != 0U) {
+      bleScanSleepWaitDisarmTimeout();
+      bleScanSleepWaitDisableRadioIrq(radio);
+      bleScanSleepWaitDisarmState();
+      return true;
+    }
+    const uint32_t state =
+        (radio->STATE & RADIO_STATE_STATE_Msk) >> RADIO_STATE_STATE_Pos;
+    if (state == RADIO_STATE_STATE_Disabled) {
+      bleScanSleepWaitDisarmTimeout();
+      bleScanSleepWaitDisableRadioIrq(radio);
+      bleScanSleepWaitDisarmState();
+      return true;
+    }
+    if (g_bleScanSleepWaitState.timeoutFired != 0U) {
+      break;
+    }
+    bleScanSleepWaitWfi();
+  }
+
+  bleScanSleepWaitDisarmTimeout();
+  bleScanSleepWaitDisableRadioIrq(radio);
+  bleScanSleepWaitDisarmState();
   if (radio->EVENTS_DISABLED != 0U) {
     return true;
   }

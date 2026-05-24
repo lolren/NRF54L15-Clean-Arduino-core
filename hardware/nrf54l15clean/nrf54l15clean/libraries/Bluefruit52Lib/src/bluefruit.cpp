@@ -8,6 +8,7 @@
 using xiao_nrf54l15::BleConnectionInfo;
 using xiao_nrf54l15::BleConnectionEvent;
 using xiao_nrf54l15::BleConnectionRole;
+using xiao_nrf54l15::BleAdvertisingChannel;
 using xiao_nrf54l15::BleDisconnectDebug;
 using xiao_nrf54l15::BleDisconnectReason;
 using xiao_nrf54l15::BleGattCharacteristicProperty;
@@ -68,6 +69,92 @@ volatile uint32_t g_bluefruitMaybeAdvertiseGapMinUs = 0xFFFFFFFFUL;
 volatile uint32_t g_bluefruitMaybeAdvertiseGapMaxUs = 0U;
 volatile uint64_t g_bluefruitMaybeAdvertiseGapTotalUs = 0ULL;
 volatile uint64_t g_bluefruitMaybeAdvertiseLastEventUs = 0ULL;
+extern "C" {
+volatile uint32_t __attribute__((used)) g_bluefruitBleIdleDiagMagic =
+    0x42494447UL;
+volatile uint32_t __attribute__((used)) g_bluefruitBleIdleDiagFlags = 0U;
+volatile uint32_t __attribute__((used)) g_bluefruitBleIdleDiagStage = 0U;
+volatile uint32_t __attribute__((used)) g_bluefruitBleIdleDiagMaybeScanCalls =
+    0U;
+volatile uint32_t __attribute__((used)) g_bluefruitBleIdleDiagActiveScanCalls =
+    0U;
+volatile uint32_t __attribute__((used)) g_bluefruitBleIdleDiagPassiveScanCalls =
+    0U;
+volatile uint32_t __attribute__((used)) g_bluefruitBleIdleDiagConnectAttempts =
+    0U;
+volatile uint32_t __attribute__((used))
+    g_bluefruitBleIdleDiagConnectionEdgeCount = 0U;
+volatile uint32_t __attribute__((used))
+    g_bluefruitBleIdleDiagDisconnectEdgeCount = 0U;
+volatile uint32_t __attribute__((used))
+    g_bluefruitBleIdleDiagIdleYieldAllowCount = 0U;
+volatile uint32_t __attribute__((used))
+    g_bluefruitBleIdleDiagIdleYieldDenyCount = 0U;
+volatile uint32_t __attribute__((used)) g_bluefruitBleIdleDiagDispatchCount =
+    0U;
+volatile uint32_t __attribute__((used)) g_bluefruitBleIdleDiagLastIdleCapUs =
+    0U;
+volatile uint32_t __attribute__((used))
+    g_bluefruitBleIdleDiagLastRemainingUs = 0U;
+volatile uint32_t __attribute__((used)) g_bluefruitBleIdleDiagNextScanDeltaUs =
+    0U;
+volatile uint32_t __attribute__((used))
+    g_bluefruitBleIdleDiagArmedWakeDeltaUs = 0U;
+volatile uint32_t __attribute__((used)) g_bluefruitBleIdleDiagLastIntervalUs =
+    0U;
+volatile uint32_t __attribute__((used)) g_bluefruitBleIdleDiagLastWindowUs =
+    0U;
+volatile uint32_t __attribute__((used))
+    g_bluefruitBleIdleDiagLastDwellBudgetUs = 0U;
+volatile uint32_t __attribute__((used))
+    g_bluefruitBleIdleDiagLastScanRspBudgetUs = 0U;
+volatile uint32_t __attribute__((used)) g_bluefruitBleIdleDiagLastRole = 0U;
+volatile uint32_t __attribute__((used))
+    g_bluefruitBleIdleDiagLastDisconnectReason = 0U;
+volatile uint32_t __attribute__((used)) g_bluefruitBleIdleDiagLastScanResult =
+    0U;
+volatile uint32_t __attribute__((used))
+    g_bluefruitBleIdleDiagLastConnectionEdgeMs = 0U;
+volatile uint32_t __attribute__((used)) g_bluefruitBleScanDiagFlags = 0U;
+volatile uint32_t __attribute__((used)) g_bluefruitBleScanDiagUuidSize = 0U;
+volatile uint8_t __attribute__((used)) g_bluefruitBleScanDiagLastReportLen = 0U;
+volatile uint8_t __attribute__((used)) g_bluefruitBleScanDiagLastReportData[31] = {0};
+}
+
+constexpr uint32_t kBluefruitBleIdleDiagFlagStarted = (1UL << 0);
+constexpr uint32_t kBluefruitBleIdleDiagFlagConnected = (1UL << 1);
+constexpr uint32_t kBluefruitBleIdleDiagFlagScannerRunning = (1UL << 2);
+constexpr uint32_t kBluefruitBleIdleDiagFlagScannerPaused = (1UL << 3);
+constexpr uint32_t kBluefruitBleIdleDiagFlagScannerCallback = (1UL << 4);
+constexpr uint32_t kBluefruitBleIdleDiagFlagActiveScan = (1UL << 5);
+constexpr uint32_t kBluefruitBleIdleDiagFlagPendingConnect = (1UL << 6);
+constexpr uint32_t kBluefruitBleIdleDiagFlagPendingChannel = (1UL << 7);
+constexpr uint32_t kBluefruitBleIdleDiagFlagPrewarmActive = (1UL << 8);
+constexpr uint32_t kBluefruitBleIdleDiagFlagWakeArmed = (1UL << 9);
+constexpr uint32_t kBluefruitBleIdleDiagFlagCentralSync = (1UL << 10);
+constexpr uint32_t kBluefruitBleIdleDiagFlagNextScanDue = (1UL << 11);
+constexpr uint32_t kBluefruitBleIdleDiagFlagBackgroundConn = (1UL << 12);
+
+constexpr uint32_t kBluefruitBleScanDiagBuildAdvCalled = (1UL << 0);
+constexpr uint32_t kBluefruitBleScanDiagBuildAdvSuccess = (1UL << 1);
+constexpr uint32_t kBluefruitBleScanDiagBuildScanRspCalled = (1UL << 2);
+constexpr uint32_t kBluefruitBleScanDiagBuildScanRspSuccess = (1UL << 3);
+constexpr uint32_t kBluefruitBleScanDiagFilterRssiFail = (1UL << 4);
+constexpr uint32_t kBluefruitBleScanDiagFilterUuidFail = (1UL << 5);
+constexpr uint32_t kBluefruitBleScanDiagFilterMsdFail = (1UL << 6);
+constexpr uint32_t kBluefruitBleScanDiagDispatchSuccess = (1UL << 7);
+constexpr uint32_t kBluefruitBleScanDiagActiveCycleReturned = (1UL << 8);
+constexpr uint32_t kBluefruitBleScanDiagBuildReportReturned = (1UL << 9);
+constexpr uint32_t kBluefruitBleScanDiagBuildScanRspReturned = (1UL << 10);
+
+constexpr uint32_t kBluefruitBleIdleDiagStageIdleDisabled = 1U;
+constexpr uint32_t kBluefruitBleIdleDiagStagePendingConnect = 2U;
+constexpr uint32_t kBluefruitBleIdleDiagStageScanSleeping = 3U;
+constexpr uint32_t kBluefruitBleIdleDiagStageScanRunning = 4U;
+constexpr uint32_t kBluefruitBleIdleDiagStageActiveScan = 5U;
+constexpr uint32_t kBluefruitBleIdleDiagStagePassiveScan = 6U;
+constexpr uint32_t kBluefruitBleIdleDiagStageDisconnectEdge = 7U;
+constexpr uint32_t kBluefruitBleIdleDiagStageConnectedIdle = 8U;
 
 static uint8_t normalizeBluefruitPhy(uint8_t phy) {
   switch (phy) {
@@ -78,6 +165,12 @@ static uint8_t normalizeBluefruitPhy(uint8_t phy) {
     default:
       return BLE_GAP_PHY_AUTO;
   }
+}
+
+static bool isPrimaryAdvertisingChannel(BleAdvertisingChannel channel) {
+  return (channel == BleAdvertisingChannel::k37) ||
+         (channel == BleAdvertisingChannel::k38) ||
+         (channel == BleAdvertisingChannel::k39);
 }
 
 uint8_t hid_ascii_to_keycode[128][2] = {};
@@ -465,6 +558,8 @@ class BluefruitCompatManager {
   static constexpr uint32_t kBleActiveIdleSleepCapUs = 1000UL;
   static constexpr unsigned long kBleNoWfiDuringSetupMs = 2000UL;
   static constexpr uint32_t kBleIdleConnectionPollBudgetUs = 0UL;
+  static constexpr uint32_t kBleScannerPrewarmLeadUs = 650UL;
+  static constexpr uint32_t kBleScannerReadyLeadUs = 80UL;
 
   BluefruitCompatManager()
       : started_(false),
@@ -472,12 +567,20 @@ class BluefruitCompatManager {
         last_connection_role_(BleConnectionRole::kNone),
         last_connection_edge_ms_(0UL),
         next_adv_due_us_(0U),
+        next_scan_due_us_(0U),
+        armed_scan_wake_us_(0U),
+        scan_prewarm_active_(false),
         adv_random_state_(0U),
         adv_started_ms_(0UL),
         scan_rsp_name_added_(false),
         characteristic_count_(0U),
         client_characteristic_count_(0U),
+        scan_report_channel_valid_(false),
+        scan_report_channel_(BleAdvertisingChannel::k37),
         pending_connect_valid_(false),
+        pending_connect_channel_valid_(false),
+        pending_connect_channel_(BleAdvertisingChannel::k37),
+        pending_connect_report_us_(0U),
         pending_connect_random_(0U),
         central_sync_procedure_depth_(0U),
         central_data_length_request_pending_(false),
@@ -577,6 +680,14 @@ class BluefruitCompatManager {
 
   bool centralSyncProcedureActive() const { return central_sync_procedure_depth_ != 0U; }
 
+  void clearCentralScannerTransientState() {
+    pending_connect_valid_ = false;
+    pending_connect_channel_valid_ = false;
+    pending_connect_report_us_ = 0U;
+    scan_report_channel_valid_ = false;
+    last_connect_attempt_ms_ = 0UL;
+  }
+
   bool stopScanner() {
     const bool wasActive = Bluefruit.Scanner.running_ ||
                            Bluefruit.Scanner.paused_ ||
@@ -584,8 +695,25 @@ class BluefruitCompatManager {
     Bluefruit.Scanner.running_ = false;
     Bluefruit.Scanner.paused_ = false;
     Bluefruit.Scanner.timeout_s_ = 0U;
-    pending_connect_valid_ = false;
+    clearCentralScannerTransientState();
+    if (scan_prewarm_active_ && !radio_.isConnected()) {
+      radio_.endForegroundUnconnectedRadioActivity();
+      scan_prewarm_active_ = false;
+    }
+    nrf54l15_ble_idle_wake_cancel();
+    armed_scan_wake_us_ = 0U;
+    next_scan_due_us_ = 0U;
     return wasActive;
+  }
+
+  void resetScannerSchedule() {
+    if (scan_prewarm_active_ && !radio_.isConnected()) {
+      radio_.endForegroundUnconnectedRadioActivity();
+      scan_prewarm_active_ = false;
+    }
+    nrf54l15_ble_idle_wake_cancel();
+    armed_scan_wake_us_ = 0U;
+    next_scan_due_us_ = 0U;
   }
 
   bool deferConnectionPhyRequest(uint8_t phy) {
@@ -736,6 +864,11 @@ class BluefruitCompatManager {
       return false;
     }
     memcpy(pending_connect_address_, report->peer_addr.addr, sizeof(pending_connect_address_));
+    pending_connect_channel_valid_ = scan_report_channel_valid_;
+    if (pending_connect_channel_valid_) {
+      pending_connect_channel_ = scan_report_channel_;
+    }
+    pending_connect_report_us_ = schedulerTimeUs();
     pending_connect_random_ =
         (report->peer_addr.addr_type == BLE_GAP_ADDR_TYPE_RANDOM_STATIC) ? 1U : 0U;
     pending_connect_valid_ = true;
@@ -799,15 +932,15 @@ class BluefruitCompatManager {
       return;
     }
 
-    if (!radio_.isConnected()) {
-      maybeAdvertise();
-      maybeScanOrConnect();
-    }
-
     const bool connected = radio_.isConnected();
     if (connected != last_connected_) {
       handleConnectionEdge(connected);
       last_connected_ = connected;
+    }
+
+    if (!connected) {
+      maybeAdvertise();
+      maybeScanOrConnect();
     }
 
     if (connected) {
@@ -869,18 +1002,48 @@ class BluefruitCompatManager {
 
   uint32_t idleSleepCapUs() const {
     if (!started_) {
+      g_bluefruitBleIdleDiagLastIdleCapUs = 0U;
       return 0U;
     }
 
     if (centralSyncProcedureActive() || pending_connect_valid_) {
+      const uint64_t nowUs = schedulerTimeUs();
+      updateBleIdleDiagSnapshot(nowUs, kBluefruitBleIdleDiagStagePendingConnect,
+                                1U);
+      g_bluefruitBleIdleDiagLastIdleCapUs = 1U;
       return 1U;
     }
     if (!radio_.isConnected() &&
         Bluefruit.Scanner.running_ && !Bluefruit.Scanner.paused_ &&
         Bluefruit.Scanner.rx_callback_ != nullptr) {
-      return 1U;
+      if (next_scan_due_us_ == 0U) {
+        return 1U;
+      }
+
+      const uint64_t nowUs = schedulerTimeUs();
+      if (timeReachedUs(nowUs, next_scan_due_us_)) {
+        return 1U;
+      }
+
+      const uint64_t remainingUs64 = next_scan_due_us_ - nowUs;
+      uint32_t remainingUs = (remainingUs64 > 0xFFFFFFFFULL)
+                                 ? 0xFFFFFFFFUL
+                                 : static_cast<uint32_t>(remainingUs64);
+      const uint32_t wakeLeadUs =
+          scan_prewarm_active_ ? kBleScannerReadyLeadUs
+                               : kBleScannerPrewarmLeadUs;
+      if (remainingUs > wakeLeadUs) {
+        remainingUs -= wakeLeadUs;
+      } else {
+        remainingUs = 1U;
+      }
+      updateBleIdleDiagSnapshot(nowUs, kBluefruitBleIdleDiagStageScanSleeping,
+                                remainingUs);
+      g_bluefruitBleIdleDiagLastIdleCapUs = remainingUs;
+      return remainingUs;
     }
     if (!radio_.isConnected() && radio_.isBackgroundAdvertisingEnabled()) {
+      g_bluefruitBleIdleDiagLastIdleCapUs = 0U;
       return 0U;
     }
     if (!radio_.isConnected() && Bluefruit.Advertising.running_) {
@@ -918,14 +1081,145 @@ class BluefruitCompatManager {
         return 1U;
       }
       if (radio_.isBackgroundConnectionServiceEnabled()) {
+        const uint64_t nowUs = schedulerTimeUs();
+        updateBleIdleDiagSnapshot(nowUs,
+                                  kBluefruitBleIdleDiagStageConnectedIdle, 0U);
+        g_bluefruitBleIdleDiagLastIdleCapUs = 0U;
         return 0U;
       }
       if ((millis() - last_connection_edge_ms_) < kBleNoWfiDuringSetupMs) {
+        const uint64_t nowUs = schedulerTimeUs();
+        updateBleIdleDiagSnapshot(nowUs,
+                                  kBluefruitBleIdleDiagStageConnectedIdle, 1U);
+        g_bluefruitBleIdleDiagLastIdleCapUs = 1U;
         return 1U;
       }
+      const uint64_t nowUs = schedulerTimeUs();
+      updateBleIdleDiagSnapshot(nowUs, kBluefruitBleIdleDiagStageConnectedIdle,
+                                kBleActiveIdleSleepCapUs);
+      g_bluefruitBleIdleDiagLastIdleCapUs = kBleActiveIdleSleepCapUs;
       return kBleActiveIdleSleepCapUs;
     }
+    g_bluefruitBleIdleDiagLastIdleCapUs = 0U;
     return 0U;
+  }
+
+  uint32_t currentBleIdleDiagFlags(uint64_t nowUs) const {
+    uint32_t flags = 0U;
+    if (started_) {
+      flags |= kBluefruitBleIdleDiagFlagStarted;
+    }
+    if (radio_.isConnected()) {
+      flags |= kBluefruitBleIdleDiagFlagConnected;
+    }
+    if (Bluefruit.Scanner.running_) {
+      flags |= kBluefruitBleIdleDiagFlagScannerRunning;
+    }
+    if (Bluefruit.Scanner.paused_) {
+      flags |= kBluefruitBleIdleDiagFlagScannerPaused;
+    }
+    if (Bluefruit.Scanner.rx_callback_ != nullptr) {
+      flags |= kBluefruitBleIdleDiagFlagScannerCallback;
+    }
+    if (Bluefruit.Scanner.active_scan_) {
+      flags |= kBluefruitBleIdleDiagFlagActiveScan;
+    }
+    if (pending_connect_valid_) {
+      flags |= kBluefruitBleIdleDiagFlagPendingConnect;
+    }
+    if (pending_connect_channel_valid_) {
+      flags |= kBluefruitBleIdleDiagFlagPendingChannel;
+    }
+    if (scan_prewarm_active_) {
+      flags |= kBluefruitBleIdleDiagFlagPrewarmActive;
+    }
+    if (armed_scan_wake_us_ != 0U) {
+      flags |= kBluefruitBleIdleDiagFlagWakeArmed;
+    }
+    if (centralSyncProcedureActive()) {
+      flags |= kBluefruitBleIdleDiagFlagCentralSync;
+    }
+    if ((next_scan_due_us_ != 0U) && !timeReachedUs(nowUs, next_scan_due_us_)) {
+      flags |= kBluefruitBleIdleDiagFlagNextScanDue;
+    }
+    if (radio_.isBackgroundConnectionServiceEnabled()) {
+      flags |= kBluefruitBleIdleDiagFlagBackgroundConn;
+    }
+    return flags;
+  }
+
+  void updateBleIdleDiagSnapshot(uint64_t nowUs, uint32_t stage,
+                                 uint32_t remainingUs) const {
+    g_bluefruitBleIdleDiagFlags = currentBleIdleDiagFlags(nowUs);
+    g_bluefruitBleIdleDiagStage = stage;
+    g_bluefruitBleIdleDiagLastRemainingUs = remainingUs;
+    g_bluefruitBleIdleDiagLastRole =
+        static_cast<uint32_t>(radio_.connectionRole());
+    g_bluefruitBleIdleDiagLastConnectionEdgeMs = last_connection_edge_ms_;
+
+    if ((next_scan_due_us_ != 0U) && !timeReachedUs(nowUs, next_scan_due_us_)) {
+      const uint64_t nextDeltaUs64 = next_scan_due_us_ - nowUs;
+      g_bluefruitBleIdleDiagNextScanDeltaUs =
+          (nextDeltaUs64 > 0xFFFFFFFFULL)
+              ? 0xFFFFFFFFUL
+              : static_cast<uint32_t>(nextDeltaUs64);
+    } else {
+      g_bluefruitBleIdleDiagNextScanDeltaUs = 0U;
+    }
+
+    if ((armed_scan_wake_us_ != 0U) && !timeReachedUs(nowUs, armed_scan_wake_us_)) {
+      const uint64_t armedDeltaUs64 = armed_scan_wake_us_ - nowUs;
+      g_bluefruitBleIdleDiagArmedWakeDeltaUs =
+          (armedDeltaUs64 > 0xFFFFFFFFULL)
+              ? 0xFFFFFFFFUL
+              : static_cast<uint32_t>(armedDeltaUs64);
+    } else {
+      g_bluefruitBleIdleDiagArmedWakeDeltaUs = 0U;
+    }
+  }
+
+  bool idleYieldWfiAllowed() const {
+    if (!started_ || radio_.isConnected()) {
+      ++g_bluefruitBleIdleDiagIdleYieldDenyCount;
+      return false;
+    }
+    if (centralSyncProcedureActive() || pending_connect_valid_) {
+      ++g_bluefruitBleIdleDiagIdleYieldDenyCount;
+      return false;
+    }
+    if (!Bluefruit.Scanner.running_ || Bluefruit.Scanner.paused_ ||
+        Bluefruit.Scanner.rx_callback_ == nullptr) {
+      ++g_bluefruitBleIdleDiagIdleYieldDenyCount;
+      return false;
+    }
+    if (next_scan_due_us_ == 0U || armed_scan_wake_us_ == 0U) {
+      ++g_bluefruitBleIdleDiagIdleYieldDenyCount;
+      return false;
+    }
+
+    const uint64_t nowUs = schedulerTimeUs();
+    if (timeReachedUs(nowUs, next_scan_due_us_)) {
+      ++g_bluefruitBleIdleDiagIdleYieldDenyCount;
+      return false;
+    }
+
+    const uint64_t remainingUs64 = next_scan_due_us_ - nowUs;
+    const uint32_t remainingUs =
+        (remainingUs64 > 0xFFFFFFFFULL)
+            ? 0xFFFFFFFFUL
+            : static_cast<uint32_t>(remainingUs64);
+    const uint32_t wakeLeadUs =
+        scan_prewarm_active_ ? kBleScannerReadyLeadUs
+                             : kBleScannerPrewarmLeadUs;
+    const bool allowed = remainingUs > wakeLeadUs;
+    if (allowed) {
+      ++g_bluefruitBleIdleDiagIdleYieldAllowCount;
+    } else {
+      ++g_bluefruitBleIdleDiagIdleYieldDenyCount;
+    }
+    updateBleIdleDiagSnapshot(nowUs, kBluefruitBleIdleDiagStageScanSleeping,
+                              remainingUs);
+    return allowed;
   }
 
   void dispatchDeferredUserCallbacks() {
@@ -985,6 +1279,15 @@ class BluefruitCompatManager {
   static constexpr uint8_t kMaxClientCharacteristics = 16U;
   static constexpr uint16_t kDefaultDataLength = 27U;
   static constexpr uint16_t kDefaultAttMtu = 23U;
+  static constexpr uint32_t kScannerMinIntervalUs = 2500UL;
+  static constexpr uint32_t kScannerMinWindowUs = 2500UL;
+  static constexpr uint32_t kScannerMinRestUs = 1000UL;
+  static constexpr uint32_t kScannerMinDwellBudgetUs = 2500UL;
+  static constexpr uint32_t kScannerMaxDwellBudgetUs = 30000UL;
+  static constexpr uint32_t kScannerScanRspBudgetUs = 2500UL;
+  static constexpr uint32_t kCentralConnectCandidateMaxAgeUs = 200000UL;
+  static constexpr uint32_t kCentralConnectMinBudgetUs = 180000UL;
+  static constexpr uint32_t kCentralConnectMaxBudgetUs = 220000UL;
   static constexpr uint16_t kDeferredDataLengthTarget =
       static_cast<uint16_t>(BleRadio::kCustomGattMaxValueLength + 7U);
   static constexpr unsigned long kDeferredPhyRequestInitialDelayMs = 1500UL;
@@ -1001,12 +1304,62 @@ class BluefruitCompatManager {
     return adv_random_state_ % 10001UL;
   }
 
+  static uint32_t scannerUnitsToUs(uint16_t units) {
+    const uint32_t us = static_cast<uint32_t>(units) * 625UL;
+    return (us < kScannerMinIntervalUs) ? kScannerMinIntervalUs : us;
+  }
+
+  uint32_t scannerIntervalUs() const {
+    return scannerUnitsToUs(Bluefruit.Scanner.interval_);
+  }
+
+  uint32_t scannerWindowUs(uint32_t intervalUs) const {
+    uint32_t windowUs = scannerUnitsToUs(Bluefruit.Scanner.window_);
+    if (windowUs > intervalUs) {
+      windowUs = intervalUs;
+    }
+    return (windowUs < kScannerMinWindowUs) ? kScannerMinWindowUs : windowUs;
+  }
+
+  uint32_t scannerDwellBudgetUs(uint32_t windowUs) const {
+    // The budgeted scan path listens on one advertising channel per scheduled
+    // window and rotates channels. Keep the dwell aligned to the configured
+    // Bluefruit scan window instead of approximating it with spin loops.
+    uint32_t dwellUs = windowUs;
+    if (dwellUs < kScannerMinDwellBudgetUs) {
+      dwellUs = kScannerMinDwellBudgetUs;
+    } else if (dwellUs > kScannerMaxDwellBudgetUs) {
+      dwellUs = kScannerMaxDwellBudgetUs;
+    }
+    return dwellUs;
+  }
+
+  uint32_t scannerScanRspBudgetUs(uint32_t dwellBudgetUs) const {
+    return (dwellBudgetUs < kScannerScanRspBudgetUs) ? dwellBudgetUs
+                                                     : kScannerScanRspBudgetUs;
+  }
+
+  uint32_t centralConnectBudgetUs() const {
+    const uint32_t intervalUs = scannerIntervalUs();
+    const uint32_t windowUs = scannerWindowUs(intervalUs);
+    uint32_t budgetUs = windowUs;
+    if (budgetUs < kCentralConnectMinBudgetUs) {
+      budgetUs = kCentralConnectMinBudgetUs;
+    } else if (budgetUs > kCentralConnectMaxBudgetUs) {
+      budgetUs = kCentralConnectMaxBudgetUs;
+    }
+    return budgetUs;
+  }
+
   BleRadio radio_;
   bool started_;
   bool last_connected_;
   BleConnectionRole last_connection_role_;
   unsigned long last_connection_edge_ms_;
   uint64_t next_adv_due_us_;
+  uint64_t next_scan_due_us_;
+  uint64_t armed_scan_wake_us_;
+  bool scan_prewarm_active_;
   uint32_t adv_random_state_;
   unsigned long adv_started_ms_;
   bool scan_rsp_name_added_;
@@ -1018,8 +1371,13 @@ class BluefruitCompatManager {
   ble_gap_evt_adv_report_t scan_report_;
   uint8_t scan_report_data_[31];
   uint8_t scan_report_len_;
+  bool scan_report_channel_valid_;
+  BleAdvertisingChannel scan_report_channel_;
   bool pending_connect_valid_;
   uint8_t pending_connect_address_[6];
+  bool pending_connect_channel_valid_;
+  BleAdvertisingChannel pending_connect_channel_;
+  uint64_t pending_connect_report_us_;
   uint8_t pending_connect_random_;
   uint8_t central_sync_procedure_depth_;
   bool central_data_length_request_pending_;
@@ -1104,7 +1462,12 @@ class BluefruitCompatManager {
 
   bool buildScanReport(const xiao_nrf54l15::BleScanPacket& packet) {
     if (packet.payload == nullptr || packet.length < 6U) {
+      scan_report_channel_valid_ = false;
       return false;
+    }
+    scan_report_channel_valid_ = isPrimaryAdvertisingChannel(packet.channel);
+    if (scan_report_channel_valid_) {
+      scan_report_channel_ = packet.channel;
     }
     memset(&scan_report_, 0, sizeof(scan_report_));
     memcpy(scan_report_.peer_addr.addr, packet.payload, 6U);
@@ -1132,6 +1495,11 @@ class BluefruitCompatManager {
 
   bool buildScanReport(const xiao_nrf54l15::BleActiveScanResult& result,
                        bool scanResponse) {
+    if (scanResponse) {
+      g_bluefruitBleScanDiagFlags |= kBluefruitBleScanDiagBuildScanRspCalled;
+    } else {
+      g_bluefruitBleScanDiagFlags |= kBluefruitBleScanDiagBuildAdvCalled;
+    }
     const uint8_t* payload = nullptr;
     uint8_t payloadLength = 0U;
     uint8_t pduHeader = 0U;
@@ -1139,6 +1507,7 @@ class BluefruitCompatManager {
 
     if (scanResponse) {
       if (!result.scanResponseReceived || result.scanRspPayloadLength < 6U) {
+        scan_report_channel_valid_ = false;
         return false;
       }
       payload = result.scanRspPayload;
@@ -1147,6 +1516,7 @@ class BluefruitCompatManager {
       rssiDbm = result.scanRspRssiDbm;
     } else {
       if (result.advPayloadLength < 6U) {
+        scan_report_channel_valid_ = false;
         return false;
       }
       payload = result.advPayload;
@@ -1155,6 +1525,10 @@ class BluefruitCompatManager {
       rssiDbm = result.advRssiDbm;
     }
 
+    scan_report_channel_valid_ = isPrimaryAdvertisingChannel(result.channel);
+    if (scan_report_channel_valid_) {
+      scan_report_channel_ = result.channel;
+    }
     memset(&scan_report_, 0, sizeof(scan_report_));
     memcpy(scan_report_.peer_addr.addr, payload, 6U);
     scan_report_.peer_addr.addr_type =
@@ -1172,22 +1546,40 @@ class BluefruitCompatManager {
     }
     scan_report_.data.p_data = scan_report_data_;
     scan_report_.data.len = scan_report_len_;
+    g_bluefruitBleScanDiagLastReportLen = scan_report_len_;
+    if (scan_report_len_ > 0U) {
+      memcpy(const_cast<uint8_t*>(g_bluefruitBleScanDiagLastReportData),
+             scan_report_data_, scan_report_len_);
+    }
+    if (scan_report_len_ < sizeof(g_bluefruitBleScanDiagLastReportData)) {
+      memset(const_cast<uint8_t*>(&g_bluefruitBleScanDiagLastReportData[scan_report_len_]),
+             0, sizeof(g_bluefruitBleScanDiagLastReportData) - scan_report_len_);
+    }
+    if (scanResponse) {
+      g_bluefruitBleScanDiagFlags |= kBluefruitBleScanDiagBuildScanRspSuccess;
+    } else {
+      g_bluefruitBleScanDiagFlags |= kBluefruitBleScanDiagBuildAdvSuccess;
+    }
     return true;
   }
 
   bool currentReportMatchesFilters() const {
     if (Bluefruit.Scanner.has_filter_rssi_ &&
         scan_report_.rssi < Bluefruit.Scanner.filter_rssi_dbm_) {
+      g_bluefruitBleScanDiagFlags |= kBluefruitBleScanDiagFilterRssiFail;
       return false;
     }
+    g_bluefruitBleScanDiagUuidSize = Bluefruit.Scanner.filter_uuid_.size();
     if (Bluefruit.Scanner.has_filter_uuid_ &&
         !adDataHasUuid(scan_report_.data.p_data, scan_report_.data.len,
                        Bluefruit.Scanner.filter_uuid_)) {
+      g_bluefruitBleScanDiagFlags |= kBluefruitBleScanDiagFilterUuidFail;
       return false;
     }
     if (Bluefruit.Scanner.has_filter_msd_ &&
         !adDataHasMsdCompany(scan_report_.data.p_data, scan_report_.data.len,
                              Bluefruit.Scanner.filter_msd_company_)) {
+      g_bluefruitBleScanDiagFlags |= kBluefruitBleScanDiagFilterMsdFail;
       return false;
     }
     return true;
@@ -1198,6 +1590,8 @@ class BluefruitCompatManager {
       return false;
     }
 
+    g_bluefruitBleScanDiagFlags |= kBluefruitBleScanDiagDispatchSuccess;
+    ++g_bluefruitBleIdleDiagDispatchCount;
     Bluefruit.Scanner.paused_ = true;
     invokeBluefruitUserCallback(Bluefruit.Scanner.rx_callback_, &scan_report_);
     if (pending_connect_valid_) {
@@ -1210,11 +1604,22 @@ class BluefruitCompatManager {
     if (!pending_connect_valid_) {
       return false;
     }
-    const unsigned long now = millis();
-    if ((now - last_connect_attempt_ms_) < 250UL) {
+    ++g_bluefruitBleIdleDiagConnectAttempts;
+    const uint64_t nowUs = schedulerTimeUs();
+    updateBleIdleDiagSnapshot(nowUs, kBluefruitBleIdleDiagStagePendingConnect,
+                              0U);
+    if ((pending_connect_report_us_ != 0U) &&
+        ((nowUs - pending_connect_report_us_) > kCentralConnectCandidateMaxAgeUs)) {
+      pending_connect_valid_ = false;
+      pending_connect_channel_valid_ = false;
+      pending_connect_report_us_ = 0U;
+      if (Bluefruit.Scanner.running_) {
+        Bluefruit.Scanner.paused_ = false;
+        resetScannerSchedule();
+      }
       return false;
     }
-    last_connect_attempt_ms_ = now;
+    last_connect_attempt_ms_ = millis();
     uint16_t interval_units = Bluefruit.central_conn_interval_;
     if (interval_units < 6U) {
       interval_units = 6U;
@@ -1227,51 +1632,179 @@ class BluefruitCompatManager {
     } else if (supervision_timeout_units > 3200U) {
       supervision_timeout_units = 3200U;
     }
-    if (!radio_.initiateConnection(pending_connect_address_, pending_connect_random_ != 0U,
-                                   interval_units, supervision_timeout_units, 9U,
-                                   1200000UL)) {
+    const uint32_t connectBudgetUs = centralConnectBudgetUs();
+    if (!radio_.initiateConnectionBudgeted(
+            pending_connect_address_, pending_connect_random_ != 0U,
+            interval_units, supervision_timeout_units, 9U, connectBudgetUs,
+            pending_connect_channel_valid_
+                ? pending_connect_channel_
+                : static_cast<BleAdvertisingChannel>(0U))) {
+      pending_connect_valid_ = false;
+      pending_connect_channel_valid_ = false;
+      pending_connect_report_us_ = 0U;
+      if (Bluefruit.Scanner.running_) {
+        Bluefruit.Scanner.paused_ = false;
+        resetScannerSchedule();
+      }
       return false;
     }
     pending_connect_valid_ = false;
+    pending_connect_channel_valid_ = false;
+    pending_connect_report_us_ = 0U;
     return true;
   }
 
   void maybeScanOrConnect() {
+    ++g_bluefruitBleIdleDiagMaybeScanCalls;
     if (pending_connect_valid_) {
       (void)maybeConnectCentral();
       return;
     }
     if (!Bluefruit.Scanner.running_ || Bluefruit.Scanner.paused_ ||
         Bluefruit.Scanner.rx_callback_ == nullptr) {
+      updateBleIdleDiagSnapshot(schedulerTimeUs(),
+                                kBluefruitBleIdleDiagStageIdleDisabled, 0U);
+      if (scan_prewarm_active_ && !radio_.isConnected()) {
+        radio_.endForegroundUnconnectedRadioActivity();
+        scan_prewarm_active_ = false;
+      }
+      nrf54l15_ble_idle_wake_cancel();
+      armed_scan_wake_us_ = 0U;
+      next_scan_due_us_ = 0U;
       return;
     }
 
+    const uint64_t nowUs = schedulerTimeUs();
+    if (next_scan_due_us_ == 0U) {
+      next_scan_due_us_ = nowUs;
+    }
+    if (!timeReachedUs(nowUs, next_scan_due_us_)) {
+      const uint64_t remainingUs64 = next_scan_due_us_ - nowUs;
+      const uint32_t remainingUs =
+          (remainingUs64 > 0xFFFFFFFFULL)
+              ? 0xFFFFFFFFUL
+              : static_cast<uint32_t>(remainingUs64);
+      updateBleIdleDiagSnapshot(nowUs, kBluefruitBleIdleDiagStageScanSleeping,
+                                remainingUs);
+      const uint32_t scanWakeUs =
+          (remainingUs > kBleScannerPrewarmLeadUs)
+              ? static_cast<uint32_t>(next_scan_due_us_ -
+                                      static_cast<uint64_t>(kBleScannerPrewarmLeadUs))
+              : static_cast<uint32_t>(next_scan_due_us_);
+      if (!scan_prewarm_active_) {
+        if (armed_scan_wake_us_ != scanWakeUs) {
+          nrf54l15_ble_idle_wake_arm(scanWakeUs);
+          armed_scan_wake_us_ = scanWakeUs;
+        }
+        if (nrf54l15_ble_idle_wake_consume() != 0U &&
+            radio_.beginForegroundUnconnectedRadioActivity(0U)) {
+          scan_prewarm_active_ = true;
+          armed_scan_wake_us_ = 0U;
+        }
+      } else if (armed_scan_wake_us_ != 0U) {
+        nrf54l15_ble_idle_wake_cancel();
+        armed_scan_wake_us_ = 0U;
+      }
+      if (!scan_prewarm_active_ &&
+          remainingUs <= kBleScannerPrewarmLeadUs &&
+          radio_.beginForegroundUnconnectedRadioActivity(0U)) {
+        scan_prewarm_active_ = true;
+        nrf54l15_ble_idle_wake_cancel();
+        armed_scan_wake_us_ = 0U;
+      }
+      return;
+    }
+    if (armed_scan_wake_us_ != 0U) {
+      nrf54l15_ble_idle_wake_cancel();
+      armed_scan_wake_us_ = 0U;
+    }
+    scan_prewarm_active_ = false;
+
+    const uint32_t intervalUs = scannerIntervalUs();
+    const uint32_t windowUs = scannerWindowUs(intervalUs);
+    const uint32_t dwellBudgetUs = scannerDwellBudgetUs(windowUs);
+    const uint32_t scanRspBudgetUs = scannerScanRspBudgetUs(dwellBudgetUs);
+    g_bluefruitBleIdleDiagLastIntervalUs = intervalUs;
+    g_bluefruitBleIdleDiagLastWindowUs = windowUs;
+    g_bluefruitBleIdleDiagLastDwellBudgetUs = dwellBudgetUs;
+    g_bluefruitBleIdleDiagLastScanRspBudgetUs = scanRspBudgetUs;
+    updateBleIdleDiagSnapshot(nowUs, kBluefruitBleIdleDiagStageScanRunning, 0U);
+    next_scan_due_us_ = nowUs + intervalUs;
+
     bool gotReport = false;
     if (Bluefruit.Scanner.active_scan_) {
-      xiao_nrf54l15::BleActiveScanResult result{};
-      if (radio_.scanActiveCycle(&result, 300000UL, 200000UL)) {
+      ++g_bluefruitBleIdleDiagActiveScanCalls;
+      g_bluefruitBleIdleDiagStage = kBluefruitBleIdleDiagStageActiveScan;
+      const uint64_t scanDeadlineUs = nowUs + dwellBudgetUs;
+      while (!pending_connect_valid_ && Bluefruit.Scanner.running_ &&
+             !Bluefruit.Scanner.paused_ &&
+             !timeReachedUs(schedulerTimeUs(), scanDeadlineUs)) {
+        const uint64_t loopNowUs = schedulerTimeUs();
+        const uint64_t remainingUs64 = scanDeadlineUs - loopNowUs;
+        const uint32_t remainingUs =
+            (remainingUs64 > 0xFFFFFFFFULL)
+                ? 0xFFFFFFFFUL
+                : static_cast<uint32_t>(remainingUs64);
+        xiao_nrf54l15::BleActiveScanResult result{};
+        if (!radio_.scanActiveCycleBudgeted(&result, remainingUs,
+                                            scanRspBudgetUs)) {
+          break;
+        }
+        g_bluefruitBleScanDiagFlags |=
+            kBluefruitBleScanDiagActiveCycleReturned;
         if (buildScanReport(result, false)) {
+          g_bluefruitBleScanDiagFlags |=
+              kBluefruitBleScanDiagBuildReportReturned;
           gotReport = true;
-          (void)dispatchCurrentScanReport();
+          if (dispatchCurrentScanReport()) {
+            break;
+          }
         }
         if (!pending_connect_valid_ && Bluefruit.Scanner.running_ &&
             Bluefruit.Scanner.rx_callback_ != nullptr &&
             buildScanReport(result, true)) {
+          g_bluefruitBleScanDiagFlags |=
+              kBluefruitBleScanDiagBuildScanRspReturned;
           gotReport = true;
-          (void)dispatchCurrentScanReport();
+          if (dispatchCurrentScanReport()) {
+            break;
+          }
         }
       }
-      return;
+      g_bluefruitBleIdleDiagLastScanResult = gotReport ? 1U : 0U;
     } else {
-      xiao_nrf54l15::BleScanPacket packet{};
-      if (radio_.scanCycle(&packet, 300000UL)) {
-        gotReport = buildScanReport(packet);
+      ++g_bluefruitBleIdleDiagPassiveScanCalls;
+      g_bluefruitBleIdleDiagStage = kBluefruitBleIdleDiagStagePassiveScan;
+      const uint64_t scanDeadlineUs = nowUs + dwellBudgetUs;
+      while (!pending_connect_valid_ && Bluefruit.Scanner.running_ &&
+             !Bluefruit.Scanner.paused_ &&
+             !timeReachedUs(schedulerTimeUs(), scanDeadlineUs)) {
+        const uint64_t loopNowUs = schedulerTimeUs();
+        const uint64_t remainingUs64 = scanDeadlineUs - loopNowUs;
+        const uint32_t remainingUs =
+            (remainingUs64 > 0xFFFFFFFFULL)
+                ? 0xFFFFFFFFUL
+                : static_cast<uint32_t>(remainingUs64);
+        xiao_nrf54l15::BleScanPacket packet{};
+        if (!radio_.scanCycleBudgeted(&packet, remainingUs)) {
+          break;
+        }
+        if (buildScanReport(packet)) {
+          gotReport = true;
+          if (dispatchCurrentScanReport()) {
+            break;
+          }
+        }
       }
+      g_bluefruitBleIdleDiagLastScanResult = gotReport ? 2U : 0U;
     }
-    if (!gotReport) {
-      return;
+
+    const uint64_t afterUs = schedulerTimeUs();
+    if (timeReachedUs(afterUs, next_scan_due_us_)) {
+      const uint32_t restUs =
+          (intervalUs > windowUs) ? (intervalUs - windowUs) : kScannerMinRestUs;
+      next_scan_due_us_ = afterUs + restUs;
     }
-    (void)dispatchCurrentScanReport();
   }
 
   void maybeApplyCentralLinkConfig() {
@@ -1674,10 +2207,14 @@ class BluefruitCompatManager {
 
   void handleConnectionEdge(bool connected) {
     if (connected) {
+      ++g_bluefruitBleIdleDiagConnectionEdgeCount;
       last_connection_edge_ms_ = millis();
+      g_bluefruitBleIdleDiagLastConnectionEdgeMs = last_connection_edge_ms_;
       connection_.handle_ = 0U;
       last_connection_role_ = radio_.connectionRole();
-      pending_connect_valid_ = false;
+      g_bluefruitBleIdleDiagLastRole =
+          static_cast<uint32_t>(last_connection_role_);
+      clearCentralScannerTransientState();
       central_explicit_data_length_request_ = false;
       central_explicit_mtu_request_valid_ = false;
       central_explicit_requested_mtu_ = kDefaultAttMtu;
@@ -1738,13 +2275,20 @@ class BluefruitCompatManager {
       return;
     }
 
+    ++g_bluefruitBleIdleDiagConnectionEdgeCount;
+    ++g_bluefruitBleIdleDiagDisconnectEdgeCount;
     last_connection_edge_ms_ = millis();
+    g_bluefruitBleIdleDiagLastConnectionEdgeMs = last_connection_edge_ms_;
+    g_bluefruitBleIdleDiagLastRole =
+        static_cast<uint32_t>(last_connection_role_);
+    g_bluefruitBleIdleDiagStage = kBluefruitBleIdleDiagStageDisconnectEdge;
     radio_.setBackgroundConnectionServiceEnabled(false);
     BleDisconnectDebug debug{};
     uint8_t reason = 0x13U;
     if (radio_.getDisconnectDebug(&debug)) {
       reason = disconnectReasonToHci(debug);
     }
+    g_bluefruitBleIdleDiagLastDisconnectReason = reason;
     rssi_monitor_enabled_ = false;
     rssi_monitor_threshold_ = 0xFFU;
     last_reported_rssi_dbm_ = 0;
@@ -1797,6 +2341,8 @@ class BluefruitCompatManager {
         adv_random_state_ = 0U;
       }
     } else if (last_connection_role_ == BleConnectionRole::kCentral) {
+      clearCentralScannerTransientState();
+      resetScannerSchedule();
       central_data_length_request_pending_ = false;
       central_mtu_request_pending_ = false;
       central_explicit_data_length_request_ = false;
@@ -1807,6 +2353,7 @@ class BluefruitCompatManager {
         invokeBluefruitUserCallback(Bluefruit.Central.disconnect_callback_, 0U, reason);
       }
       if (Bluefruit.Scanner.restart_on_disconnect_ && Bluefruit.Scanner.running_) {
+        next_scan_due_us_ = 0U;
         Bluefruit.Scanner.paused_ = false;
       }
     }
@@ -1817,6 +2364,10 @@ class BluefruitCompatManager {
 BluefruitCompatManager& manager() {
   static BluefruitCompatManager instance;
   return instance;
+}
+
+extern "C" uint8_t nrf54l15_clean_ble_idle_yield_wfi_allowed(void) {
+  return manager().idleYieldWfiAllowed() ? 1U : 0U;
 }
 
 BLESecurity::BLESecurity()
@@ -3622,6 +4173,7 @@ void BLEScanner::start(uint16_t timeout) {
   if (!manager().begin(0U, 1U)) {
     return;
   }
+  manager().resetScannerSchedule();
   timeout_s_ = timeout;
   running_ = true;
   paused_ = false;

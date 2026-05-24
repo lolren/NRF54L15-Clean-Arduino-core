@@ -6,6 +6,8 @@ extern "C" void nrf54l15_clean_yield_service(void);
 extern "C" void nrf54l15_software_timer_service(void);
 extern "C" uint32_t nrf54l15_clean_ble_idle_sleep_cap_us(void)
     __attribute__((weak));
+extern "C" uint8_t nrf54l15_clean_ble_idle_yield_wfi_allowed(void)
+    __attribute__((weak));
 extern "C" size_t nrf54l15_heap_total_bytes(void);
 extern "C" size_t nrf54l15_heap_used_bytes(void);
 extern "C" size_t nrf54l15_heap_free_bytes(void);
@@ -48,14 +50,12 @@ extern "C" void __attribute__((weak)) yield(void) {
     nrf54l15_software_timer_service();
     nrf54l15_clean_yield_service();
 #if defined(NRF54L15_CLEAN_POWER_LOW)
-    // Low-power mode uses a tickless GRTC-backed timebase. Unlike the balanced
-    // SysTick path, there is no guaranteed periodic interrupt to wake an
-    // unconditional WFI here after loop() returns. Sleeping in yield() would
-    // therefore deadlock ordinary sketches after their first iteration unless
-    // they happened to have another wake source armed already.
-    if ((__get_PRIMASK() & 1U) != 0U) {
-        __asm volatile("nop");
-    }
+    // Keep low-power foreground BLE pump-driven until the disconnected scan
+    // scheduler is fully background-driven. The experimental yield()->WFI path
+    // starves active scan / reconnect work and prevents the parity pair from
+    // reconnecting reliably.
+    (void)nrf54l15_clean_ble_idle_yield_wfi_allowed;
+    __asm volatile("nop");
     return;
 #else
     // Balanced profile keeps the foreground loop pump-driven. SysTick is

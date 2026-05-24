@@ -65,10 +65,13 @@ g_pfnVectors:
     .endr
     /* IRQ 135: EGU10. */
     .word   EGU10_IRQHandler
-    /* IRQ 136..139 */
-    .rept 4
+    /* IRQ 136..137 */
+    .rept 2
     .word   Default_Handler
     .endr
+    /* IRQ 138..139: RADIO instances. */
+    .word   RADIO_0_IRQHandler
+    .word   RADIO_1_IRQHandler
     /* IRQ 140..141: serial-fabric instances used by HardwareSerial. */
     .word   SPIM20_IRQHandler
     .word   SPIM21_IRQHandler
@@ -296,6 +299,18 @@ TWIM21_IRQHandler:
 GRTC_0_IRQHandler:
     b .
     .size GRTC_0_IRQHandler, .-GRTC_0_IRQHandler
+
+    .weak RADIO_0_IRQHandler
+    .type RADIO_0_IRQHandler, %function
+RADIO_0_IRQHandler:
+    b .
+    .size RADIO_0_IRQHandler, .-RADIO_0_IRQHandler
+
+    .weak RADIO_1_IRQHandler
+    .type RADIO_1_IRQHandler, %function
+RADIO_1_IRQHandler:
+    b .
+    .size RADIO_1_IRQHandler, .-RADIO_1_IRQHandler
 
     .weak I2S20_IRQHandler
     .type I2S20_IRQHandler, %function

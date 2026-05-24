@@ -110,20 +110,15 @@ bool BleRadio::waitDisabled(uint32_t spinLimit) {
     return true;
   }
 
-  // Event not yet fired — flush any residual zero-value and poll.
+  // Event not yet fired — flush any stale zero-value and keep the older
+  // polling path. This remains the most reliable behavior for connectable BLE
+  // timing while current tuning continues elsewhere.
   radio_->EVENTS_DISABLED = 0U;
-  while (spinLimit-- > 0U) {
-    if (radio_->EVENTS_DISABLED != 0U) {
-      radio_->EVENTS_DISABLED = 0U;
-      return true;
-    }
-    const uint32_t state =
-        (radio_->STATE & RADIO_STATE_STATE_Msk) >> RADIO_STATE_STATE_Pos;
-    if (state == RADIO_STATE_STATE_Disabled) {
-      return true;
-    }
+  const bool disabled = waitRadioDisabledBudgeted(radio_, 0U, spinLimit);
+  if (radio_->EVENTS_DISABLED != 0U) {
+    radio_->EVENTS_DISABLED = 0U;
   }
-  return false;
+  return disabled;
 }
 
 bool BleRadio::waitForEnd(uint32_t spinLimit) {
@@ -131,12 +126,7 @@ bool BleRadio::waitForEnd(uint32_t spinLimit) {
     return false;
   }
 
-  while (spinLimit-- > 0U) {
-    if (radio_->EVENTS_PHYEND != 0U || radio_->EVENTS_END != 0U) {
-      return true;
-    }
-  }
-  return false;
+  return waitRadioEndBudgeted(radio_, 0U, spinLimit);
 }
 
 bool BleRadio::setAdvertisingChannel(BleAdvertisingChannel channel) {

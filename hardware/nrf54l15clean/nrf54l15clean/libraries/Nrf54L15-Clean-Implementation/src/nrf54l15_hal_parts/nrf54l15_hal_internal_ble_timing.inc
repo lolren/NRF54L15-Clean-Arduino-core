@@ -78,6 +78,25 @@ volatile uint8_t __attribute__((used)) g_ble_periph_tx_trace_opcode[32] = {0};
 volatile uint16_t __attribute__((used)) g_ble_periph_tx_trace_cid[32] = {0};
 volatile uint8_t __attribute__((used)) g_ble_periph_connect_win_size = 0U;
 volatile uint16_t __attribute__((used)) g_ble_periph_connect_win_offset = 0U;
+volatile uint32_t __attribute__((used)) g_ble_unconnected_radio_diag_magic =
+    0x42524144UL;
+volatile uint32_t __attribute__((used)) g_ble_unconnected_radio_begin_count =
+    0U;
+volatile uint32_t __attribute__((used)) g_ble_unconnected_radio_end_count = 0U;
+volatile uint32_t __attribute__((used)) g_ble_unconnected_radio_active = 0U;
+volatile uint32_t __attribute__((used)) g_ble_unconnected_radio_last_begin_us =
+    0U;
+volatile uint32_t __attribute__((used)) g_ble_unconnected_radio_last_end_us =
+    0U;
+volatile uint32_t __attribute__((used)) g_ble_scan_active_adv_rx_count = 0U;
+volatile uint8_t __attribute__((used)) g_ble_scan_active_last_channel = 0U;
+volatile uint8_t __attribute__((used)) g_ble_scan_active_last_header = 0U;
+volatile uint8_t __attribute__((used)) g_ble_scan_active_last_length = 0U;
+volatile uint8_t __attribute__((used)) g_ble_scan_active_last_flags = 0U;
+volatile uint8_t __attribute__((used)) g_ble_scan_active_last_return_code = 0U;
+volatile uint8_t __attribute__((used)) g_ble_scan_active_last_return_value = 0U;
+volatile uint8_t __attribute__((used)) g_ble_scan_active_last_address[6] = {0};
+volatile uint8_t __attribute__((used)) g_ble_scan_active_last_adv_data[24] = {0};
 }
 // Reserve one GRTC compare channel for BLE connection anchors so the custom LL
 // can arm itself independently of sketch polling.
@@ -91,7 +110,11 @@ static constexpr uint8_t kBleBackgroundAdvStage1TxCompareChannel = 8U;
 static constexpr uint8_t kBleBackgroundAdvStage2ServiceCompareChannel = 9U;
 static constexpr uint8_t kBleBackgroundAdvStage2TxCompareChannel = 10U;
 static constexpr uint8_t kBleBackgroundAdvFinalCleanupCompareChannel = 11U;
-static constexpr uint8_t kBleBackgroundConnRxCompareChannel = 12U;
+// The device exposes GRTC CC[0..11] only. Background connection RX and
+// disconnected advertising cleanup never run at the same time, so they can
+// safely share the same compare channel.
+static constexpr uint8_t kBleBackgroundConnRxCompareChannel =
+    kBleBackgroundAdvFinalCleanupCompareChannel;
 #if !defined(NRF54L15_CLEAN_BLE_BACKGROUND_LP_TX_DPPI_CHANNEL)
 #define NRF54L15_CLEAN_BLE_BACKGROUND_LP_TX_DPPI_CHANNEL 1
 #endif
@@ -161,6 +184,8 @@ static constexpr IRQn_Type kBleBackgroundGrtcIrq = GRTC_0_IRQn;
 #endif
 static constexpr IRQn_Type kBleBackgroundClockIrq = CLOCK_POWER_IRQn;
 xiao_nrf54l15::BleRadio* volatile g_bleBackgroundRadio = nullptr;
+static volatile uint8_t g_bleIdleWakePending = 0U;
+static volatile uint8_t g_bleIdleWakeArmed = 0U;
 
 #if !defined(NRF54L15_CLEAN_BLE_BACKGROUND_SERVICE)
 #define NRF54L15_CLEAN_BLE_BACKGROUND_SERVICE 1
@@ -971,6 +996,13 @@ void initBleGrtc() {
   // it here (LFRC first for fast warm-up, then LFXO for accuracy).
   ensureBleGrtcLfclkRunning();
 
+  // Match Zephyr/nrfx GRTC sleep defaults: allow the SYSCOUNTER to sleep
+  // shortly after CPU idle, but wake it early enough for compare events.
+  grtc->TIMEOUT =
+      ((5UL << GRTC_TIMEOUT_VALUE_Pos) & GRTC_TIMEOUT_VALUE_Msk);
+  grtc->WAKETIME =
+      ((4UL << GRTC_WAKETIME_VALUE_Pos) & GRTC_WAKETIME_VALUE_Msk);
+
   // Clear AUTOEN before OR-ing in the desired bits so we don't carry
   // a stale POR default into the write.
   uint32_t mode = grtc->MODE;
@@ -1113,6 +1145,46 @@ static inline void bleProgramCompare(uint8_t channel, uint32_t targetUs,
 
 static inline bool bleRunningInIsr() {
   return (__get_IPSR() != 0U);
+}
+
+extern "C" void nrf54l15_ble_idle_wake_arm(uint32_t targetUs) {
+  if (NRF_GRTC == nullptr) {
+    return;
+  }
+
+  const uint32_t irqState = halEnterCritical();
+  if (g_bleBackgroundRadio != nullptr) {
+    halExitCritical(irqState);
+    return;
+  }
+
+  g_bleIdleWakePending = 0U;
+  g_bleIdleWakeArmed = 1U;
+  bleBackgroundEnableIrq();
+  bleProgramCompare(kBleBackgroundCompareChannel, targetUs, true);
+  halExitCritical(irqState);
+}
+
+extern "C" void nrf54l15_ble_idle_wake_cancel(void) {
+  if (NRF_GRTC == nullptr) {
+    return;
+  }
+
+  const uint32_t irqState = halEnterCritical();
+  if (g_bleBackgroundRadio == nullptr) {
+    g_bleIdleWakePending = 0U;
+    g_bleIdleWakeArmed = 0U;
+    bleBackgroundDisableCompare();
+  }
+  halExitCritical(irqState);
+}
+
+extern "C" uint8_t nrf54l15_ble_idle_wake_consume(void) {
+  const uint32_t irqState = halEnterCritical();
+  const uint8_t pending = g_bleIdleWakePending;
+  g_bleIdleWakePending = 0U;
+  halExitCritical(irqState);
+  return pending;
 }
 
 static inline uint32_t bleEnterCritical() { return halEnterCritical(); }

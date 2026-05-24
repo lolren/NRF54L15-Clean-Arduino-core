@@ -123,6 +123,14 @@ extern "C" void nrf54l15_secp256r1_cooperate_hook(void) {
 }
 
 extern "C" void nrf54l15_ble_grtc_irq_service(void) {
+  bleScanSleepWaitHandleTimeoutIrq();
+  if (g_bleBackgroundRadio == nullptr &&
+      g_bleIdleWakeArmed != 0U &&
+      bleBackgroundCompareEventPending()) {
+    g_bleIdleWakePending = 1U;
+    g_bleIdleWakeArmed = 0U;
+    bleBackgroundDisableCompare();
+  }
   // Foreground-only work for the currently active radio does not need the
   // shared background-radio owner slot. If both owner pointers refer to the
   // same radio and neither background advertising nor background connection
@@ -140,6 +148,10 @@ extern "C" void nrf54l15_ble_grtc_irq_service(void) {
   } else {
     clearUnownedBleBackgroundGrtcCompares();
   }
+}
+
+extern "C" void RADIO_0_IRQHandler(void) {
+  bleScanSleepWaitHandleRadioIrq(NRF_RADIO);
 }
 
 extern "C" void nrf54l15_pwm20_irq_service(void) {

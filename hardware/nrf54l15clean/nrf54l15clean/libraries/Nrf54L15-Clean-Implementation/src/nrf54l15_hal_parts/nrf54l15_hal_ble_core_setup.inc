@@ -464,31 +464,61 @@ bool BleRadio::beginUnconnectedRadioActivity(uint32_t spinLimit) {
   if (connected_) {
     return true;
   }
-  if (NRF_GRTC != nullptr) {
-    NRF54L15_GRTC_SYSCOUNTER(NRF_GRTC).ACTIVE =
-        (GRTC_SYSCOUNTER_ACTIVE_ACTIVE_Active
-         << GRTC_SYSCOUNTER_ACTIVE_ACTIVE_Pos);
-    __asm volatile("dsb 0xF" ::: "memory");
+  const bool alreadyActive = (g_ble_unconnected_radio_active != 0U);
+  if (!alreadyActive) {
+    ++g_ble_unconnected_radio_begin_count;
+    g_ble_unconnected_radio_last_begin_us = bleTimingUs();
+    if (NRF_GRTC != nullptr) {
+      NRF54L15_GRTC_SYSCOUNTER(NRF_GRTC).ACTIVE =
+          (GRTC_SYSCOUNTER_ACTIVE_ACTIVE_Active
+           << GRTC_SYSCOUNTER_ACTIVE_ACTIVE_Pos);
+      __asm volatile("dsb 0xF" ::: "memory");
+    }
   }
   const uint32_t hfxoStartUs = bleTimingUs();
-  if (!ClockControl::startHfxo(true, spinLimit)) {
+  const bool waitForHfxo = (spinLimit != 0U);
+  if (!ClockControl::startHfxo(waitForHfxo, spinLimit)) {
+    if (!alreadyActive && NRF_GRTC != nullptr) {
+      NRF54L15_GRTC_SYSCOUNTER(NRF_GRTC).ACTIVE =
+          (GRTC_SYSCOUNTER_ACTIVE_ACTIVE_NotActive
+           << GRTC_SYSCOUNTER_ACTIVE_ACTIVE_Pos);
+      __asm volatile("dsb 0xF" ::: "memory");
+    }
     return false;
   }
-  ++g_bleUnconnectedHfxoStartCallCount;
-  const uint32_t hfxoElapsedUs =
-      static_cast<uint32_t>(bleTimingUs() - hfxoStartUs);
-  g_bleUnconnectedHfxoStartTotalUs += hfxoElapsedUs;
-  if (hfxoElapsedUs > g_bleUnconnectedHfxoStartMaxUs) {
-    g_bleUnconnectedHfxoStartMaxUs = hfxoElapsedUs;
+  if (!alreadyActive) {
+    ++g_bleUnconnectedHfxoStartCallCount;
+    const uint32_t hfxoElapsedUs =
+        static_cast<uint32_t>(bleTimingUs() - hfxoStartUs);
+    g_bleUnconnectedHfxoStartTotalUs += hfxoElapsedUs;
+    if (hfxoElapsedUs > g_bleUnconnectedHfxoStartMaxUs) {
+      g_bleUnconnectedHfxoStartMaxUs = hfxoElapsedUs;
+    }
   }
   // Match the per-event RF ownership model used by the phone-visible
   // non-connectable advertiser: enable the RF path for this event, then
   // collapse it again once the device returns to the disconnected idle state.
-  return ensureRfPathActiveForBle();
+  const bool ok = ensureRfPathActiveForBle();
+  g_ble_unconnected_radio_active = ok ? 1U : 0U;
+  return ok;
 }
 
 void BleRadio::endUnconnectedRadioActivity() {
-  if (!connected_) {
+  if (g_ble_unconnected_radio_active != 0U) {
+    ++g_ble_unconnected_radio_end_count;
+    g_ble_unconnected_radio_last_end_us = bleTimingUs();
+    if (!connected_) {
+      ClockControl::stopHfxo();
+      releaseRfPathForBle();
+    }
+    if (!backgroundServicesActive() && NRF_GRTC != nullptr) {
+      NRF54L15_GRTC_SYSCOUNTER(NRF_GRTC).ACTIVE =
+          (GRTC_SYSCOUNTER_ACTIVE_ACTIVE_NotActive
+           << GRTC_SYSCOUNTER_ACTIVE_ACTIVE_Pos);
+      __asm volatile("dsb 0xF" ::: "memory");
+    }
+    g_ble_unconnected_radio_active = 0U;
+  } else if (!connected_) {
     ClockControl::stopHfxo();
     releaseRfPathForBle();
     if (!backgroundServicesActive() && NRF_GRTC != nullptr) {

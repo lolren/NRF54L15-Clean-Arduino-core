@@ -1,16 +1,14 @@
 /*
-  Connection Current Zephyr Equivalent - Central
+  Connection Current Parity - Arduino Central
 
-  Pair this with conncurrent_zephyr_equiv_peripheral. It follows the Zephyr
-  central's BLE shape closely enough for current comparison:
+  Matches the Zephyr current-comparison central as closely as practical:
   - active scan for the same 128-bit service UUID
   - 23-byte ATT MTU / default data length
-  - 50 ms connection interval target from the central side
-  - subscribe to the notify characteristic
-  - reply to each notify using ATT Write Command / Write Without Response
+  - subscribe to notify
+  - reply with ATT Write Command / Write Without Response
+  - 1 second application cadence
 
-  Serial is disabled by default so opening the monitor is not part of the
-  current profile.
+  Green LED pulse matches the Zephyr sketch: 5 ms after each notify/reply.
 */
 
 #include <bluefruit.h>
@@ -24,6 +22,9 @@ using xiao_nrf54l15::BoardControl;
 
 static constexpr int8_t kTxPowerDbm = 8;
 static constexpr uint8_t kPayloadLength = 16U;
+static constexpr uint32_t kConnectLedPulseMs = 5UL;
+static constexpr uint32_t kStartupSettleMs = 300UL;
+static constexpr char kPeripheralName[] = "XIAO_nRF54L15";
 
 union Payload {
   uint32_t u32[kPayloadLength / 4U];
@@ -36,6 +37,14 @@ static uint8_t g_rxBuffer[kPayloadLength];
 static uint8_t g_txBuffer[kPayloadLength];
 static volatile bool g_connected = false;
 static volatile bool g_notifyReceived = false;
+static volatile bool g_pendingLedPulse = false;
+static volatile bool g_pendingScanRestart = false;
+static volatile uint32_t g_scanCallbackCount = 0U;
+static volatile uint32_t g_notifyCount = 0U;
+static volatile uint32_t g_writeReplyCount = 0U;
+static volatile uint8_t g_lastReportAddrType = 0U;
+static volatile uint8_t g_lastReportAddr[6] = {0};
+static volatile uint8_t g_lastMatchFlags = 0U;
 
 BLEClientService dataService("5500554c-0000-4dd1-be0c-40588193b485");
 BLEClientCharacteristic notifyChar("5500554c-0010-4dd1-be0c-40588193b485");
@@ -44,6 +53,19 @@ BLEClientCharacteristic writeChar("5500554c-0020-4dd1-be0c-40588193b485");
 static void setLedOff() {
 #if defined(LED_BUILTIN)
   pinMode(LED_BUILTIN, OUTPUT);
+  digitalWrite(LED_BUILTIN, HIGH);
+#endif
+}
+
+static void pulseConnectLedIfPending() {
+  if (!g_pendingLedPulse) {
+    return;
+  }
+
+  g_pendingLedPulse = false;
+#if defined(LED_BUILTIN)
+  digitalWrite(LED_BUILTIN, LOW);
+  delay(kConnectLedPulseMs);
   digitalWrite(LED_BUILTIN, HIGH);
 #endif
 }
@@ -87,6 +109,23 @@ static void scan_callback(ble_gap_evt_adv_report_t* report) {
   if (report == nullptr) {
     return;
   }
+  ++g_scanCallbackCount;
+  g_lastReportAddrType = report->peer_addr.addr_type;
+  memcpy(const_cast<uint8_t*>(g_lastReportAddr), report->peer_addr.addr,
+         sizeof(g_lastReportAddr));
+  g_lastMatchFlags = 0U;
+  if (!Bluefruit.Scanner.checkReportForService(report, dataService.uuid)) {
+    char name[sizeof(kPeripheralName)] = {0};
+    const int nameLen = Bluefruit.Scanner.parseReportByType(
+        report, BLE_GAP_AD_TYPE_COMPLETE_LOCAL_NAME, name, sizeof(name) - 1U);
+    if (nameLen <= 0 || strcmp(name, kPeripheralName) != 0) {
+      Bluefruit.Scanner.resume();
+      return;
+    }
+    g_lastMatchFlags |= 0x02U;
+  } else {
+    g_lastMatchFlags |= 0x01U;
+  }
   Bluefruit.Central.connect(report);
 }
 
@@ -102,10 +141,6 @@ static void connect_callback(uint16_t connHandle) {
     return;
   }
 
-  BLEConnection* connection = Bluefruit.Connection(connHandle);
-  if (connection != nullptr) {
-    connection->monitorRssi();
-  }
   g_notifyReceived = false;
   g_connected = true;
 }
@@ -115,7 +150,7 @@ static void disconnect_callback(uint16_t connHandle, uint8_t reason) {
   (void)reason;
   g_connected = false;
   g_notifyReceived = false;
-  Bluefruit.Scanner.start(0);
+  g_pendingScanRestart = true;
 }
 
 static void notify_callback(BLEClientCharacteristic* chr, uint8_t* data,
@@ -127,8 +162,13 @@ static void notify_callback(BLEClientCharacteristic* chr, uint8_t* data,
     memset(&g_rxBuffer[copyLen], 0, kPayloadLength - copyLen);
   }
 
-  writeChar.writeWithoutResponse(g_txBuffer, kPayloadLength);
+  delay(5);
+  if (writeChar.writeWithoutResponse(g_txBuffer, kPayloadLength)) {
+    ++g_writeReplyCount;
+  }
   g_notifyReceived = true;
+  ++g_notifyCount;
+  g_pendingLedPulse = true;
 }
 
 void setup() {
@@ -156,16 +196,22 @@ void setup() {
   Bluefruit.Central.setDisconnectCallback(disconnect_callback);
 
   Bluefruit.Scanner.setRxCallback(scan_callback);
-  // Match the Zephyr parity sketch: restart scanning from the disconnect
-  // callback instead of keeping the central parked until reset.
   Bluefruit.Scanner.restartOnDisconnect(false);
   Bluefruit.Scanner.filterUuid(dataService.uuid);
   Bluefruit.Scanner.useActiveScan(true);
   Bluefruit.Scanner.setIntervalMS(60, 30);
+  delay(kStartupSettleMs);
   Bluefruit.Scanner.start(0);
 }
 
 void loop() {
+  if (g_pendingScanRestart && !g_connected) {
+    g_pendingScanRestart = false;
+    Bluefruit.Scanner.start(0);
+  }
+
+  pulseConnectLedIfPending();
+
   if (!g_connected || !g_notifyReceived) {
     delay(1);
     return;
