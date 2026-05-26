@@ -1192,7 +1192,16 @@ class BluefruitCompatManager {
   }
 
   bool idleYieldWfiAllowed() const {
-    if (!started_ || radio_.isConnected()) {
+    if (!started_) {
+      ++g_bluefruitBleIdleDiagIdleYieldDenyCount;
+      return false;
+    }
+    if (radio_.isConnected()) {
+      if (radio_.isBackgroundConnectionServiceEnabled()) {
+        // Background service handles connection events, permit WFI
+        ++g_bluefruitBleIdleDiagIdleYieldAllowCount;
+        return true;
+      }
       ++g_bluefruitBleIdleDiagIdleYieldDenyCount;
       return false;
     }
@@ -1857,6 +1866,26 @@ class BluefruitCompatManager {
       const uint32_t restUs =
           (intervalUs > windowUs) ? (intervalUs - windowUs) : kScannerMinRestUs;
       next_scan_due_us_ = afterUs + restUs;
+    }
+    // Arm the wake after the scan completes so idleYieldWfiAllowed()
+    // can permit WFI between scan windows. The wake is canceled at the
+    // top of the scan path (line 1757-1759), so it must be re-armed here.
+    // Use the short ready-lead (80us) instead of prewarm-lead (650us)
+    // to avoid the HFXO prewarm spike on each scan cycle.
+    // Also shut down the HFXO before sleeping to avoid sustained draw.
+    if (armed_scan_wake_us_ == 0U && next_scan_due_us_ != 0U) {
+      const uint32_t wakeLeadUs = kBleScannerReadyLeadUs;
+      const uint64_t scanWakeUs =
+          (next_scan_due_us_ > static_cast<uint64_t>(wakeLeadUs))
+              ? static_cast<uint64_t>(next_scan_due_us_ - wakeLeadUs)
+              : next_scan_due_us_;
+      // Power down HFXO before arming the wake
+      if (scan_prewarm_active_) {
+        radio_.endForegroundUnconnectedRadioActivity();
+        scan_prewarm_active_ = false;
+      }
+      nrf54l15_ble_idle_wake_arm(static_cast<uint32_t>(scanWakeUs));
+      armed_scan_wake_us_ = static_cast<uint64_t>(scanWakeUs);
     }
   }
 
