@@ -1231,6 +1231,15 @@ extern "C" void nrf54l15_ble_idle_wake_cancel(void) {
   halExitCritical(irqState);
 }
 
+// Release background radio ownership so the GRTC idle wake can be consumed.
+// Called after disconnect to clear stale background state that would block
+// bleBackgroundOwnerBlocksIdleWake() and prevent WFI wake consumption.
+extern "C" void nrf54l15_ble_background_radio_release(void) {
+  g_bleBackgroundRadio = nullptr;
+  g_bleBackgroundPendSvPending = 0U;
+  bleBackgroundDisableCompare();
+}
+
 extern "C" uint8_t nrf54l15_ble_idle_wake_consume(void) {
   const uint32_t irqState = halEnterCritical();
   const uint8_t pending = g_bleIdleWakePending;

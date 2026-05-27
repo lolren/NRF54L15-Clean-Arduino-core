@@ -579,6 +579,7 @@ class BluefruitCompatManager {
         last_connection_role_(BleConnectionRole::kNone),
         last_connection_edge_ms_(0UL),
         next_adv_due_us_(0U),
+        armed_adv_wake_us_(0U),
         next_scan_due_us_(0U),
         armed_scan_wake_us_(0U),
         scan_start_last_us_(0U),
@@ -849,6 +850,8 @@ class BluefruitCompatManager {
   void advertisingStarted() {
     adv_started_ms_ = schedulerTimeMs();
     next_adv_due_us_ = 0U;
+    nrf54l15_ble_idle_wake_cancel();
+    armed_adv_wake_us_ = 0U;
     adv_random_state_ = 0U;
   }
 
@@ -1214,6 +1217,12 @@ class BluefruitCompatManager {
       ++g_bluefruitBleIdleDiagIdleYieldAllowCount;
       return true;
     }
+    // Permit WFI during foreground advertising when wake is armed
+    if (Bluefruit.Advertising.running_ && armed_adv_wake_us_ != 0U &&
+        !timeReachedUs(schedulerTimeUs(), armed_adv_wake_us_)) {
+      ++g_bluefruitBleIdleDiagIdleYieldAllowCount;
+      return true;
+    }
     if (!Bluefruit.Scanner.running_ || Bluefruit.Scanner.paused_ ||
         Bluefruit.Scanner.rx_callback_ == nullptr) {
       ++g_bluefruitBleIdleDiagIdleYieldDenyCount;
@@ -1396,6 +1405,7 @@ class BluefruitCompatManager {
   BleConnectionRole last_connection_role_;
   unsigned long last_connection_edge_ms_;
   uint64_t next_adv_due_us_;
+  uint64_t armed_adv_wake_us_;
   uint64_t next_scan_due_us_;
   uint64_t armed_scan_wake_us_;
   uint64_t scan_start_last_us_;
@@ -2324,6 +2334,8 @@ class BluefruitCompatManager {
         // while a peripheral connection is established.
         Bluefruit.Advertising.running_ = false;
         next_adv_due_us_ = 0U;
+        nrf54l15_ble_idle_wake_cancel();
+        armed_adv_wake_us_ = 0U;
         for (uint8_t i = 0U; i < characteristic_count_; ++i) {
           if (characteristics_[i] != nullptr) {
             characteristics_[i]->_notify_enabled = false;
@@ -2370,6 +2382,7 @@ class BluefruitCompatManager {
         static_cast<uint32_t>(last_connection_role_);
     g_bluefruitBleIdleDiagStage = kBluefruitBleIdleDiagStageDisconnectEdge;
     radio_.setBackgroundConnectionServiceEnabled(false);
+    nrf54l15_ble_background_radio_release();
     BleDisconnectDebug debug{};
     uint8_t reason = 0x13U;
     if (radio_.getDisconnectDebug(&debug)) {
@@ -2425,6 +2438,8 @@ class BluefruitCompatManager {
         Bluefruit.Advertising.running_ = true;
         adv_started_ms_ = schedulerTimeMs();
         next_adv_due_us_ = 0U;
+        nrf54l15_ble_idle_wake_cancel();
+        armed_adv_wake_us_ = 0U;
         adv_random_state_ = 0U;
       }
     } else if (last_connection_role_ == BleConnectionRole::kCentral) {

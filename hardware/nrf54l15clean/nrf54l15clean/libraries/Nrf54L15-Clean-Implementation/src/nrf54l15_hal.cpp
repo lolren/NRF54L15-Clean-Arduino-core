@@ -85,7 +85,6 @@ constexpr uint32_t kBleSecp256r1CooperateSpinLimit = 0UL;
 
 void clearUnownedBleBackgroundGrtcCompares() {
   static constexpr uint8_t kChannels[] = {
-      kBleBackgroundCompareChannel,
       kBleBackgroundAdvPrewarmCompareChannel,
       kBleBackgroundAdvTxCompareChannel,
       kBleBackgroundConnPrewarmCompareChannel,
@@ -102,6 +101,14 @@ void clearUnownedBleBackgroundGrtcCompares() {
     const uint8_t channel = kChannels[i];
     if (bleCompareEventPending(channel) || bleCompareEnabled(channel)) {
       bleDisableCompare(channel, true);
+    }
+  }
+
+  // Only clear the idle wake channel if no wake is armed.
+  if (g_bleIdleWakeArmed == 0U) {
+    if (bleCompareEventPending(kBleBackgroundCompareChannel) ||
+        bleCompareEnabled(kBleBackgroundCompareChannel)) {
+      bleDisableCompare(kBleBackgroundCompareChannel, true);
     }
   }
 }
