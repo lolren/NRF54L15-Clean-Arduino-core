@@ -579,6 +579,7 @@ class BluefruitCompatManager {
         last_connection_role_(BleConnectionRole::kNone),
         last_connection_edge_ms_(0UL),
         next_adv_due_us_(0U),
+        armed_adv_wake_us_(0U),
         next_scan_due_us_(0U),
         armed_scan_wake_us_(0U),
         scan_start_last_us_(0U),
@@ -1209,6 +1210,18 @@ class BluefruitCompatManager {
       ++g_bluefruitBleIdleDiagIdleYieldDenyCount;
       return false;
     }
+    // Permit WFI during advertising if background mode handles events
+    if (Bluefruit.Advertising.running_ && radio_.isBackgroundAdvertisingEnabled()) {
+      ++g_bluefruitBleIdleDiagIdleYieldAllowCount;
+      return true;
+    }
+    // Permit WFI during foreground advertising when wake is armed
+    if (Bluefruit.Advertising.running_ && next_adv_due_us_ != 0U &&
+        armed_adv_wake_us_ != 0U &&
+        !timeReachedUs(schedulerTimeUs(), next_adv_due_us_)) {
+      ++g_bluefruitBleIdleDiagIdleYieldAllowCount;
+      return true;
+    }
     if (!Bluefruit.Scanner.running_ || Bluefruit.Scanner.paused_ ||
         Bluefruit.Scanner.rx_callback_ == nullptr) {
       ++g_bluefruitBleIdleDiagIdleYieldDenyCount;
@@ -1391,6 +1404,7 @@ class BluefruitCompatManager {
   BleConnectionRole last_connection_role_;
   unsigned long last_connection_edge_ms_;
   uint64_t next_adv_due_us_;
+  uint64_t armed_adv_wake_us_;
   uint64_t next_scan_due_us_;
   uint64_t armed_scan_wake_us_;
   uint64_t scan_start_last_us_;
@@ -2110,6 +2124,16 @@ class BluefruitCompatManager {
 
     const uint64_t nowUs = schedulerTimeUs();
     if (next_adv_due_us_ != 0U && !timeReachedUs(nowUs, next_adv_due_us_)) {
+      // Arm wake for next ad (bypass background radio block)
+      if (armed_adv_wake_us_ == 0U || nrf54l15_ble_idle_wake_consume() != 0U) {
+        const uint32_t wakeLeadUs = kBleScannerReadyLeadUs;
+        const uint64_t advWakeUs =
+            (next_adv_due_us_ > static_cast<uint64_t>(wakeLeadUs))
+                ? static_cast<uint64_t>(next_adv_due_us_ - wakeLeadUs)
+                : next_adv_due_us_;
+        nrf54l15_ble_idle_wake_arm_foreground(static_cast<uint32_t>(advWakeUs));
+        armed_adv_wake_us_ = advWakeUs;
+      }
       ++g_bluefruitMaybeAdvertiseNotDueCount;
       return;
     }
@@ -2141,6 +2165,20 @@ class BluefruitCompatManager {
     } else {
       (void)radio_.advertiseEvent(350U, 600000UL, false);
       ++g_bluefruitMaybeAdvertiseNonconnEventCount;
+    }
+
+    // Arm GRTC wake for next ad so idleYieldWfiAllowed() permits WFI
+    if (armed_adv_wake_us_ == 0U && next_adv_due_us_ != 0U) {
+      const uint32_t wakeLeadUs = kBleScannerReadyLeadUs;
+      const uint64_t advWakeUs =
+          (next_adv_due_us_ > static_cast<uint64_t>(wakeLeadUs))
+              ? static_cast<uint64_t>(next_adv_due_us_ - wakeLeadUs)
+              : next_adv_due_us_;
+      nrf54l15_ble_idle_wake_arm_foreground(static_cast<uint32_t>(advWakeUs));
+      armed_adv_wake_us_ = advWakeUs;
+    } else if (armed_adv_wake_us_ != 0U) {
+      nrf54l15_ble_idle_wake_cancel();
+      armed_adv_wake_us_ = 0U;
     }
 
     ++g_bluefruitMaybeAdvertiseEventCount;

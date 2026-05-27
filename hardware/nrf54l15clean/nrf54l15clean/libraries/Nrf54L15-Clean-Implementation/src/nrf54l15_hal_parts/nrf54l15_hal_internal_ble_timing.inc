@@ -1199,6 +1199,24 @@ extern "C" void nrf54l15_ble_idle_wake_arm(uint32_t targetUs) {
   halExitCritical(irqState);
 }
 
+extern "C" void nrf54l15_ble_idle_wake_arm_foreground(uint32_t targetUs) {
+  // Bypass bleBackgroundOwnerBlocksIdleWake() for foreground activities
+  // (e.g., advertising after disconnect) where the background radio's
+  // stale compares would block the wake. This is safe because the
+  // background radio is disconnected and the wake target is for a
+  // foreground activity that will be serviced by the main loop.
+  if (NRF_GRTC == nullptr) {
+    return;
+  }
+
+  const uint32_t irqState = halEnterCritical();
+  g_bleIdleWakePending = 0U;
+  g_bleIdleWakeArmed = 1U;
+  bleBackgroundEnableIrq();
+  bleProgramCompare(kBleBackgroundCompareChannel, targetUs, true);
+  halExitCritical(irqState);
+}
+
 extern "C" void nrf54l15_ble_idle_wake_cancel(void) {
   if (NRF_GRTC == nullptr) {
     return;
