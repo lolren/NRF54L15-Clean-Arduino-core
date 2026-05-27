@@ -1177,6 +1177,11 @@ static inline bool bleAnyBackgroundCompareActive() {
 }
 
 static inline bool bleBackgroundOwnerBlocksIdleWake() {
+  // If the idle wake is armed (by scanner or advertising), permit WFI
+  // regardless of background radio state. The wake is for foreground use.
+  if (g_bleIdleWakeArmed != 0U) {
+    return false;
+  }
   return g_bleBackgroundRadio != nullptr &&
          (g_bleBackgroundPendSvPending != 0U || bleAnyBackgroundCompareActive());
 }
@@ -1238,6 +1243,11 @@ extern "C" void nrf54l15_ble_background_radio_release(void) {
   g_bleBackgroundRadio = nullptr;
   g_bleBackgroundPendSvPending = 0U;
   bleBackgroundDisableCompare();
+}
+
+// Query whether the idle wake was successfully armed. Returns 1 if armed.
+extern "C" uint8_t nrf54l15_ble_idle_wake_is_armed(void) {
+  return g_bleIdleWakeArmed;
 }
 
 extern "C" uint8_t nrf54l15_ble_idle_wake_consume(void) {

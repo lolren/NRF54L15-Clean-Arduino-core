@@ -19,6 +19,7 @@ extern "C" void nrf54l15_secp256r1_cooperate_hook(void);
 extern "C" void nrf54l15_ble_idle_wake_arm(uint32_t targetUs);
 extern "C" void nrf54l15_ble_idle_wake_arm_foreground(uint32_t targetUs);
 extern "C" void nrf54l15_ble_background_radio_release(void);
+extern "C" uint8_t nrf54l15_ble_idle_wake_is_armed(void);
 extern "C" void nrf54l15_ble_idle_wake_cancel(void);
 extern "C" uint8_t nrf54l15_ble_idle_wake_consume(void);
 

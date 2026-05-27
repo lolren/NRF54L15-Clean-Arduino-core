@@ -852,6 +852,7 @@ class BluefruitCompatManager {
     next_adv_due_us_ = 0U;
     nrf54l15_ble_idle_wake_cancel();
     armed_adv_wake_us_ = 0U;
+    nrf54l15_ble_background_radio_release();
     adv_random_state_ = 0U;
   }
 
