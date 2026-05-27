@@ -170,6 +170,7 @@ void setup() {
   Bluefruit.Periph.setDisconnectCallback(disconnect_callback);
   Bluefruit.Periph.setConnInterval(kConnectionIntervalUnits,
                                    kConnectionIntervalUnits);
+  Bluefruit.Periph.setConnSupervisionTimeoutMS(200);  // 200ms supervision timeout
 
   dataService.begin();
 

@@ -5726,7 +5726,7 @@ void AdafruitBluefruit::configCentralConn(uint16_t mtu_max, uint16_t event_len,
   }
 
   central_conn_interval_ = interval_units;
-  central_supervision_timeout_ = 200U;
+  central_supervision_timeout_ = 40U;  // 400ms, minimize link-loss spike
   central_requested_mtu_ = requested_mtu;
   manager().radio().setCentralPreferredAttMtu(requested_mtu);
   manager().radio().setCentralPreferredDataLength(
