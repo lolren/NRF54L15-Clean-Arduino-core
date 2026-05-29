@@ -524,6 +524,7 @@ class BLESecurity {
   bool getOobRemoteData(uint8_t oob_r[16], uint8_t oob_c[16]) const;
   // Enable or disable OOB pairing
   bool setOobFlag(bool enable);
+  bool requestPairing() const;
   // OOB data request callback — called before pairing when OOB is enabled
   typedef void (*oob_data_request_callback_t)(uint16_t conn_hdl,
                                               uint8_t const oob_r[16],

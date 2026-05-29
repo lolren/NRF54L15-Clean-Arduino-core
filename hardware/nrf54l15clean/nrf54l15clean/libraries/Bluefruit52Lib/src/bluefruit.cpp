@@ -2602,6 +2602,10 @@ bool BLESecurity::setOobFlag(bool enable) {
   return true;
 }
 
+bool BLESecurity::requestPairing() const {
+  return manager().radio().requestPairing();
+}
+
 void BLESecurity::setOobDataRequestCallback(oob_data_request_callback_t fp) {
   oob_data_request_callback_ = fp;
 }

@@ -956,9 +956,15 @@ void loop() {
         // central to re-enable link-layer encryption.
         if (!g_ble.isConnectionEncrypted()) {
           delay(50);
-          const bool queued = g_ble.sendSmpSecurityRequest();
+          bool queued;
+          if (ROLE == DemoRole::PERIPHERAL) {
+            queued = g_ble.sendSmpSecurityRequest();
+            Serial.print("ble_pair sent-smp-security-request=");
+          } else {
+            queued = g_ble.requestPairing();
+            Serial.print("ble_pair request-pairing=");
+          }
           g_lastSecurityRequestMs = millis();
-          Serial.print("ble_pair sent-smp-security-request=");
           Serial.println(queued ? "1" : "0");
         }
       } else {
@@ -983,9 +989,10 @@ void loop() {
     } else {
       if (!encrypted &&
           (millis() - g_lastSecurityRequestMs) >= kPairRetryMs) {
-        const bool queued = g_ble.sendSmpSecurityRequest();
+        // Central initiates pairing (not security request - that's for periphery)
+        const bool queued = g_ble.requestPairing();
         g_lastSecurityRequestMs = millis();
-        Serial.print("ble_pair retry-smp-security-request=");
+        Serial.print("ble_pair request-pairing=");
         Serial.println(queued ? "1" : "0");
       }
       // Process connection events
@@ -1059,6 +1066,14 @@ void loop() {
         }
       }
     } else {
+      if (!encrypted) {
+        if ((millis() - g_lastSecurityRequestMs) >= kPairRetryMs) {
+          g_lastSecurityRequestMs = millis();
+          bool queued = g_ble.requestPairing();
+          Serial.print("ble_pair central: request-pairing=");
+          Serial.println(queued ? "1" : "0");
+        }
+      }
       // Process events
       BleConnectionEvent evt;
       (void)g_ble.pollConnectionEvent(&evt, kConnectionPollUs);
