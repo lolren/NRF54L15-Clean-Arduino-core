@@ -144,7 +144,7 @@ static void written_callback(uint16_t connHandle, BLECharacteristic* chr,
     memset(&g_rxBuffer[copyLen], 0, kPayloadLength - copyLen);
   }
 
-  delay(1);
+  delay(5);
   ++g_writeCount;
   g_written = true;
 }
@@ -205,7 +205,7 @@ void loop() {
   pulseConnectLedIfPending();
 
   if (!g_connected || !g_notifyEnabled) {
-    delay(1);
+    delay(5);
     return;
   }
 
@@ -220,7 +220,7 @@ void loop() {
   if (notifyChar.notify(g_payload.u8, kPayloadLength)) {
     ++g_notifyCount;
   }
-  delay(1);
+  delay(5);
 
   const uint32_t waitStart = millis();
   g_written = false;

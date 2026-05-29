@@ -16,6 +16,7 @@ extern uint32_t SystemCoreClock;
 extern void SystemCoreClockUpdate(void);
 extern void nrf54l15_clean_idle_service(void);
 extern uint8_t nrf54l15_bridge_serial_active(void) __attribute__((weak));
+extern uint8_t nrf54l15_ble_idle_wake_consume(void) __attribute__((weak));
 extern void nrf54l15_ble_grtc_irq_service(void) __attribute__((weak));
 extern void nrf54l15_grtc_pwm_irq_service(void) __attribute__((weak));
 extern uint32_t nrf54l15_ble_grtc_reserved_cc_mask(void) __attribute__((weak));
@@ -130,7 +131,10 @@ static void startLfclkSource(uint32_t src)
 
 static void ensureSystemOffLfxoRunning(void)
 {
-    static const uint32_t kLfclkStartSpinLimit = 2000000UL;
+    // LFRC starts in <1ms; LFXO crystal needs 250-500ms.
+    // Spin limits are calibrated at 128 MHz CPU clock.
+    static const uint32_t kLfrcStartSpinLimit  =   2000000UL; // ~15ms
+    static const uint32_t kLfxoStartSpinLimit  = 120000000UL; // ~940ms
 
     if (lfclkRunningFrom(CLOCK_LFCLK_STAT_SRC_LFXO)) {
         return;
@@ -139,13 +143,13 @@ static void ensureSystemOffLfxoRunning(void)
     if (!lfclkRunningFrom(CLOCK_LFCLK_STAT_SRC_LFRC)) {
         startLfclkSource(CLOCK_LFCLK_SRC_SRC_LFRC);
         if (!waitForLfclkStarted(CLOCK_LFCLK_STAT_SRC_LFRC,
-                                 kLfclkStartSpinLimit)) {
+                                 kLfrcStartSpinLimit)) {
             return;
         }
     }
 
     startLfclkSource(CLOCK_LFCLK_SRC_SRC_LFXO);
-    (void)waitForLfclkStarted(CLOCK_LFCLK_STAT_SRC_LFXO, kLfclkStartSpinLimit);
+    (void)waitForLfclkStarted(CLOCK_LFCLK_STAT_SRC_LFXO, kLfxoStartSpinLimit);
 }
 
 static bool grtcSyscounterReady(NRF_GRTC_Type* grtc)
@@ -456,6 +460,13 @@ static void delayUntilLowPowerCounterUs(uint64_t targetUs)
                ((int64_t)(sleepTargetUs - readLowPowerCounterUs()) > 0)) {
             ++g_nrf54l15_diag_delay_wfi_entries;
             __asm volatile("wfi");
+            // BLE foreground wake (advertising) fires on a different
+            // GRTC channel; break out of the inner WFI loop so
+            // idle_service() can run maybeAdvertise() again.
+            if (nrf54l15_ble_idle_wake_consume != 0 &&
+                nrf54l15_ble_idle_wake_consume() != 0U) {
+                break;
+            }
         }
         endIdleSleep(restoreRaw);
         lowPowerDisarmDelayWake();

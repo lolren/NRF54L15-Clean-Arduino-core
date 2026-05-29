@@ -1554,7 +1554,7 @@ void maybeEnterLowPowerCycle(uint32_t nowMs) {
   Serial.print(static_cast<uint32_t>(NRF54L15_CLEAN_ZIGBEE_LOW_POWER_SLEEP_MS));
   Serial.print("\r\n");
   delay(20);
-  delaySystemOffNoRetention(
+  delayLowPowerIdle(
       static_cast<unsigned long>(NRF54L15_CLEAN_ZIGBEE_LOW_POWER_SLEEP_MS));
 }
 

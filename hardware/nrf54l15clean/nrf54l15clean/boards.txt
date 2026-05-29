@@ -240,7 +240,7 @@ holyiot_25007_nrf54l15.build.cpu_flags=-DARDUINO_NRF54_CPU_64M
 holyiot_25007_nrf54l15.build.power_flags=
 holyiot_25007_nrf54l15.build.boot_flags=
 holyiot_25007_nrf54l15.build.auto_gate_flags=
-holyiot_25007_nrf54l15.build.security_flags=-DNRF_APPLICATION
+holyiot_25007_nrf54l15.build.security_flags=
 holyiot_25007_nrf54l15.build.ble_flags=-DNRF54L15_CLEAN_BLE_ENABLED=1
 holyiot_25007_nrf54l15.build.ble_tx_flags=
 holyiot_25007_nrf54l15.build.ble_timing_flags=
@@ -411,7 +411,7 @@ holyiot_25008_nrf54l15.build.cpu_flags=-DARDUINO_NRF54_CPU_64M
 holyiot_25008_nrf54l15.build.power_flags=
 holyiot_25008_nrf54l15.build.boot_flags=
 holyiot_25008_nrf54l15.build.auto_gate_flags=
-holyiot_25008_nrf54l15.build.security_flags=-DNRF_APPLICATION
+holyiot_25008_nrf54l15.build.security_flags=
 holyiot_25008_nrf54l15.build.ble_flags=-DNRF54L15_CLEAN_BLE_ENABLED=1
 holyiot_25008_nrf54l15.build.ble_tx_flags=
 holyiot_25008_nrf54l15.build.ble_timing_flags=
@@ -588,7 +588,7 @@ generic_nrf54l15_module_36pin.build.cpu_flags=-DARDUINO_NRF54_CPU_64M
 generic_nrf54l15_module_36pin.build.power_flags=
 generic_nrf54l15_module_36pin.build.boot_flags=
 generic_nrf54l15_module_36pin.build.auto_gate_flags=
-generic_nrf54l15_module_36pin.build.security_flags=-DNRF_APPLICATION
+generic_nrf54l15_module_36pin.build.security_flags=
 generic_nrf54l15_module_36pin.build.ble_flags=-DNRF54L15_CLEAN_BLE_ENABLED=1
 generic_nrf54l15_module_36pin.build.ble_tx_flags=
 generic_nrf54l15_module_36pin.build.ble_timing_flags=
@@ -759,7 +759,7 @@ nrf54l15dk_pca10156.build.cpu_flags=-DARDUINO_NRF54_CPU_64M
 nrf54l15dk_pca10156.build.power_flags=
 nrf54l15dk_pca10156.build.boot_flags=
 nrf54l15dk_pca10156.build.auto_gate_flags=
-nrf54l15dk_pca10156.build.security_flags=-DNRF_APPLICATION
+nrf54l15dk_pca10156.build.security_flags=
 nrf54l15dk_pca10156.build.ble_flags=-DNRF54L15_CLEAN_BLE_ENABLED=1
 nrf54l15dk_pca10156.build.ble_tx_flags=
 nrf54l15dk_pca10156.build.ble_timing_flags=

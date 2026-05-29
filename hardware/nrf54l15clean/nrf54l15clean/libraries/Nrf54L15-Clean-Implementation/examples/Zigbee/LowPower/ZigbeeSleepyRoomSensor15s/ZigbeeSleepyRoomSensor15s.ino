@@ -1637,12 +1637,23 @@ void maybeEnterLowPowerCycle(uint32_t nowMs) {
     return;
   }
 
-  Serial.print("sleep_cycle system_off_ms=");
-  Serial.print(static_cast<uint32_t>(NRF54L15_CLEAN_ZIGBEE_LOW_POWER_SLEEP_MS));
+  const uint32_t sleepMs =
+      static_cast<uint32_t>(NRF54L15_CLEAN_ZIGBEE_LOW_POWER_SLEEP_MS);
+  Serial.print("sleep_cycle idle_ms=");
+  Serial.print(sleepMs);
   Serial.print("\r\n");
   delay(20);
-  delaySystemOffNoRetention(
-      static_cast<unsigned long>(NRF54L15_CLEAN_ZIGBEE_LOW_POWER_SLEEP_MS));
+
+  // Use GRTC-backed WFI idle instead of System OFF.
+  // System OFF (REGULATORS->SYSTEMOFF) is not functional on nRF54L15 in
+  // non-secure mode.  delayLowPowerIdle() uses the GRTC compare channel
+  // with LFRC/LFXO to wake the CPU from WFI at the target time.
+  delayLowPowerIdle(sleepMs);
+
+  // After waking, extend the awake window for a fresh poll cycle.
+  g_awakeUntilMs = millis() +
+      static_cast<uint32_t>(NRF54L15_CLEAN_ZIGBEE_LOW_POWER_WAKE_WINDOW_MS);
+  g_lastPollMs = millis();
 }
 
 void handleSerialCommands() {

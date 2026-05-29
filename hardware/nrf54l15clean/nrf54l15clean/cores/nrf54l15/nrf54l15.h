@@ -354,11 +354,10 @@ extern "C" {
 #if defined(NRF_FLPR)
 #define NRF54L15_GRTC_IRQ_GROUP 0U
 #elif defined(NRF_APPLICATION)
-  #ifdef NRF_TRUSTZONE_NONSECURE
-    #define NRF54L15_GRTC_IRQ_GROUP 1U
-  #else
-    #define NRF54L15_GRTC_IRQ_GROUP 2U
-  #endif
+  // nRF54L15 CPUAPP always uses GRTC group 0.  The nRF53-style GROUP=2
+  // override would silently redirect INTENSET / INTENCLR writes to the
+  // wrong register bank, breaking every GRTC compare-channel interrupt.
+  #define NRF54L15_GRTC_IRQ_GROUP 0U
 #else
 #define NRF54L15_GRTC_IRQ_GROUP 0U
 #endif

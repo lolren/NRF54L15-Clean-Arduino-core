@@ -192,6 +192,7 @@ static constexpr IRQn_Type kBleBackgroundClockIrq = CLOCK_POWER_IRQn;
 xiao_nrf54l15::BleRadio* volatile g_bleBackgroundRadio = nullptr;
 static volatile uint8_t g_bleIdleWakePending = 0U;
 static volatile uint8_t g_bleIdleWakeArmed = 0U;
+static volatile uint8_t g_bleIdleWakePermitForeground = 0U;
 
 #if !defined(NRF54L15_CLEAN_BLE_BACKGROUND_SERVICE)
 #define NRF54L15_CLEAN_BLE_BACKGROUND_SERVICE 1
@@ -1177,9 +1178,9 @@ static inline bool bleAnyBackgroundCompareActive() {
 }
 
 static inline bool bleBackgroundOwnerBlocksIdleWake() {
-  // If the idle wake is armed (by scanner or advertising), permit WFI
-  // regardless of background radio state. The wake is for foreground use.
-  if (g_bleIdleWakeArmed != 0U) {
+  // If foreground (advertising) has requested idle wake permission, bypass
+  // the background check to allow wake arming and consumption.
+  if (g_bleIdleWakePermitForeground != 0U) {
     return false;
   }
   return g_bleBackgroundRadio != nullptr &&
@@ -1248,6 +1249,12 @@ extern "C" void nrf54l15_ble_background_radio_release(void) {
 // Query whether the idle wake was successfully armed. Returns 1 if armed.
 extern "C" uint8_t nrf54l15_ble_idle_wake_is_armed(void) {
   return g_bleIdleWakeArmed;
+}
+
+// Set the foreground wake permission flag. When set, bleBackgroundOwnerBlocksIdleWake()
+// returns false, allowing foreground (advertising) to arm and consume the idle wake.
+extern "C" void nrf54l15_ble_idle_wake_set_permit_foreground(uint8_t permit) {
+  g_bleIdleWakePermitForeground = permit;
 }
 
 extern "C" uint8_t nrf54l15_ble_idle_wake_consume(void) {

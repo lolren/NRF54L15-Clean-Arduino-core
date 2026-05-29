@@ -193,7 +193,7 @@ void loop() {
   pulseConnectLedIfPending();
 
   if (!g_connected || !g_notifyReceived) {
-    delay(1);
+    delay(5);
     return;
   }
 
