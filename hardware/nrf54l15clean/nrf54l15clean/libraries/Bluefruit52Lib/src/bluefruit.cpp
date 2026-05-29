@@ -672,6 +672,10 @@ class BluefruitCompatManager {
     }
 
     started_ = true;
+    // Recover USB CDC serial bridge after BLE init (nRF54L15 bridge restarts after radio)
+    Serial.end();
+    delay(50);
+    Serial.begin(115200);
     last_connected_ = radio_.isConnected();
     last_connection_role_ = radio_.connectionRole();
     return true;
@@ -5853,7 +5857,11 @@ void AdafruitBluefruit::configCentralBandwidth(uint8_t bw) {
 }
 
 bool AdafruitBluefruit::begin(uint8_t prph_count, uint8_t central_count) {
-  return manager().begin(prph_count, central_count);
+  bool ok = manager().begin(prph_count, central_count);
+  // Restart bridge serial after BLE init (BLE can disrupt SPIM00 bridge)
+  Serial.end();
+  Serial.begin(115200);
+  return ok;
 }
 
 ble_gap_addr_t AdafruitBluefruit::getAddr() {
