@@ -63,7 +63,7 @@
           "architecture": "nrf54l15clean",
           "version": "0.7.68",
           "category": "Arduino",
-          "url": "https://github.com/REPLACE_ME/REPLACE_ME/releases/download/v0.7.68/nrf54l15clean-0.7.68-d4aadd1454a4.tar.bz2",
+          "url": "https://github.com/lolren/nrf54-arduino-core/releases/download/v0.7.69/nrf54l15clean-0.7.68-d4aadd1454a4.tar.bz2",
           "archiveFileName": "nrf54l15clean-0.7.68-d4aadd1454a4.tar.bz2",
           "checksum": "SHA-256:d4aadd1454a4b0eac6834419596fea4cb6c78f4ac7201e04bf36c36cbd27cd8c",
           "size": "1442003",
@@ -3148,36 +3148,36 @@
           "systems": [
             {
               "host": "x86_64-pc-linux-gnu",
-              "url": "https://github.com/lolren/nrf54-arduino-core/releases/download/v0.6.0/nrf54l15hosttools-1.0.0-x86_64-pc-linux-gnu.tar.bz2",
-              "archiveFileName": "nrf54l15hosttools-1.0.0-x86_64-pc-linux-gnu.tar.bz2",
+              "url": "https://github.com/lolren/nrf54-arduino-core/releases/download/v0.7.69/nrf54l15hosttools-1.1.2-x86_64-pc-linux-gnu-0bf8a0e89f58.tar.bz2",
+              "archiveFileName": "nrf54l15hosttools-1.1.2-x86_64-pc-linux-gnu-0bf8a0e89f58.tar.bz2",
               "checksum": "SHA-256:ff2c5b4ce33b6d30907e11fb3ffdb9288e11acd3c151e7412863ddc29b4a1318",
               "size": "1399"
             },
             {
               "host": "aarch64-linux-gnu",
-              "url": "https://github.com/lolren/nrf54-arduino-core/releases/download/v0.6.0/nrf54l15hosttools-1.0.0-aarch64-linux-gnu.tar.bz2",
-              "archiveFileName": "nrf54l15hosttools-1.0.0-aarch64-linux-gnu.tar.bz2",
+              "url": "https://github.com/lolren/nrf54-arduino-core/releases/download/v0.7.69/nrf54l15hosttools-1.1.2-aarch64-linux-gnu-0bf8a0e89f58.tar.bz2",
+              "archiveFileName": "nrf54l15hosttools-1.1.2-aarch64-linux-gnu-0bf8a0e89f58.tar.bz2",
               "checksum": "SHA-256:ff2c5b4ce33b6d30907e11fb3ffdb9288e11acd3c151e7412863ddc29b4a1318",
               "size": "1399"
             },
             {
               "host": "i686-mingw32",
-              "url": "https://github.com/lolren/nrf54-arduino-core/releases/download/v0.6.0/nrf54l15hosttools-1.0.0-i686-mingw32.zip",
-              "archiveFileName": "nrf54l15hosttools-1.0.0-i686-mingw32.zip",
+              "url": "https://github.com/lolren/nrf54-arduino-core/releases/download/v0.7.69/nrf54l15hosttools-1.1.2-i686-mingw32-876d4c95790f.zip",
+              "archiveFileName": "nrf54l15hosttools-1.1.2-i686-mingw32-876d4c95790f.zip",
               "checksum": "SHA-256:3e364edd38393e32fd7d14ccf1953be8de9ef757452d125681d2daaae2044d2f",
               "size": "3250"
             },
             {
               "host": "x86_64-apple-darwin",
-              "url": "https://github.com/lolren/nrf54-arduino-core/releases/download/v0.6.0/nrf54l15hosttools-1.0.0-x86_64-apple-darwin.tar.bz2",
-              "archiveFileName": "nrf54l15hosttools-1.0.0-x86_64-apple-darwin.tar.bz2",
+              "url": "https://github.com/lolren/nrf54-arduino-core/releases/download/v0.7.69/nrf54l15hosttools-1.1.2-x86_64-apple-darwin-0bf8a0e89f58.tar.bz2",
+              "archiveFileName": "nrf54l15hosttools-1.1.2-x86_64-apple-darwin-0bf8a0e89f58.tar.bz2",
               "checksum": "SHA-256:ff2c5b4ce33b6d30907e11fb3ffdb9288e11acd3c151e7412863ddc29b4a1318",
               "size": "1399"
             },
             {
               "host": "arm64-apple-darwin",
-              "url": "https://github.com/lolren/nrf54-arduino-core/releases/download/v0.6.0/nrf54l15hosttools-1.0.0-arm64-apple-darwin.tar.bz2",
-              "archiveFileName": "nrf54l15hosttools-1.0.0-arm64-apple-darwin.tar.bz2",
+              "url": "https://github.com/lolren/nrf54-arduino-core/releases/download/v0.7.69/nrf54l15hosttools-1.1.2-arm64-apple-darwin-0bf8a0e89f58.tar.bz2",
+              "archiveFileName": "nrf54l15hosttools-1.1.2-arm64-apple-darwin-0bf8a0e89f58.tar.bz2",
               "checksum": "SHA-256:ff2c5b4ce33b6d30907e11fb3ffdb9288e11acd3c151e7412863ddc29b4a1318",
               "size": "1399"
             }
@@ -3271,7 +3271,7 @@
           "systems": [
             {
               "host": "x86_64-pc-linux-gnu",
-              "url": "https://github.com/REPLACE_ME/REPLACE_ME/releases/download/v0.7.68/nrf54l15hosttools-1.1.2-x86_64-pc-linux-gnu-0bf8a0e89f58.tar.bz2",
+              "url": "https://github.com/lolren/nrf54-arduino-core/releases/download/v0.7.69/nrf54l15hosttools-1.1.2-x86_64-pc-linux-gnu-0bf8a0e89f58.tar.bz2",
               "archiveFileName": "nrf54l15hosttools-1.1.2-x86_64-pc-linux-gnu-0bf8a0e89f58.tar.bz2",
               "checksum": "SHA-256:0bf8a0e89f58bccbfec6c03c41c3c5c8010ac0d4575c1485d6b7bc765f0237f5",
               "size": "3191"
