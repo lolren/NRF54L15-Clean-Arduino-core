@@ -751,6 +751,83 @@ bool BleRadio::ensureSecureConnectionsLocalKeypair() {
   return true;
 }
 
+// OOB (Out-of-Band) pairing support for LE Secure Connections
+// Per Bluetooth Core Spec Vol 3 Part H §2.3.5.6.6
+
+void BleRadio::setSecurityOobEnabled(bool enable) {
+  const uint32_t irqState = bleEnterCritical();
+  smpOobEnabled_ = enable;
+  bleExitCritical(irqState);
+}
+
+bool BleRadio::setSecurityOobLocalData(const uint8_t oob_r[16], const uint8_t oob_c[16]) {
+  if (oob_r == nullptr || oob_c == nullptr) return false;
+  const uint32_t irqState = bleEnterCritical();
+  memcpy(smpOobLocal_.r, oob_r, 16);
+  memcpy(smpOobLocal_.c, oob_c, 16);
+  smpOobDataLocalValid_ = true;
+  smpOobEnabled_ = true;
+  bleExitCritical(irqState);
+  return true;
+}
+
+bool BleRadio::setSecurityOobRemoteData(const uint8_t oob_r[16], const uint8_t oob_c[16]) {
+  if (oob_r == nullptr || oob_c == nullptr) return false;
+  const uint32_t irqState = bleEnterCritical();
+  memcpy(smpOobRemote_.r, oob_r, 16);
+  memcpy(smpOobRemote_.c, oob_c, 16);
+  smpOobDataRemoteValid_ = true;
+  smpOobEnabled_ = true;
+  bleExitCritical(irqState);
+  return true;
+}
+
+bool BleRadio::generateSecurityOobData(uint8_t oob_r[16], uint8_t oob_c[16]) {
+  if (oob_r == nullptr || oob_c == nullptr) return false;
+  // Ensure local keypair exists (needed for F4 computation)
+  if (!ensureSecureConnectionsLocalKeypair()) return false;
+
+  // Generate random r from CRACEN RNG
+  const uint32_t seed = micros() ^ connectionAccessAddress_ ^
+                        static_cast<uint32_t>(connectionEventCounter_ << 16U);
+  if (!fillBleSecurityRandomBytes(oob_r, 16, seed, kBleSecurityRandomSpinLimit)) {
+    // Fallback to pseudo-random (fillBleSecurityRandomBytes already does this)
+  }
+
+  // c = F4(local_pub, 0, r, 0)
+  // At generation time, peer_pub is 0 (not yet known)
+  uint8_t zero_peer_pub[32] = {0};
+  if (!bleSecureConnectionsF4(&smpSecureConnectionsPublicKey_[1],
+                              zero_peer_pub,
+                              oob_r,
+                              0x00U,
+                              oob_c)) {
+    return false;
+  }
+
+  // Store locally
+  memcpy(smpOobLocal_.r, oob_r, 16);
+  memcpy(smpOobLocal_.c, oob_c, 16);
+  smpOobDataLocalValid_ = true;
+  smpOobEnabled_ = true;
+
+  return true;
+}
+
+bool BleRadio::getSecurityOobData(uint8_t oob_r[16], uint8_t oob_c[16]) const {
+  if (!smpOobDataLocalValid_) return false;
+  memcpy(oob_r, smpOobLocal_.r, 16);
+  memcpy(oob_c, smpOobLocal_.c, 16);
+  return true;
+}
+
+bool BleRadio::getSecurityOobRemoteData(uint8_t oob_r[16], uint8_t oob_c[16]) const {
+  if (!smpOobDataRemoteValid_) return false;
+  memcpy(oob_r, smpOobRemote_.r, 16);
+  memcpy(oob_c, smpOobRemote_.c, 16);
+  return true;
+}
+
 static bool decodeSecureConnectionsPublicKeyToInternalLe(
     const uint8_t wirePublicKey[65], uint8_t outInternalLe[65],
     bool* outWireBigEndian, Secp256r1Point* outPoint) {
@@ -839,6 +916,14 @@ bool BleRadio::computeSecureConnectionsLocalConfirm() {
     return false;
   }
   if (smpSecureConnectionsLocalConfirmReady_) {
+    return true;
+  }
+
+  // For OOB pairing, use the pre-computed local OOB c as the confirm value
+  if (resolveCurrentSecureConnectionsPairAlgorithm() == kSmpScPairAlgOob) {
+    if (!smpOobDataLocalValid_) return false;
+    memcpy(smpLocalConfirm_, smpOobLocal_.c, 16);
+    smpSecureConnectionsLocalConfirmReady_ = true;
     return true;
   }
 
@@ -996,6 +1081,12 @@ void BleRadio::setSecurityFixedPasskey(const char* pin) {
 }
 
 bool BleRadio::prepareLocalPairingRandom() {
+  // For OOB pairing, use the OOB r value as the pairing random
+  if (smpOobEnabled_ && smpOobDataLocalValid_ &&
+      resolveCurrentSecureConnectionsPairAlgorithm() == kSmpScPairAlgOob) {
+    memcpy(smpLocalRandom_, smpOobLocal_.r, sizeof(smpLocalRandom_));
+    return true;
+  }
   const uint32_t seed =
       micros() ^ connectionAccessAddress_ ^
       static_cast<uint32_t>(connectionEventCounter_ << 16U);
@@ -1045,9 +1136,9 @@ bool BleRadio::requestPairing() {
   uint8_t pairingReq[kSmpPairingRequestLen] = {0};
   pairingReq[0] = kSmpCodePairingRequest;
   pairingReq[1] = smpLocalIoCapabilities_;
-  pairingReq[2] = 0x00U;
+  pairingReq[2] = (smpOobEnabled_ && smpOobDataLocalValid_ && smpOobDataRemoteValid_) ? 0x01U : 0x00U;
   pairingReq[3] = static_cast<uint8_t>(0x01U | kSmpAuthReqSecureConnectionsMask);
-  if (smpLocalIoCapabilities_ != kSmpIoCapNoInputNoOutput) {
+  if (smpLocalIoCapabilities_ != kSmpIoCapNoInputNoOutput || pairingReq[2] != 0x00U) {
     pairingReq[3] |= kSmpAuthReqMitmMask;
   }
   pairingReq[4] = 16U;
@@ -1092,6 +1183,9 @@ bool BleRadio::secureConnectionsPairAlgorithmSupported(uint8_t pairAlg) const {
     const uint8_t ioAction = resolveCurrentSecureConnectionsIoAction();
     return (ioAction == kSmpScIoActionDisplay) ||
            ((ioAction == kSmpScIoActionInput) && smpFixedPasskeyValid_);
+  }
+  if (pairAlg == kSmpScPairAlgOob) {
+    return smpOobEnabled_ && smpOobDataLocalValid_ && smpOobDataRemoteValid_;
   }
   return false;
 }
@@ -1298,6 +1392,9 @@ bool BleRadio::computeSecureConnectionsCheckValues() {
     }
     writeLe32(&r[0], smpSecureConnectionsPasskeyValue_);
   }
+  // For OOB, r stays all zeros (like Just Works) — authentication comes
+  // from the OOB confirm verification, not from a passkey
+  // (Bluetooth Core Spec Vol 3 Part H §2.3.5.6.6)
   const uint8_t localType =
       (addressType_ == BleAddressType::kRandomStatic) ? 0x01U : 0x00U;
   const uint8_t peerType = connectionPeerAddressRandom_ ? 0x01U : 0x00U;
@@ -1592,6 +1689,15 @@ void BleRadio::clearSmpPairingState() {
          sizeof(smpSecureConnectionsReceivedDhKeyCheck_));
   bondKeyPrimedForConnection_ = false;
   connectionBondedEncryptionRequested_ = false;
+
+  // Clear OOB state
+  smpOobEnabled_ = false;
+  smpOobDataLocalValid_ = false;
+  smpOobDataRemoteValid_ = false;
+  memset(smpOobLocal_.r, 0, sizeof(smpOobLocal_.r));
+  memset(smpOobLocal_.c, 0, sizeof(smpOobLocal_.c));
+  memset(smpOobRemote_.r, 0, sizeof(smpOobRemote_.r));
+  memset(smpOobRemote_.c, 0, sizeof(smpOobRemote_.c));
 }
 
 void BleRadio::clearEncryptionState() {

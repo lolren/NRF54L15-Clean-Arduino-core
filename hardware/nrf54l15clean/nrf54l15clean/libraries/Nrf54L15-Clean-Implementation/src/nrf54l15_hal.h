@@ -2223,6 +2223,14 @@ struct BleSecureConnectionsDebugState {
   uint32_t checkValuesTimeUs;
   uint32_t cooperateHookCount;
   uint32_t backgroundServiceCount;
+  // OOB pairing state
+  uint8_t oobEnabled;
+  uint8_t oobLocalDataValid;
+  uint8_t oobRemoteDataValid;
+  uint8_t oobLocalR[16];
+  uint8_t oobLocalC[16];
+  uint8_t oobRemoteR[16];
+  uint8_t oobRemoteC[16];
 };
 
 struct BleBackgroundAdvertisingDebugCounters {
@@ -2284,6 +2292,15 @@ struct BleBondRecord {
   uint16_t ediv;
   uint8_t keySize;
   uint8_t reserved[2];
+};
+
+// OOB (Out-of-Band) pairing data for LE Secure Connections
+// Per Bluetooth Core Spec Vol 3 Part H §2.3.5.6.6:
+//   r = 16-byte random number generated from CRACEN RNG
+//   c = F4(local_pub_key, 0, r, 0) confirm value (peer_pub = 0 at generation)
+struct BleOobData {
+  uint8_t r[16];  // Random number
+  uint8_t c[16];  // Confirm value
 };
 
 using BleBondLoadCallback = bool (*)(BleBondRecord* outRecord, void* context);
@@ -2473,6 +2490,20 @@ class BleRadio {
   bool isConnectionEncrypted() const;
   void setSecurityIoCapabilities(uint8_t ioCaps);
   void setSecurityFixedPasskey(const char* pin);
+  // OOB (Out-of-Band) pairing for LE Secure Connections
+  // Enable/disable OOB pairing. Must be called before requestPairing().
+  void setSecurityOobEnabled(bool enable);
+  // Set local OOB data (r, c values generated from another source or pre-shared)
+  bool setSecurityOobLocalData(const uint8_t oob_r[16], const uint8_t oob_c[16]);
+  // Set remote OOB data received via NFC, QR code, or other OOB channel
+  bool setSecurityOobRemoteData(const uint8_t oob_r[16], const uint8_t oob_c[16]);
+  // Generate local OOB data: produces r[16] and c[16] suitable for publishing
+  // via NFC/QR. c = F4(local_pub, 0, r, 0) where peer_pub is 0 at generation time.
+  bool generateSecurityOobData(uint8_t oob_r[16], uint8_t oob_c[16]);
+  // Get the last generated or set local OOB data for publishing
+  bool getSecurityOobData(uint8_t oob_r[16], uint8_t oob_c[16]) const;
+  // Get remote OOB data (for diagnostics)
+  bool getSecurityOobRemoteData(uint8_t oob_r[16], uint8_t oob_c[16]) const;
   bool requestPairing();
   // Send an SMP Security Request (peripheral → central) to prompt the central
   // to initiate LE legacy JustWorks pairing.  Call once after each connection
@@ -3253,6 +3284,12 @@ class BleRadio {
   uint8_t smpSecureConnectionsLocalDhKeyCheck_[16];
   uint8_t smpSecureConnectionsPeerDhKeyCheck_[16];
   uint8_t smpSecureConnectionsReceivedDhKeyCheck_[16];
+  // OOB (Out-of-Band) pairing state
+  bool smpOobEnabled_;
+  bool smpOobDataLocalValid_;
+  bool smpOobDataRemoteValid_;
+  BleOobData smpOobLocal_;
+  BleOobData smpOobRemote_;
   uint8_t advCycleStartIndex_;
   uint8_t scanCycleStartIndex_;
   uint8_t gapDeviceName_[31];

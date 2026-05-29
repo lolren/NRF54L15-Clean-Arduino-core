@@ -510,6 +510,26 @@ class BLESecurity {
   void setIOCaps(bool display, bool yesNo, bool keyboard);
   void setPIN(const char* pin);
 
+  // OOB (Out-of-Band) pairing for LE Secure Connections
+  // Generate and store local OOB data. Returns the r and c values.
+  // Must be called after BLE initialization.
+  bool generateOobData(uint8_t oob_r[16], uint8_t oob_c[16]);
+  // Set local OOB data (generated or pre-shared)
+  bool setOobData(const uint8_t oob_r[16], const uint8_t oob_c[16]);
+  // Set remote OOB data (received via NFC, QR, etc.)
+  bool setOobRemoteData(const uint8_t oob_r[16], const uint8_t oob_c[16]);
+  // Get the last generated/set local OOB data for publishing
+  bool getOobData(uint8_t oob_r[16], uint8_t oob_c[16]) const;
+  // Get the configured remote OOB data
+  bool getOobRemoteData(uint8_t oob_r[16], uint8_t oob_c[16]) const;
+  // Enable or disable OOB pairing
+  bool setOobFlag(bool enable);
+  // OOB data request callback — called before pairing when OOB is enabled
+  typedef void (*oob_data_request_callback_t)(uint16_t conn_hdl,
+                                              uint8_t const oob_r[16],
+                                              uint8_t const oob_c[16]);
+  void setOobDataRequestCallback(oob_data_request_callback_t fp);
+
  private:
   secured_callback_t secured_callback_;
   pair_passkey_callback_t pair_passkey_callback_;
@@ -517,6 +537,15 @@ class BLESecurity {
   uint8_t io_caps_;
   bool fixed_pin_valid_;
   char fixed_pin_[7];
+  // OOB state
+  bool oob_enabled_;
+  bool oob_local_valid_;
+  bool oob_remote_valid_;
+  uint8_t oob_local_r_[16];
+  uint8_t oob_local_c_[16];
+  uint8_t oob_remote_r_[16];
+  uint8_t oob_remote_c_[16];
+  oob_data_request_callback_t oob_data_request_callback_;
 
   friend class BluefruitCompatManager;
 };

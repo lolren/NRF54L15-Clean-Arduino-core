@@ -1454,7 +1454,11 @@ bool BleRadio::buildL2capSmpResponse(const uint8_t* l2capPayload,
       const uint8_t oobFlag = smp[2];
       const uint8_t maxKeySize = smp[4];
       if (oobFlag != 0x00U) {
-        return buildSmpPairingFailed(kSmpReasonOobNotAvailable);
+        // Peer requests OOB pairing. We accept if we have OOB data configured.
+        if (!smpOobEnabled_ || !smpOobDataLocalValid_ || !smpOobDataRemoteValid_) {
+          return buildSmpPairingFailed(kSmpReasonOobNotAvailable);
+        }
+        // OOB is accepted — the pairing response will also carry oob_flag = 1
       }
       if (maxKeySize < 7U || maxKeySize > 16U) {
         return buildSmpPairingFailed(kSmpReasonEncryptionKeySize);
@@ -1474,7 +1478,7 @@ bool BleRadio::buildL2capSmpResponse(const uint8_t* l2capPayload,
       smpLastPairingFailureReason_ = 0U;
       smpPairingRsp_[0] = kSmpCodePairingResponse;
       smpPairingRsp_[1] = smpLocalIoCapabilities_;
-      smpPairingRsp_[2] = 0x00U;
+      smpPairingRsp_[2] = (smpOobEnabled_ && smpOobDataLocalValid_ && smpOobDataRemoteValid_) ? 0x01U : 0x00U;
       const uint8_t peerBonding = smp[3] & kSmpAuthReqBondingMask;
       const bool peerRequestedMitm =
           (smp[3] & kSmpAuthReqMitmMask) != 0U;
@@ -1718,22 +1722,40 @@ bool BleRadio::buildL2capSmpResponse(const uint8_t* l2capPayload,
 
         if (smpLocalInitiator_ || secureConnectionsResponderVerifiesRandom()) {
           uint8_t expectedRemoteConfirm[16] = {0};
-          uint8_t confirmZ = 0U;
-          if (pairAlg == kSmpScPairAlgPasskey) {
-            if (!prepareSecureConnectionsPasskey()) {
-              return buildSmpPairingFailed(kSmpReasonAuthRequirements);
+
+          // OOB confirm verification
+          if (pairAlg == kSmpScPairAlgOob) {
+            // Verify remote OOB confirm: their c was F4(their_pub, 0, their_r, 0)
+            uint8_t zero_pub[32] = {0};
+            if (!bleSecureConnectionsF4(&smpSecureConnectionsPeerPublicKey_[1],
+                                        zero_pub,
+                                        smpOobRemote_.r,
+                                        0x00U,
+                                        expectedRemoteConfirm)) {
+              return buildSmpPairingFailed(kSmpReasonUnspecified);
             }
-            confirmZ = secureConnectionsPasskeyRoundZ();
-          }
-          if (!bleSecureConnectionsF4(&smpSecureConnectionsPeerPublicKey_[1],
-                                      &smpSecureConnectionsPublicKey_[1],
-                                      smpPeerRandom_, confirmZ,
-                                      expectedRemoteConfirm)) {
-            return buildSmpPairingFailed(kSmpReasonUnspecified);
-          }
-          if (memcmp(expectedRemoteConfirm, smpPeerConfirm_,
-                     sizeof(smpPeerConfirm_)) != 0) {
-            return buildSmpPairingFailed(kSmpReasonConfirmValueFailed);
+            if (memcmp(expectedRemoteConfirm, smpPeerConfirm_,
+                       sizeof(smpPeerConfirm_)) != 0) {
+              return buildSmpPairingFailed(kSmpReasonConfirmValueFailed);
+            }
+          } else {
+            uint8_t confirmZ = 0U;
+            if (pairAlg == kSmpScPairAlgPasskey) {
+              if (!prepareSecureConnectionsPasskey()) {
+                return buildSmpPairingFailed(kSmpReasonAuthRequirements);
+              }
+              confirmZ = secureConnectionsPasskeyRoundZ();
+            }
+            if (!bleSecureConnectionsF4(&smpSecureConnectionsPeerPublicKey_[1],
+                                        &smpSecureConnectionsPublicKey_[1],
+                                        smpPeerRandom_, confirmZ,
+                                        expectedRemoteConfirm)) {
+              return buildSmpPairingFailed(kSmpReasonUnspecified);
+            }
+            if (memcmp(expectedRemoteConfirm, smpPeerConfirm_,
+                       sizeof(smpPeerConfirm_)) != 0) {
+              return buildSmpPairingFailed(kSmpReasonConfirmValueFailed);
+            }
           }
         }
 

@@ -498,6 +498,13 @@ void BleRadio::captureSecureConnectionsDebugState(
   out->checkValuesTimeUs = smpSecureConnectionsCheckValuesTimeUs_;
   out->cooperateHookCount = smpSecureConnectionsCooperateHookCount_;
   out->backgroundServiceCount = smpSecureConnectionsBackgroundServiceCount_;
+  out->oobEnabled = smpOobEnabled_ ? 1U : 0U;
+  out->oobLocalDataValid = smpOobDataLocalValid_ ? 1U : 0U;
+  out->oobRemoteDataValid = smpOobDataRemoteValid_ ? 1U : 0U;
+  memcpy(out->oobLocalR, smpOobLocal_.r, sizeof(out->oobLocalR));
+  memcpy(out->oobLocalC, smpOobLocal_.c, sizeof(out->oobLocalC));
+  memcpy(out->oobRemoteR, smpOobRemote_.r, sizeof(out->oobRemoteR));
+  memcpy(out->oobRemoteC, smpOobRemote_.c, sizeof(out->oobRemoteC));
 }
 
 void BleRadio::latchSecureConnectionsDebugState() {

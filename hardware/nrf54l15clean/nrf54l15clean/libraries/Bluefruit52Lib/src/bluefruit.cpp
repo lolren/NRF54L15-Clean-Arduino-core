@@ -2486,7 +2486,15 @@ BLESecurity::BLESecurity()
       pair_complete_callback_(nullptr),
       io_caps_(0x03U),
       fixed_pin_valid_(false),
-      fixed_pin_{0} {}
+      fixed_pin_{0},
+      oob_enabled_(false),
+      oob_local_valid_(false),
+      oob_remote_valid_(false),
+      oob_local_r_{0},
+      oob_local_c_{0},
+      oob_remote_r_{0},
+      oob_remote_c_{0},
+      oob_data_request_callback_(nullptr) {}
 
 void BLESecurity::setSecuredCallback(secured_callback_t fp) {
   secured_callback_ = fp;
@@ -2541,6 +2549,61 @@ void BLESecurity::setPIN(const char* pin) {
   if (io_caps_ == 0x03U) {
     setIOCaps(0x00U);
   }
+}
+
+bool BLESecurity::generateOobData(uint8_t oob_r[16], uint8_t oob_c[16]) {
+  if (oob_r == nullptr || oob_c == nullptr) return false;
+  if (!manager().radio().generateSecurityOobData(oob_r, oob_c)) return false;
+  memcpy(oob_local_r_, oob_r, 16);
+  memcpy(oob_local_c_, oob_c, 16);
+  oob_local_valid_ = true;
+  oob_enabled_ = true;
+  return true;
+}
+
+bool BLESecurity::setOobData(const uint8_t oob_r[16], const uint8_t oob_c[16]) {
+  if (oob_r == nullptr || oob_c == nullptr) return false;
+  memcpy(oob_local_r_, oob_r, 16);
+  memcpy(oob_local_c_, oob_c, 16);
+  oob_local_valid_ = true;
+  oob_enabled_ = true;
+  manager().radio().setSecurityOobEnabled(true);
+  manager().radio().setSecurityOobLocalData(oob_r, oob_c);
+  return true;
+}
+
+bool BLESecurity::setOobRemoteData(const uint8_t oob_r[16], const uint8_t oob_c[16]) {
+  if (oob_r == nullptr || oob_c == nullptr) return false;
+  memcpy(oob_remote_r_, oob_r, 16);
+  memcpy(oob_remote_c_, oob_c, 16);
+  oob_remote_valid_ = true;
+  oob_enabled_ = true;
+  manager().radio().setSecurityOobRemoteData(oob_r, oob_c);
+  return true;
+}
+
+bool BLESecurity::getOobData(uint8_t oob_r[16], uint8_t oob_c[16]) const {
+  if (!oob_local_valid_) return false;
+  memcpy(oob_r, oob_local_r_, 16);
+  memcpy(oob_c, oob_local_c_, 16);
+  return true;
+}
+
+bool BLESecurity::getOobRemoteData(uint8_t oob_r[16], uint8_t oob_c[16]) const {
+  if (!oob_remote_valid_) return false;
+  memcpy(oob_r, oob_remote_r_, 16);
+  memcpy(oob_c, oob_remote_c_, 16);
+  return true;
+}
+
+bool BLESecurity::setOobFlag(bool enable) {
+  oob_enabled_ = enable;
+  manager().radio().setSecurityOobEnabled(enable);
+  return true;
+}
+
+void BLESecurity::setOobDataRequestCallback(oob_data_request_callback_t fp) {
+  oob_data_request_callback_ = fp;
 }
 
 void serviceBluefruitBeforePollingState() {
