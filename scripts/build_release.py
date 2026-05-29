@@ -588,7 +588,9 @@ def main() -> int:
         existing_full = load_existing_index(stable_fallback_index_path, packager=args.packager, repo_url=args.repo_url)
 
     existing_tool_entry = None
-    if args.reuse_existing_hosttools:
+    # Check if we should rebuild host tools instead of reusing (version bump or explicit skip)
+    do_rebuild_tools = should_rebuild_host_tools(args, existing_full)
+    if not do_rebuild_tools and args.reuse_existing_hosttools:
         existing_tool_entry = find_tool_entry(existing_full, HOST_TOOL_NAME, HOST_TOOL_VERSION)
 
     tool_systems = list(existing_tool_entry.get("systems", [])) if existing_tool_entry else []
@@ -708,3 +710,28 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+
+def _version_tuple(v: str) -> tuple:
+    """Convert version string to comparable tuple."""
+    try:
+        return tuple(int(x) for x in v.split("."))
+    except ValueError:
+        return (0, 0, 0)
+
+def should_rebuild_host_tools(args: argparse.Namespace, existing_index: dict) -> bool:
+    """Check if we should rebuild host tools instead of reusing existing index."""
+    if not args.reuse_existing_hosttools:
+        return True
+    # If version differs from latest in existing index, don't reuse (stale URLs)
+    existing_version = None
+    for platform in existing_index.get("packages", [{}])[0].get("platforms", []):
+        if isinstance(platform, dict) and platform.get("archived") != True:
+            v = platform.get("version")
+            if v and (existing_version is None or _version_tuple(v) > _version_tuple(existing_version)):
+                existing_version = v
+    if existing_version and existing_version != args.version:
+        print(f"Version bump detected ({existing_version} -> {args.version}), rebuilding host tools...")
+        return True
+    return False
