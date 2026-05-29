@@ -672,18 +672,6 @@ class BluefruitCompatManager {
     }
 
     started_ = true;
-    // Recover USB CDC serial bridge after BLE init (nRF54L15 bridge restarts after radio)
-    if (Serial.isConfigured()) {
-      const unsigned long savedBaud = Serial._baud;
-      Serial.end();
-      Serial.begin(savedBaud);
-    }
-    // Serial1 is the SAMD11 bridge port on XIAO nRF54L15 (NRF_UARTE20)
-    if (Serial1.isConfigured()) {
-      const unsigned long savedBaud1 = Serial1._baud;
-      Serial1.end();
-      Serial1.begin(savedBaud1);
-    }
     last_connected_ = radio_.isConnected();
     last_connection_role_ = radio_.connectionRole();
     return true;

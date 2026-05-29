@@ -40,6 +40,7 @@ public:
 
     operator bool() const;
     bool isConfigured() const;
+    unsigned long baud() const;
     bool usesPins(uint8_t txPin, uint8_t rxPin) const;
 
 private:

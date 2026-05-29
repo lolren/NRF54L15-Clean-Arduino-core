@@ -522,6 +522,14 @@ bool HardwareSerial::setPins(int8_t rxPin, int8_t txPin) {
     return _configured;
 }
 
+bool HardwareSerial::isConfigured() const {
+    return _configured && (_uart != nullptr);
+}
+
+unsigned long HardwareSerial::baud() const {
+    return _baud;
+}
+
 void HardwareSerial::startRxDma() {
     if (!_configured || _uart == nullptr) {
         return;
@@ -998,9 +1006,6 @@ HardwareSerial::operator bool() const {
     return _configured && (_uart != nullptr);
 }
 
-bool HardwareSerial::isConfigured() const {
-    return _configured && (_uart != nullptr);
-}
 
 bool HardwareSerial::usesPins(uint8_t txPin, uint8_t rxPin) const {
     return (_txPin == txPin) && (_rxPin == rxPin);
