@@ -12,6 +12,55 @@
         {
           "name": "nRF54L15 Boards",
           "architecture": "nrf54l15clean",
+          "version": "0.7.70",
+          "category": "Arduino",
+          "url": "https://github.com/lolren/nrf54-arduino-core/releases/download/v0.7.70/nrf54l15clean-0.7.70-bcd982f19ed3.tar.bz2",
+          "archiveFileName": "nrf54l15clean-0.7.70-bcd982f19ed3.tar.bz2",
+          "checksum": "SHA-256:bcd982f19ed376317a903e683cfddb5ae69d43f356b847d74713af9bb1676816",
+          "size": "1441804",
+          "boards": [
+            {
+              "name": "XIAO nRF54L15 / Sense"
+            },
+            {
+              "name": "HOLYIOT-25008 nRF54L15 Module"
+            },
+            {
+              "name": "HOLYIOT-25007 nRF54L15 Module"
+            },
+            {
+              "name": "Generic nRF54L15 Module (36-pad)"
+            },
+            {
+              "name": "Nordic PCA10156 nRF54L15 DK"
+            }
+          ],
+          "help": {
+            "online": "https://github.com/REPLACE_ME/REPLACE_ME"
+          },
+          "toolsDependencies": [
+            {
+              "packager": "arduino",
+              "name": "arm-none-eabi-gcc",
+              "version": "7-2017q4"
+            },
+            {
+              "packager": "arduino",
+              "name": "openocd",
+              "version": "0.11.0-arduino2"
+            },
+            {
+              "packager": "nrf54l15clean",
+              "name": "nrf54l15hosttools",
+              "version": "1.1.2"
+            }
+          ],
+          "discoveryDependencies": [],
+          "monitorDependencies": []
+        },
+        {
+          "name": "nRF54L15 Boards",
+          "architecture": "nrf54l15clean",
           "version": "0.7.69",
           "category": "Arduino",
           "url": "https://github.com/lolren/nrf54-arduino-core/releases/download/v0.7.69/nrf54l15clean-0.7.69-de334aa8caaa.tar.bz2",
@@ -3095,50 +3144,6 @@
           ],
           "discoveryDependencies": [],
           "monitorDependencies": []
-        },
-        {
-          "name": "nRF54L15 Boards",
-          "architecture": "nrf54l15clean",
-          "version": "0.6.59",
-          "category": "Contributed",
-          "url": "https://github.com/lolren/nrf54-arduino-core/releases/download/v0.6.59/nrf54l15clean-0.6.59-7b35e5e9581f.tar.bz2",
-          "archiveFileName": "nrf54l15clean-0.6.59-7b35e5e9581f.tar.bz2",
-          "checksum": "SHA-256:7b35e5e9581fc9d7488d6abd40a9865078374c5c2f909e1eec1c96764be38089",
-          "size": "1275790",
-          "boards": [
-            {
-              "name": "XIAO nRF54L15 / Sense"
-            },
-            {
-              "name": "HOLYIOT-25008 nRF54L15 Module"
-            },
-            {
-              "name": "HOLYIOT-25007 nRF54L15 Module"
-            },
-            {
-              "name": "Generic nRF54L15 Module (36-pad)"
-            }
-          ],
-          "toolsDependencies": [
-            {
-              "packager": "arduino",
-              "name": "arm-none-eabi-gcc",
-              "version": "7-2017q4"
-            },
-            {
-              "packager": "arduino",
-              "name": "openocd",
-              "version": "0.11.0-arduino2"
-            },
-            {
-              "packager": "nrf54l15clean",
-              "name": "nrf54l15hosttools",
-              "version": "1.1.2"
-            }
-          ],
-          "help": {
-            "online": "https://github.com/lolren/nrf54-arduino-core"
-          }
         }
       ],
       "tools": [
@@ -3271,7 +3276,7 @@
           "systems": [
             {
               "host": "x86_64-pc-linux-gnu",
-              "url": "https://github.com/lolren/nrf54-arduino-core/releases/download/v0.7.69/nrf54l15hosttools-1.1.2-x86_64-pc-linux-gnu-0bf8a0e89f58.tar.bz2",
+              "url": "https://github.com/lolren/nrf54-arduino-core/releases/download/v0.7.70/nrf54l15hosttools-1.1.2-x86_64-pc-linux-gnu-0bf8a0e89f58.tar.bz2",
               "archiveFileName": "nrf54l15hosttools-1.1.2-x86_64-pc-linux-gnu-0bf8a0e89f58.tar.bz2",
               "checksum": "SHA-256:0bf8a0e89f58bccbfec6c03c41c3c5c8010ac0d4575c1485d6b7bc765f0237f5",
               "size": "3191"
