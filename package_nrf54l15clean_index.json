@@ -12,10 +12,10 @@
         {
           "name": "nRF54L15 Boards",
           "architecture": "nrf54l15clean",
-          "version": "0.7.68",
+          "version": "0.7.69",
           "category": "Arduino",
-          "url": "https://github.com/lolren/nrf54-arduino-core/releases/download/v0.7.68/nrf54l15clean-0.7.68-a571f5a51abd.tar.bz2",
-          "archiveFileName": "nrf54l15clean-0.7.68-a571f5a51abd.tar.bz2",
+          "url": "https://github.com/lolren/nrf54-arduino-core/releases/download/v0.7.69/nrf54l15clean-0.7.69-a571f5a51abd.tar.bz2",
+          "archiveFileName": "nrf54l15clean-0.7.69-a571f5a51abd.tar.bz2",
           "checksum": "SHA-256:a571f5a51abd40b854673195e90d324f64bb4d49a9381c90c8d648bee20850cb",
           "size": "1440059",
           "boards": [
