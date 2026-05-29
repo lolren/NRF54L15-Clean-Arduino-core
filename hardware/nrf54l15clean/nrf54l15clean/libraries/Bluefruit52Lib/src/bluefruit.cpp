@@ -673,9 +673,17 @@ class BluefruitCompatManager {
 
     started_ = true;
     // Recover USB CDC serial bridge after BLE init (nRF54L15 bridge restarts after radio)
-    Serial.end();
-    delay(50);
-    Serial.begin(115200);
+    if (Serial.isConfigured()) {
+      const unsigned long savedBaud = Serial._baud;
+      Serial.end();
+      Serial.begin(savedBaud);
+    }
+    // Serial1 is the SAMD11 bridge port on XIAO nRF54L15 (NRF_UARTE20)
+    if (Serial1.isConfigured()) {
+      const unsigned long savedBaud1 = Serial1._baud;
+      Serial1.end();
+      Serial1.begin(savedBaud1);
+    }
     last_connected_ = radio_.isConnected();
     last_connection_role_ = radio_.connectionRole();
     return true;
@@ -5858,9 +5866,7 @@ void AdafruitBluefruit::configCentralBandwidth(uint8_t bw) {
 
 bool AdafruitBluefruit::begin(uint8_t prph_count, uint8_t central_count) {
   bool ok = manager().begin(prph_count, central_count);
-  // Restart bridge serial after BLE init (BLE can disrupt SPIM00 bridge)
-  Serial.end();
-  Serial.begin(115200);
+  // manager().begin() already handles serial bridge recovery
   return ok;
 }
 
