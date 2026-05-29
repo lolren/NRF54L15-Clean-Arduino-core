@@ -533,6 +533,22 @@ def write_release_manifest(
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
 
 
+
+def should_rebuild_host_tools(args, existing_index):
+    """Check if we should rebuild host tools instead of reusing existing index."""
+    if not args.reuse_existing_hosttools:
+        return True
+    existing_version = None
+    for platform in existing_index.get("packages", [{}])[0].get("platforms", []):
+        if isinstance(platform, dict) and platform.get("archived") != True:
+            v = platform.get("version")
+            if v and (existing_version is None or v > existing_version):
+                existing_version = v
+    if existing_version and existing_version != args.version:
+        print(f"Version bump detected ({existing_version} -> {args.version}), rebuilding host tools...")
+        return True
+    return False
+
 def main() -> int:
     args = parse_args()
     root = args.root.resolve()
