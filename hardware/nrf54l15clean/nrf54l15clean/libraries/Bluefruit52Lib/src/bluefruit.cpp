@@ -1206,6 +1206,13 @@ class BluefruitCompatManager {
       ++g_bluefruitBleIdleDiagIdleYieldDenyCount;
       return false;
     }
+    if (Serial.isConfigured() || Serial1.isConfigured()) {
+      // Keep Serial monitor sketches pump-driven. The SAMD11 bridge UART is
+      // not a reliable wake source while foreground BLE scan windows are being
+      // scheduled, so WFI here can make central scan examples look dead.
+      ++g_bluefruitBleIdleDiagIdleYieldDenyCount;
+      return false;
+    }
     if (radio_.isConnected()) {
       if (radio_.isBackgroundConnectionServiceEnabled()) {
         // Background service handles connection events, permit WFI
