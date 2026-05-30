@@ -645,6 +645,12 @@ class BluefruitCompatManager {
     if (!radio_.begin()) {
       return false;
     }
+    if (Serial.isConfigured()) {
+      Serial.forceReInit();
+    }
+    if (Serial1.isConfigured()) {
+      Serial1.forceReInit();
+    }
     radio_.loadAddressFromFicr();
     radio_.setAdvertisingPduType(xiao_nrf54l15::BleAdvPduType::kAdvInd);
     radio_.setAdvertisingChannelSelectionAlgorithm2(false);
