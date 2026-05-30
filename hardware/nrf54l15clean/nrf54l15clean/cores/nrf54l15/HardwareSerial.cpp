@@ -530,6 +530,69 @@ unsigned long HardwareSerial::baud() const {
     return _baud;
 }
 
+void HardwareSerial::forceReInit() {
+    if (_uart == nullptr || _txPin == 0xFFU || _rxPin == 0xFFU) {
+        return;
+    }
+
+    const uintptr_t base = reinterpret_cast<uintptr_t>(_uart);
+
+    // Stop everything
+    stopRxDma();
+    reg32(base + U_INTENCLR) = kUarteRxInterruptMask | kUarteTxInterruptMask;
+    reg32(base + U_TASKS_DMA_TX_STOP) = UARTE_TASKS_DMA_TX_STOP_STOP_Trigger;
+    reg32(base + U_ENABLE) = UARTE_ENABLE_ENABLE_Disabled;
+
+    // Disconnect TX pin, pull low to signal break to SAMD11 bridge
+    reg32(base + U_PSEL_TXD) = kPselDisconnected;
+    reg32(base + U_PSEL_RXD) = kPselDisconnected;
+    uint8_t txPort = 0, tx = 0, rxPort = 0, rx = 0;
+    if (!decode_pin(_txPin, &txPort, &tx) || !decode_pin(_rxPin, &rxPort, &rx)) {
+        return;
+    }
+    configure_pin_output(txPort, tx, false);  // Drive TX low
+    for (volatile uint32_t d = 0; d < 500000U; ++d) { __NOP(); }  // ~4ms break
+    configure_pin_input(txPort, tx, false);   // Release TX
+
+    // Reset internal state
+    _rxHead = 0U; _rxTail = 0U; _rxCount = 0U; _rxDropped = 0U;
+    _rxDmaActive = 0U; _rxDmaPrepared = 1U; _rxDmaRunning = false;
+    _rxDmaObservedAmount = 0U; _rxDmaLastActivityUs = 0U;
+    _txHead = 0U; _txTail = 0U; _txCount = 0U; _txDmaCount = 0U;
+    _txDmaRunning = false;
+
+    // Re-configure UARTE
+    reg32(base + U_BAUDRATE) = baud_to_reg(_baud);
+    UarteFormat fmt = decode_serial_format(_config);
+    _dataMask = fmt.dataMask;
+    reg32(base + U_CONFIG) = fmt.configReg |
+        (UARTE_CONFIG_FRAMETIMEOUT_Enabled << UARTE_CONFIG_FRAMETIMEOUT_Pos);
+    reg32(base + U_FRAMETIMEOUT) = kRxFrameTimeoutBits;
+    reg32(base + U_ADDRESS) = 0U;
+    reg32(base + U_SHORTS) |= UARTE_SHORTS_DMA_TX_END_DMA_TX_STOP_Msk;
+
+    // Reconnect PSEL
+    reg32(base + U_PSEL_TXD) = make_psel(txPort, tx);
+    reg32(base + U_PSEL_RXD) = make_psel(rxPort, rx);
+    reg32(base + U_PSEL_CTS) = kPselDisconnected;
+    reg32(base + U_PSEL_RTS) = kPselDisconnected;
+
+    // Re-enable
+    reg32(base + U_INTENSET) = kUarteTxInterruptMask;
+    reg32(base + U_EVENTS_DMA_TX_READY) = 0U;
+    reg32(base + U_EVENTS_DMA_TX_END) = 0U;
+    reg32(base + U_EVENTS_DMA_TX_BUSERROR) = 0U;
+    reg32(base + U_EVENTS_TXSTOPPED) = 0U;
+    reg32(base + U_DMA_TX_PTR) =
+        static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&_txBuffer[0]));
+    reg32(base + U_DMA_TX_MAXCNT) = 0U;
+    reg32(base + U_ENABLE) = UARTE_ENABLE_ENABLE_Enabled;
+    reg32(base + U_TASKS_DMA_TX_START) = UARTE_TASKS_DMA_TX_START_START_Trigger;
+
+    startRxDma();
+    _configured = true;
+}
+
 void HardwareSerial::startRxDma() {
     if (!_configured || _uart == nullptr) {
         return;

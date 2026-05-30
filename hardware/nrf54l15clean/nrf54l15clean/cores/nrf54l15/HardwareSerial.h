@@ -42,6 +42,10 @@ public:
     bool isConfigured() const;
     unsigned long baud() const;
     bool usesPins(uint8_t txPin, uint8_t rxPin) const;
+    // Force-full re-enable UARTE peripheral without disconnecting PSEL.
+    // Used after clock-domain transitions (e.g. HFXO start) to recover the
+    // SAMD11 bridge UART on nRF54L15.
+    void forceReInit();
 
 private:
     friend void SPIM00_IRQHandler(void);
