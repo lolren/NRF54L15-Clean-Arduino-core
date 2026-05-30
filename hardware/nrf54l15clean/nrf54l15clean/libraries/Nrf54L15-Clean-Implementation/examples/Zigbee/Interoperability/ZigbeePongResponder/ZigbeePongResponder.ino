@@ -29,8 +29,8 @@ static uint32_t g_pingRx = 0U;
 static uint32_t g_pongTx = 0U;
 static uint32_t g_lastStatusMs = 0U;
 
-// Network configuration comes from the Tools menu defaults unless overridden by
-// the macros above.
+// Network configuration is sketch-owned. Change the macros above or replace
+// these constants at runtime for your own channel/PAN.
 static constexpr uint8_t kChannel =
     static_cast<uint8_t>(NRF54L15_CLEAN_ZIGBEE_CHANNEL);
 static constexpr uint16_t kPanId =

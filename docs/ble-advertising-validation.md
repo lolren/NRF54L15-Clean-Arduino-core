@@ -7,7 +7,7 @@ Validated environment:
 
 - board: XIAO nRF54L15
 - build mode: secure single image
-- power profile: `Low Power (WFI Idle)`
+- power behavior: fixed low-power WFI default
 - RF path: `BoardControl::setRfSwitchPowerEnabled(true)` + `BoardControl::setAntennaPath(BoardAntennaPath::kCeramic)`
 - date: 2026-03-07
 - scanner used for validation: local Linux `bluetoothctl` and nRF Connect
@@ -22,7 +22,7 @@ The only continuously discoverable advertiser validated end-to-end was:
 - `setAdvertisingName(...)`
 - no manual `ClockControl::stopHfxo()` / `startHfxo()` around events
 - `3000 ms` intervals between `advertiseEvent(...)` calls
-- `clean_power=low`
+- fixed low-power WFI board default
 - core low-power GRTC tick path fixed to use the correct secure IRQ/vector/channel state
 
 That is the configuration used by:
@@ -50,7 +50,7 @@ Validated follow-on configurations:
   - default FICR-derived address
   - `-10 dBm`
   - `3000 ms` interval
-  - `clean_power=low`
+  - fixed low-power WFI board default
   - RF switch enabled only during each synchronous advertising event, then set to high-impedance + power off while idle
 - `BleAdvertiserBurstSystemOff`
   - name `X54-BURST-OFF`
@@ -59,7 +59,7 @@ Validated follow-on configurations:
   - `-10 dBm`
   - `6` advertising events per boot with `20 ms` gaps
   - `1000 ms` timed `SYSTEM OFF` interval
-  - validated with `clean_power=low` and the default boot path
+  - validated with the fixed low-power WFI default and the default boot path
 - `BleAdvertiserPhoneBeacon15s`
   - name `X54-15S`
   - `ADV_NONCONN_IND`
@@ -68,7 +68,7 @@ Validated follow-on configurations:
   - `0 dBm`
   - `14` advertising events per boot with `70 ms` gaps
   - `14000 ms` timed `SYSTEM OFF` interval
-  - validated as clustered detections on the peer scan rig with `clean_power=low`
+  - validated as clustered detections on the peer scan rig with the fixed low-power WFI default
 - `BleAdvertiserHybridDutyCycle`
   - name `X54-HYBRID`
   - `ADV_IND`
@@ -76,7 +76,7 @@ Validated follow-on configurations:
   - `-10 dBm`
   - `2` events per burst with `20 ms` gaps
   - `10000 ms` burst period
-  - validated with `clean_power=low` and the default boot path
+  - validated with the fixed low-power WFI default and the default boot path
 
 ## What Did Not Validate
 

@@ -92,7 +92,8 @@ Practical rule of thumb:
 
 Board note:
 
-- `NFCT` exists on the SoC, but it is still intentionally not wrapped here because the XIAO board does not expose a practical NFC antenna path for normal sketches.
+- `NFCT` is wrapped at the register/HAL level for NFC-A target experiments: sense/activate/disable tasks, field/frame events, NFCID1 setup, SENS_RES/SEL_RES, EasyDMA packet buffer, frame delay, modulation output, and interrupt masks.
+- The XIAO board does not expose a practical NFC antenna path for normal sketches, so the included example is a register setup/probe. Treat phone/tag-reader interop as board-dependent until you are using a design with a validated NFC antenna route.
 
 ## ECB note
 
@@ -200,6 +201,15 @@ Notes:
 - `setRfSwitchPowerEnabled(false)` removes the RF switch quiescent current without changing the last selected route.
 - `kControlHighImpedance` releases RF switch control GPIO drive (`P2.05`) and is useful when you want no active antenna-control drive.
 - `enableRfPath(...)` and `collapseRfPathIdle()` are the recommended helpers for duty-cycling the XIAO RF switch around BLE TX/RX windows.
+
+For sketches that spend most of their time in System ON idle, `PowerManager::prepareLowPowerIdle()` applies the common idle budget in one call:
+
+```cpp
+PowerManager power;
+power.prepareLowPowerIdle();
+```
+
+It requests low-power latency, keeps main DCDC enabled, enables 64 MHz idle CPU scaling, and collapses board-side loads where the selected board supports them. The optional `stopHfxoIfIdle` argument defaults to `false`; only set it to `true` in sketches that are not inside BLE, serial, or other clock-owned timing windows.
 
 ## BLE Address Helpers
 
@@ -830,7 +840,7 @@ BLE examples:
   - Responds to common LL control PDUs and ATT requests, with link event metadata logs.
 - `examples/BLE/Connections/BleConnectionTimingMetrics/BleConnectionTimingMetrics.ino`
   - Measures connection-event outcomes over rolling windows (RX ok/CRC fail/RX timeout/TX timeout).
-  - Useful for comparing `BLE Timing Profile` tool options while keeping TX power explicit in sketch code.
+  - Useful for checking connection-event timing while keeping TX power explicit in sketch code.
 - `examples/BLE/Connections/BleCodedPhyPeripheral/BleCodedPhyPeripheral.ino`
   - User-facing coded PHY peripheral example.
   - Shows `requestPHY(kBlePhyCoded)` and `getPHY()` while streaming `244-byte` notifications.
@@ -941,20 +951,25 @@ Zigbee examples:
 The following sketches focus on low-power behavior called out in the nRF54L15 datasheet:
 
 - CPU enters System ON idle using `WFI/WFE` when no work is pending
-- Keep CPU frequency at 64 MHz when full performance is not needed
-- Optionally run active work at 128 MHz and drop to 64 MHz automatically during `delay()` / `yield()`
+- Keep CPU frequency at the fixed low-current 64 MHz board default
+- Optionally use explicit runtime CPU scaling in sketches that really need short 128 MHz active windows
 - Duty-cycle peripherals so they are enabled only during short active windows
-- Optional core-level peripheral auto-gating for idle windows (SPI/Wire)
 - Use timed `SYSTEM OFF` when cold-boot wake semantics are acceptable
 
 Examples:
 
 - `examples/LowPower/LowPowerIdleWfi/LowPowerIdleWfi.ino`
   - Minimal heartbeat workload with `__WFI()` between events.
-  - Uses 64 MHz CPU by default, switches to 128 MHz while button is held.
+  - Uses the fixed 64 MHz low-current board default.
 - `examples/LowPower/LowPowerIdleCpuScaling/LowPowerIdleCpuScaling.ino`
   - Demonstrates explicit idle CPU scaling: active work at 128 MHz, automatic idle drop to 64 MHz.
   - `delay()` / `yield()` restore the previous CPU speed after wake.
+- `examples/LowPower/LowPowerCpuFrequencyControl/LowPowerCpuFrequencyControl.ino`
+  - Shows direct runtime CPU frequency control with `ClockControl::setCpuFrequency(...)`.
+  - Uses 128 MHz only for a short active section, then explicitly downclocks back to 64 MHz before WFI idle.
+- `examples/LowPower/LowPowerPrepareIdleBudget/LowPowerPrepareIdleBudget.ino`
+  - Demonstrates `PowerManager::prepareLowPowerIdle()` as the one-call idle preparation path.
+  - Applies low-power latency, main DCDC, 64 MHz idle CPU scaling, and supported board-load collapse before WFI.
 - `examples/LowPower/LowPowerDutyCycleAdc/LowPowerDutyCycleAdc.ino`
   - Periodic ADC sampling with SAADC enabled only during sample windows and `8x` oversampling enabled.
   - VBAT divider path is enabled only for the measurement interval.
@@ -976,7 +991,7 @@ Examples:
 - `examples/BLE/AdvertisingLowPower/BleAdvertiserLowestPowerContinuous/BleAdvertiserLowestPowerContinuous.ino`
   - Lowest validated continuous BLE advertiser baseline on the current raw BLE path.
   - Uses `ADV_IND`, the default FICR-derived address, `-10 dBm`, and `3000 ms` intervals.
-  - Use `Low Power (WFI Idle)` board profile; the core low-power GRTC tick path is now required for this example.
+  - Uses the fixed low-power WFI board behavior; the core low-power GRTC tick path is required for this example.
   - Intended for `System ON + WFI between advertising events`, not `SYSTEM OFF`.
 - `examples/BLE/AdvertisingLowPower/BleAdvertiserRfSwitchDutyCycle/BleAdvertiserRfSwitchDutyCycle.ino`
   - Continuous advertiser that powers/selects the RF switch only around each `advertiseEvent(...)`.
@@ -1001,10 +1016,6 @@ Examples:
 - `examples/LowPower/LowPowerTelemetryDutyMetrics/LowPowerTelemetryDutyMetrics.ino`
   - Reports rolling active-vs-sleep duty metrics (microsecond accounting).
   - Pairs duty telemetry with ADC/VBAT duty-cycled sampling windows.
-- `examples/LowPower/LowPowerAutoGatePolicy/LowPowerAutoGatePolicy.ino`
-  - Demonstrates Tools-menu configurable idle auto-gating on core `SPI`/`Wire`.
-  - Uses transfer windows without explicit `end()` and verifies idle disable via register state.
-
 ## BLE Scope
 
 - Implemented now:
@@ -1044,11 +1055,8 @@ Examples:
       fail because the in-tree controller has no P-256 ECDH SMP path yet.
   - Optional protocol-level BLE trace path:
     - Enable Arduino Tools -> `BLE Trace` to emit LL/SMP trace markers for interop debugging
-  - BLE timing profile controls:
-    - Arduino Tools -> `BLE Timing Profile` adjusts connection-event RX/TX timing budgets.
-    - `Interoperability`: widest timing windows.
-    - `Balanced Low-Power`: moderate timing windows.
-    - `Aggressive Low-Power`: shortest timing windows + lower-power preferred PPCP defaults.
+  - BLE timing:
+    - The board package now uses the stable interoperability timing path by default instead of exposing experimental low-power timing menu choices.
   - BLE TX power controls:
     - BLE examples now pass TX power explicitly into `BleRadio::begin(txPowerDbm)`.
     - Trade off current consumption/range in sketch code, not via a board-level tools menu.

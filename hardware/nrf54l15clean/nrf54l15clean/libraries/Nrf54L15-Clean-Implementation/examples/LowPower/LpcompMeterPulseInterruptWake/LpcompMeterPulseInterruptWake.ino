@@ -413,8 +413,7 @@ static void printBootBanner() {
   #if defined(NRF54L15_CLEAN_POWER_LOW)
   Serial.println("build_power_profile=low_power_wfi_idle");
 #else
-  Serial.println("build_power_profile=balanced");
-  Serial.println("For lowest sleep current, compile with clean_power=low.");
+  Serial.println("build_power_profile=legacy_non_wfi");
 #endif
   Serial.println("Waiting for meter flashes...");
   debugFlush();

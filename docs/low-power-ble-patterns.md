@@ -140,7 +140,7 @@ Validated baseline:
 - `6` events per wake
 - `20 ms` burst gaps
 - `1000 ms` timed `SYSTEM OFF`
-- `clean_power=low`
+- fixed low-power WFI board default
 - default boot profile
 - change `kSystemOffIntervalMs` in the sketch to `5000UL` if you want a sparser wake cadence
 

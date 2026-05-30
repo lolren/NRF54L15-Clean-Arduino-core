@@ -87,7 +87,7 @@ extern "C" void __attribute__((weak)) yield(void) {
         // layer reports an active timing budget. A 1 ms SysTick wake cadence
         // is still too coarse for foreground advertising / connect windows on
         // some stacks, so Balanced mode must stay out of WFI for any active
-        // BLE slice and leave low-power WFI behavior to clean_power=low.
+        // BLE slice; normal builds use the fixed low-power WFI path above.
         if (sleepCapUs != 0U) {
             __asm volatile("nop");
             return;

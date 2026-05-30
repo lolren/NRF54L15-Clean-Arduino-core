@@ -31,7 +31,7 @@ namespace {
 // - manual HFXO stop/start between events
 //
 // Validated configuration on hardware:
-// - clean_power=low
+// - fixed low-power WFI board default
 // - 3 s interval
 // - -10 dBm
 // - default FICR-derived address

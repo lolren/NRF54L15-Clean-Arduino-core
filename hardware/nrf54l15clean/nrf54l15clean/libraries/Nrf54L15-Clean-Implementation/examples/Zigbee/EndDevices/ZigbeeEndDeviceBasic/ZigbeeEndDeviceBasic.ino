@@ -39,8 +39,8 @@ static uint32_t g_telemetryAck = 0U;
 static uint32_t g_telemetryMiss = 0U;
 static uint8_t g_missStreak = 0U;
 
-// Network configuration comes from the Tools menu defaults unless overridden by
-// the macros above.
+// Network configuration is sketch-owned. Change the macros above or replace
+// these constants at runtime for your own channel/PAN.
 static constexpr uint8_t kChannel =
     static_cast<uint8_t>(NRF54L15_CLEAN_ZIGBEE_CHANNEL);
 static constexpr uint16_t kPanId =

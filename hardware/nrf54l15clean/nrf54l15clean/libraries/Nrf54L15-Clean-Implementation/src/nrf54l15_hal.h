@@ -1187,6 +1187,9 @@ class PowerManager {
   void clearResetReason(uint32_t mask);
 
   bool enableMainDcdc(bool enable);
+  bool prepareLowPowerIdle(bool collapseBoardLoads = true,
+                           bool enableIdleCpuScaling = true,
+                           bool stopHfxoIfIdle = false);
   bool configurePowerFailComparator(
       PowerFailThreshold threshold = PowerFailThreshold::k2V8,
       bool enableWarningEvent = true);

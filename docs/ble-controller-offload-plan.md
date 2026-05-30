@@ -362,7 +362,7 @@ Compilation and flash:
 - `BleBackgroundAdvertiser3ChannelDiagnostics` compiles for the same target
 - `BleAdvertiserLowestPowerContinuous` still compiles as the software-driven
   baseline
-- validated with `clean_power=low`
+- validated with the fixed low-power WFI board default
 - the board can be flashed with either sketch via `pyocd`
 
 On-target serial validation after flashing
@@ -473,7 +473,7 @@ On-target serial validation after flashing
 arduino-cli compile \
   --clean \
   --build-path /tmp/bgdiag_rng_build \
-  --fqbn "nrf54l15clean:nrf54l15clean:xiao_nrf54l15:clean_power=low" \
+  --fqbn "nrf54l15clean:nrf54l15clean:xiao_nrf54l15" \
   --build-property 'compiler.cpp.extra_flags=-include "{build.path}/generated/CoreVersionGenerated.h" -DNRF54L15_BG_DIAG_RANDOM_DELAY=1' \
   hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation/examples/BLE/Advertising/BleBackgroundAdvertiser3ChannelDiagnostics
 ```

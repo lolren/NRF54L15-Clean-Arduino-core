@@ -148,14 +148,8 @@ Current Sense examples:
 ## Tools Menu Options
 
 - Upload method: Auto Recover / pyOCD / OpenOCD / UF2 Bootloader (manual optional)
-- CPU frequency: 64 MHz / 128 MHz
 - BLE support: On / Off
-- BLE timing profile: Interop / Balanced low-power / Aggressive low-power
 - BLE trace: Off / On
 - Zigbee support: On / Off
-- Zigbee channel: `11`, `15`, `20`, `25`
-- Zigbee PAN ID: `0x1234`, `0x1A2B`, `0xBEEF`
-- Power profile: Balanced / Low power (WFI idle)
-- Peripheral auto-gating: Off / 2 ms / 200 us
 - Antenna route: Ceramic / External U.FL
 - Serial routing: USB bridge / Header UART

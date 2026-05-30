@@ -1633,6 +1633,33 @@ bool PowerManager::enableMainDcdc(bool enable) {
   return (isEnabled == enable);
 }
 
+bool PowerManager::prepareLowPowerIdle(bool collapseBoardLoads,
+                                       bool enableIdleCpuScaling,
+                                       bool stopHfxoIfIdle) {
+  setLatencyMode(PowerLatencyMode::kLowPower);
+  bool ok = enableMainDcdc(true);
+
+  if (enableIdleCpuScaling) {
+    ok = ClockControl::enableIdleCpuScaling(CpuFrequency::k64MHz) && ok;
+  }
+
+  if (stopHfxoIfIdle) {
+    ClockControl::stopHfxo();
+  }
+
+  if (collapseBoardLoads) {
+    if (BoardControl::hasSwitchedBatterySense()) {
+      ok = BoardControl::setBatterySenseEnabled(false) && ok;
+    }
+    if (BoardControl::hasImuMicPowerGate()) {
+      ok = BoardControl::setImuMicEnabled(false) && ok;
+    }
+    ok = BoardControl::collapseRfPathIdle() && ok;
+  }
+
+  return ok;
+}
+
 bool PowerManager::configurePowerFailComparator(PowerFailThreshold threshold,
                                                 bool enableWarningEvent) {
   uint32_t config = regulators_->POFCON;

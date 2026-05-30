@@ -13,6 +13,7 @@
  */
 
 #include <Arduino.h>
+#include <string.h>
 #include "nrf54l15_hal.h"
 
 using namespace xiao_nrf54l15;
@@ -125,13 +126,17 @@ void setup() {
 
   // ---- NFCT tests (register access only, no antenna) ----
   Serial.println(F("--- NFCT (register access) ---"));
-  // Just verify registers are readable without faulting
-  uint32_t th0 = Nfct::tagHeader0();
-  TEST("NFCT TAGHEADER0 readable", th0 != 0);  // Should have Nordic MFGID
-  TEST("NFCT MFGID is Nordic (0x5F)", (th0 & 0xFF) == 0x5F);
+  const uint8_t testNfcId[] = {0x5F, 0x12, 0x34, 0x56};
+  const bool nfcIdSet = Nfct::setNfcId1(testNfcId, sizeof(testNfcId));
+  uint8_t readNfcId[10] = {};
+  const uint8_t readNfcIdLen = Nfct::nfcId1(readNfcId, sizeof(readNfcId));
+  TEST("NFCT NFCID1 write accepted", nfcIdSet);
+  TEST("NFCT NFCID1 readback matches",
+       readNfcIdLen == sizeof(testNfcId) &&
+           memcmp(readNfcId, testNfcId, sizeof(testNfcId)) == 0);
 
-  uint32_t enableReg = Nfct::readReg(0x500);
-  TEST("NFCT ENABLE register readable", true);  // No fault = success
+  (void)Nfct::tagState();
+  TEST("NFCT state register readable", true);  // No fault = success
 
   Serial.println();
 

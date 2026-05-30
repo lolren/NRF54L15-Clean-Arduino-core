@@ -3,13 +3,11 @@
 
 using namespace xiao_nrf54l15;
 
-// Best demonstration path:
-// - Tools -> CPU Frequency -> 128 MHz (Turbo)
-// - Tools -> Power Profile -> Low Power (WFI Idle)
+// Demonstrates explicit runtime CPU scaling.
 //
-// The sketch runs active work at 128 MHz, but delay()/yield() temporarily
-// down-clock the CPU to 64 MHz before WFI and restore the previous speed after
-// wake.
+// The board package defaults to the low-power WFI path and 64 MHz CPU. This
+// sketch temporarily runs active work at 128 MHz, while delay()/yield() downclock
+// the CPU to 64 MHz before WFI and restore the previous speed after wake.
 //
 // Custom options:
 // - kBlinkOnUs: active pulse width

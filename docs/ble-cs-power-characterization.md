@@ -44,7 +44,7 @@ Important:
 For the first real current sweep, use:
 
 ```text
-nrf54l15clean:nrf54l15clean:xiao_nrf54l15:clean_cpu=cpu64,clean_power=low,clean_autogate=balanced,clean_ble=on,clean_ble_timing=balanced,clean_vpr=on
+nrf54l15clean:nrf54l15clean:xiao_nrf54l15:clean_ble=on,clean_vpr=on
 ```
 
 Keep the same FQBN across all runs in one comparison table.
