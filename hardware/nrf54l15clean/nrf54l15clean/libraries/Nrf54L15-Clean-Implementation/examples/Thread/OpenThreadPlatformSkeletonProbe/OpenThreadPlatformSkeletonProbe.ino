@@ -363,6 +363,26 @@ void setup() {
   }
   (void)otPlatRadioAddSrcMatchExtEntry(nullptr, &childExtAddress);
   (void)otPlatRadioClearSrcMatchShortEntry(nullptr, 0x4567);
+  otLinkMetrics enhAckMetrics = {};
+  enhAckMetrics.mLqi = true;
+  enhAckMetrics.mRssi = true;
+  const otError enhAckSetError =
+      otPlatRadioConfigureEnhAckProbing(nullptr, enhAckMetrics, 0x4567,
+                                        &childExtAddress);
+  otLinkMetrics enhAckInvalidMetrics = {};
+  enhAckInvalidMetrics.mLqi = true;
+  enhAckInvalidMetrics.mLinkMargin = true;
+  enhAckInvalidMetrics.mRssi = true;
+  const otError enhAckInvalidError =
+      otPlatRadioConfigureEnhAckProbing(nullptr, enhAckInvalidMetrics, 0x4567,
+                                        &childExtAddress);
+  otLinkMetrics enhAckClearMetrics = {};
+  const otError enhAckClearError =
+      otPlatRadioConfigureEnhAckProbing(nullptr, enhAckClearMetrics, 0x4567,
+                                        &childExtAddress);
+  const otError enhAckResetError =
+      otPlatRadioConfigureEnhAckProbing(nullptr, enhAckMetrics, 0x4567,
+                                        &childExtAddress);
 
   const otError sleepFromReceiveError = otPlatRadioSleep(nullptr);
   const otError receiveAfterSleepError = otPlatRadioReceive(nullptr, 15);
@@ -646,6 +666,30 @@ void setup() {
   Serial.print(coexMetrics.mNumRxGrantImmediate);
   Serial.print("/");
   Serial.print(coexMetrics.mStopped ? 1 : 0);
+  Serial.print(" enhack=");
+  Serial.print(static_cast<int>(enhAckSetError));
+  Serial.print("/");
+  Serial.print(static_cast<int>(enhAckInvalidError));
+  Serial.print("/");
+  Serial.print(static_cast<int>(enhAckClearError));
+  Serial.print("/");
+  Serial.print(static_cast<int>(enhAckResetError));
+  Serial.print("/");
+  Serial.print(snapshot.radioEnhAckProbingEnabled ? 1 : 0);
+  Serial.print("/");
+  Serial.print(snapshot.radioEnhAckProbingConfigureCount);
+  Serial.print("/");
+  Serial.print(snapshot.radioEnhAckProbingClearCount);
+  Serial.print("/");
+  Serial.print(snapshot.radioEnhAckProbingInvalidCount);
+  Serial.print("/");
+  Serial.print(snapshot.radioEnhAckProbingNoBufCount);
+  Serial.print("/0x");
+  Serial.print(snapshot.radioEnhAckProbingShortAddress, HEX);
+  Serial.print("/");
+  Serial.print(snapshot.radioEnhAckProbingMetrics.mLqi ? 1 : 0);
+  Serial.print(snapshot.radioEnhAckProbingMetrics.mLinkMargin ? 1 : 0);
+  Serial.print(snapshot.radioEnhAckProbingMetrics.mRssi ? 1 : 0);
   Serial.print(" cb=");
   Serial.print(gRadioTxStartedCount);
   Serial.print("/");

@@ -316,6 +316,43 @@ void clearThreadChannelPowerState(OpenThreadPlatformState& state) {
          sizeof(state.snapshot.radioLastRawPowerSetting));
 }
 
+uint8_t countThreadEnhAckMetricBits(const otLinkMetrics& metrics) {
+  uint8_t count = 0U;
+  if (metrics.mLqi) {
+    ++count;
+  }
+  if (metrics.mLinkMargin) {
+    ++count;
+  }
+  if (metrics.mRssi) {
+    ++count;
+  }
+  return count;
+}
+
+bool threadEnhAckMetricsEmpty(const otLinkMetrics& metrics) {
+  return !metrics.mPduCount && !metrics.mLqi && !metrics.mLinkMargin &&
+         !metrics.mRssi && !metrics.mReserved;
+}
+
+bool threadEnhAckMetricsValidForRegister(const otLinkMetrics& metrics) {
+  const uint8_t metricCount = countThreadEnhAckMetricBits(metrics);
+  return !metrics.mReserved && !metrics.mPduCount && metricCount != 0U &&
+         metricCount <= 2U;
+}
+
+bool threadExtAddressEqual(const otExtAddress& left, const otExtAddress& right) {
+  return memcmp(left.m8, right.m8, sizeof(left.m8)) == 0;
+}
+
+void clearThreadEnhAckProbingState(OpenThreadPlatformState& state) {
+  state.snapshot.radioEnhAckProbingEnabled = false;
+  state.snapshot.radioEnhAckProbingMetrics = {};
+  state.snapshot.radioEnhAckProbingShortAddress = OT_RADIO_INVALID_SHORT_ADDR;
+  memset(state.snapshot.radioEnhAckProbingExtAddress.m8, 0,
+         sizeof(state.snapshot.radioEnhAckProbingExtAddress.m8));
+}
+
 bool resolveThreadEffectiveTxPowerDbm(const OpenThreadPlatformState& state,
                                       uint8_t channel, int8_t requestedPowerDbm,
                                       int8_t* effectivePowerDbm,
@@ -2698,6 +2735,7 @@ void otSysInit(int, char**) {
   state.radioSrcMatchEnabled = false;
   clearThreadSrcMatchTables(state);
   clearThreadChannelPowerState(state);
+  clearThreadEnhAckProbingState(state);
   resetDiagSnapshot(state);
 
   state.snapshot.initialized = true;
@@ -2764,6 +2802,7 @@ void otSysDeinit(void) {
   clearThreadRadioReceiveAtState(gOpenThreadPlatformState);
   gOpenThreadPlatformState.radioSrcMatchEnabled = false;
   clearThreadSrcMatchTables(gOpenThreadPlatformState);
+  clearThreadEnhAckProbingState(gOpenThreadPlatformState);
   gOpenThreadPlatformState.diagCallback = nullptr;
   gOpenThreadPlatformState.diagCallbackContext = nullptr;
   resetDiagSnapshot(gOpenThreadPlatformState);
@@ -4172,8 +4211,51 @@ otError otPlatRadioGetRegion(otInstance*, uint16_t* regionCode) {
   return OT_ERROR_NONE;
 }
 
-otError otPlatRadioConfigureEnhAckProbing(otInstance*, otLinkMetrics, otShortAddress, const otExtAddress*) {
-  return OT_ERROR_NOT_IMPLEMENTED;
+otError otPlatRadioConfigureEnhAckProbing(otInstance*, otLinkMetrics linkMetrics,
+                                          otShortAddress shortAddress,
+                                          const otExtAddress* extAddress) {
+  using namespace xiao_nrf54l15;
+
+  OpenThreadPlatformState& state = gOpenThreadPlatformState;
+  if (extAddress == nullptr) {
+    ++state.snapshot.radioEnhAckProbingInvalidCount;
+    return OT_ERROR_INVALID_ARGS;
+  }
+
+  if (threadEnhAckMetricsEmpty(linkMetrics)) {
+    if (state.snapshot.radioEnhAckProbingEnabled &&
+        state.snapshot.radioEnhAckProbingShortAddress == shortAddress &&
+        threadExtAddressEqual(state.snapshot.radioEnhAckProbingExtAddress,
+                              *extAddress)) {
+      clearThreadEnhAckProbingState(state);
+      ++state.snapshot.radioEnhAckProbingClearCount;
+      return OT_ERROR_NONE;
+    }
+
+    ++state.snapshot.radioEnhAckProbingClearCount;
+    return OT_ERROR_NOT_FOUND;
+  }
+
+  if (!threadEnhAckMetricsValidForRegister(linkMetrics)) {
+    ++state.snapshot.radioEnhAckProbingInvalidCount;
+    return OT_ERROR_INVALID_ARGS;
+  }
+
+  if (state.snapshot.radioEnhAckProbingEnabled &&
+      (state.snapshot.radioEnhAckProbingShortAddress != shortAddress ||
+       !threadExtAddressEqual(state.snapshot.radioEnhAckProbingExtAddress,
+                              *extAddress))) {
+    ++state.snapshot.radioEnhAckProbingNoBufCount;
+    return OT_ERROR_NO_BUFS;
+  }
+
+  state.snapshot.radioEnhAckProbingEnabled = true;
+  state.snapshot.radioEnhAckProbingMetrics = linkMetrics;
+  state.snapshot.radioEnhAckProbingShortAddress = shortAddress;
+  memcpy(state.snapshot.radioEnhAckProbingExtAddress.m8, extAddress->m8,
+         sizeof(state.snapshot.radioEnhAckProbingExtAddress.m8));
+  ++state.snapshot.radioEnhAckProbingConfigureCount;
+  return OT_ERROR_NONE;
 }
 
 otError otPlatRadioAddCalibratedPower(otInstance*, uint8_t channel,

@@ -68,6 +68,15 @@ struct OpenThreadPlatformSkeletonSnapshot {
   uint32_t cslSampleTimeUs = 0U;
   otShortAddress cslShortAddress = OT_RADIO_INVALID_SHORT_ADDR;
   otExtAddress cslExtAddress = {};
+  bool radioEnhAckProbingEnabled = false;
+  otLinkMetrics radioEnhAckProbingMetrics = {};
+  otShortAddress radioEnhAckProbingShortAddress =
+      OT_RADIO_INVALID_SHORT_ADDR;
+  otExtAddress radioEnhAckProbingExtAddress = {};
+  uint32_t radioEnhAckProbingConfigureCount = 0U;
+  uint32_t radioEnhAckProbingClearCount = 0U;
+  uint32_t radioEnhAckProbingInvalidCount = 0U;
+  uint32_t radioEnhAckProbingNoBufCount = 0U;
   uint8_t radioSrcMatchShortCount = 0;
   uint8_t radioSrcMatchExtCount = 0;
 

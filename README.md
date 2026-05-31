@@ -155,6 +155,7 @@ The Thread stack is an early-stage port of OpenThread core that compiles, links,
 - [x] Router role upgrade
 - [x] UDP transport — checked single-frame payloads up to 63 bytes
 - [x] Basic two-board ping/pong smoke tests
+- [x] Radio PAL support for source match, scheduled receive, CSL state, coex metrics, channel TX power limits, and one-peer enhanced-ACK probing configuration
 
 **What doesn't (yet):**
 - [ ] End-to-end validation against a real commissioner (Apple Home, Google Home, HA Matter Server)
@@ -165,7 +166,7 @@ The Thread stack is an early-stage port of OpenThread core that compiles, links,
 - [ ] DTLS / secure transport layer
 - [ ] Standard MeshCoP Joiner/Commissioner (disabled at compile time)
 - [ ] Fragmented UDP payloads (> 63 bytes) — experimental only
-- [ ] Power management (CSL sleepy end device is scaffolded but not validated)
+- [ ] Power management (CSL sleepy end device and enhanced-ACK probing state are scaffolded, but secure Enhanced ACK IE insertion and sleepy-device validation are not complete)
 - [ ] Production soak testing on reference networks
 
 **Known issues:**
