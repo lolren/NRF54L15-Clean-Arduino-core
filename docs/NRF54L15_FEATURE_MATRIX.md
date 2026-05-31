@@ -139,8 +139,8 @@ This section tracks user-facing Arduino behavior.
 | [x] | OpenThread PAL skeleton | Implemented with settings, alarms, entropy/crypto, radio, source match, scheduled receive timing, CSL state tracking, and diagnostic GPIO commands. | Keep compile coverage and continue expanding real radio conformance. |
 | [x] | 802.15.4 TX/RX PAL | Implemented and two-board proven. | More stress and reference sniff validation. |
 | [x] | Fixed dataset attach | Implemented in experimental stage mode. | Reference-network attach validation. |
-| [x] | Leader/child role path | Implemented in experimental stage mode; default wrapper uses child-first attach with deterministic leader fallback to avoid two-board demo partition races. | Reboot recovery and longer soak. |
-| [x] | Router promotion | Implemented in experimental stage mode. | Broader router behavior validation. |
+| [x] | Leader/child role path | Implemented in experimental stage mode; default wrapper uses child-first attach with deterministic leader fallback to avoid two-board demo partition races. Public `setRouterEligible(false)` support now allows sketches to force child-only mode without raw OpenThread calls. | Reboot recovery and longer soak. |
+| [x] | Router promotion | Implemented in experimental stage mode; public router eligibility and router-request wrappers are available. | Broader router behavior validation. |
 | [x] | UDP send/receive wrapper | Implemented in experimental stage mode; two-board checked payload smoke passes through 63-byte single-frame UDP payloads. | Larger fragmented UDP payloads, multicast, and longer soak. |
 | [x] | PSKc/passphrase dataset build | Implemented. | More compatibility vectors. |
 | [ ] | Standard MeshCoP Joiner | API surface now exists and examples compile, but runtime reports unsupported while `OPENTHREAD_CONFIG_JOINER_ENABLE=0`. | Enable secure transport/DTLS and validate against a real commissioner. |

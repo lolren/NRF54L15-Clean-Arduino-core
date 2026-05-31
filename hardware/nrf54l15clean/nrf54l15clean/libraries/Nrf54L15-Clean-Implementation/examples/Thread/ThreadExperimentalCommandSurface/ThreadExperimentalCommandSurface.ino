@@ -102,6 +102,16 @@ void printAttachDiagnostics() {
   Serial.println(diagnostics.betterParentAttachAttempts);
   Serial.print("thread_cmd parent_changes=");
   Serial.println(diagnostics.parentChanges);
+  Serial.print("thread_cmd attach_policy=");
+  Serial.println(Nrf54ThreadExperimental::attachPolicyName(
+      static_cast<Nrf54ThreadExperimental::AttachPolicy>(
+          diagnostics.attachPolicy)));
+  Serial.print("thread_cmd router_eligible=");
+  Serial.println(diagnostics.routerEligible ? 1 : 0);
+  Serial.print("thread_cmd child_first_fallback_armed=");
+  Serial.println(diagnostics.childFirstFallbackArmed ? 1 : 0);
+  Serial.print("thread_cmd child_first_fallback_used=");
+  Serial.println(diagnostics.childFirstFallbackUsed ? 1 : 0);
 }
 
 void printAttachDebugState() {
@@ -177,6 +187,8 @@ void printState(const char* reason) {
   Serial.println(gThread.datasetConfigured() ? 1 : 0);
   Serial.print("thread_cmd restored=");
   Serial.println(gThread.restoredFromSettings() ? 1 : 0);
+  Serial.print("thread_cmd router_eligible=");
+  Serial.println(gThread.routerEligible() ? 1 : 0);
   Serial.print("thread_cmd rloc16=0x");
   Serial.println(gThread.rloc16(), HEX);
   Serial.print("thread_cmd err=");
@@ -208,6 +220,9 @@ void printHelp() {
   Serial.println("thread_cmd   dataset-hex <ot-tlv-hex>");
   Serial.println("thread_cmd   stats");
   Serial.println("thread_cmd   router");
+  Serial.println("thread_cmd   router-on");
+  Serial.println("thread_cmd   router-off");
+  Serial.println("thread_cmd   child-only");
   Serial.println("thread_cmd   restart");
   Serial.println("thread_cmd   wipe-settings");
   Serial.println("thread_cmd   help");
@@ -255,6 +270,19 @@ void handleLine(char* line) {
     Serial.print("thread_cmd router_request=");
     Serial.println(gThread.requestRouterRole() ? 1 : 0);
     printState("router");
+    return;
+  }
+  if (strcmp(line, "router-on") == 0) {
+    Serial.print("thread_cmd router_eligible_set=");
+    Serial.println(gThread.setRouterEligible(true) ? 1 : 0);
+    printState("router-on");
+    return;
+  }
+  if (strcmp(line, "router-off") == 0 ||
+      strcmp(line, "child-only") == 0) {
+    Serial.print("thread_cmd router_eligible_set=");
+    Serial.println(gThread.setRouterEligible(false) ? 1 : 0);
+    printState("router-off");
     return;
   }
   if (strcmp(line, "restart") == 0) {

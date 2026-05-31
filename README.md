@@ -153,6 +153,7 @@ The Thread stack is an early-stage port of OpenThread core that compiles, links,
 - [x] Form new partition as Leader
 - [x] Attach as Child when a parent is reachable
 - [x] Router role upgrade
+- [x] Public child-only / router-eligible mode control through the Arduino wrapper
 - [x] UDP transport — checked single-frame payloads up to 63 bytes
 - [x] Basic two-board ping/pong smoke tests
 - [x] Radio PAL support for source match, scheduled receive, CSL state, coex metrics, channel TX power limits, and one-peer enhanced-ACK probing configuration
@@ -171,7 +172,6 @@ The Thread stack is an early-stage port of OpenThread core that compiles, links,
 
 **Known issues:**
 - Devices fall back to Leader when they can't find an existing parent on the imported dataset's channel — this is correct Thread FTD protocol behavior, but means a single device on an empty channel forms its own isolated partition
-- No `otThreadSetRouterEligible(false)` API exposed through the Arduino wrapper yet — the raw OpenThread call works but requires accessing the `otInstance` pointer
 
 ---
 

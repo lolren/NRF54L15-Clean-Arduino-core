@@ -122,6 +122,7 @@ class Nrf54ThreadExperimental {
   bool exportConfiguredOrActiveDatasetHex(char* outBuffer, size_t outBufferSize,
                                           size_t* outHexLength = nullptr) const;
   bool wipePersistentSettings();
+  bool setRouterEligible(bool eligible);
   bool requestRouterRole();
   bool startCommissioner();
   bool stopCommissioner();

@@ -452,6 +452,62 @@ bool Nrf54ThreadExperimental::wipePersistentSettings() {
 #endif
 }
 
+bool Nrf54ThreadExperimental::setRouterEligible(bool eligible) {
+#if !defined(NRF54L15_CLEAN_OPENTHREAD_CORE_ENABLE) || \
+    (NRF54L15_CLEAN_OPENTHREAD_CORE_ENABLE == 0)
+  (void)eligible;
+  lastError_ = OT_ERROR_INVALID_STATE;
+  return false;
+#else
+  if (!beginCalled_) {
+    lastError_ = OT_ERROR_INVALID_STATE;
+    return false;
+  }
+
+  attachPolicy_ = eligible ? AttachPolicy::kRouterEligible
+                           : AttachPolicy::kChildOnly;
+
+  if (instance_ == nullptr) {
+    routerEligible_ = eligible;
+    attachPolicyConfigured_ = false;
+    childFirstFallbackUsed_ = false;
+    lastError_ = OT_ERROR_NONE;
+    return true;
+  }
+
+  if (eligible) {
+    const otLinkModeConfig mode = {true, true, true};
+    lastError_ = otThreadSetLinkMode(instance_, mode);
+    if (lastError_ != OT_ERROR_NONE) {
+      return false;
+    }
+
+    lastError_ = otThreadSetRouterEligible(instance_, true);
+    if (lastError_ != OT_ERROR_NONE) {
+      return false;
+    }
+    otThreadSetRouterSelectionJitter(instance_, 1U);
+  } else {
+    lastError_ = otThreadSetRouterEligible(instance_, false);
+    if (lastError_ != OT_ERROR_NONE) {
+      return false;
+    }
+
+    const otLinkModeConfig mode = {true, false, true};
+    lastError_ = otThreadSetLinkMode(instance_, mode);
+    if (lastError_ != OT_ERROR_NONE) {
+      return false;
+    }
+  }
+
+  routerEligible_ = eligible;
+  attachPolicyConfigured_ = true;
+  childFirstFallbackUsed_ = false;
+  lastError_ = OT_ERROR_NONE;
+  return true;
+#endif
+}
+
 bool Nrf54ThreadExperimental::requestRouterRole() {
 #if !defined(NRF54L15_CLEAN_OPENTHREAD_CORE_ENABLE) || \
     (NRF54L15_CLEAN_OPENTHREAD_CORE_ENABLE == 0)
@@ -794,7 +850,7 @@ bool Nrf54ThreadExperimental::getAttachDiagnostics(
 
   *outDiagnostics = {};
   outDiagnostics->attachPolicy = static_cast<uint8_t>(attachPolicy_);
-  outDiagnostics->routerEligible = routerEligible_;
+  outDiagnostics->routerEligible = routerEligible();
   outDiagnostics->childFirstFallbackDelayMs = childFirstFallbackDelayMs_;
   outDiagnostics->childFirstFallbackArmed = childFirstFallbackArmed();
   outDiagnostics->childFirstFallbackUsed = childFirstFallbackUsed_;
@@ -1168,6 +1224,12 @@ uint32_t Nrf54ThreadExperimental::partitionId() const {
 }
 
 bool Nrf54ThreadExperimental::routerEligible() const {
+#if defined(NRF54L15_CLEAN_OPENTHREAD_CORE_ENABLE) && \
+    (NRF54L15_CLEAN_OPENTHREAD_CORE_ENABLE != 0)
+  if (instance_ != nullptr) {
+    return otThreadIsRouterEligible(instance_);
+  }
+#endif
   return routerEligible_;
 }
 
