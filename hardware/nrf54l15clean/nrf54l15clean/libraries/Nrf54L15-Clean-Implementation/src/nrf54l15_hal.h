@@ -2330,6 +2330,13 @@ class BleRadio {
   static constexpr uint8_t kCustomGattMaxUserDescriptionLength = 63U;
   static constexpr uint8_t kCustomGattPresentationFormatLength = 7U;
   static constexpr uint8_t kCustomGattReportReferenceLength = 2U;
+  static constexpr uint8_t kBleGattPermNoAccess = 0x00U;
+  static constexpr uint8_t kBleGattPermOpen = 0x11U;
+  static constexpr uint8_t kBleGattPermEncNoMitm = 0x21U;
+  static constexpr uint8_t kBleGattPermEncWithMitm = 0x31U;
+  static constexpr uint8_t kBleGattPermEncWithLescMitm = 0x41U;
+  static constexpr uint8_t kBleGattPermSignedNoMitm = 0x12U;
+  static constexpr uint8_t kBleGattPermSignedWithMitm = 0x22U;
 
   struct BleCustomGattDescriptorConfig {
     const char* userDescription = nullptr;
@@ -2337,6 +2344,8 @@ class BleRadio {
     uint8_t presentationFormatLength = 0U;
     const uint8_t* reportReference = nullptr;
     uint8_t reportReferenceLength = 0U;
+    uint8_t readPermission = kBleGattPermOpen;
+    uint8_t writePermission = kBleGattPermOpen;
   };
 
   struct BleCustomGattDescriptorHandles {
@@ -2699,6 +2708,8 @@ class BleRadio {
     uint16_t reportReferenceHandle;
     uint16_t cccdHandle;
     uint16_t cccdValue;
+    uint8_t readPermission;
+    uint8_t writePermission;
     uint8_t userDescriptionLength;
     uint8_t userDescription[kCustomGattMaxUserDescriptionLength];
     uint8_t presentationFormat[kCustomGattPresentationFormatLength];
@@ -2982,6 +2993,15 @@ class BleRadio {
       uint16_t reportReferenceHandle);
   const BleCustomCharacteristicState* findCustomCharacteristicByReportReferenceHandle(
       uint16_t reportReferenceHandle) const;
+  bool customGattPermissionSatisfied(uint8_t permission,
+                                     uint8_t defaultDenyError,
+                                     uint8_t* outAttError) const;
+  bool customGattReadPermissionSatisfied(
+      const BleCustomCharacteristicState* characteristic,
+      uint8_t* outAttError) const;
+  bool customGattWritePermissionSatisfied(
+      const BleCustomCharacteristicState* characteristic,
+      uint8_t* outAttError) const;
   bool applyCustomGattCharacteristicValueWrite(uint16_t handle,
                                                const uint8_t* value,
                                                uint16_t valueLength,

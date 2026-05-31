@@ -195,6 +195,68 @@ BleRadio::findCustomCharacteristicByReportReferenceHandle(
   return nullptr;
 }
 
+bool BleRadio::customGattPermissionSatisfied(uint8_t permission,
+                                             uint8_t defaultDenyError,
+                                             uint8_t* outAttError) const {
+  if (outAttError != nullptr) {
+    *outAttError = defaultDenyError;
+  }
+
+  switch (permission) {
+    case kBleGattPermOpen:
+      return true;
+    case kBleGattPermNoAccess:
+      return false;
+    case kBleGattPermEncNoMitm:
+    case kBleGattPermEncWithMitm:
+    case kBleGattPermEncWithLescMitm:
+      if (isConnectionEncrypted()) {
+        return true;
+      }
+      if (outAttError != nullptr) {
+        *outAttError = kAttErrInsufficientEncryption;
+      }
+      return false;
+    case kBleGattPermSignedNoMitm:
+    case kBleGattPermSignedWithMitm:
+      if (isConnectionEncrypted()) {
+        return true;
+      }
+      if (outAttError != nullptr) {
+        *outAttError = kAttErrInsufficientAuthentication;
+      }
+      return false;
+    default:
+      return true;
+  }
+}
+
+bool BleRadio::customGattReadPermissionSatisfied(
+    const BleCustomCharacteristicState* characteristic,
+    uint8_t* outAttError) const {
+  if (characteristic == nullptr) {
+    if (outAttError != nullptr) {
+      *outAttError = kAttErrInvalidHandle;
+    }
+    return false;
+  }
+  return customGattPermissionSatisfied(characteristic->readPermission,
+                                       kAttErrReadNotPermitted, outAttError);
+}
+
+bool BleRadio::customGattWritePermissionSatisfied(
+    const BleCustomCharacteristicState* characteristic,
+    uint8_t* outAttError) const {
+  if (characteristic == nullptr) {
+    if (outAttError != nullptr) {
+      *outAttError = kAttErrWriteNotPermitted;
+    }
+    return false;
+  }
+  return customGattPermissionSatisfied(characteristic->writePermission,
+                                       kAttErrWriteNotPermitted, outAttError);
+}
+
 bool BleRadio::addCustomGattService(uint16_t uuid16, uint16_t* outServiceHandle) {
   if (uuid16 == 0U) {
     return false;
@@ -436,6 +498,10 @@ bool BleRadio::addCustomGattCharacteristicCommon(uint16_t serviceHandle,
     memcpy(characteristic.uuid, uuid, uuidSize);
   }
   characteristic.properties = properties;
+  characteristic.readPermission =
+      (descriptors != nullptr) ? descriptors->readPermission : kBleGattPermOpen;
+  characteristic.writePermission =
+      (descriptors != nullptr) ? descriptors->writePermission : kBleGattPermOpen;
   characteristic.declarationHandle = customGattNextHandle_++;
   characteristic.valueHandle = customGattNextHandle_++;
   characteristic.userDescriptionHandle =
@@ -1616,6 +1682,13 @@ bool BleRadio::applyCustomGattCharacteristicValueWrite(uint16_t handle,
     if ((withResponse && !allowWriteReq) || (!withResponse && !allowWriteCmd)) {
       if (outErrorCode != nullptr) {
         *outErrorCode = kAttErrWriteNotPermitted;
+      }
+      return false;
+    }
+    uint8_t permissionError = kAttErrWriteNotPermitted;
+    if (!customGattWritePermissionSatisfied(valueTarget, &permissionError)) {
+      if (outErrorCode != nullptr) {
+        *outErrorCode = permissionError;
       }
       return false;
     }

@@ -3638,6 +3638,8 @@ err_t BLECharacteristic::begin() {
   BleRadio::BleCustomGattDescriptorConfig descriptors{};
   BleRadio::BleCustomGattDescriptorHandles descriptorHandles{};
   descriptors.userDescription = _usr_descriptor;
+  descriptors.readPermission = static_cast<uint8_t>(_read_perm);
+  descriptors.writePermission = static_cast<uint8_t>(_write_perm);
   if (_presentation_format_valid) {
     descriptors.presentationFormat = _presentation_format;
     descriptors.presentationFormatLength =

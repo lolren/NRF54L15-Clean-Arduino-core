@@ -38,6 +38,9 @@ not regress, and what to test first when resuming.
       directly from bounded storage instead of the fixed 31-byte scratch buffer,
       and writable custom values support contiguous queued ATT Prepare Write /
       Execute Write up to `BleRadio::kCustomGattMaxValueLength`.
+- [x] Bluefruit custom characteristic permissions: `BLECharacteristic::setPermission()`
+      is propagated to the HAL for custom GATT value reads/writes, including
+      encrypted-link-required access checks for secured characteristics.
 - [x] Custom GATT standard descriptors: Bluefruit
       `BLECharacteristic::setUserDescriptor()`,
       `setPresentationFormatDescriptor()`, and `setReportRefDescriptor()` now
@@ -82,7 +85,8 @@ not regress, and what to test first when resuming.
       phone/desktop hosts
 - [ ] Formal ATT/GATT edge cases: host-app interop for long read/write and
       prepare/execute write, descriptor write/permission variants, CCCD
-      persistence, and broader error-code coverage
+      persistence, MITM-vs-encrypted permission distinction, and broader
+      error-code coverage
 - [ ] HID host interop: phone/desktop pairing behavior, OS report parsing,
       boot-protocol switching, keyboard LED output reports, and gamepad host
       behavior still need real-host validation.

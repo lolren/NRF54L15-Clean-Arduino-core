@@ -13,6 +13,26 @@ bool BleRadio::buildAttErrorResponse(uint8_t requestOpcode, uint16_t handle,
   return true;
 }
 
+static uint8_t attReadSentinelToError(uint8_t readLength,
+                                      uint8_t notPermittedError) {
+  if (readLength == kAttrReadInvalidHandleLen) {
+    return kAttErrInvalidHandle;
+  }
+  if (readLength == kAttrReadInvalidOffsetLen) {
+    return kAttErrInvalidOffset;
+  }
+  if (readLength == kAttrReadInsufficientEncryptionLen) {
+    return kAttErrInsufficientEncryption;
+  }
+  if (readLength == kAttrReadInsufficientAuthenticationLen) {
+    return kAttErrInsufficientAuthentication;
+  }
+  if (readLength == kAttrReadNotPermittedLen) {
+    return notPermittedError;
+  }
+  return 0U;
+}
+
 void BleRadio::clearPreparedWriteState() {
   connectionPreparedWriteActive_ = false;
   connectionPreparedWriteHandle_ = 0U;
@@ -173,6 +193,16 @@ uint8_t BleRadio::readAttributeValue(uint16_t handle, uint16_t offset,
       findCustomCharacteristicByValueHandle(handle);
   if (directCharacteristic != nullptr) {
     if ((directCharacteristic->properties & kBleGattPropRead) == 0U) {
+      return kAttrReadNotPermittedLen;
+    }
+    uint8_t permissionError = kAttErrReadNotPermitted;
+    if (!customGattReadPermissionSatisfied(directCharacteristic, &permissionError)) {
+      if (permissionError == kAttErrInsufficientEncryption) {
+        return kAttrReadInsufficientEncryptionLen;
+      }
+      if (permissionError == kAttErrInsufficientAuthentication) {
+        return kAttrReadInsufficientAuthenticationLen;
+      }
       return kAttrReadNotPermittedLen;
     }
     if (offset > directCharacteristic->valueLength) {
@@ -906,7 +936,7 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
           uint8_t temp[kReadByTypeScratchLen] = {0};
           const uint8_t vlen =
               readAttributeValue(handle, 0U, temp, readByTypeValueLimit);
-          if (vlen == kAttrReadInvalidHandleLen || vlen == kAttrReadInvalidOffsetLen) {
+          if (vlen >= kAttrReadInsufficientAuthenticationLen) {
             continue;
           }
 
@@ -960,6 +990,8 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
               readAttributeValue(handle, 0U, temp, readByTypeValueLimit);
           if (vlen == kAttrReadInvalidHandleLen ||
               vlen == kAttrReadInvalidOffsetLen ||
+              vlen == kAttrReadInsufficientEncryptionLen ||
+              vlen == kAttrReadInsufficientAuthenticationLen ||
               vlen == kAttrReadNotPermittedLen) {
             continue;
           }
@@ -1008,16 +1040,10 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
       outAttResponse[0] = kAttOpReadRsp;
       const uint8_t vlen =
           readAttributeValue(handle, 0U, &outAttResponse[1], maxAttValueLen);
-      if (vlen == kAttrReadInvalidHandleLen) {
-        return buildAttErrorResponse(opcode, handle, kAttErrInvalidHandle,
-                                     outAttResponse, outAttResponseLength);
-      }
-      if (vlen == kAttrReadNotPermittedLen) {
-        return buildAttErrorResponse(opcode, handle, kAttErrReadNotPermitted,
-                                     outAttResponse, outAttResponseLength);
-      }
-      if (vlen == kAttrReadInvalidOffsetLen) {
-        return buildAttErrorResponse(opcode, handle, kAttErrInvalidOffset,
+      const uint8_t readError =
+          attReadSentinelToError(vlen, kAttErrReadNotPermitted);
+      if (readError != 0U) {
+        return buildAttErrorResponse(opcode, handle, readError,
                                      outAttResponse, outAttResponseLength);
       }
       *outAttResponseLength = static_cast<uint16_t>(1U + vlen);
@@ -1039,16 +1065,10 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
       outAttResponse[0] = kAttOpReadBlobRsp;
       const uint8_t vlen =
           readAttributeValue(handle, offset, &outAttResponse[1], maxAttValueLen);
-      if (vlen == kAttrReadInvalidHandleLen) {
-        return buildAttErrorResponse(opcode, handle, kAttErrInvalidHandle,
-                                     outAttResponse, outAttResponseLength);
-      }
-      if (vlen == kAttrReadNotPermittedLen) {
-        return buildAttErrorResponse(opcode, handle, kAttErrReadNotPermitted,
-                                     outAttResponse, outAttResponseLength);
-      }
-      if (vlen == kAttrReadInvalidOffsetLen) {
-        return buildAttErrorResponse(opcode, handle, kAttErrInvalidOffset,
+      const uint8_t readError =
+          attReadSentinelToError(vlen, kAttErrReadNotPermitted);
+      if (readError != 0U) {
+        return buildAttErrorResponse(opcode, handle, readError,
                                      outAttResponse, outAttResponseLength);
       }
       *outAttResponseLength = static_cast<uint16_t>(1U + vlen);
@@ -1077,16 +1097,10 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
 
         const uint8_t chunkMax = static_cast<uint8_t>(maxAttResponseLen - used);
         const uint8_t vlen = readAttributeValue(handle, 0U, &outAttResponse[used], chunkMax);
-        if (vlen == kAttrReadInvalidHandleLen) {
-          return buildAttErrorResponse(opcode, handle, kAttErrInvalidHandle,
-                                       outAttResponse, outAttResponseLength);
-        }
-        if (vlen == kAttrReadNotPermittedLen) {
-          return buildAttErrorResponse(opcode, handle, kAttErrReadNotPermitted,
-                                       outAttResponse, outAttResponseLength);
-        }
-        if (vlen == kAttrReadInvalidOffsetLen) {
-          return buildAttErrorResponse(opcode, handle, kAttErrInvalidOffset,
+        const uint8_t readError =
+            attReadSentinelToError(vlen, kAttErrReadNotPermitted);
+        if (readError != 0U) {
+          return buildAttErrorResponse(opcode, handle, readError,
                                        outAttResponse, outAttResponseLength);
         }
         used = static_cast<uint16_t>(used + vlen);
@@ -1127,6 +1141,14 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
           ((customValueTarget->properties & kBleGattPropWrite) == 0U)) {
         return buildAttErrorResponse(opcode, handle, kAttErrWriteNotPermitted,
                                      outAttResponse, outAttResponseLength);
+      }
+      if (isCustomValueHandle) {
+        uint8_t permissionError = kAttErrWriteNotPermitted;
+        if (!customGattWritePermissionSatisfied(customValueTarget,
+                                                &permissionError)) {
+          return buildAttErrorResponse(opcode, handle, permissionError,
+                                       outAttResponse, outAttResponseLength);
+        }
       }
 
       const uint16_t offset = readLe16(&attRequest[3]);

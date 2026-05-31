@@ -119,6 +119,7 @@ Full BLE-compliance work is paused while the remaining power and interoperabilit
 - [x] Data Length Extension — up to 251-byte payloads
 - [x] ATT/GATT server and client — full Bluefruit API (services, characteristics, CCCD, user-description, presentation-format, and report-reference descriptors)
 - [x] Custom GATT long reads and contiguous queued prepare/execute writes for bounded characteristic values
+- [x] Bluefruit custom characteristic permissions — `setPermission()` now reaches the HAL for custom GATT read/write access checks, including encrypted-link requirements
 - [x] Bluefruit HID report plumbing — keyboard, mouse, consumer-control, and gamepad report characteristics now notify real HID payloads
 - [x] L2CAP connection-oriented channels
 - [x] LE Ping and connection parameter update
