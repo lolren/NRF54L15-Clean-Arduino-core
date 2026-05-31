@@ -373,6 +373,12 @@ Thread example organization:
   single-board `OpenThreadPlatformSkeletonProbe` proof for MAC TX plus the
   critical radio state-transition contract (`sleep while disabled`, `tx from
   sleep`, `tx during energy scan`, and idle-state restore back to receive).
+- Thread `otPlatRadioReceiveAt()` now has a real cooperative scheduled-receive
+  path: future windows are tracked as pending, armed at the requested local
+  radio time, timed out with `OT_ERROR_ABORT` when no frame arrives, and exposed
+  in the PAL snapshot/probe counters. This is still not a hardware-timed sleepy
+  end-device claim, but it removes the old "receive immediately" shortcut that
+  blocked CSL-style bring-up work.
 - current Thread radio probes also include:
   - `OpenThreadCoreStageProbe`
   - `OpenThreadRoleStageProbe`

@@ -58,6 +58,7 @@ constexpr size_t kThreadSrcMatchExtCapacity = 16U;
 constexpr otRadioCaps kThreadRadioCaps =
     static_cast<otRadioCaps>(OT_RADIO_CAPS_ENERGY_SCAN |
                              OT_RADIO_CAPS_CSMA_BACKOFF |
+                             OT_RADIO_CAPS_RECEIVE_TIMING |
                              OT_RADIO_CAPS_RX_ON_WHEN_IDLE |
                              OT_RADIO_CAPS_TRANSMIT_FRAME_POWER |
                              OT_RADIO_CAPS_ALT_SHORT_ADDR);
@@ -176,6 +177,13 @@ struct OpenThreadPlatformState {
   bool radioTxAckFrameValid = false;
   bool radioEnergyScanDonePending = false;
   int8_t radioEnergyScanDoneDbm = OT_RADIO_RSSI_INVALID;
+  bool radioReceiveAtTimeoutPending = false;
+  uint8_t radioReceiveAtPendingChannel = 0U;
+  uint8_t radioReceiveAtActiveChannel = 0U;
+  uint32_t radioReceiveAtPendingStartUs = 0U;
+  uint32_t radioReceiveAtPendingDurationUs = 0U;
+  uint32_t radioReceiveAtActiveStartUs = 0U;
+  uint32_t radioReceiveAtActiveDurationUs = 0U;
   bool radioSrcMatchEnabled = false;
   ThreadSrcMatchShortEntry srcMatchShort[kThreadSrcMatchShortCapacity] = {};
   ThreadSrcMatchExtEntry srcMatchExt[kThreadSrcMatchExtCapacity] = {};
@@ -905,6 +913,15 @@ void updateRadioTime() {
   }
   gOpenThreadPlatformState.lastRadioNowLow = nowLow;
   gOpenThreadPlatformState.snapshot.radioNowUs = gOpenThreadPlatformState.radioNowHigh | nowLow;
+}
+
+uint32_t radioNow32() {
+  updateRadioTime();
+  return static_cast<uint32_t>(gOpenThreadPlatformState.snapshot.radioNowUs);
+}
+
+bool radioTimeReached(uint32_t nowUs, uint32_t deadlineUs) {
+  return static_cast<int32_t>(nowUs - deadlineUs) >= 0;
 }
 
 bool isThreadAttachLogLine(const char* line) {
@@ -1886,7 +1903,8 @@ bool threadRadioEnergyScanBusy() {
 }
 
 bool threadRadioOperationBusy() {
-  return threadRadioTransmitBusy() || threadRadioEnergyScanBusy();
+  return threadRadioTransmitBusy() || threadRadioEnergyScanBusy() ||
+         gOpenThreadPlatformState.radioReceiveAtTimeoutPending;
 }
 
 void applyThreadRadioIdleState() {
@@ -1898,7 +1916,46 @@ void applyThreadRadioIdleState() {
   if (threadRadioOperationBusy()) {
     return;
   }
+  if (state.snapshot.radioReceiveAtActive) {
+    state.snapshot.radioState = OT_RADIO_STATE_RECEIVE;
+    return;
+  }
   state.snapshot.radioState = threadRadioIdleState();
+}
+
+void clearThreadRadioReceiveAtState(OpenThreadPlatformState& state) {
+  state.snapshot.radioReceiveAtPending = false;
+  state.snapshot.radioReceiveAtActive = false;
+  state.snapshot.radioReceiveAtChannel = 0U;
+  state.snapshot.radioReceiveAtStartUs = 0U;
+  state.snapshot.radioReceiveAtDurationUs = 0U;
+  state.radioReceiveAtTimeoutPending = false;
+  state.radioReceiveAtPendingChannel = 0U;
+  state.radioReceiveAtActiveChannel = 0U;
+  state.radioReceiveAtPendingStartUs = 0U;
+  state.radioReceiveAtPendingDurationUs = 0U;
+  state.radioReceiveAtActiveStartUs = 0U;
+  state.radioReceiveAtActiveDurationUs = 0U;
+}
+
+void publishThreadRadioReceiveAtSnapshot(OpenThreadPlatformState& state) {
+  if (state.snapshot.radioReceiveAtActive) {
+    state.snapshot.radioReceiveAtChannel = state.radioReceiveAtActiveChannel;
+    state.snapshot.radioReceiveAtStartUs = state.radioReceiveAtActiveStartUs;
+    state.snapshot.radioReceiveAtDurationUs =
+        state.radioReceiveAtActiveDurationUs;
+    return;
+  }
+  if (state.snapshot.radioReceiveAtPending) {
+    state.snapshot.radioReceiveAtChannel = state.radioReceiveAtPendingChannel;
+    state.snapshot.radioReceiveAtStartUs = state.radioReceiveAtPendingStartUs;
+    state.snapshot.radioReceiveAtDurationUs =
+        state.radioReceiveAtPendingDurationUs;
+    return;
+  }
+  state.snapshot.radioReceiveAtChannel = 0U;
+  state.snapshot.radioReceiveAtStartUs = 0U;
+  state.snapshot.radioReceiveAtDurationUs = 0U;
 }
 
 void clearThreadRadioPendingAsyncState() {
@@ -1909,6 +1966,7 @@ void clearThreadRadioPendingAsyncState() {
   state.radioTxAckFrameValid = false;
   state.radioEnergyScanDonePending = false;
   state.radioEnergyScanDoneDbm = OT_RADIO_RSSI_INVALID;
+  clearThreadRadioReceiveAtState(state);
   state.snapshot.radioEnergyScanPending = false;
 }
 
@@ -1965,6 +2023,21 @@ void finishThreadRadioRx(otInstance* instance) {
   }
 }
 
+void finishThreadRadioReceiveAtAbort(otInstance* instance) {
+  OpenThreadPlatformState& state = gOpenThreadPlatformState;
+  if (!state.radioReceiveAtTimeoutPending) {
+    return;
+  }
+
+  state.radioReceiveAtTimeoutPending = false;
+  state.snapshot.radioLastError = OT_ERROR_ABORT;
+  applyThreadRadioIdleState();
+  notifyRadioReceiveDone(instance, nullptr, OT_ERROR_ABORT);
+  if (instance != nullptr) {
+    otPlatRadioReceiveDone(instance, nullptr, OT_ERROR_ABORT);
+  }
+}
+
 void finishThreadRadioTx(otInstance* instance) {
   OpenThreadPlatformState& state = gOpenThreadPlatformState;
   if (!state.radioTxDonePending) {
@@ -1995,6 +2068,97 @@ void finishThreadRadioTx(otInstance* instance) {
                       state.radioTxDoneError);
   }
   state.radioTxAckFrameValid = false;
+}
+
+void serviceThreadRadioReceiveAt(otInstance* instance) {
+  OpenThreadPlatformState& state = gOpenThreadPlatformState;
+  if (!state.snapshot.radioEnabled) {
+    clearThreadRadioReceiveAtState(state);
+    return;
+  }
+
+  const uint32_t nowUs = radioNow32();
+
+  if (state.snapshot.radioReceiveAtActive) {
+    const uint32_t endUs =
+        state.radioReceiveAtActiveStartUs +
+        state.radioReceiveAtActiveDurationUs;
+    if (!radioTimeReached(nowUs, endUs)) {
+      return;
+    }
+
+    state.radio.cancelReceive();
+    state.snapshot.radioReceiveAtActive = false;
+    state.snapshot.radioReceiveAtTimeoutCount++;
+    state.radioReceiveAtTimeoutPending = true;
+    state.radioReceiveAtActiveChannel = 0U;
+    state.radioReceiveAtActiveStartUs = 0U;
+    state.radioReceiveAtActiveDurationUs = 0U;
+    publishThreadRadioReceiveAtSnapshot(state);
+    finishThreadRadioReceiveAtAbort(instance);
+    return;
+  }
+
+  if (!state.snapshot.radioReceiveAtPending ||
+      !radioTimeReached(nowUs, state.radioReceiveAtPendingStartUs)) {
+    return;
+  }
+
+  if (static_cast<uint32_t>(nowUs - state.radioReceiveAtPendingStartUs) >=
+      state.radioReceiveAtPendingDurationUs) {
+    state.snapshot.radioReceiveAtPending = false;
+    state.snapshot.radioReceiveAtLateCount++;
+    state.radioReceiveAtPendingChannel = 0U;
+    state.radioReceiveAtPendingStartUs = 0U;
+    state.radioReceiveAtPendingDurationUs = 0U;
+    publishThreadRadioReceiveAtSnapshot(state);
+    return;
+  }
+
+  if (state.snapshot.radioState == OT_RADIO_STATE_TRANSMIT ||
+      threadRadioTransmitBusy() || threadRadioEnergyScanBusy()) {
+    state.snapshot.radioReceiveAtLateCount++;
+    return;
+  }
+
+  if (!ensureThreadRadioReady() ||
+      !state.radio.setChannel(state.radioReceiveAtPendingChannel)) {
+    state.snapshot.radioReceiveAtPending = false;
+    state.snapshot.radioLastError = OT_ERROR_FAILED;
+    state.snapshot.radioReceiveAtLateCount++;
+    state.radioReceiveAtPendingChannel = 0U;
+    state.radioReceiveAtPendingStartUs = 0U;
+    state.radioReceiveAtPendingDurationUs = 0U;
+    publishThreadRadioReceiveAtSnapshot(state);
+    return;
+  }
+
+  state.radio.cancelReceive();
+  state.snapshot.radioChannel = state.radioReceiveAtPendingChannel;
+  state.snapshot.radioState = OT_RADIO_STATE_RECEIVE;
+  state.snapshot.radioLastError = OT_ERROR_NONE;
+  if (!state.radio.beginReceive(kThreadRadioPollSpinLimit)) {
+    state.snapshot.radioReceiveAtPending = false;
+    state.snapshot.radioLastError = OT_ERROR_FAILED;
+    state.snapshot.radioReceiveAtLateCount++;
+    state.radioReceiveAtPendingChannel = 0U;
+    state.radioReceiveAtPendingStartUs = 0U;
+    state.radioReceiveAtPendingDurationUs = 0U;
+    publishThreadRadioReceiveAtSnapshot(state);
+    applyThreadRadioIdleState();
+    return;
+  }
+
+  state.radioReceiveAtActiveChannel = state.radioReceiveAtPendingChannel;
+  state.radioReceiveAtActiveStartUs = state.radioReceiveAtPendingStartUs;
+  state.radioReceiveAtActiveDurationUs = state.radioReceiveAtPendingDurationUs;
+  state.radioReceiveAtPendingChannel = 0U;
+  state.radioReceiveAtPendingStartUs = 0U;
+  state.radioReceiveAtPendingDurationUs = 0U;
+  state.snapshot.radioReceiveAtPending = false;
+  state.snapshot.radioReceiveAtActive = true;
+  state.snapshot.radioReceiveAtStartCount++;
+  publishThreadRadioReceiveAtSnapshot(state);
 }
 
 void pollThreadRadioReceive(otInstance* instance) {
@@ -2030,6 +2194,15 @@ void pollThreadRadioReceive(otInstance* instance) {
   captureThreadRadioReceivedFrame(instance, frame);
   state.radioRxDonePending = true;
   finishThreadRadioRx(instance);
+  if (state.snapshot.radioReceiveAtActive) {
+    state.radio.cancelReceive();
+    state.snapshot.radioReceiveAtActive = false;
+    state.radioReceiveAtActiveChannel = 0U;
+    state.radioReceiveAtActiveStartUs = 0U;
+    state.radioReceiveAtActiveDurationUs = 0U;
+    publishThreadRadioReceiveAtSnapshot(state);
+    applyThreadRadioIdleState();
+  }
 }
 
 int8_t convertThreadEnergyScanToDbm(uint8_t edLevel) {
@@ -2223,6 +2396,7 @@ bool OpenThreadPlatformSkeleton::snapshot(OpenThreadPlatformSkeletonSnapshot* ou
     return false;
   }
   updateRadioTime();
+  publishThreadRadioReceiveAtSnapshot(gOpenThreadPlatformState);
   *outSnapshot = gOpenThreadPlatformState.snapshot;
   return true;
 }
@@ -2289,6 +2463,7 @@ void otSysInit(int, char**) {
   state.radioTxAckFrameValid = false;
   state.radioEnergyScanDonePending = false;
   state.radioEnergyScanDoneDbm = OT_RADIO_RSSI_INVALID;
+  clearThreadRadioReceiveAtState(state);
   state.radioSrcMatchEnabled = false;
   clearThreadSrcMatchTables(state);
   resetDiagSnapshot(state);
@@ -2353,6 +2528,7 @@ void otSysDeinit(void) {
   gOpenThreadPlatformState.radioTxAckFrameValid = false;
   gOpenThreadPlatformState.radioEnergyScanDonePending = false;
   gOpenThreadPlatformState.radioEnergyScanDoneDbm = OT_RADIO_RSSI_INVALID;
+  clearThreadRadioReceiveAtState(gOpenThreadPlatformState);
   gOpenThreadPlatformState.radioSrcMatchEnabled = false;
   clearThreadSrcMatchTables(gOpenThreadPlatformState);
   gOpenThreadPlatformState.diagCallback = nullptr;
@@ -2409,10 +2585,12 @@ void otSysProcessDrivers(otInstance* instance) {
   }
 
   updateRadioTime();
+  serviceThreadRadioReceiveAt(state.radioCallbackInstance);
   finishThreadRadioTx(state.radioCallbackInstance);
   finishThreadRadioRx(state.radioCallbackInstance);
   finishThreadRadioEnergyScan(state.radioCallbackInstance);
   pollThreadRadioReceive(state.radioCallbackInstance);
+  serviceThreadRadioReceiveAt(state.radioCallbackInstance);
 
   if (state.radioCallbackInstance != nullptr) {
 #if defined(NRF54L15_CLEAN_OPENTHREAD_CORE_ENABLE) && \
@@ -2421,10 +2599,12 @@ void otSysProcessDrivers(otInstance* instance) {
       state.snapshot.eventPending = false;
       otTaskletsProcess(state.radioCallbackInstance);
       updateRadioTime();
+      serviceThreadRadioReceiveAt(state.radioCallbackInstance);
       finishThreadRadioTx(state.radioCallbackInstance);
       finishThreadRadioRx(state.radioCallbackInstance);
       finishThreadRadioEnergyScan(state.radioCallbackInstance);
       pollThreadRadioReceive(state.radioCallbackInstance);
+      serviceThreadRadioReceiveAt(state.radioCallbackInstance);
     }
 #endif
   }
@@ -3363,8 +3543,50 @@ otError otPlatRadioReceive(otInstance*, uint8_t channel) {
   return OT_ERROR_NONE;
 }
 
-otError otPlatRadioReceiveAt(otInstance*, uint8_t channel, uint32_t, uint32_t) {
-  return otPlatRadioReceive(nullptr, channel);
+otError otPlatRadioReceiveAt(otInstance* instance, uint8_t channel,
+                             uint32_t startUs, uint32_t durationUs) {
+  using namespace xiao_nrf54l15;
+
+  OpenThreadPlatformState& state = gOpenThreadPlatformState;
+  if (!state.snapshot.radioEnabled) {
+    return OT_ERROR_INVALID_STATE;
+  }
+  if (channel < OT_RADIO_2P4GHZ_OQPSK_CHANNEL_MIN ||
+      channel > OT_RADIO_2P4GHZ_OQPSK_CHANNEL_MAX || durationUs == 0U) {
+    return OT_ERROR_INVALID_ARGS;
+  }
+  if (state.snapshot.radioState == OT_RADIO_STATE_TRANSMIT ||
+      threadRadioTransmitBusy() || threadRadioEnergyScanBusy()) {
+    return OT_ERROR_BUSY;
+  }
+
+  const uint32_t nowUs = radioNow32();
+  if (radioTimeReached(nowUs, startUs) &&
+      static_cast<uint32_t>(nowUs - startUs) >= durationUs) {
+    state.snapshot.radioReceiveAtLateCount++;
+    return OT_ERROR_FAILED;
+  }
+
+  if (instance != nullptr) {
+    state.radioCallbackInstance = instance;
+  }
+
+  if (!state.snapshot.radioReceiveAtActive) {
+    state.radio.cancelReceive();
+  }
+
+  state.snapshot.radioReceiveAtPending = true;
+  state.radioReceiveAtPendingChannel = channel;
+  state.radioReceiveAtPendingStartUs = startUs;
+  state.radioReceiveAtPendingDurationUs = durationUs;
+  state.snapshot.radioReceiveAtScheduleCount++;
+  publishThreadRadioReceiveAtSnapshot(state);
+  if (!state.snapshot.radioRxOnWhenIdle && !state.snapshot.radioReceiveAtActive) {
+    state.snapshot.radioState = OT_RADIO_STATE_SLEEP;
+  }
+
+  serviceThreadRadioReceiveAt(state.radioCallbackInstance);
+  return OT_ERROR_NONE;
 }
 
 otRadioFrame* otPlatRadioGetTransmitBuffer(otInstance*) {

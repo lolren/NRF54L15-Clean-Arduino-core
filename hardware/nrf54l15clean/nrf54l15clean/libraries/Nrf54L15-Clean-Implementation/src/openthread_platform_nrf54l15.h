@@ -34,12 +34,15 @@ struct OpenThreadPlatformSkeletonSnapshot {
   bool radioEnergyScanPending = false;
   bool radioPromiscuous = false;
   bool radioRxOnWhenIdle = false;
+  bool radioReceiveAtPending = false;
+  bool radioReceiveAtActive = false;
   bool radioSrcMatchEnabled = false;
   bool radioLastTxAcked = false;
   bool radioLastTxAckFramePending = false;
   bool radioLastSrcMatchMatched = false;
   bool radioLastSrcMatchWasShort = false;
   uint8_t radioChannel = 0;
+  uint8_t radioReceiveAtChannel = 0;
   uint8_t radioLastEdLevel = 0;
   uint8_t radioLastTxLength = 0;
   uint8_t radioLastTxAckLength = 0;
@@ -103,6 +106,10 @@ struct OpenThreadPlatformSkeletonSnapshot {
   uint32_t radioRxDoneCount = 0;
   uint32_t radioEnergyScanCount = 0;
   uint32_t radioReceivePollCount = 0;
+  uint32_t radioReceiveAtScheduleCount = 0;
+  uint32_t radioReceiveAtStartCount = 0;
+  uint32_t radioReceiveAtTimeoutCount = 0;
+  uint32_t radioReceiveAtLateCount = 0;
   uint32_t radioFilteredCount = 0;
   uint32_t radioRxCrcErrorCount = 0;
   uint32_t radioRxInvalidLengthCount = 0;
@@ -112,6 +119,8 @@ struct OpenThreadPlatformSkeletonSnapshot {
   uint32_t diagRxCount = 0;
 
   uint64_t radioNowUs = 0;
+  uint32_t radioReceiveAtStartUs = 0;
+  uint32_t radioReceiveAtDurationUs = 0;
   uint8_t radioLastTxHeader[10] = {0};
   uint8_t radioLastRxHeader[10] = {0};
   uint8_t radioLastRxPhr = 0;

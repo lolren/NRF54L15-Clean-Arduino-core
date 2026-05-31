@@ -136,7 +136,7 @@ This section tracks user-facing Arduino behavior.
 
 | Box | Thread capability | Current state | What remains |
 |---|---|---|---|
-| [x] | OpenThread PAL skeleton | Implemented with settings, alarms, entropy/crypto, radio, source match, CSL state tracking, and diagnostic GPIO commands. | Keep compile coverage and continue expanding real radio conformance. |
+| [x] | OpenThread PAL skeleton | Implemented with settings, alarms, entropy/crypto, radio, source match, scheduled receive timing, CSL state tracking, and diagnostic GPIO commands. | Keep compile coverage and continue expanding real radio conformance. |
 | [x] | 802.15.4 TX/RX PAL | Implemented and two-board proven. | More stress and reference sniff validation. |
 | [x] | Fixed dataset attach | Implemented in experimental stage mode. | Reference-network attach validation. |
 | [x] | Leader/child role path | Implemented in experimental stage mode; default wrapper uses child-first attach with deterministic leader fallback to avoid two-board demo partition races. | Reboot recovery and longer soak. |
@@ -146,7 +146,7 @@ This section tracks user-facing Arduino behavior.
 | [ ] | Standard MeshCoP Joiner | API surface now exists and examples compile, but runtime reports unsupported while `OPENTHREAD_CONFIG_JOINER_ENABLE=0`. | Enable secure transport/DTLS and validate against a real commissioner. |
 | [ ] | Standard MeshCoP Commissioner | API surface now exists and examples compile, but runtime reports unsupported while `OPENTHREAD_CONFIG_COMMISSIONER_ENABLE=0`. | Enable secure transport/DTLS, add joiner table validation, then two-board commissioning soak. |
 | [ ] | Border router | Missing / non-goal | Should likely remain external. |
-| [ ] | CSL / sleepy end device depth | Partial | OpenThread PAL returns not-implemented for CSL operations. |
+| [ ] | CSL / sleepy end device depth | Partial | CSL state tracking and `otPlatRadioReceiveAt()` scheduling now exist; hardware-timed low-power wake, secure enhanced-ACK CSL IE insertion, and sleepy-device soak still remain. |
 | [ ] | Coexistence metrics/control | Missing | OpenThread radio coex APIs are not implemented. |
 | [ ] | Link metrics / enhanced ACK probing | Missing | PAL returns not-implemented for enhanced ACK probing. |
 | [ ] | Reference Thread network attach | Partial | Active-dataset TLV/hex import path, restart-without-reboot path, state-change/attach diagnostics, and attach-state-machine snapshot now exist in the experimental wrapper, but attach against a real external Thread network is still not validated enough to claim. |

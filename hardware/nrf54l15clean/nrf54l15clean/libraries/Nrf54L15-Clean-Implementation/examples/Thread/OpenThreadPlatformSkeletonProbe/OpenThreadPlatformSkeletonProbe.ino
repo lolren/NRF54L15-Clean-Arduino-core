@@ -357,6 +357,15 @@ void setup() {
   delay(300);
   OpenThreadPlatformSkeleton::process();
   const otError finalReceiveError = otPlatRadioReceive(nullptr, 15);
+  const uint32_t receiveAtStartUs =
+      static_cast<uint32_t>(otPlatRadioGetNow(nullptr) + 3000UL);
+  const otError receiveAtScheduleError =
+      otPlatRadioReceiveAt(nullptr, 16, receiveAtStartUs, 2000UL);
+  const uint32_t receiveAtWaitStartMs = millis();
+  while ((millis() - receiveAtWaitStartMs) < 20UL) {
+    OpenThreadPlatformSkeleton::process();
+    delayMicroseconds(500);
+  }
 
 #if defined(NRF54L15_CLEAN_OPENTHREAD_CORE_ENABLE) && \
     (NRF54L15_CLEAN_OPENTHREAD_CORE_ENABLE != 0)
@@ -540,6 +549,8 @@ void setup() {
   Serial.print(static_cast<int>(finalTxError));
   Serial.print("/");
   Serial.print(static_cast<int>(finalReceiveError));
+  Serial.print("/");
+  Serial.print(static_cast<int>(receiveAtScheduleError));
   Serial.print(" escan=");
   Serial.print(static_cast<int>(energyScanError));
   Serial.print("/");
@@ -552,6 +563,20 @@ void setup() {
   Serial.print(gRadioEnergyScanDoneCount);
   Serial.print("/");
   Serial.print(gRadioLastEnergyScanDbm);
+  Serial.print(" rxat=");
+  Serial.print(snapshot.radioReceiveAtPending ? 1 : 0);
+  Serial.print("/");
+  Serial.print(snapshot.radioReceiveAtActive ? 1 : 0);
+  Serial.print("/");
+  Serial.print(snapshot.radioReceiveAtChannel);
+  Serial.print("/");
+  Serial.print(snapshot.radioReceiveAtScheduleCount);
+  Serial.print("/");
+  Serial.print(snapshot.radioReceiveAtStartCount);
+  Serial.print("/");
+  Serial.print(snapshot.radioReceiveAtTimeoutCount);
+  Serial.print("/");
+  Serial.print(snapshot.radioReceiveAtLateCount);
   Serial.print(" cb=");
   Serial.print(gRadioTxStartedCount);
   Serial.print("/");
