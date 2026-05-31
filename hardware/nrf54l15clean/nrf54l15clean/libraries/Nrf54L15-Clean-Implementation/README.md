@@ -385,6 +385,12 @@ Thread example organization:
   Because this core does not expose external grant/request pins yet, TX/RX grants
   are reported as immediate rather than pretending to do real hardware
   arbitration.
+- Thread channel TX-power constraints are now stateful in the PAL:
+  `otPlatRadioSetChannelMaxTransmitPower()`,
+  `otPlatRadioSetChannelTargetPower()`, calibrated-power storage, raw-power
+  readback, and per-frame TX power clamping all feed the 802.15.4 radio path.
+  Region policy remains a stored region code only; there is no per-country
+  regulatory table in this core yet.
 - current Thread radio probes also include:
   - `OpenThreadCoreStageProbe`
   - `OpenThreadRoleStageProbe`

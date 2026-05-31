@@ -79,12 +79,21 @@ struct OpenThreadPlatformSkeletonSnapshot {
   otShortAddress radioLastRxDestinationShort = OT_RADIO_INVALID_SHORT_ADDR;
   otExtAddress extendedAddress = {};
   int8_t txPowerDbm = OT_RADIO_POWER_INVALID;
+  int8_t radioLastEffectiveTxPowerDbm = OT_RADIO_POWER_INVALID;
+  int8_t radioLastChannelMaxTxPowerDbm = OT_RADIO_POWER_INVALID;
   int8_t ccaThresholdDbm = 0;
   int8_t femLnaGainDbm = 0;
   int8_t lastRssiDbm = OT_RADIO_RSSI_INVALID;
   int8_t diagLastRxRssi = OT_RADIO_RSSI_INVALID;
   int8_t receiveSensitivityDbm = -100;
+  int16_t radioLastChannelTargetPowerCentiDbm = 0;
   uint16_t regionCode = 0;
+  uint16_t radioChannelMaxPowerMask = 0;
+  uint16_t radioChannelTargetPowerMask = 0;
+  uint16_t radioChannelDisabledMask = 0;
+  uint16_t radioCalibratedPowerCount = 0;
+  uint8_t radioLastRawPowerSettingLength = 0;
+  uint8_t radioLastRawPowerSetting[8] = {0};
 
   uint16_t sensitiveKeyCount = 0;
   uint16_t settingsKeyCount = 0;

@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
 
 #include "nrf54l15_hal.h"
 #include <openthread/platform/alarm-micro.h>
@@ -55,6 +56,13 @@ constexpr size_t kCryptoMaxKeyBytes = OT_CRYPTO_ECDSA_MAX_DER_SIZE;
 constexpr size_t kCryptoKeySlotCount = 8U;
 constexpr size_t kThreadSrcMatchShortCapacity = 16U;
 constexpr size_t kThreadSrcMatchExtCapacity = 16U;
+constexpr uint8_t kThreadRadioChannelMin = OT_RADIO_2P4GHZ_OQPSK_CHANNEL_MIN;
+constexpr uint8_t kThreadRadioChannelMax = OT_RADIO_2P4GHZ_OQPSK_CHANNEL_MAX;
+constexpr size_t kThreadRadioChannelCount =
+    (kThreadRadioChannelMax - kThreadRadioChannelMin) + 1U;
+constexpr size_t kThreadPowerCalibrationTableSize = 16U;
+constexpr size_t kThreadRawPowerSettingMaxLength = 8U;
+constexpr uint8_t kThreadGeneratedRawPowerSettingMagic = 0x54U;
 constexpr otRadioCaps kThreadRadioCaps =
     static_cast<otRadioCaps>(OT_RADIO_CAPS_ENERGY_SCAN |
                              OT_RADIO_CAPS_CSMA_BACKOFF |
@@ -138,6 +146,23 @@ struct ThreadSrcMatchExtEntry {
   otExtAddress address = {};
 };
 
+struct ThreadChannelPowerState {
+  bool maxPowerSet = false;
+  bool disabledByMaxPower = false;
+  bool targetPowerSet = false;
+  bool disabledByTargetPower = false;
+  int8_t maxPowerDbm = OT_RADIO_POWER_INVALID;
+  int16_t targetPowerCentiDbm = 0;
+};
+
+struct ThreadCalibratedPowerEntry {
+  bool occupied = false;
+  uint8_t channel = 0;
+  int16_t actualPowerCentiDbm = 0;
+  uint16_t rawLength = 0;
+  uint8_t raw[kThreadRawPowerSettingMaxLength] = {0};
+};
+
 struct ThreadMacDataRequestSource {
   bool valid = false;
   bool shortAddress = false;
@@ -187,6 +212,8 @@ struct OpenThreadPlatformState {
   bool radioSrcMatchEnabled = false;
   ThreadSrcMatchShortEntry srcMatchShort[kThreadSrcMatchShortCapacity] = {};
   ThreadSrcMatchExtEntry srcMatchExt[kThreadSrcMatchExtCapacity] = {};
+  ThreadChannelPowerState channelPower[kThreadRadioChannelCount] = {};
+  ThreadCalibratedPowerEntry calibratedPowers[kThreadPowerCalibrationTableSize] = {};
 
   otPlatDiagOutputCallback diagCallback = nullptr;
   void* diagCallbackContext = nullptr;
@@ -198,6 +225,170 @@ struct OpenThreadPlatformState {
   otCryptoKeyRef nextVolatileKeyRef = 1;
   CryptoKeySlot cryptoKeys[kCryptoKeySlotCount] = {};
 } gOpenThreadPlatformState;
+
+bool threadRadioChannelValid(uint8_t channel) {
+  return channel >= kThreadRadioChannelMin && channel <= kThreadRadioChannelMax;
+}
+
+size_t threadRadioChannelIndex(uint8_t channel) {
+  return static_cast<size_t>(channel - kThreadRadioChannelMin);
+}
+
+uint16_t threadRadioChannelMask(uint8_t channel) {
+  if (!threadRadioChannelValid(channel)) {
+    return 0U;
+  }
+  return static_cast<uint16_t>(1U << threadRadioChannelIndex(channel));
+}
+
+int8_t floorCentiDbmToDbm(int16_t centiDbm) {
+  int16_t dbm = static_cast<int16_t>(centiDbm / 100);
+  if (centiDbm < 0 && (centiDbm % 100) != 0) {
+    --dbm;
+  }
+  if (dbm > INT8_MAX) {
+    return INT8_MAX;
+  }
+  if (dbm < INT8_MIN) {
+    return INT8_MIN;
+  }
+  return static_cast<int8_t>(dbm);
+}
+
+uint16_t countThreadCalibratedPowerEntries(const OpenThreadPlatformState& state) {
+  uint16_t count = 0U;
+  for (size_t i = 0; i < kThreadPowerCalibrationTableSize; ++i) {
+    if (state.calibratedPowers[i].occupied) {
+      ++count;
+    }
+  }
+  return count;
+}
+
+void publishThreadChannelPowerSnapshot(OpenThreadPlatformState& state,
+                                       uint8_t channel) {
+  uint16_t maxMask = 0U;
+  uint16_t targetMask = 0U;
+  uint16_t disabledMask = 0U;
+  for (uint8_t ch = kThreadRadioChannelMin; ch <= kThreadRadioChannelMax; ++ch) {
+    const ThreadChannelPowerState& power =
+        state.channelPower[threadRadioChannelIndex(ch)];
+    const uint16_t mask = threadRadioChannelMask(ch);
+    if (power.maxPowerSet) {
+      maxMask |= mask;
+    }
+    if (power.targetPowerSet) {
+      targetMask |= mask;
+    }
+    if (power.disabledByMaxPower || power.disabledByTargetPower) {
+      disabledMask |= mask;
+    }
+  }
+
+  state.snapshot.radioChannelMaxPowerMask = maxMask;
+  state.snapshot.radioChannelTargetPowerMask = targetMask;
+  state.snapshot.radioChannelDisabledMask = disabledMask;
+  state.snapshot.radioCalibratedPowerCount =
+      countThreadCalibratedPowerEntries(state);
+
+  if (threadRadioChannelValid(channel)) {
+    const ThreadChannelPowerState& power =
+        state.channelPower[threadRadioChannelIndex(channel)];
+    state.snapshot.radioLastChannelMaxTxPowerDbm =
+        power.maxPowerSet ? power.maxPowerDbm : OT_RADIO_POWER_INVALID;
+    state.snapshot.radioLastChannelTargetPowerCentiDbm =
+        power.targetPowerSet ? power.targetPowerCentiDbm : 0;
+  }
+}
+
+void clearThreadChannelPowerState(OpenThreadPlatformState& state) {
+  memset(state.channelPower, 0, sizeof(state.channelPower));
+  memset(state.calibratedPowers, 0, sizeof(state.calibratedPowers));
+  state.snapshot.radioChannelMaxPowerMask = 0U;
+  state.snapshot.radioChannelTargetPowerMask = 0U;
+  state.snapshot.radioChannelDisabledMask = 0U;
+  state.snapshot.radioCalibratedPowerCount = 0U;
+  state.snapshot.radioLastEffectiveTxPowerDbm = OT_RADIO_POWER_INVALID;
+  state.snapshot.radioLastChannelMaxTxPowerDbm = OT_RADIO_POWER_INVALID;
+  state.snapshot.radioLastChannelTargetPowerCentiDbm = 0;
+  state.snapshot.radioLastRawPowerSettingLength = 0U;
+  memset(state.snapshot.radioLastRawPowerSetting, 0,
+         sizeof(state.snapshot.radioLastRawPowerSetting));
+}
+
+bool resolveThreadEffectiveTxPowerDbm(const OpenThreadPlatformState& state,
+                                      uint8_t channel, int8_t requestedPowerDbm,
+                                      int8_t* effectivePowerDbm,
+                                      bool* channelDisabled) {
+  if (effectivePowerDbm == nullptr || channelDisabled == nullptr ||
+      !threadRadioChannelValid(channel)) {
+    return false;
+  }
+
+  const ThreadChannelPowerState& power =
+      state.channelPower[threadRadioChannelIndex(channel)];
+  *channelDisabled = power.disabledByMaxPower || power.disabledByTargetPower;
+  if (*channelDisabled) {
+    return false;
+  }
+
+  int8_t effective =
+      (requestedPowerDbm == OT_RADIO_POWER_INVALID)
+          ? state.snapshot.txPowerDbm
+          : requestedPowerDbm;
+  if (power.targetPowerSet) {
+    const int8_t targetDbm = floorCentiDbmToDbm(power.targetPowerCentiDbm);
+    if (effective > targetDbm) {
+      effective = targetDbm;
+    }
+  }
+  if (power.maxPowerSet && effective > power.maxPowerDbm) {
+    effective = power.maxPowerDbm;
+  }
+
+  *effectivePowerDbm = effective;
+  return true;
+}
+
+bool applyThreadEffectiveTxPower(OpenThreadPlatformState& state,
+                                 uint8_t channel,
+                                 int8_t requestedPowerDbm) {
+  int8_t effectivePowerDbm = OT_RADIO_POWER_INVALID;
+  bool channelDisabled = false;
+  if (!resolveThreadEffectiveTxPowerDbm(state, channel, requestedPowerDbm,
+                                        &effectivePowerDbm,
+                                        &channelDisabled)) {
+    state.snapshot.radioLastEffectiveTxPowerDbm = OT_RADIO_POWER_INVALID;
+    publishThreadChannelPowerSnapshot(state, channel);
+    return false;
+  }
+
+  state.snapshot.radioLastEffectiveTxPowerDbm = effectivePowerDbm;
+  publishThreadChannelPowerSnapshot(state, channel);
+  if (state.snapshot.radioBackendReady &&
+      !state.radio.setTxPowerDbm(effectivePowerDbm)) {
+    return false;
+  }
+  return true;
+}
+
+const ThreadCalibratedPowerEntry* findThreadCalibrationForTarget(
+    const OpenThreadPlatformState& state, uint8_t channel,
+    int16_t targetPowerCentiDbm) {
+  const ThreadCalibratedPowerEntry* best = nullptr;
+  for (size_t i = 0; i < kThreadPowerCalibrationTableSize; ++i) {
+    const ThreadCalibratedPowerEntry& entry = state.calibratedPowers[i];
+    if (!entry.occupied || entry.channel != channel ||
+        entry.actualPowerCentiDbm > targetPowerCentiDbm) {
+      continue;
+    }
+    if (best == nullptr ||
+        entry.actualPowerCentiDbm > best->actualPowerCentiDbm) {
+      best = &entry;
+    }
+  }
+  return best;
+}
 
 void ensureTxFrameInitialized() {
   gOpenThreadPlatformState.txFrame.mPsdu = gOpenThreadPlatformState.txPsdu;
@@ -1870,7 +2061,13 @@ bool ensureThreadRadioReady() {
     return false;
   }
 
-  if (!state.radio.begin(state.snapshot.radioChannel, state.snapshot.txPowerDbm)) {
+  int8_t initialTxPowerDbm = state.snapshot.txPowerDbm;
+  bool channelDisabled = false;
+  (void)resolveThreadEffectiveTxPowerDbm(state, state.snapshot.radioChannel,
+                                         state.snapshot.txPowerDbm,
+                                         &initialTxPowerDbm,
+                                         &channelDisabled);
+  if (!state.radio.begin(state.snapshot.radioChannel, initialTxPowerDbm)) {
     state.snapshot.radioBackendReady = false;
     state.snapshot.radioLastError = OT_ERROR_FAILED;
     setLastLogLine("thread-radio-begin-failed");
@@ -1879,6 +2076,8 @@ bool ensureThreadRadioReady() {
 
   state.snapshot.radioBackendReady = true;
   state.snapshot.radioBackendWrappedDirect = true;
+  state.snapshot.radioLastEffectiveTxPowerDbm = initialTxPowerDbm;
+  publishThreadChannelPowerSnapshot(state, state.snapshot.radioChannel);
   state.radio.setMacDataRequestPendingCallback(threadMacDataRequestPendingCallback,
                                                &state);
   state.radio.setMacFrameReceiveFilterCallback(threadMacReceiveFilterCallback,
@@ -2498,6 +2697,7 @@ void otSysInit(int, char**) {
   clearThreadRadioReceiveAtState(state);
   state.radioSrcMatchEnabled = false;
   clearThreadSrcMatchTables(state);
+  clearThreadChannelPowerState(state);
   resetDiagSnapshot(state);
 
   state.snapshot.initialized = true;
@@ -2510,6 +2710,7 @@ void otSysInit(int, char**) {
   state.snapshot.radioLastEdLevel = 0U;
   state.snapshot.receiveSensitivityDbm = -100;
   state.snapshot.txPowerDbm = 0;
+  state.snapshot.radioLastEffectiveTxPowerDbm = 0;
   state.snapshot.ccaThresholdDbm = -75;
   state.snapshot.femLnaGainDbm = 0;
   state.snapshot.regionCode = static_cast<uint16_t>('W' << 8U) | static_cast<uint16_t>('W');
@@ -3421,16 +3622,45 @@ otError otPlatRadioGetTransmitPower(otInstance*, int8_t* power) {
   if (power == nullptr) {
     return OT_ERROR_INVALID_ARGS;
   }
-  *power = xiao_nrf54l15::gOpenThreadPlatformState.snapshot.txPowerDbm;
+  xiao_nrf54l15::OpenThreadPlatformState& state =
+      xiao_nrf54l15::gOpenThreadPlatformState;
+  int8_t effectivePowerDbm = state.snapshot.txPowerDbm;
+  bool channelDisabled = false;
+  if (xiao_nrf54l15::resolveThreadEffectiveTxPowerDbm(
+          state, state.snapshot.radioChannel, state.snapshot.txPowerDbm,
+          &effectivePowerDbm, &channelDisabled)) {
+    *power = effectivePowerDbm;
+  } else {
+    *power = OT_RADIO_POWER_INVALID;
+  }
+  state.snapshot.radioLastEffectiveTxPowerDbm = *power;
+  xiao_nrf54l15::publishThreadChannelPowerSnapshot(
+      state, state.snapshot.radioChannel);
   return OT_ERROR_NONE;
 }
 
 otError otPlatRadioSetTransmitPower(otInstance*, int8_t power) {
-  xiao_nrf54l15::gOpenThreadPlatformState.snapshot.txPowerDbm = power;
-  if (xiao_nrf54l15::gOpenThreadPlatformState.snapshot.radioBackendReady &&
-      !xiao_nrf54l15::gOpenThreadPlatformState.radio.setTxPowerDbm(power)) {
-    return OT_ERROR_FAILED;
+  xiao_nrf54l15::OpenThreadPlatformState& state =
+      xiao_nrf54l15::gOpenThreadPlatformState;
+  state.snapshot.txPowerDbm = power;
+  if (state.snapshot.radioBackendReady) {
+    int8_t effectivePowerDbm = OT_RADIO_POWER_INVALID;
+    bool channelDisabled = false;
+    if (xiao_nrf54l15::resolveThreadEffectiveTxPowerDbm(
+            state, state.snapshot.radioChannel, power, &effectivePowerDbm,
+            &channelDisabled)) {
+      if (!xiao_nrf54l15::applyThreadEffectiveTxPower(
+              state, state.snapshot.radioChannel, power)) {
+        return OT_ERROR_FAILED;
+      }
+    } else if (channelDisabled) {
+      state.snapshot.radioLastEffectiveTxPowerDbm = OT_RADIO_POWER_INVALID;
+    } else {
+      return OT_ERROR_FAILED;
+    }
   }
+  xiao_nrf54l15::publishThreadChannelPowerSnapshot(
+      state, state.snapshot.radioChannel);
   return OT_ERROR_NONE;
 }
 
@@ -3565,6 +3795,7 @@ otError otPlatRadioReceive(otInstance*, uint8_t channel) {
     return OT_ERROR_INVALID_ARGS;
   }
   state.snapshot.radioChannel = channel;
+  xiao_nrf54l15::publishThreadChannelPowerSnapshot(state, channel);
   state.snapshot.radioState = OT_RADIO_STATE_RECEIVE;
   state.snapshot.radioLastError = OT_ERROR_NONE;
   xiao_nrf54l15::recordThreadCoexRxRequest(state);
@@ -3648,14 +3879,15 @@ otError otPlatRadioTransmit(otInstance* instance, otRadioFrame* frame) {
     return OT_ERROR_INVALID_ARGS;
   }
 
-  if (frame->mInfo.mTxInfo.mTxPower != OT_RADIO_POWER_INVALID) {
-    state.snapshot.txPowerDbm = frame->mInfo.mTxInfo.mTxPower;
-    if (!state.radio.setTxPowerDbm(frame->mInfo.mTxInfo.mTxPower)) {
-      return OT_ERROR_FAILED;
-    }
-  } else if (!state.radio.setTxPowerDbm(state.snapshot.txPowerDbm)) {
+  const int8_t requestedTxPowerDbm =
+      (frame->mInfo.mTxInfo.mTxPower == OT_RADIO_POWER_INVALID)
+          ? state.snapshot.txPowerDbm
+          : frame->mInfo.mTxInfo.mTxPower;
+  if (!xiao_nrf54l15::applyThreadEffectiveTxPower(
+          state, frame->mChannel, requestedTxPowerDbm)) {
     return OT_ERROR_FAILED;
   }
+  frame->mInfo.mTxInfo.mTxPower = state.snapshot.radioLastEffectiveTxPowerDbm;
 
   state.radioCallbackInstance = instance;
   frame->mInfo.mTxInfo.mTimestamp = otPlatRadioGetNow(instance);
@@ -3899,8 +4131,32 @@ uint8_t otPlatRadioGetCslUncertainty(otInstance*) {
   return xiao_nrf54l15::gOpenThreadPlatformState.snapshot.cslUncertainty10us;
 }
 
-otError otPlatRadioSetChannelMaxTransmitPower(otInstance*, uint8_t, int8_t) {
-  return OT_ERROR_NOT_IMPLEMENTED;
+otError otPlatRadioSetChannelMaxTransmitPower(otInstance*, uint8_t channel,
+                                              int8_t maxPower) {
+  using namespace xiao_nrf54l15;
+
+  if (!threadRadioChannelValid(channel)) {
+    return OT_ERROR_INVALID_ARGS;
+  }
+
+  OpenThreadPlatformState& state = gOpenThreadPlatformState;
+  ThreadChannelPowerState& power =
+      state.channelPower[threadRadioChannelIndex(channel)];
+  if (maxPower == OT_RADIO_RSSI_INVALID) {
+    power.maxPowerSet = false;
+    power.disabledByMaxPower = true;
+    power.maxPowerDbm = OT_RADIO_POWER_INVALID;
+  } else {
+    power.maxPowerSet = true;
+    power.disabledByMaxPower = false;
+    power.maxPowerDbm = maxPower;
+  }
+  publishThreadChannelPowerSnapshot(state, channel);
+  if (state.snapshot.radioBackendReady && state.snapshot.radioChannel == channel &&
+      !applyThreadEffectiveTxPower(state, channel, state.snapshot.txPowerDbm)) {
+    return power.disabledByMaxPower ? OT_ERROR_NONE : OT_ERROR_FAILED;
+  }
+  return OT_ERROR_NONE;
 }
 
 otError otPlatRadioSetRegion(otInstance*, uint16_t regionCode) {
@@ -3920,18 +4176,136 @@ otError otPlatRadioConfigureEnhAckProbing(otInstance*, otLinkMetrics, otShortAdd
   return OT_ERROR_NOT_IMPLEMENTED;
 }
 
-otError otPlatRadioAddCalibratedPower(otInstance*, uint8_t, int16_t, const uint8_t*, uint16_t) {
-  return OT_ERROR_NOT_IMPLEMENTED;
+otError otPlatRadioAddCalibratedPower(otInstance*, uint8_t channel,
+                                      int16_t actualPower,
+                                      const uint8_t* rawPowerSetting,
+                                      uint16_t rawPowerSettingLength) {
+  using namespace xiao_nrf54l15;
+
+  if (!threadRadioChannelValid(channel) || rawPowerSetting == nullptr ||
+      rawPowerSettingLength == 0U ||
+      rawPowerSettingLength > kThreadRawPowerSettingMaxLength) {
+    return OT_ERROR_INVALID_ARGS;
+  }
+
+  OpenThreadPlatformState& state = gOpenThreadPlatformState;
+  ThreadCalibratedPowerEntry* freeEntry = nullptr;
+  for (size_t i = 0; i < kThreadPowerCalibrationTableSize; ++i) {
+    ThreadCalibratedPowerEntry& entry = state.calibratedPowers[i];
+    if (!entry.occupied) {
+      if (freeEntry == nullptr) {
+        freeEntry = &entry;
+      }
+      continue;
+    }
+    if (entry.channel == channel &&
+        entry.actualPowerCentiDbm == actualPower) {
+      return OT_ERROR_INVALID_ARGS;
+    }
+  }
+
+  if (freeEntry == nullptr) {
+    return OT_ERROR_NO_BUFS;
+  }
+
+  freeEntry->occupied = true;
+  freeEntry->channel = channel;
+  freeEntry->actualPowerCentiDbm = actualPower;
+  freeEntry->rawLength = rawPowerSettingLength;
+  memset(freeEntry->raw, 0, sizeof(freeEntry->raw));
+  memcpy(freeEntry->raw, rawPowerSetting, rawPowerSettingLength);
+  publishThreadChannelPowerSnapshot(state, channel);
+  return OT_ERROR_NONE;
 }
 
-otError otPlatRadioClearCalibratedPowers(otInstance*) { return OT_ERROR_NOT_IMPLEMENTED; }
-
-otError otPlatRadioSetChannelTargetPower(otInstance*, uint8_t, int16_t) {
-  return OT_ERROR_NOT_IMPLEMENTED;
+otError otPlatRadioClearCalibratedPowers(otInstance*) {
+  using namespace xiao_nrf54l15;
+  OpenThreadPlatformState& state = gOpenThreadPlatformState;
+  memset(state.calibratedPowers, 0, sizeof(state.calibratedPowers));
+  publishThreadChannelPowerSnapshot(state, state.snapshot.radioChannel);
+  return OT_ERROR_NONE;
 }
 
-otError otPlatRadioGetRawPowerSetting(otInstance*, uint8_t, uint8_t*, uint16_t*) {
-  return OT_ERROR_NOT_FOUND;
+otError otPlatRadioSetChannelTargetPower(otInstance*, uint8_t channel,
+                                         int16_t targetPower) {
+  using namespace xiao_nrf54l15;
+
+  if (!threadRadioChannelValid(channel)) {
+    return OT_ERROR_INVALID_ARGS;
+  }
+
+  OpenThreadPlatformState& state = gOpenThreadPlatformState;
+  ThreadChannelPowerState& power =
+      state.channelPower[threadRadioChannelIndex(channel)];
+  if (targetPower == INT16_MAX) {
+    power.targetPowerSet = false;
+    power.disabledByTargetPower = true;
+    power.targetPowerCentiDbm = 0;
+  } else {
+    power.targetPowerSet = true;
+    power.disabledByTargetPower = false;
+    power.targetPowerCentiDbm = targetPower;
+  }
+  publishThreadChannelPowerSnapshot(state, channel);
+  if (state.snapshot.radioBackendReady && state.snapshot.radioChannel == channel &&
+      !applyThreadEffectiveTxPower(state, channel, state.snapshot.txPowerDbm)) {
+    return power.disabledByTargetPower ? OT_ERROR_NONE : OT_ERROR_FAILED;
+  }
+  return OT_ERROR_NONE;
+}
+
+otError otPlatRadioGetRawPowerSetting(otInstance*, uint8_t channel,
+                                      uint8_t* rawPowerSetting,
+                                      uint16_t* rawPowerSettingLength) {
+  using namespace xiao_nrf54l15;
+
+  if (!threadRadioChannelValid(channel) || rawPowerSetting == nullptr ||
+      rawPowerSettingLength == nullptr) {
+    return OT_ERROR_INVALID_ARGS;
+  }
+
+  OpenThreadPlatformState& state = gOpenThreadPlatformState;
+  const ThreadChannelPowerState& power =
+      state.channelPower[threadRadioChannelIndex(channel)];
+  const ThreadCalibratedPowerEntry* calibration = nullptr;
+  if (power.targetPowerSet) {
+    calibration = findThreadCalibrationForTarget(state, channel,
+                                                 power.targetPowerCentiDbm);
+  }
+
+  uint8_t generatedRaw[2] = {kThreadGeneratedRawPowerSettingMagic, 0U};
+  uint16_t requiredLength = 0U;
+  const uint8_t* raw = nullptr;
+  if (calibration != nullptr) {
+    raw = calibration->raw;
+    requiredLength = calibration->rawLength;
+  } else {
+    int8_t effectivePowerDbm = OT_RADIO_POWER_INVALID;
+    bool channelDisabled = false;
+    if (!resolveThreadEffectiveTxPowerDbm(state, channel,
+                                          state.snapshot.txPowerDbm,
+                                          &effectivePowerDbm,
+                                          &channelDisabled)) {
+      return OT_ERROR_NOT_FOUND;
+    }
+    generatedRaw[1] = static_cast<uint8_t>(effectivePowerDbm);
+    raw = generatedRaw;
+    requiredLength = sizeof(generatedRaw);
+  }
+
+  if (*rawPowerSettingLength < requiredLength) {
+    *rawPowerSettingLength = requiredLength;
+    return OT_ERROR_INVALID_ARGS;
+  }
+
+  memcpy(rawPowerSetting, raw, requiredLength);
+  *rawPowerSettingLength = requiredLength;
+  state.snapshot.radioLastRawPowerSettingLength =
+      static_cast<uint8_t>(requiredLength);
+  memset(state.snapshot.radioLastRawPowerSetting, 0,
+         sizeof(state.snapshot.radioLastRawPowerSetting));
+  memcpy(state.snapshot.radioLastRawPowerSetting, raw, requiredLength);
+  return OT_ERROR_NONE;
 }
 
 void otPlatDiagSetOutputCallback(otInstance*, otPlatDiagOutputCallback callback, void* context) {

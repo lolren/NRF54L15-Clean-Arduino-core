@@ -148,6 +148,7 @@ This section tracks user-facing Arduino behavior.
 | [ ] | Border router | Missing / non-goal | Should likely remain external. |
 | [ ] | CSL / sleepy end device depth | Partial | CSL state tracking and `otPlatRadioReceiveAt()` scheduling now exist; hardware-timed low-power wake, secure enhanced-ACK CSL IE insertion, and sleepy-device soak still remain. |
 | [ ] | Coexistence metrics/control | Partial | OpenThread radio coex APIs are stateful and expose software request/grant metrics for the no-PTA-pin path. External PTA grant pins and real multi-radio arbitration remain unimplemented. |
+| [x] | Channel TX power constraints | Implemented | `otPlatRadioSetChannelMaxTransmitPower()`, target power, calibrated-power storage, raw setting readback, and per-frame effective TX power clamping are wired through the Thread PAL. |
 | [ ] | Link metrics / enhanced ACK probing | Missing | PAL returns not-implemented for enhanced ACK probing. |
 | [ ] | Reference Thread network attach | Partial | Active-dataset TLV/hex import path, restart-without-reboot path, state-change/attach diagnostics, and attach-state-machine snapshot now exist in the experimental wrapper, but attach against a real external Thread network is still not validated enough to claim. |
 | [ ] | Reboot recovery | Partial | Settings-backed active-dataset restore path now exists in the experimental wrapper, but two-board reboot/rejoin validation is still required before removing "experimental". |

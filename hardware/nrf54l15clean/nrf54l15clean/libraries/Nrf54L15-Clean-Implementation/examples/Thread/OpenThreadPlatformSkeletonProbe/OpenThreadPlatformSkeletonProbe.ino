@@ -314,6 +314,19 @@ void setup() {
   otPlatRadioSetShortAddress(nullptr, 0x2345);
   otPlatRadioSetAlternateShortAddress(nullptr, 0x3456);
   otPlatRadioSetTransmitPower(nullptr, 8);
+  const otError maxPowerError =
+      otPlatRadioSetChannelMaxTransmitPower(nullptr, 15, 6);
+  const uint8_t calibratedRawPower[2] = {0xC6U, 0x06U};
+  const otError calibratedPowerError =
+      otPlatRadioAddCalibratedPower(nullptr, 15, 600, calibratedRawPower,
+                                    sizeof(calibratedRawPower));
+  const otError targetPowerError =
+      otPlatRadioSetChannelTargetPower(nullptr, 15, 600);
+  uint8_t rawPowerSetting[8] = {0};
+  uint16_t rawPowerSettingLength = sizeof(rawPowerSetting);
+  const otError rawPowerError =
+      otPlatRadioGetRawPowerSetting(nullptr, 15, rawPowerSetting,
+                                    &rawPowerSettingLength);
   otRadioFrame* txFrame = otPlatRadioGetTransmitBuffer(nullptr);
   bool txFramePrepared = false;
   if (txFrame != nullptr && txFrame->mPsdu != nullptr) {
@@ -330,6 +343,9 @@ void setup() {
       txFramePrepared ? otPlatRadioTransmit(nullptr, txFrame)
                       : OT_ERROR_INVALID_ARGS;
   const otError receiveEnterError = otPlatRadioReceive(nullptr, 15);
+  int8_t effectiveTxPower = OT_RADIO_POWER_INVALID;
+  const otError getPowerError =
+      otPlatRadioGetTransmitPower(nullptr, &effectiveTxPower);
   const otError energyScanError = otPlatRadioEnergyScan(nullptr, 15, 1);
   const otError txDuringEnergyScanError =
       txFramePrepared ? otPlatRadioTransmit(nullptr, txFrame)
@@ -524,6 +540,36 @@ void setup() {
   Serial.print(snapshot.lastRssiDbm);
   Serial.print(" tx=");
   Serial.print(snapshot.txPowerDbm);
+  Serial.print("/");
+  Serial.print(snapshot.radioLastEffectiveTxPowerDbm);
+  Serial.print("/");
+  Serial.print(snapshot.radioLastChannelMaxTxPowerDbm);
+  Serial.print("/");
+  Serial.print(snapshot.radioLastChannelTargetPowerCentiDbm);
+  Serial.print("/");
+  Serial.print(snapshot.radioChannelMaxPowerMask, HEX);
+  Serial.print("/");
+  Serial.print(snapshot.radioChannelTargetPowerMask, HEX);
+  Serial.print("/");
+  Serial.print(snapshot.radioChannelDisabledMask, HEX);
+  Serial.print("/");
+  Serial.print(snapshot.radioCalibratedPowerCount);
+  Serial.print("/");
+  Serial.print(static_cast<int>(getPowerError));
+  Serial.print("/");
+  Serial.print(effectiveTxPower);
+  Serial.print("/");
+  Serial.print(static_cast<int>(maxPowerError));
+  Serial.print("/");
+  Serial.print(static_cast<int>(calibratedPowerError));
+  Serial.print("/");
+  Serial.print(static_cast<int>(targetPowerError));
+  Serial.print("/");
+  Serial.print(static_cast<int>(rawPowerError));
+  Serial.print("/");
+  Serial.print(rawPowerSettingLength);
+  Serial.print("/");
+  printHexBuffer(rawPowerSetting, rawPowerSettingLength);
   Serial.print(" txpath=");
   Serial.print(snapshot.txRequestCount);
   Serial.print("/");
