@@ -101,6 +101,22 @@ class Nrf54ThreadExperimental {
     char blockerName[40] = {0};
   };
 
+  struct DatasetRestoreDiagnostics {
+    bool valid = false;
+    bool started = false;
+    bool instanceReady = false;
+    bool wipeRequested = false;
+    bool settingsWiped = false;
+    bool attempted = false;
+    bool restored = false;
+    bool datasetConfigured = false;
+    bool datasetApplied = false;
+    uint16_t restoredTlvLength = 0U;
+    otError error = OT_ERROR_NONE;
+    char sourceName[16] = {0};
+    char blockerName[40] = {0};
+  };
+
   Nrf54ThreadExperimental() = default;
 
   bool begin(bool wipeSettings = true);
@@ -159,6 +175,8 @@ class Nrf54ThreadExperimental {
   bool getAttachDiagnostics(AttachDiagnostics* outDiagnostics) const;
   bool getAttachDebugState(AttachDebugState* outState) const;
   bool getAttachSummary(AttachSummary* outSummary) const;
+  bool getDatasetRestoreDiagnostics(
+      DatasetRestoreDiagnostics* outDiagnostics) const;
 
   bool started() const;
   bool attached() const;
@@ -181,6 +199,7 @@ class Nrf54ThreadExperimental {
   const char* joinerStateName() const;
   bool datasetConfigured() const;
   bool restoredFromSettings() const;
+  otError datasetRestoreError() const;
   otError lastError() const;
   otError lastUdpError() const;
   otChangedFlags lastChangedFlags() const;
@@ -286,6 +305,8 @@ class Nrf54ThreadExperimental {
   bool datasetApplied_ = false;
   bool datasetRestoreAttempted_ = false;
   bool datasetRestoredFromSettings_ = false;
+  otError datasetRestoreError_ = OT_ERROR_NONE;
+  uint16_t datasetRestoreTlvLength_ = 0U;
   bool attachPolicyConfigured_ = false;
   bool routerEligible_ = false;
   bool childFirstFallbackUsed_ = false;

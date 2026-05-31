@@ -67,15 +67,16 @@ Current gap:
 - full Zigbee stack layers (commissioning, NWK/APS/ZCL/security profiles) are not implemented yet; current support is IEEE 802.15.4 PHY/MAC-lite with coordinator/router/end-device role demos
 - Thread is experimental, not production-claimed. The repo now has staged
   OpenThread core bring-up with fixed dataset, leader/child/router paths,
-  PSKc/passphrase dataset helpers, and UDP examples. Joiner/commissioner,
-  reference-network attach, reboot recovery, and sleepy-device depth remain
-  open.
+  PSKc/passphrase dataset helpers, UDP examples, and saved-dataset restore
+  diagnostics. Joiner/commissioner, reference-network attach, validated reboot
+  recovery, and sleepy-device depth remain open.
 - Matter is foundation-only. The repo has staged `connectedhomeip` support,
   onboarding-code helpers, an on/off-light model, and a Thread dataset export
-  seam. It can build structured staged DNS-SD/SRP records and track
-  publish/unpublish lifecycle diagnostics for the future discovery backend, but
-  real mDNS/SRP publication, commissioning, commissioner/Home Assistant control,
-  and reboot recovery remain open.
+  seam. It can build structured staged DNS-SD/SRP records, expose Thread
+  restore diagnostics through the on-network node, and track publish/unpublish
+  lifecycle diagnostics for the future discovery backend, but real mDNS/SRP
+  publication, commissioning, commissioner/Home Assistant control, and Matter
+  session recovery remain open.
 
 ## Current Validation And Planning Docs
 

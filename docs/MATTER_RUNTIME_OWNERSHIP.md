@@ -37,6 +37,7 @@ These same decisions are mirrored in
   - onboarding code generation
   - explicit Thread dependency resolution
   - Thread dataset export into staged CHIP TLV form
+  - Thread restore diagnostics exposed in the on-network node snapshot
 - the staged on-network on/off-light examples are API/bootstrap proofs only;
   they are not a commissioned Matter runtime.
 

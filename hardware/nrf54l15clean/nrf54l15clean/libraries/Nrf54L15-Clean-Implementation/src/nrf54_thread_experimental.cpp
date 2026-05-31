@@ -92,6 +92,8 @@ bool Nrf54ThreadExperimental::begin(bool wipeSettings, AttachPolicy policy) {
   pendingChangedFlags_ = 0U;
   datasetRestoreAttempted_ = false;
   datasetRestoredFromSettings_ = false;
+  datasetRestoreError_ = OT_ERROR_NONE;
+  datasetRestoreTlvLength_ = 0U;
   attachPolicyConfigured_ = false;
   routerEligible_ = false;
   childFirstFallbackUsed_ = false;
@@ -199,6 +201,8 @@ bool Nrf54ThreadExperimental::restart(bool wipeSettings) {
   lastChangedFlags_ = 0U;
   pendingChangedFlags_ = 0U;
   datasetRestoreAttempted_ = false;
+  datasetRestoreError_ = OT_ERROR_NONE;
+  datasetRestoreTlvLength_ = 0U;
   attachPolicyConfigured_ = false;
   routerEligible_ = false;
   childFirstFallbackUsed_ = false;
@@ -307,6 +311,8 @@ bool Nrf54ThreadExperimental::setActiveDataset(
   datasetConfigured_ = true;
   datasetApplied_ = false;
   datasetRestoredFromSettings_ = false;
+  datasetRestoreError_ = OT_ERROR_NONE;
+  datasetRestoreTlvLength_ = 0U;
   lastError_ = OT_ERROR_NONE;
   return true;
 }
@@ -447,6 +453,8 @@ bool Nrf54ThreadExperimental::wipePersistentSettings() {
   datasetApplied_ = false;
   datasetRestoreAttempted_ = false;
   datasetRestoredFromSettings_ = false;
+  datasetRestoreError_ = OT_ERROR_NONE;
+  datasetRestoreTlvLength_ = 0U;
   lastError_ = OT_ERROR_NONE;
   return true;
 #endif
@@ -971,6 +979,12 @@ bool Nrf54ThreadExperimental::getAttachSummary(AttachSummary* outSummary) const 
     if (!wipeSettings_ && !datasetRestoreAttempted_) {
       setText(outSummary->blockerName, sizeof(outSummary->blockerName),
               "waiting_restore_probe");
+    } else if (!wipeSettings_ && datasetRestoreError_ == OT_ERROR_NOT_FOUND) {
+      setText(outSummary->blockerName, sizeof(outSummary->blockerName),
+              "restore_no_saved_dataset");
+    } else if (!wipeSettings_ && datasetRestoreError_ != OT_ERROR_NONE) {
+      setText(outSummary->blockerName, sizeof(outSummary->blockerName),
+              "restore_error");
     } else {
       setText(outSummary->blockerName, sizeof(outSummary->blockerName),
               "waiting_dataset");
@@ -1066,6 +1080,80 @@ bool Nrf54ThreadExperimental::getAttachSummary(AttachSummary* outSummary) const 
 
   setText(outSummary->blockerName, sizeof(outSummary->blockerName),
           "detached_idle");
+  return true;
+}
+
+bool Nrf54ThreadExperimental::getDatasetRestoreDiagnostics(
+    DatasetRestoreDiagnostics* outDiagnostics) const {
+  if (outDiagnostics == nullptr) {
+    return false;
+  }
+
+  *outDiagnostics = {};
+  outDiagnostics->valid = true;
+  outDiagnostics->started = beginCalled_;
+  outDiagnostics->instanceReady = (instance_ != nullptr);
+  outDiagnostics->wipeRequested = wipeSettings_;
+  outDiagnostics->settingsWiped = settingsWiped_;
+  outDiagnostics->attempted = datasetRestoreAttempted_;
+  outDiagnostics->restored = datasetRestoredFromSettings_;
+  outDiagnostics->datasetConfigured = datasetConfigured_;
+  outDiagnostics->datasetApplied = datasetApplied_;
+  outDiagnostics->restoredTlvLength = datasetRestoreTlvLength_;
+  outDiagnostics->error = datasetRestoreError_;
+
+  auto setText = [](char* destination, size_t length, const char* source) {
+    if (destination == nullptr || length == 0U) {
+      return;
+    }
+    destination[0] = '\0';
+    if (source == nullptr) {
+      return;
+    }
+    strncpy(destination, source, length - 1U);
+    destination[length - 1U] = '\0';
+  };
+
+  if (datasetRestoredFromSettings_) {
+    setText(outDiagnostics->sourceName, sizeof(outDiagnostics->sourceName),
+            "settings");
+  } else if (datasetConfigured_) {
+    setText(outDiagnostics->sourceName, sizeof(outDiagnostics->sourceName),
+            "configured");
+  } else {
+    setText(outDiagnostics->sourceName, sizeof(outDiagnostics->sourceName),
+            "none");
+  }
+
+  if (!beginCalled_) {
+    setText(outDiagnostics->blockerName, sizeof(outDiagnostics->blockerName),
+            "begin_not_called");
+  } else if (wipeSettings_) {
+    setText(outDiagnostics->blockerName, sizeof(outDiagnostics->blockerName),
+            "settings_wipe_requested");
+  } else if (datasetRestoredFromSettings_) {
+    setText(outDiagnostics->blockerName, sizeof(outDiagnostics->blockerName),
+            "none");
+  } else if (datasetConfigured_) {
+    setText(outDiagnostics->blockerName, sizeof(outDiagnostics->blockerName),
+            "manual_dataset");
+  } else if (instance_ == nullptr) {
+    setText(outDiagnostics->blockerName, sizeof(outDiagnostics->blockerName),
+            "waiting_instance_init");
+  } else if (!datasetRestoreAttempted_) {
+    setText(outDiagnostics->blockerName, sizeof(outDiagnostics->blockerName),
+            "waiting_restore_probe");
+  } else if (datasetRestoreError_ == OT_ERROR_NOT_FOUND) {
+    setText(outDiagnostics->blockerName, sizeof(outDiagnostics->blockerName),
+            "no_saved_dataset");
+  } else if (datasetRestoreError_ != OT_ERROR_NONE) {
+    setText(outDiagnostics->blockerName, sizeof(outDiagnostics->blockerName),
+            "restore_error");
+  } else {
+    setText(outDiagnostics->blockerName, sizeof(outDiagnostics->blockerName),
+            "waiting_dataset");
+  }
+
   return true;
 }
 
@@ -1330,6 +1418,10 @@ bool Nrf54ThreadExperimental::restoredFromSettings() const {
   return datasetRestoredFromSettings_;
 }
 
+otError Nrf54ThreadExperimental::datasetRestoreError() const {
+  return datasetRestoreError_;
+}
+
 otError Nrf54ThreadExperimental::lastError() const { return lastError_; }
 
 otError Nrf54ThreadExperimental::lastUdpError() const { return lastUdpError_; }
@@ -1351,12 +1443,18 @@ otChangedFlags Nrf54ThreadExperimental::consumePendingChangedFlags() {
 otInstance* Nrf54ThreadExperimental::rawInstance() const { return instance_; }
 
 bool Nrf54ThreadExperimental::restoreDatasetFromSettings() {
+  datasetRestoreAttempted_ = true;
+  datasetRestoredFromSettings_ = false;
+  datasetRestoreError_ = OT_ERROR_NONE;
+  datasetRestoreTlvLength_ = 0U;
 #if !defined(NRF54L15_CLEAN_OPENTHREAD_CORE_ENABLE) || \
     (NRF54L15_CLEAN_OPENTHREAD_CORE_ENABLE == 0)
+  datasetRestoreError_ = OT_ERROR_INVALID_STATE;
   lastError_ = OT_ERROR_INVALID_STATE;
   return false;
 #else
   if (instance_ == nullptr) {
+    datasetRestoreError_ = OT_ERROR_INVALID_STATE;
     lastError_ = OT_ERROR_INVALID_STATE;
     return false;
   }
@@ -1364,16 +1462,24 @@ bool Nrf54ThreadExperimental::restoreDatasetFromSettings() {
   otOperationalDataset restored = {};
   const otError error = otDatasetGetActive(instance_, &restored);
   if (error != OT_ERROR_NONE) {
+    datasetRestoreError_ = error;
     if (error != OT_ERROR_NOT_FOUND) {
       lastError_ = error;
     }
     return false;
   }
 
+  otOperationalDatasetTlvs restoredTlvs = {};
+  const otError tlvError = otDatasetGetActiveTlvs(instance_, &restoredTlvs);
+  if (tlvError == OT_ERROR_NONE) {
+    datasetRestoreTlvLength_ = restoredTlvs.mLength;
+  }
+
   dataset_ = restored;
   datasetConfigured_ = true;
   datasetApplied_ = true;
   datasetRestoredFromSettings_ = true;
+  datasetRestoreError_ = OT_ERROR_NONE;
   lastError_ = OT_ERROR_NONE;
   return true;
 #endif

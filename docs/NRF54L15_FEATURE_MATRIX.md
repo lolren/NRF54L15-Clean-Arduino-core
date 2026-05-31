@@ -32,7 +32,7 @@ These are the items most likely to matter for users or product work.
 | [x] | Matter end-to-end | On-network on/off-light, encrypted IM over Thread (2-board), PASE SPAKE2+ commissioning (2-board ~45s), CASE Sigma protocol with fragmentation. Software secp256r1 ECC with Jacobian + 4-bit windowed optimization now measures about 0.84s sign / 1.76s verify on board. | Discovery, control, Home Assistant integration. |
 | [ ] | BLE production controller parity | Legacy advertising, scanning, connect, GATT, MTU, PHY requests, extended advertising/scanning, and many Bluefruit-compatible flows exist. | Full controller conformance, robust pairing/bonding across hosts, multi-role stress, periodic advertising, ISO, and full interop matrix. |
 | [ ] | Bluetooth Channel Sounding product support | Real two-board CS bring-up, DFE/RTT helpers, HCI-style parsing, and VPR CS transport scaffolding exist. | Production BLE controller runtime behind CS and Bluetooth CS interoperability. |
-| [ ] | Thread production support | Experimental staged OpenThread: leader/child/router, UDP, PSK Joiner/Commissioner (MAC verified), CSL PAL, 2-board PASE verified. | Reference-network attach, DTLS joiner, reboot recovery, production API. |
+| [ ] | Thread production support | Experimental staged OpenThread: leader/child/router, UDP, PSK Joiner/Commissioner (MAC verified), CSL PAL, restore diagnostics, 2-board PASE verified. | Reference-network attach, DTLS joiner, reboot recovery validation, production API. |
 | [ ] | Zigbee production stack | IEEE 802.15.4 MAC-lite, role demos, HA-ish examples, ZCL codec/security pieces exist. | Certified/full Zigbee stack behavior: robust commissioning, NWK/APS/ZDO/ZCL/security profile completeness. |
 | [ ] | VPR softperipheral/runtime | VPR boot/control, shared transport, lifecycle probes, ticker/offload demos, and CS service scaffolding exist. | General VPR runtime, reusable softperipheral framework, sQSPI, production controller-service ownership. |
 | [ ] | Security product path | CRACEN RNG/AAR/ECB/CCM, KMU wrapper, TAMPC wrapper, and some proofs exist. | Reusable KMU-to-CRACEN key consumers, CRACEN PKE/ECDSA, secure/non-secure policy docs, external tamper reset characterization. |
@@ -150,8 +150,8 @@ This section tracks user-facing Arduino behavior.
 | [ ] | Coexistence metrics/control | Partial | OpenThread radio coex APIs are stateful and expose software request/grant metrics for the no-PTA-pin path. External PTA grant pins and real multi-radio arbitration remain unimplemented. |
 | [x] | Channel TX power constraints | Implemented | `otPlatRadioSetChannelMaxTransmitPower()`, target power, calibrated-power storage, raw setting readback, and per-frame effective TX power clamping are wired through the Thread PAL. |
 | [ ] | Link metrics / enhanced ACK probing | Partial | `otPlatRadioConfigureEnhAckProbing()` now accepts, clears, validates, and snapshots one probing initiator for LQI/link-margin/RSSI requests. Real secure Enhanced ACK vendor-IE insertion and multi-initiator support still remain. |
-| [ ] | Reference Thread network attach | Partial | Active-dataset TLV/hex import path, restart-without-reboot path, state-change/attach diagnostics, and attach-state-machine snapshot now exist in the experimental wrapper, but attach against a real external Thread network is still not validated enough to claim. |
-| [ ] | Reboot recovery | Partial | Settings-backed active-dataset restore path now exists in the experimental wrapper, but two-board reboot/rejoin validation is still required before removing "experimental". |
+| [ ] | Reference Thread network attach | Partial | Active-dataset TLV/hex import path, restart-without-reboot path, state-change/attach diagnostics, attach-state-machine snapshot, and dataset-restore diagnostics now exist in the experimental wrapper, but attach against a real external Thread network is still not validated enough to claim. |
+| [ ] | Reboot recovery | Partial | Settings-backed active-dataset restore path and public restore diagnostics now exist in the experimental wrapper and Matter on-network snapshot, but two-board reboot/rejoin validation is still required before removing "experimental". |
 
 ## Matter Matrix
 
@@ -170,7 +170,7 @@ This section tracks user-facing Arduino behavior.
 | [ ] | Discovery | Structured staged DNS-SD/SRP records and publish/unpublish lifecycle diagnostics now exist for commissionable `_matterc._udp` plus blocked operational `_matter._tcp`, but real mDNS/SRP registration is still disabled. | Enable and validate real discovery from a commissioner. |
 | [ ] | Control from commissioner | Missing | Required for product claim. |
 | [ ] | Home Assistant validation | Missing | Required for user-facing claim. |
-| [ ] | Reboot/reconnect recovery | Missing | Required for user-facing claim. |
+| [ ] | Reboot/reconnect recovery | Partial | Thread dataset restore diagnostics now surface through the Matter on-network node, but commissioned Matter session recovery is not validated. |
 | [ ] | More Matter device types | Missing / deferred | Do not add before first on/off light is actually commissioned. |
 
 ## Zigbee / IEEE 802.15.4 Matrix

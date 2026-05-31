@@ -176,6 +176,37 @@ void printAttachSummary() {
   Serial.println(summary.waitingForReattachTimer ? 1 : 0);
 }
 
+void printDatasetRestoreDiagnostics() {
+  Nrf54ThreadExperimental::DatasetRestoreDiagnostics diagnostics;
+  const bool ok = gThread.getDatasetRestoreDiagnostics(&diagnostics);
+  Serial.print("thread_cmd restore_diag_ok=");
+  Serial.println(ok ? 1 : 0);
+  if (!ok) {
+    return;
+  }
+
+  Serial.print("thread_cmd restore_started=");
+  Serial.println(diagnostics.started ? 1 : 0);
+  Serial.print("thread_cmd restore_instance_ready=");
+  Serial.println(diagnostics.instanceReady ? 1 : 0);
+  Serial.print("thread_cmd restore_wipe_requested=");
+  Serial.println(diagnostics.wipeRequested ? 1 : 0);
+  Serial.print("thread_cmd restore_settings_wiped=");
+  Serial.println(diagnostics.settingsWiped ? 1 : 0);
+  Serial.print("thread_cmd restore_attempted=");
+  Serial.println(diagnostics.attempted ? 1 : 0);
+  Serial.print("thread_cmd restore_restored=");
+  Serial.println(diagnostics.restored ? 1 : 0);
+  Serial.print("thread_cmd restore_source=");
+  Serial.println(diagnostics.sourceName);
+  Serial.print("thread_cmd restore_tlv_len=");
+  Serial.println(diagnostics.restoredTlvLength);
+  Serial.print("thread_cmd restore_error=");
+  Serial.println(static_cast<int>(diagnostics.error));
+  Serial.print("thread_cmd restore_blocker=");
+  Serial.println(diagnostics.blockerName);
+}
+
 void printState(const char* reason) {
   Serial.print("thread_cmd reason=");
   Serial.println(reason);
@@ -198,6 +229,7 @@ void printState(const char* reason) {
   printAttachDiagnostics();
   printAttachDebugState();
   printAttachSummary();
+  printDatasetRestoreDiagnostics();
 }
 
 void printDataset() {
@@ -219,6 +251,7 @@ void printHelp() {
   Serial.println("thread_cmd   demo-dataset");
   Serial.println("thread_cmd   dataset-hex <ot-tlv-hex>");
   Serial.println("thread_cmd   stats");
+  Serial.println("thread_cmd   restore");
   Serial.println("thread_cmd   router");
   Serial.println("thread_cmd   router-on");
   Serial.println("thread_cmd   router-off");
@@ -255,6 +288,11 @@ void handleLine(char* line) {
         static_cast<Nrf54ThreadExperimental::Role>(g_callbackRoleValue)));
     printAttachDebugState();
     printAttachSummary();
+    printDatasetRestoreDiagnostics();
+    return;
+  }
+  if (strcmp(line, "restore") == 0) {
+    printDatasetRestoreDiagnostics();
     return;
   }
   if (strcmp(line, "demo-dataset") == 0) {

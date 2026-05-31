@@ -31,8 +31,9 @@ This document records the Thread ownership decisions encoded in
 - leader, child, and router paths have been brought up in staged examples.
 - UDP send/receive examples exist for staged two-board validation.
 - PSKc/passphrase dataset helpers exist.
-- settings-backed active-dataset restore plus TLV/hex import/export now exist in
-  the experimental wrapper for reboot/reference-network attach work.
+- settings-backed active-dataset restore, restore diagnostics, and TLV/hex
+  import/export now exist in the experimental wrapper for reboot and
+  reference-network attach work.
 - OpenThread state-change flags and attach diagnostics are now surfaced through
   the experimental wrapper for Arduino-facing attach debugging.
 - the hidden attach-state machine snapshot is now also surfaced there, so
@@ -76,7 +77,8 @@ This document records the Thread ownership decisions encoded in
 ## Next Ticks
 
 - [ ] validate attach against a reference Thread network.
-- [ ] validate saved dataset/settings after reboot on two boards.
+- [ ] validate saved dataset/settings after reboot on two boards with the new
+  restore diagnostics as evidence.
 - [ ] add or explicitly defer joiner support.
 - [ ] validate sleepy-device behavior.
 - [ ] keep Zigbee regressions green because Zigbee and Thread share the same

@@ -142,6 +142,23 @@ void printThreadAttachSummary(
   Serial.println(summary.configuredForAttach ? 1 : 0);
 }
 
+void printThreadRestoreDiagnostics(
+    const xiao_nrf54l15::Nrf54ThreadExperimental::DatasetRestoreDiagnostics&
+        diagnostics) {
+  Serial.print("matter_cmd_demo thread_restore_attempted=");
+  Serial.println(diagnostics.attempted ? 1 : 0);
+  Serial.print("matter_cmd_demo thread_restore_restored=");
+  Serial.println(diagnostics.restored ? 1 : 0);
+  Serial.print("matter_cmd_demo thread_restore_source=");
+  Serial.println(diagnostics.sourceName);
+  Serial.print("matter_cmd_demo thread_restore_tlv_len=");
+  Serial.println(diagnostics.restoredTlvLength);
+  Serial.print("matter_cmd_demo thread_restore_error=");
+  Serial.println(static_cast<int>(diagnostics.error));
+  Serial.print("matter_cmd_demo thread_restore_blocker=");
+  Serial.println(diagnostics.blockerName);
+}
+
 void printReadinessSummary(
     const xiao_nrf54l15::MatterOnNetworkReadinessSummary& summary) {
   Serial.print("matter_cmd_demo readiness_phase=");
@@ -488,6 +505,7 @@ void printState(const char* reason) {
   printThreadAttachDiagnostics();
   printThreadAttachDebugState(status.threadAttachDebugState);
   printThreadAttachSummary(status.threadAttachSummary);
+  printThreadRestoreDiagnostics(status.threadRestoreDiagnostics);
   printReadinessSummary(status.readinessSummary);
   printDiscoverySummary(status.discoverySummary);
   printDiscoveryPublication(status.discoveryPublication);
@@ -637,6 +655,7 @@ void handleLine(char* line) {
     if (ok) {
       printThreadAttachDebugState(status.threadAttachDebugState);
       printThreadAttachSummary(status.threadAttachSummary);
+      printThreadRestoreDiagnostics(status.threadRestoreDiagnostics);
     }
     return;
   }

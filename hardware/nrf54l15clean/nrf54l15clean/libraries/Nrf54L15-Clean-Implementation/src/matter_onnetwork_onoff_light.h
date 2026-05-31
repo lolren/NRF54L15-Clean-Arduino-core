@@ -102,6 +102,8 @@ struct MatterOnNetworkReadinessSummary {
   bool qrCodeReady = false;
   bool threadDatasetExportable = false;
   Nrf54ThreadExperimental::AttachSummary threadAttachSummary = {};
+  Nrf54ThreadExperimental::DatasetRestoreDiagnostics
+      threadRestoreDiagnostics = {};
   char phaseName[32] = {0};
   char blockerName[48] = {0};
 };
@@ -173,6 +175,8 @@ struct MatterOnNetworkOnOffLightStatus {
   otChangedFlags threadLastChangedFlags = 0U;
   Nrf54ThreadExperimental::AttachDebugState threadAttachDebugState = {};
   Nrf54ThreadExperimental::AttachSummary threadAttachSummary = {};
+  Nrf54ThreadExperimental::DatasetRestoreDiagnostics
+      threadRestoreDiagnostics = {};
   MatterOnNetworkReadinessSummary readinessSummary = {};
   MatterOnNetworkDiscoverySummary discoverySummary = {};
   MatterOnNetworkDiscoveryPublicationState discoveryPublication = {};

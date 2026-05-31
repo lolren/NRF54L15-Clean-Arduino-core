@@ -351,6 +351,8 @@ bool Nrf54MatterOnNetworkOnOffLightNode::snapshot(
   (void)thread_.getAttachDiagnostics(&outStatus->threadAttachDiagnostics);
   (void)thread_.getAttachDebugState(&outStatus->threadAttachDebugState);
   (void)thread_.getAttachSummary(&outStatus->threadAttachSummary);
+  (void)thread_.getDatasetRestoreDiagnostics(
+      &outStatus->threadRestoreDiagnostics);
   (void)readinessSummary(&outStatus->readinessSummary);
   (void)discoverySummary(&outStatus->discoverySummary);
   (void)discoveryPublicationState(&outStatus->discoveryPublication);
@@ -571,6 +573,8 @@ bool Nrf54MatterOnNetworkOnOffLightNode::readinessSummary(
   outSummary->qrCodeReady = qrCode(nullptr, 0U);
   outSummary->threadDatasetExportable = threadDatasetExportable();
   (void)thread_.getAttachSummary(&outSummary->threadAttachSummary);
+  (void)thread_.getDatasetRestoreDiagnostics(
+      &outSummary->threadRestoreDiagnostics);
   outSummary->ready =
       outSummary->storageOpen && outSummary->lightReady &&
       outSummary->foundationReady && outSummary->threadStarted &&
