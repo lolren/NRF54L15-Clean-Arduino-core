@@ -208,8 +208,6 @@ bool BleRadio::customGattPermissionSatisfied(uint8_t permission,
     case kBleGattPermNoAccess:
       return false;
     case kBleGattPermEncNoMitm:
-    case kBleGattPermEncWithMitm:
-    case kBleGattPermEncWithLescMitm:
       if (isConnectionEncrypted()) {
         return true;
       }
@@ -217,9 +215,37 @@ bool BleRadio::customGattPermissionSatisfied(uint8_t permission,
         *outAttError = kAttErrInsufficientEncryption;
       }
       return false;
+    case kBleGattPermEncWithMitm:
+    case kBleGattPermEncWithLescMitm:
+      if (!isConnectionEncrypted()) {
+        if (outAttError != nullptr) {
+          *outAttError = kAttErrInsufficientEncryption;
+        }
+        return false;
+      }
+      if (isConnectionAuthenticated()) {
+        return true;
+      }
+      if (outAttError != nullptr) {
+        *outAttError = kAttErrInsufficientAuthentication;
+      }
+      return false;
     case kBleGattPermSignedNoMitm:
-    case kBleGattPermSignedWithMitm:
       if (isConnectionEncrypted()) {
+        return true;
+      }
+      if (outAttError != nullptr) {
+        *outAttError = kAttErrInsufficientAuthentication;
+      }
+      return false;
+    case kBleGattPermSignedWithMitm:
+      if (!isConnectionEncrypted()) {
+        if (outAttError != nullptr) {
+          *outAttError = kAttErrInsufficientAuthentication;
+        }
+        return false;
+      }
+      if (isConnectionAuthenticated()) {
         return true;
       }
       if (outAttError != nullptr) {

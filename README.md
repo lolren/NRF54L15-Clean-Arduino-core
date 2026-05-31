@@ -119,7 +119,7 @@ Full BLE-compliance work is paused while the remaining power and interoperabilit
 - [x] Data Length Extension — up to 251-byte payloads
 - [x] ATT/GATT server and client — full Bluefruit API (services, characteristics, CCCD, user-description, presentation-format, and report-reference descriptors)
 - [x] Custom GATT long reads and contiguous queued prepare/execute writes for bounded characteristic values
-- [x] Bluefruit custom characteristic permissions — `setPermission()` now reaches the HAL for custom GATT read/write access checks, including encrypted-link requirements
+- [x] Bluefruit custom characteristic permissions — `setPermission()` now reaches the HAL for custom GATT read/write access checks, including separate encrypted-only and MITM/authenticated requirements
 - [x] Bluefruit HID report plumbing — keyboard, mouse, consumer-control, and gamepad report characteristics now notify real HID payloads
 - [x] L2CAP connection-oriented channels
 - [x] LE Ping and connection parameter update
@@ -299,6 +299,11 @@ callbacks compile through the current core as well. On the raw HAL side, the
 modes for fixed-PIN and numeric-comparison pairing, and the numeric-comparison
 mode has been verified on two attached nRF54 boards with matching six-digit
 values on both sides before encrypted traffic resumes.
+
+Custom GATT permissions now distinguish encrypted-only links from authenticated
+MITM links. Bond records keep this authenticated-link state in reserved bond
+metadata, so a passkey, numeric-comparison, or OOB bond can satisfy MITM
+permissions again after reconnecting.
 
 Mutual OOB pairing is also wired through the HAL and Bluefruit compatibility
 layer. Use `BLE > Security > BleOobPairPeripheral` with `BLE > Security >

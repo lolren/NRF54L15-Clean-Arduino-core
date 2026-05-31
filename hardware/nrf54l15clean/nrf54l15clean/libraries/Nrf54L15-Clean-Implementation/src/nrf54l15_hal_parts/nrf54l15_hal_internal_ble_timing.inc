@@ -1483,6 +1483,7 @@ constexpr uint8_t kSmpScPairAlgJustWorks = 0x00U;
 constexpr uint8_t kSmpScPairAlgOob = 0x01U;
 constexpr uint8_t kSmpScPairAlgPasskey = 0x02U;
 constexpr uint8_t kSmpScPairAlgNumericComparison = 0x03U;
+constexpr uint8_t kBleBondRecordFlagAuthenticated = 0x01U;
 constexpr uint8_t kSmpPairingStateIdle = 0U;
 constexpr uint8_t kSmpPairingStateReqSent = 4U;
 constexpr uint8_t kSmpPairingStateRspSent = 1U;

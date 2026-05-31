@@ -2050,6 +2050,7 @@ bool BleRadio::buildL2capSmpResponse(const uint8_t* l2capPayload,
           return buildSmpPairingFailed(kSmpReasonUnspecified);
         }
         smpStkValid_ = true;
+        connectionEncAuthenticated_ = currentPairingIsAuthenticated();
         memcpy(encDebug_.encLastStk, smpStk_, sizeof(encDebug_.encLastStk));
         emitBleTrace("SMP_RANDOM_RX");
         return false;
@@ -2061,6 +2062,7 @@ bool BleRadio::buildL2capSmpResponse(const uint8_t* l2capPayload,
         return buildSmpPairingFailed(kSmpReasonUnspecified);
       }
       smpStkValid_ = true;
+      connectionEncAuthenticated_ = currentPairingIsAuthenticated();
       memcpy(encDebug_.encLastStk, smpStk_, sizeof(encDebug_.encLastStk));
 
       uint8_t localRandom[17] = {0};

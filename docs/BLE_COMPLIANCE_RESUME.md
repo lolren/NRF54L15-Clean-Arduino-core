@@ -40,7 +40,8 @@ not regress, and what to test first when resuming.
       Execute Write up to `BleRadio::kCustomGattMaxValueLength`.
 - [x] Bluefruit custom characteristic permissions: `BLECharacteristic::setPermission()`
       is propagated to the HAL for custom GATT value reads/writes, including
-      encrypted-link-required access checks for secured characteristics.
+      encrypted-link and authenticated/MITM access checks for secured
+      characteristics. Authenticated bond metadata is retained for reconnects.
 - [x] Custom GATT standard descriptors: Bluefruit
       `BLECharacteristic::setUserDescriptor()`,
       `setPresentationFormatDescriptor()`, and `setReportRefDescriptor()` now
@@ -85,8 +86,7 @@ not regress, and what to test first when resuming.
       phone/desktop hosts
 - [ ] Formal ATT/GATT edge cases: host-app interop for long read/write and
       prepare/execute write, descriptor write/permission variants, CCCD
-      persistence, MITM-vs-encrypted permission distinction, and broader
-      error-code coverage
+      persistence, and broader error-code coverage
 - [ ] HID host interop: phone/desktop pairing behavior, OS report parsing,
       boot-protocol switching, keyboard LED output reports, and gamepad host
       behavior still need real-host validation.

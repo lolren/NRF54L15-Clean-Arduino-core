@@ -1195,6 +1195,19 @@ bool BleRadio::secureConnectionsPairAlgorithmSupported(uint8_t pairAlg) const {
   return false;
 }
 
+bool BleRadio::currentPairingIsAuthenticated() const {
+  if (smpSecureConnectionsActive_) {
+    const uint8_t pairAlg = resolveCurrentSecureConnectionsPairAlgorithm();
+    return pairAlg == kSmpScPairAlgPasskey ||
+           pairAlg == kSmpScPairAlgNumericComparison ||
+           pairAlg == kSmpScPairAlgOob;
+  }
+
+  return ((smpPairingReq_[3] & kSmpAuthReqMitmMask) != 0U) &&
+         ((smpPairingRsp_[3] & kSmpAuthReqMitmMask) != 0U) &&
+         smpFixedPasskeyValid_;
+}
+
 bool BleRadio::prepareSecureConnectionsPasskey() {
   if (!smpSecureConnectionsActive_) {
     return false;
@@ -1440,6 +1453,7 @@ bool BleRadio::computeSecureConnectionsCheckValues() {
   }
 
   smpStkValid_ = true;
+  connectionEncAuthenticated_ = currentPairingIsAuthenticated();
   memcpy(encDebug_.encLastStk, smpStk_, sizeof(encDebug_.encLastStk));
   if (smpBondingRequested_) {
     memcpy(smpPeerLtk_, smpStk_, sizeof(smpPeerLtk_));
@@ -1703,6 +1717,7 @@ void BleRadio::clearEncryptionState() {
   connectionEncSessionValid_ = false;
   connectionEncRxEnabled_ = false;
   connectionEncTxEnabled_ = false;
+  connectionEncAuthenticated_ = false;
   connectionEncStartReqPending_ = false;
   connectionEncStartReqTxPending_ = false;
   connectionEncAwaitingStartRsp_ = false;
@@ -1775,6 +1790,9 @@ bool BleRadio::buildCurrentBondRecord(BleBondRecord* outRecord) const {
   record.ediv = smpEncReqEdiv_;
   record.keySize = (smpKeySize_ >= 7U && smpKeySize_ <= 16U) ? smpKeySize_ : 16U;
   memset(record.reserved, 0, sizeof(record.reserved));
+  if (currentPairingIsAuthenticated()) {
+    record.reserved[0] = kBleBondRecordFlagAuthenticated;
+  }
   if (!isBondRecordUsable(record)) {
     return false;
   }
@@ -1960,6 +1978,8 @@ bool BleRadio::primeBondForCurrentPeer() {
   smpKeySize_ = (bondRecord_.keySize >= 7U && bondRecord_.keySize <= 16U)
                     ? bondRecord_.keySize
                     : 16U;
+  connectionEncAuthenticated_ =
+      (bondRecord_.reserved[0] & kBleBondRecordFlagAuthenticated) != 0U;
   smpBondingRequested_ = true;
   smpExpectInitiatorEncKey_ = false;
   bondKeyPrimedForConnection_ = true;

@@ -198,6 +198,7 @@ BleRadio::BleRadio(uint32_t radioBase, uint32_t ficrBase)
       connectionEncSessionValid_(false),
       connectionEncRxEnabled_(false),
       connectionEncTxEnabled_(false),
+      connectionEncAuthenticated_(false),
       connectionEncStartReqPending_(false),
       connectionEncStartReqTxPending_(false),
       connectionEncAwaitingStartRsp_(false),

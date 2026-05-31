@@ -2571,6 +2571,7 @@ class BleRadio {
   bool isConnected() const;
   BleConnectionRole connectionRole() const;
   bool isConnectionEncrypted() const;
+  bool isConnectionAuthenticated() const;
   void setSecurityIoCapabilities(uint8_t ioCaps);
   void setSecurityFixedPasskey(const char* pin);
   // OOB (Out-of-Band) pairing for LE Secure Connections
@@ -2940,6 +2941,7 @@ class BleRadio {
   bool computeSecureConnectionsCheckValues();
   uint8_t resolveCurrentSecureConnectionsIoAction() const;
   uint8_t resolveCurrentSecureConnectionsPairAlgorithm() const;
+  bool currentPairingIsAuthenticated() const;
   bool secureConnectionsPairAlgorithmSupported(uint8_t pairAlg) const;
   bool prepareSecureConnectionsPasskey();
   uint8_t secureConnectionsPasskeyRoundZ() const;
@@ -3310,6 +3312,7 @@ class BleRadio {
   bool connectionEncSessionValid_;
   bool connectionEncRxEnabled_;
   bool connectionEncTxEnabled_;
+  bool connectionEncAuthenticated_;
   bool connectionEncStartReqPending_;
   bool connectionEncStartReqTxPending_;
   bool connectionEncAwaitingStartRsp_;

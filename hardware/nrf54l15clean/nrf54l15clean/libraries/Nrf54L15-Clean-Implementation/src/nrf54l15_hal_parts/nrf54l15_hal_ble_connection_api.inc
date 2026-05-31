@@ -415,6 +415,17 @@ bool BleRadio::isConnectionEncrypted() const {
   return encrypted;
 }
 
+bool BleRadio::isConnectionAuthenticated() const {
+  const uint32_t irqState = bleEnterCritical();
+  const bool authenticated = connected_ &&
+                             connectionEncSessionValid_ &&
+                             connectionEncRxEnabled_ &&
+                             connectionEncTxEnabled_ &&
+                             connectionEncAuthenticated_;
+  bleExitCritical(irqState);
+  return authenticated;
+}
+
 bool BleRadio::getConnectionInfo(BleConnectionInfo* info) const {
   if (info == nullptr) {
     return false;
