@@ -2501,7 +2501,7 @@ class BleRadio {
   // Set remote OOB data received via NFC, QR code, or other OOB channel
   bool setSecurityOobRemoteData(const uint8_t oob_r[16], const uint8_t oob_c[16]);
   // Generate local OOB data: produces r[16] and c[16] suitable for publishing
-  // via NFC/QR. c = F4(local_pub, 0, r, 0) where peer_pub is 0 at generation time.
+  // via NFC/QR. LE SC OOB uses c = F4(PKx, PKx, r, 0).
   bool generateSecurityOobData(uint8_t oob_r[16], uint8_t oob_c[16]);
   // Get the last generated or set local OOB data for publishing
   bool getSecurityOobData(uint8_t oob_r[16], uint8_t oob_c[16]) const;

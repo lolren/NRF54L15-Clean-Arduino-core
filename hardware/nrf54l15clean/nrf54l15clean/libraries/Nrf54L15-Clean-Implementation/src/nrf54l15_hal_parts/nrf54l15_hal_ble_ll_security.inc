@@ -757,6 +757,12 @@ bool BleRadio::ensureSecureConnectionsLocalKeypair() {
 void BleRadio::setSecurityOobEnabled(bool enable) {
   const uint32_t irqState = bleEnterCritical();
   smpOobEnabled_ = enable;
+  if (!enable) {
+    smpOobDataLocalValid_ = false;
+    smpOobDataRemoteValid_ = false;
+    memset(&smpOobLocal_, 0, sizeof(smpOobLocal_));
+    memset(&smpOobRemote_, 0, sizeof(smpOobRemote_));
+  }
   bleExitCritical(irqState);
 }
 
@@ -794,11 +800,9 @@ bool BleRadio::generateSecurityOobData(uint8_t oob_r[16], uint8_t oob_c[16]) {
     // Fallback to pseudo-random (fillBleSecurityRandomBytes already does this)
   }
 
-  // c = F4(local_pub, 0, r, 0)
-  // At generation time, peer_pub is 0 (not yet known)
-  uint8_t zero_peer_pub[32] = {0};
+  // LE SC OOB confirm value: c = F4(PKx, PKx, r, 0).
   if (!bleSecureConnectionsF4(&smpSecureConnectionsPublicKey_[1],
-                              zero_peer_pub,
+                              &smpSecureConnectionsPublicKey_[1],
                               oob_r,
                               0x00U,
                               oob_c)) {
@@ -1136,7 +1140,8 @@ bool BleRadio::requestPairing() {
   uint8_t pairingReq[kSmpPairingRequestLen] = {0};
   pairingReq[0] = kSmpCodePairingRequest;
   pairingReq[1] = smpLocalIoCapabilities_;
-  pairingReq[2] = (smpOobEnabled_ && smpOobDataLocalValid_ && smpOobDataRemoteValid_) ? 0x01U : 0x00U;
+  pairingReq[2] = (smpOobEnabled_ && smpOobDataLocalValid_ &&
+                   smpOobDataRemoteValid_) ? 0x01U : 0x00U;
   pairingReq[3] = static_cast<uint8_t>(0x01U | kSmpAuthReqSecureConnectionsMask);
   if (smpLocalIoCapabilities_ != kSmpIoCapNoInputNoOutput || pairingReq[2] != 0x00U) {
     pairingReq[3] |= kSmpAuthReqMitmMask;
@@ -1690,14 +1695,8 @@ void BleRadio::clearSmpPairingState() {
   bondKeyPrimedForConnection_ = false;
   connectionBondedEncryptionRequested_ = false;
 
-  // Clear OOB state
-  smpOobEnabled_ = false;
-  smpOobDataLocalValid_ = false;
-  smpOobDataRemoteValid_ = false;
-  memset(smpOobLocal_.r, 0, sizeof(smpOobLocal_.r));
-  memset(smpOobLocal_.c, 0, sizeof(smpOobLocal_.c));
-  memset(smpOobRemote_.r, 0, sizeof(smpOobRemote_.r));
-  memset(smpOobRemote_.c, 0, sizeof(smpOobRemote_.c));
+  // OOB data is a user-supplied pairing configuration, like a fixed PIN. Keep
+  // it across transient SMP state resets so requestPairing() can advertise it.
 }
 
 void BleRadio::clearEncryptionState() {

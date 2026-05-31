@@ -39,7 +39,7 @@ This is a **bare-metal, register-level Arduino core** — no Zephyr, no nRF Conn
 - ECC (secp256r1) is **software-only** — the CRACEN PK engine needs proprietary Nordic microcode that isn't publicly available. Thread/Matter pairing takes 2–5 seconds of CPU-bound crypto. See [Why Software ECC](#-why-software-ecc-and-what-it-means-for-pairing)
 - Thread and Matter are **experimental compile targets**, not functional protocol stacks. See [Thread](#thread-experimental) and [Matter](#matter-experimental) status sections
 - Zigbee is **functional but incomplete** — coordinator/router/end-device roles work, but many ZCL clusters are missing. See [Zigbee status](#zigbee-status)
-- BLE LE Secure Connections currently covers verified Just Works, fixed-PIN, and two-board numeric-comparison pairing on the clean BLE path, plus broader authenticated-pairing plumbing that still needs wider host interoperability validation. See [BLE status](#ble--production-quality)
+- BLE LE Secure Connections currently covers verified Just Works, fixed-PIN, and two-board numeric-comparison pairing on the clean BLE path. Mutual OOB pairing is wired for two-core testing, but still needs wider host/NFC/QR interoperability validation. See [BLE status](#ble--production-quality)
 - P2 GPIO port lacks interrupt/wake capability (hardware limitation of the nRF54L15)
 
 **Who this core is for:** Developers who want bare-metal access to the nRF54L15, are comfortable reading datasheets, and don't mind that some protocol stacks are still maturing. If you need production Thread/Matter/Zigbee today, use Nordic's nRF Connect SDK instead.
@@ -125,12 +125,12 @@ Full BLE-compliance work is paused while the remaining power and interoperabilit
 
 ### What's partially implemented
 
-- [ ] **SMP authenticated pairing modes** — LE Secure Connections Just Works is verified on two-board setups. Fixed six-digit PIN pairing and two-board numeric comparison are now validated on the raw HAL security demos, and the Bluefruit passkey / numeric-comparison callback paths compile through `Security > pairing_pin`, `Security > pairing_passkey`, `Central > central_pairing`, and `Central > central_pairing_pin`. Broader phone/host interoperability, passkey-entry validation against non-core peers, OOB, and optional identity/signing key distribution still need more work.
+- [ ] **SMP authenticated pairing modes** — LE Secure Connections Just Works is verified on two-board setups. Fixed six-digit PIN pairing and two-board numeric comparison are now validated on the raw HAL security demos, and the Bluefruit passkey / numeric-comparison callback paths compile through `Security > pairing_pin`, `Security > pairing_passkey`, `Central > central_pairing`, and `Central > central_pairing_pin`. Broader phone/host interoperability, passkey-entry validation against non-core peers, and optional identity/signing key distribution still need more work.
 - [ ] **Channel Sounding — Mode 2 (PBR / phase-based ranging)** — works on two-board setups, achieving ~57–62 cm accuracy. Requires the VPR RISC-V coprocessor to handle DFE IQ sample capture and processing at radio speed. The M33 CPU alone can't keep up with the subevent timing. Initiator and reflector roles are implemented, but the procedure setup currently uses a hardcoded internal demo profile rather than the full CS configuration workflow.
 - [ ] **Channel Sounding — Mode 1 (RTT)** — radio registers configured, raw RTT subevents fire, but timing calibration and distance extraction haven't been validated. No end-to-end RTT distance measurement demo exists yet.
 - [ ] **Channel Sounding — Mode 3 (hybrid RTT+PBR)** — data structures for hybrid steps exist, but the combined mode hasn't been tested.
 - [ ] **Channel Sounding security** — CS step encryption (AES-CCM per-step) is not yet implemented. All CS procedures run unencrypted.
-- [ ] **OOB pairing** — scaffolded in the SMP layer but never tested with a real OOB data source.
+- [ ] **OOB pairing** — mutual local/remote LE SC OOB data is now wired through the HAL and Bluefruit APIs, with `BLE > Security > BleOobPairPeripheral` and `BLE > Security > BleOobPairCentral` examples for two-board bring-up. One-way OOB, NFC/QR provisioning, and host interoperability still need validation.
 
 For production applications needing certification-level Bluetooth behavior, Nordic's Zephyr-based **nRF Connect SDK** is still the safer path — it ships with a fully validated Bluetooth LE controller, certified channel sounding support, and qualification listings this bare-metal core does not claim.
 
@@ -262,7 +262,7 @@ Zigbee is the most mature of the three 802.15.4 stacks (Thread, Matter, and Zigb
 
 | Limitation | Detail |
 |---|---|
-| **BLE LE Secure Connections** | Just Works, fixed-PIN, and two-board numeric comparison are verified on the clean BLE path. Broader phone/host interoperability, passkey-entry validation against non-core peers, OOB, and optional identity/signing key distribution still need more work. |
+| **BLE LE Secure Connections** | Just Works, fixed-PIN, and two-board numeric comparison are verified on the clean BLE path. Mutual OOB is wired for two-core testing. Broader phone/host interoperability, passkey-entry validation against non-core peers, one-way OOB/NFC/QR flows, and optional identity/signing key distribution still need more work. |
 | **CRACEN PK engine** | Hardware ECDSA / P-256 acceleration still needs proprietary Nordic microcode |
 | **ECDSA speed** | Software ECC now uses Barrett reduction and measures about 0.84 s sign / 1.76 s verify on board — workable for demos, still much slower than dedicated hardware |
 
@@ -292,8 +292,14 @@ callbacks compile through the current core as well. On the raw HAL side, the
 `BlePairPeripheral` / `BlePairCentral` demos also have compile-time validation
 modes for fixed-PIN and numeric-comparison pairing, and the numeric-comparison
 mode has been verified on two attached nRF54 boards with matching six-digit
-values on both sides before encrypted traffic resumes. Broader host
-interoperability and OOB are still tracked as future work.
+values on both sides before encrypted traffic resumes.
+
+Mutual OOB pairing is also wired through the HAL and Bluefruit compatibility
+layer. Use `BLE > Security > BleOobPairPeripheral` with `BLE > Security >
+BleOobPairCentral`; each board prints a `peer <r> <c>` line that must be pasted
+into the other board's serial monitor before pairing starts. This validates the
+local/remote OOB data path in the core, but it is not yet a claim of phone,
+desktop, NFC, or QR-code interoperability.
 
 ---
 

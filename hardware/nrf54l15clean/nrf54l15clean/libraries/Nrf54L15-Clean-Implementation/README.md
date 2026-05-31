@@ -935,6 +935,12 @@ BLE examples:
 - `examples/BLE/Security/BleBondPersistenceProbe/BleBondPersistenceProbe.ino`
   - Demonstrates bond retention across resets and reconnect-side encryption reuse.
   - Hold user button at boot to clear persistent bond state.
+- `examples/BLE/Security/BleOobPairPeripheral/BleOobPairPeripheral.ino`
+  - Peripheral side of a two-board LE Secure Connections OOB pairing bring-up.
+  - Prints local `r/c` OOB data and starts advertising after peer OOB data is pasted over Serial.
+- `examples/BLE/Security/BleOobPairCentral/BleOobPairCentral.ino`
+  - Central side of the same OOB pairing bring-up.
+  - Starts scanning only after the peripheral's `peer <r> <c>` line is pasted over Serial.
 - `examples/BLE/ChannelSounding/BleChannelSoundingReflector/BleChannelSoundingReflector.ino`
   - Two-board phase-sounding reflector using `RADIO.CSTONES`/DFE capture on requested BLE channels.
   - Returns reflector-side IQ/magnitude terms for the initiator's phase-slope distance fit.
@@ -1086,9 +1092,9 @@ Examples:
     - Pairing Request/Response/Confirm/Random validation flow
     - Legacy `c1`/`s1` confirm and STK derivation
     - Encryption Information/Master Identification key distribution parsing
-    - LE Secure Connections requests are deliberately answered with a legacy
-      Just Works response when the peer permits fallback. SC-only peers still
-      fail because the in-tree controller has no P-256 ECDH SMP path yet.
+    - LE Secure Connections Just Works, fixed-PIN, two-board numeric comparison,
+      and mutual OOB plumbing are present; broader host interop remains a
+      validation target.
   - Optional protocol-level BLE trace path:
     - Enable Arduino Tools -> `BLE Trace` to emit LL/SMP trace markers for interop debugging
   - BLE timing:
@@ -1104,7 +1110,7 @@ Examples:
   - Bluetooth Channel Sounding LL procedure and HCI/host control plane (full spec feature).
   - Asymmetric LE PHY pairs where TX and RX settle to different modes on the same link.
   - Full LL procedure/state-machine compliance (full control procedure matrix and deep corner-cases)
-  - Full security feature set (LE Secure Connections, full key distribution matrix, signing)
+  - Full security feature set (host-validated passkey/OOB matrix, full key distribution matrix, signing)
   - Privacy (RPA rotation/resolving list)
   - Full L2CAP signaling and complete GATT server database/configuration model
 
