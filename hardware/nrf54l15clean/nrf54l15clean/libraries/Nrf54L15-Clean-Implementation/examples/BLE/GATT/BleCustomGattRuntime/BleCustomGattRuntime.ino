@@ -8,6 +8,8 @@
  *   0xFFF2 – Read/Notify (a counter that the peripheral pushes to the central)
  *
  * After connecting with a BLE central (e.g., nRF Connect app):
+ *   - Read 0xFFF1. The initial value is longer than 31 bytes, so phone apps
+ *     exercise ATT Read Blob / long-read behavior.
  *   - Enable notifications on 0xFFF2 to receive periodic updates.
  *   - Write to 0xFFF1 to see the write callback fire on Serial.
  *   - Type "notify", "state", or "set <text>" in the Arduino Serial Monitor.
@@ -44,6 +46,9 @@ static char g_cmdBuffer[48];
 static uint8_t g_cmdLength = 0U;
 // TX power: -40 to +8 dBm. -8 is a safe indoor default.
 static constexpr int8_t kTxPowerDbm = -8;
+static const char kInitialRwValue[] =
+    "read-blob-demo:abcdefghijklmnopqrstuvwxyz0123456789"
+    "-custom-gatt-long-read";
 
 static void printBytes(const uint8_t* value, uint8_t length) {
   if (value == nullptr || length == 0U) {
@@ -179,7 +184,6 @@ void setup() {
     ok = g_ble.addCustomGattService(0xFFF0U, &g_customServiceHandle);
   }
   if (ok) {
-    const uint8_t initialValue[] = {'O', 'K'};
     // Property flags are ORed together:
     //   kBleGattPropRead       – central can read the value.
     //   kBleGattPropWrite      – central can write with response (ATT Write Request).
@@ -189,7 +193,8 @@ void setup() {
                                                kBleGattPropWriteNoRsp);
     // Passing nullptr as the last argument means no CCCD is created (no notifications).
     ok = g_ble.addCustomGattCharacteristic(g_customServiceHandle, 0xFFF1U, props,
-                                           initialValue, sizeof(initialValue),
+                                           reinterpret_cast<const uint8_t*>(kInitialRwValue),
+                                           sizeof(kInitialRwValue) - 1U,
                                            &g_rwValueHandle, nullptr);
   }
   if (ok) {

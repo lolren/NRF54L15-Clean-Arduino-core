@@ -3146,8 +3146,10 @@ class BleRadio {
   bool connectionBatteryNotificationPending_;
   bool connectionPreparedWriteActive_;
   uint16_t connectionPreparedWriteHandle_;
-  uint8_t connectionPreparedWriteValue_[2];
+  uint8_t connectionPreparedWriteValue_[kCustomGattMaxValueLength];
+  uint16_t connectionPreparedWriteLength_;
   uint8_t connectionPreparedWriteMask_;
+  bool connectionPreparedWriteIsCustomValue_;
   bool connectionRxL2capReassemblyActive_;
   uint16_t connectionRxL2capReassemblyExpectedLength_;
   uint16_t connectionRxL2capReassemblyReceivedLength_;

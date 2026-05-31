@@ -1081,12 +1081,14 @@ Examples:
     - Find By Type Value (primary service UUID search)
     - Primary service discovery
     - Characteristic discovery
-    - Basic read/read-blob on GAP + Battery attributes
+    - Basic read/read-blob on GAP, Battery, and custom characteristic values
+      (including long reads above the 31-byte legacy advertising payload size)
     - Read By Group Type edge-case handling (`Unsupported Group Type` vs `Invalid PDU`)
     - Discovery boundary-handle validation (`start=0`/invalid ranges -> `Invalid Handle`)
     - Service Changed CCCD writes + Handle Value indication confirmation handling
     - Battery Level CCCD writes + Handle Value notification emission
-    - Prepare Write / Execute Write on selected writable CCCDs
+    - Prepare Write / Execute Write on selected writable CCCDs and custom
+      characteristic values
   - L2CAP LE signaling (`CID 0x0005`) fallback handling:
     - Command Reject for unsupported signaling opcodes
     - Command Reject reason granularity (`Cmd Not Understood`, `Signaling MTU exceeded`, `Invalid CID`)

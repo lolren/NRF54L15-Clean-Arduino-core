@@ -34,6 +34,10 @@ not regress, and what to test first when resuming.
 - [x] Application-managed privacy resolving list: `Bluefruit.Security` can
       store up to eight peer IRKs and resolve scanned RPAs against that list
       using the hardware AAR path
+- [x] Custom ATT/GATT long-read path: custom characteristic values are read
+      directly from bounded storage instead of the fixed 31-byte scratch buffer,
+      and writable custom values support contiguous queued ATT Prepare Write /
+      Execute Write up to `BleRadio::kCustomGattMaxValueLength`.
 - [x] Low-power BLE advertising current is now close to the Zephyr reference
       for the msfujino AdvCurrent test from discussion #71
 
@@ -66,8 +70,9 @@ not regress, and what to test first when resuming.
 - [ ] Identity, signing, automatic controller resolving-list policy, peer identity
       selection for bonded reconnects, and bond database behavior against
       phone/desktop hosts
-- [ ] Formal ATT/GATT edge cases: long read/write, prepare/execute write,
-      descriptor permissions, CCCD persistence, error-code coverage
+- [ ] Formal ATT/GATT edge cases: host-app interop for long read/write and
+      prepare/execute write, descriptor permissions, CCCD persistence, and
+      broader error-code coverage
 - [ ] LL control procedure collision handling and broader disconnect reason
       mapping
 - [ ] Multi-link stress: simultaneous central/peripheral with mixed MTU/DLE/PHY

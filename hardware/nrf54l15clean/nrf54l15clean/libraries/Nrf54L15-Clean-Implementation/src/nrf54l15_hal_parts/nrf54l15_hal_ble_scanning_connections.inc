@@ -1982,11 +1982,7 @@ bool BleRadio::startConnectionFromConnectInd(const uint8_t* payload, uint8_t len
   connectionBatteryNotificationsEnabled_ = false;
   connectionBatteryNotificationPending_ = false;
   connectionSmpSecurityRequestPending_ = false;
-  connectionPreparedWriteActive_ = false;
-  connectionPreparedWriteHandle_ = 0U;
-  connectionPreparedWriteValue_[0] = 0U;
-  connectionPreparedWriteValue_[1] = 0U;
-  connectionPreparedWriteMask_ = 0U;
+  clearPreparedWriteState();
   connectionServiceBusy_ = false;
   clearQueuedConnectionEvents();
   clearCustomGattConnectionState();
@@ -2134,11 +2130,7 @@ bool BleRadio::startCentralConnection(const uint8_t peerAddress[6],
   connectionServiceChangedIndicationAwaitingConfirm_ = false;
   connectionBatteryNotificationsEnabled_ = false;
   connectionBatteryNotificationPending_ = false;
-  connectionPreparedWriteActive_ = false;
-  connectionPreparedWriteHandle_ = 0U;
-  connectionPreparedWriteValue_[0] = 0U;
-  connectionPreparedWriteValue_[1] = 0U;
-  connectionPreparedWriteMask_ = 0U;
+  clearPreparedWriteState();
   connectionServiceBusy_ = false;
   clearQueuedConnectionEvents();
   clearCustomGattConnectionState();

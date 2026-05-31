@@ -16,9 +16,10 @@ bool BleRadio::buildAttErrorResponse(uint8_t requestOpcode, uint16_t handle,
 void BleRadio::clearPreparedWriteState() {
   connectionPreparedWriteActive_ = false;
   connectionPreparedWriteHandle_ = 0U;
-  connectionPreparedWriteValue_[0] = 0U;
-  connectionPreparedWriteValue_[1] = 0U;
+  memset(connectionPreparedWriteValue_, 0, sizeof(connectionPreparedWriteValue_));
+  connectionPreparedWriteLength_ = 0U;
   connectionPreparedWriteMask_ = 0U;
+  connectionPreparedWriteIsCustomValue_ = false;
 }
 
 void BleRadio::clearIncomingL2capReassembly() {
@@ -168,6 +169,24 @@ uint8_t BleRadio::readAttributeValue(uint16_t handle, uint16_t offset,
     return kAttrReadInvalidHandleLen;
   }
 
+  const BleCustomCharacteristicState* directCharacteristic =
+      findCustomCharacteristicByValueHandle(handle);
+  if (directCharacteristic != nullptr) {
+    if ((directCharacteristic->properties & kBleGattPropRead) == 0U) {
+      return kAttrReadNotPermittedLen;
+    }
+    if (offset > directCharacteristic->valueLength) {
+      return kAttrReadInvalidOffsetLen;
+    }
+    const uint8_t remaining =
+        static_cast<uint8_t>(directCharacteristic->valueLength - offset);
+    const uint8_t toCopy = minU8(remaining, maxLen);
+    if (toCopy > 0U) {
+      memcpy(outValue, &directCharacteristic->value[offset], toCopy);
+    }
+    return toCopy;
+  }
+
   uint8_t fullValue[31] = {0};
   uint8_t fullLen = 0U;
 
@@ -264,19 +283,7 @@ uint8_t BleRadio::readAttributeValue(uint16_t handle, uint16_t offset,
       }
 
       const BleCustomCharacteristicState* characteristic =
-          findCustomCharacteristicByValueHandle(handle);
-      if (characteristic != nullptr) {
-        if ((characteristic->properties & kBleGattPropRead) == 0U) {
-          return kAttrReadNotPermittedLen;
-        }
-        if (characteristic->valueLength > 0U) {
-          memcpy(&fullValue[0], characteristic->value, characteristic->valueLength);
-        }
-        fullLen = characteristic->valueLength;
-        break;
-      }
-
-      characteristic = findCustomCharacteristicByCccdHandle(handle);
+          findCustomCharacteristicByCccdHandle(handle);
       if (characteristic != nullptr) {
         writeLe16(&fullValue[0], characteristic->cccdValue);
         fullLen = 2U;
@@ -992,22 +999,39 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
         return buildAttErrorResponse(opcode, 0U, kAttErrInvalidPdu, outAttResponse,
                                      outAttResponseLength);
       }
+      if (requestLength > maxAttResponseLen) {
+        return buildAttErrorResponse(opcode, 0U, kAttErrInvalidPdu, outAttResponse,
+                                     outAttResponseLength);
+      }
 
       const uint16_t handle = readLe16(&attRequest[1]);
-      if ((handle != kHandleGattServiceChangedCccd) &&
-          (handle != kHandleBatteryLevelCccd) &&
-          (findCustomCharacteristicByCccdHandle(handle) == nullptr)) {
+      const bool isCccdHandle =
+          (handle == kHandleGattServiceChangedCccd) ||
+          (handle == kHandleBatteryLevelCccd) ||
+          (findCustomCharacteristicByCccdHandle(handle) != nullptr);
+      BleCustomCharacteristicState* customValueTarget =
+          findCustomCharacteristicByValueHandle(handle);
+      const bool isCustomValueHandle = (customValueTarget != nullptr);
+
+      if (!isCccdHandle && !isCustomValueHandle) {
+        return buildAttErrorResponse(opcode, handle, kAttErrWriteNotPermitted,
+                                     outAttResponse, outAttResponseLength);
+      }
+      if (isCustomValueHandle &&
+          ((customValueTarget->properties & kBleGattPropWrite) == 0U)) {
         return buildAttErrorResponse(opcode, handle, kAttErrWriteNotPermitted,
                                      outAttResponse, outAttResponseLength);
       }
 
       const uint16_t offset = readLe16(&attRequest[3]);
       const uint16_t valueLen = static_cast<uint16_t>(requestLength - 5U);
-      if (offset > 1U) {
+      const uint16_t maxQueuedValueLen =
+          isCustomValueHandle ? kCustomGattMaxValueLength : 2U;
+      if (offset > maxQueuedValueLen) {
         return buildAttErrorResponse(opcode, handle, kAttErrInvalidOffset,
                                      outAttResponse, outAttResponseLength);
       }
-      if ((offset + valueLen) > 2U) {
+      if ((offset + valueLen) > maxQueuedValueLen) {
         return buildAttErrorResponse(opcode, handle, kAttErrInvalidAttrValueLen,
                                      outAttResponse, outAttResponseLength);
       }
@@ -1016,21 +1040,32 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
         clearPreparedWriteState();
         connectionPreparedWriteActive_ = true;
         connectionPreparedWriteHandle_ = handle;
+        connectionPreparedWriteIsCustomValue_ = isCustomValueHandle;
       } else if (connectionPreparedWriteHandle_ != handle) {
         return buildAttErrorResponse(opcode, handle, kAttErrPrepareQueueFull,
+                                     outAttResponse, outAttResponseLength);
+      } else if (connectionPreparedWriteIsCustomValue_ != isCustomValueHandle) {
+        return buildAttErrorResponse(opcode, handle, kAttErrPrepareQueueFull,
+                                     outAttResponse, outAttResponseLength);
+      }
+
+      if (isCustomValueHandle && offset > connectionPreparedWriteLength_) {
+        return buildAttErrorResponse(opcode, handle, kAttErrInvalidOffset,
                                      outAttResponse, outAttResponseLength);
       }
 
       for (uint16_t i = 0U; i < valueLen; ++i) {
         const uint16_t pos = static_cast<uint16_t>(offset + i);
         connectionPreparedWriteValue_[pos] = attRequest[5U + i];
-        connectionPreparedWriteMask_ |= static_cast<uint8_t>(1U << pos);
+        if (!isCustomValueHandle) {
+          connectionPreparedWriteMask_ |= static_cast<uint8_t>(1U << pos);
+        }
+      }
+      if (isCustomValueHandle &&
+          static_cast<uint16_t>(offset + valueLen) > connectionPreparedWriteLength_) {
+        connectionPreparedWriteLength_ = static_cast<uint16_t>(offset + valueLen);
       }
 
-      if (requestLength > maxAttResponseLen) {
-        return buildAttErrorResponse(opcode, handle, kAttErrInvalidPdu, outAttResponse,
-                                     outAttResponseLength);
-      }
       memcpy(outAttResponse, attRequest, requestLength);
       outAttResponse[0] = kAttOpPrepareWriteRsp;
       *outAttResponseLength = requestLength;
@@ -1057,25 +1092,33 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
 
       if (connectionPreparedWriteActive_) {
         const uint16_t handle = connectionPreparedWriteHandle_;
-        if ((handle != kHandleGattServiceChangedCccd) &&
-            (handle != kHandleBatteryLevelCccd) &&
-            (findCustomCharacteristicByCccdHandle(handle) == nullptr)) {
+        if (connectionPreparedWriteIsCustomValue_) {
+          uint8_t errorCode = kAttErrWriteNotPermitted;
+          if (!writeCustomGattCharacteristic(handle, connectionPreparedWriteValue_,
+                                             connectionPreparedWriteLength_, true,
+                                             &errorCode)) {
+            clearPreparedWriteState();
+            return buildAttErrorResponse(opcode, handle, errorCode, outAttResponse,
+                                         outAttResponseLength);
+          }
+          clearPreparedWriteState();
+        } else if ((handle != kHandleGattServiceChangedCccd) &&
+                   (handle != kHandleBatteryLevelCccd) &&
+                   (findCustomCharacteristicByCccdHandle(handle) == nullptr)) {
           clearPreparedWriteState();
           return buildAttErrorResponse(opcode, handle, kAttErrWriteNotPermitted,
                                        outAttResponse, outAttResponseLength);
-        }
-        if ((connectionPreparedWriteMask_ & 0x03U) != 0x03U) {
+        } else if ((connectionPreparedWriteMask_ & 0x03U) != 0x03U) {
           clearPreparedWriteState();
           return buildAttErrorResponse(opcode, handle, kAttErrInvalidAttrValueLen,
                                        outAttResponse, outAttResponseLength);
-        }
-        const uint16_t cccd = readLe16(&connectionPreparedWriteValue_[0]);
-        if (!applyCccdState(handle, cccd)) {
+        } else if (!applyCccdState(handle, readLe16(&connectionPreparedWriteValue_[0]))) {
           clearPreparedWriteState();
           return buildAttErrorResponse(opcode, handle, kAttErrWriteNotPermitted,
                                        outAttResponse, outAttResponseLength);
+        } else {
+          clearPreparedWriteState();
         }
-        clearPreparedWriteState();
       }
 
       outAttResponse[0] = kAttOpExecuteWriteRsp;

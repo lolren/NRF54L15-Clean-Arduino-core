@@ -1186,11 +1186,7 @@ bool BleRadio::disconnectWithReason(BleDisconnectReason reason, uint8_t errorCod
   connectionBatteryNotificationPending_ = false;
   latestConnectionRssiDbm_ = 0;
   latestConnectionRssiValid_ = false;
-  connectionPreparedWriteActive_ = false;
-  connectionPreparedWriteHandle_ = 0U;
-  connectionPreparedWriteValue_[0] = 0U;
-  connectionPreparedWriteValue_[1] = 0U;
-  connectionPreparedWriteMask_ = 0U;
+  clearPreparedWriteState();
   clearCustomGattConnectionState();
   clearConnectionSecurityState();
   connectionServiceBusy_ = false;

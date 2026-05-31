@@ -2188,11 +2188,7 @@ void BleRadio::restoreAdvertisingLinkDefaults() {
   connectionBatteryNotificationsEnabled_ = false;
   connectionBatteryNotificationPending_ = false;
   connectionSmpSecurityRequestPending_ = false;
-  connectionPreparedWriteActive_ = false;
-  connectionPreparedWriteHandle_ = 0U;
-  connectionPreparedWriteValue_[0] = 0U;
-  connectionPreparedWriteValue_[1] = 0U;
-  connectionPreparedWriteMask_ = 0U;
+  clearPreparedWriteState();
   clearIncomingL2capReassembly();
   clearConnectionSecurityState();
   scanCycleStartIndex_ = 0U;
