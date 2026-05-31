@@ -1814,7 +1814,13 @@ class RawRadioLink {
 enum class BleAddressType : uint8_t {
   kPublic = 0,
   kRandomStatic = 1,
+  kRandomPrivateResolvable = 2,
+  kRandomPrivateNonResolvable = 3,
 };
+
+inline bool bleAddressTypeIsRandom(BleAddressType type) {
+  return type != BleAddressType::kPublic;
+}
 
 #if !defined(NRF54L15_CLEAN_BLE_DEFAULT_TX_DBM)
 #define NRF54L15_CLEAN_BLE_DEFAULT_TX_DBM -8
@@ -2300,7 +2306,7 @@ struct BleBondRecord {
 // OOB (Out-of-Band) pairing data for LE Secure Connections
 // Per Bluetooth Core Spec Vol 3 Part H §2.3.5.6.6:
 //   r = 16-byte random number generated from CRACEN RNG
-//   c = F4(local_pub_key, 0, r, 0) confirm value (peer_pub = 0 at generation)
+//   c = F4(PKx, PKx, r, 0) confirm value
 struct BleOobData {
   uint8_t r[16];  // Random number
   uint8_t c[16];  // Confirm value
@@ -2338,6 +2344,17 @@ class BleRadio {
   bool getDeviceAddressString(char* out, size_t outSize,
                               BleAddressType* typeOut = nullptr) const;
   bool getDeviceAddress(uint8_t addressOut[6], BleAddressType* typeOut = nullptr) const;
+  bool generateResolvablePrivateAddress(const uint8_t irk[16],
+                                        uint8_t addressOut[6]);
+  bool setResolvablePrivateAddress(const uint8_t irk[16],
+                                   uint8_t addressOut[6] = nullptr);
+  bool resolveResolvablePrivateAddress(const uint8_t address[6],
+                                       const uint8_t* irks,
+                                       size_t irkCount,
+                                       bool* outResolved,
+                                       uint16_t* outIndex = nullptr,
+                                       uint32_t spinLimit = 200000UL);
+  static bool isResolvablePrivateAddress(const uint8_t address[6]);
 
   bool setAdvertisingPduType(BleAdvPduType type);
   bool setAdvertisingChannelSelectionAlgorithm2(bool enabled);

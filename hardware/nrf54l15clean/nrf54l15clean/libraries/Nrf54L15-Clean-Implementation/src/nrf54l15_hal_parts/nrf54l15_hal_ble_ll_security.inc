@@ -1401,7 +1401,7 @@ bool BleRadio::computeSecureConnectionsCheckValues() {
   // from the OOB confirm verification, not from a passkey
   // (Bluetooth Core Spec Vol 3 Part H §2.3.5.6.6)
   const uint8_t localType =
-      (addressType_ == BleAddressType::kRandomStatic) ? 0x01U : 0x00U;
+      bleAddressTypeIsRandom(addressType_) ? 0x01U : 0x00U;
   const uint8_t peerType = connectionPeerAddressRandom_ ? 0x01U : 0x00U;
   const uint8_t initiatorType = smpLocalInitiator_ ? localType : peerType;
   const uint8_t responderType = smpLocalInitiator_ ? peerType : localType;
@@ -1765,8 +1765,7 @@ bool BleRadio::buildCurrentBondRecord(BleBondRecord* outRecord) const {
     record.peerIdentityAddressRandom = smpPeerIdentityAddressRandom_ ? 1U : 0U;
   }
   memcpy(record.localAddress, address_, sizeof(record.localAddress));
-  record.localAddressRandom =
-      (addressType_ == BleAddressType::kRandomStatic) ? 1U : 0U;
+  record.localAddressRandom = bleAddressTypeIsRandom(addressType_) ? 1U : 0U;
   memcpy(record.ltk, smpPeerLtk_, sizeof(record.ltk));
   memcpy(record.rand, smpEncReqRand_, sizeof(record.rand));
   if (smpPeerIrkValid_) {
@@ -1946,7 +1945,7 @@ bool BleRadio::primeBondForCurrentPeer() {
     return false;
   }
   const uint8_t localAddressRandom =
-      (addressType_ == BleAddressType::kRandomStatic) ? 0x01U : 0x00U;
+      bleAddressTypeIsRandom(addressType_) ? 0x01U : 0x00U;
   if ((bondRecord_.localAddressRandom & 0x01U) != localAddressRandom) {
     return false;
   }

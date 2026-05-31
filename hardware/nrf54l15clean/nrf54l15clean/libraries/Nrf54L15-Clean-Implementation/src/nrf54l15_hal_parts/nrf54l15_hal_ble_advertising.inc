@@ -1750,8 +1750,7 @@ bool BleRadio::handleExtendedScanRequestAndMaybeRespond(
   if (crcOk && (length >= 12U) && (pduType == kBlePduScanReq)) {
     const uint8_t* advertiserAddress = &payload[6];
     hasScanReq = bleAddressEqual(advertiserAddress, &address_[0]) &&
-                 (rxAddrRandom ==
-                  (addressType_ == BleAddressType::kRandomStatic));
+                 (rxAddrRandom == bleAddressTypeIsRandom(addressType_));
   }
 
   if (!hasScanReq || (extendedScanRspPacketCount_ == 0U)) {
@@ -1994,7 +1993,7 @@ bool BleRadio::advertiseInteractOncePrepared(BleAdvertisingChannel channel,
     const bool advertiserAddressMatch =
         bleAddressEqual(advertiserAddress, &address_[0]);
     const bool advertiserAddressTypeMatch =
-        (rxAddrRandom == (addressType_ == BleAddressType::kRandomStatic));
+        (rxAddrRandom == bleAddressTypeIsRandom(addressType_));
     addressMatch = advertiserAddressMatch && advertiserAddressTypeMatch;
     // Some Android/Qualcomm centrals appear to reuse the correct advertiser
     // address bytes while misreporting the RxAdd bit in SCAN_REQ/CONNECT_IND.

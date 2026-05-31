@@ -525,6 +525,18 @@ class BLESecurity {
   // Enable or disable OOB pairing
   bool setOobFlag(bool enable);
   bool requestPairing() const;
+  // BLE privacy helpers. These expose RPA primitives; automatic address
+  // rotation/resolving-list policy is intentionally left to the sketch for now.
+  bool getLocalIdentityRoot(uint8_t irk[16]) const;
+  bool generateResolvablePrivateAddress(const uint8_t irk[16],
+                                        uint8_t addressOut[6]) const;
+  bool setResolvablePrivateAddress(const uint8_t irk[16],
+                                   uint8_t addressOut[6] = nullptr) const;
+  bool resolveResolvablePrivateAddress(const uint8_t address[6],
+                                       const uint8_t* irks,
+                                       size_t irkCount,
+                                       bool* outResolved,
+                                       uint16_t* outIndex = nullptr) const;
   // OOB data request callback — called before pairing when OOB is enabled
   typedef void (*oob_data_request_callback_t)(uint16_t conn_hdl,
                                               uint8_t const oob_r[16],

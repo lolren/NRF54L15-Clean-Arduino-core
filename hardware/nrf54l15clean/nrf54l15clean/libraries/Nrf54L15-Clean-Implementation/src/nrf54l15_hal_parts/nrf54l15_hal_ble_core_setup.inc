@@ -758,6 +758,14 @@ bool BleRadio::setDeviceAddress(const uint8_t address[6], BleAddressType type) {
   if (address == nullptr) {
     return false;
   }
+  if (type == BleAddressType::kRandomPrivateResolvable &&
+      !isResolvablePrivateAddress(address)) {
+    return false;
+  }
+  if (type == BleAddressType::kRandomPrivateNonResolvable &&
+      ((address[5] & 0xC0U) != 0x00U)) {
+    return false;
+  }
 
   BleLegacyAdvertisingConfigSnapshot configSnapshot{};
   BleBackgroundAdvertisingRestartState restartState{};
@@ -812,6 +820,103 @@ bool BleRadio::getDeviceAddressString(char* out, size_t outSize,
     *typeOut = addressType_;
   }
   return formatBleAddressString(address_, out, outSize) > 0U;
+}
+
+static bool computeBleResolvablePrivateAddressHash(const uint8_t irk[16],
+                                                   const uint8_t prand[3],
+                                                   uint8_t hash[3]) {
+  if (irk == nullptr || prand == nullptr || hash == nullptr) {
+    return false;
+  }
+
+  uint8_t keyBe[16] = {};
+  uint8_t plaintextBe[16] = {};
+  uint8_t ciphertextBe[16] = {};
+  uint8_t ciphertextLe[16] = {};
+
+  for (uint8_t i = 0U; i < 16U; ++i) {
+    keyBe[i] = irk[15U - i];
+  }
+  plaintextBe[13] = prand[2];
+  plaintextBe[14] = prand[1];
+  plaintextBe[15] = prand[0];
+
+  Ecb ecb;
+  if (!ecb.encryptBlock(keyBe, plaintextBe, ciphertextBe, 400000UL)) {
+    return false;
+  }
+
+  for (uint8_t i = 0U; i < 16U; ++i) {
+    ciphertextLe[i] = ciphertextBe[15U - i];
+  }
+  memcpy(hash, ciphertextLe, 3U);
+  return true;
+}
+
+bool BleRadio::isResolvablePrivateAddress(const uint8_t address[6]) {
+  return address != nullptr && ((address[5] & 0xC0U) == 0x40U);
+}
+
+bool BleRadio::generateResolvablePrivateAddress(const uint8_t irk[16],
+                                                uint8_t addressOut[6]) {
+  if (irk == nullptr || addressOut == nullptr) {
+    return false;
+  }
+
+  uint8_t prand[3] = {};
+  const uint32_t seed =
+      micros() ^ static_cast<uint32_t>(Ficr::deviceId()) ^
+      (static_cast<uint32_t>(address_[0]) << 24U) ^
+      (static_cast<uint32_t>(address_[3]) << 8U);
+  (void)fillBleSecurityRandomBytes(prand, sizeof(prand), seed,
+                                   kBleSecurityRandomSpinLimit);
+  prand[2] = static_cast<uint8_t>((prand[2] & 0x3FU) | 0x40U);
+
+  uint8_t hash[3] = {};
+  if (!computeBleResolvablePrivateAddressHash(irk, prand, hash)) {
+    return false;
+  }
+
+  memcpy(&addressOut[0], hash, 3U);
+  memcpy(&addressOut[3], prand, 3U);
+  return true;
+}
+
+bool BleRadio::setResolvablePrivateAddress(const uint8_t irk[16],
+                                           uint8_t addressOut[6]) {
+  uint8_t rpa[6] = {};
+  if (!generateResolvablePrivateAddress(irk, rpa)) {
+    return false;
+  }
+  if (!setDeviceAddress(rpa, BleAddressType::kRandomPrivateResolvable)) {
+    return false;
+  }
+  if (addressOut != nullptr) {
+    memcpy(addressOut, rpa, sizeof(rpa));
+  }
+  return true;
+}
+
+bool BleRadio::resolveResolvablePrivateAddress(const uint8_t address[6],
+                                               const uint8_t* irks,
+                                               size_t irkCount,
+                                               bool* outResolved,
+                                               uint16_t* outIndex,
+                                               uint32_t spinLimit) {
+  if (outResolved != nullptr) {
+    *outResolved = false;
+  }
+  if (outIndex != nullptr) {
+    *outIndex = 0xFFFFU;
+  }
+  if (!isResolvablePrivateAddress(address) || irks == nullptr ||
+      irkCount == 0U || outResolved == nullptr) {
+    return false;
+  }
+
+  Aar aar;
+  return aar.resolveFirst(address, irks, irkCount, outResolved, outIndex,
+                          spinLimit);
 }
 
 bool BleRadio::setAdvertisingPduType(BleAdvPduType type) {

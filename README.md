@@ -66,6 +66,7 @@ This is a **bare-metal, register-level Arduino core** — no Zephyr, no nRF Conn
 | | BLE: ATT/GATT + Bluefruit API [¹](#ble-status) | ✅ |
 | | BLE: LE Secure Connections Just Works + bonding [¹](#ble-status) | ✅ |
 | | BLE: authenticated/OOB pairing + host interop [¹](#ble-status) | ⚠️ |
+| | BLE: privacy/RPA helpers [¹](#ble-status) | ⚠️ |
 | | BLE: channel sounding [¹](#ble-status) | ⚠️ |
 | | Thread: leader, child, router [²](#thread-experimental) | ⚠️ |
 | | Thread: UDP communication [²](#thread-experimental) | ⚠️ |
@@ -131,6 +132,7 @@ Full BLE-compliance work is paused while the remaining power and interoperabilit
 - [ ] **Channel Sounding — Mode 3 (hybrid RTT+PBR)** — data structures for hybrid steps exist, but the combined mode hasn't been tested.
 - [ ] **Channel Sounding security** — CS step encryption (AES-CCM per-step) is not yet implemented. All CS procedures run unencrypted.
 - [ ] **OOB pairing** — mutual local/remote LE SC OOB data is now wired through the HAL and Bluefruit APIs, with `BLE > Security > BleOobPairPeripheral` and `BLE > Security > BleOobPairCentral` examples for two-board bring-up. One-way OOB, NFC/QR provisioning, and host interoperability still need validation.
+- [ ] **Privacy / Resolvable Private Addresses** — sketches can now generate an RPA from an IRK, set it as the local random private address, and resolve RPAs through the hardware AAR block. See `BLE > Privacy > BleResolvablePrivateAddress`. Automatic periodic RPA rotation, controller resolving-list policy, and bonded reconnect identity handling are still future work.
 
 For production applications needing certification-level Bluetooth behavior, Nordic's Zephyr-based **nRF Connect SDK** is still the safer path — it ships with a fully validated Bluetooth LE controller, certified channel sounding support, and qualification listings this bare-metal core does not claim.
 

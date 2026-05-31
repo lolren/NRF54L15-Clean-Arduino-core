@@ -25,6 +25,9 @@ not regress, and what to test first when resuming.
 - [x] LE Secure Connections mutual-OOB plumbing through HAL and Bluefruit APIs,
       with compile-tested `BleOobPairPeripheral` / `BleOobPairCentral`
       two-board examples
+- [x] Privacy/RPA primitives: HAL and Bluefruit APIs can generate a resolvable
+      private address, set it as the local random address, and resolve RPAs
+      with the hardware AAR block
 - [x] Low-power BLE advertising current is now close to the Zephyr reference
       for the msfujino AdvCurrent test from discussion #71
 
@@ -54,8 +57,8 @@ not regress, and what to test first when resuming.
 - [ ] SMP authenticated LE Secure Connections: passkey entry against non-core
       peers, one-way OOB/NFC/QR host flows, negative/error cases, and broader
       host interoperability
-- [ ] Identity, signing, privacy, IRK/RPA resolution, and bond database behavior
-      against phone/desktop hosts
+- [ ] Identity, signing, automatic privacy rotation/resolving-list policy,
+      and bond database behavior against phone/desktop hosts
 - [ ] Formal ATT/GATT edge cases: long read/write, prepare/execute write,
       descriptor permissions, CCCD persistence, error-code coverage
 - [ ] LL control procedure collision handling and broader disconnect reason
@@ -85,6 +88,9 @@ Run these before changing BLE again:
 - [ ] Compile and run `BleOobPairPeripheral` + `BleOobPairCentral`; exchange
       both printed `peer <r> <c>` lines over Serial and confirm encrypted UART
       traffic resumes after pairing
+- [ ] Compile and run `BleResolvablePrivateAddress`; confirm `result=PASS`,
+      the printed RPA resolves to local IRK index `0`, and phones still see
+      the `X54-RPA` advertiser
 - [ ] Reboot both boards and confirm bonded encrypted reconnect without clearing
       storage
 - [ ] Run BLEUart/NUS against Makerdiary Web Device CLI and verify RX and TX

@@ -1528,7 +1528,7 @@ bool BleRadio::buildAdvertisingPacket() {
   if (useChSel2_ && pduAllowsChSel2) {
     header |= (1U << 5U);
   }
-  if (addressType_ == BleAddressType::kRandomStatic) {
+  if (bleAddressTypeIsRandom(addressType_)) {
     header |= (1U << 6U);
   }
 
@@ -1609,7 +1609,7 @@ bool BleRadio::buildScanResponsePacket() {
   }
 
   uint8_t header = kBlePduScanRsp;
-  if (addressType_ == BleAddressType::kRandomStatic) {
+  if (bleAddressTypeIsRandom(addressType_)) {
     header |= (1U << 6U);
   }
 
@@ -1744,7 +1744,7 @@ bool BleRadio::buildExtendedAdvertisingPackets(uint32_t auxOffsetUs,
   }
 
   const uint8_t txAdd =
-      (addressType_ == BleAddressType::kRandomStatic) ? (1U << 6U) : 0U;
+      bleAddressTypeIsRandom(addressType_) ? (1U << 6U) : 0U;
 
   constexpr uint8_t kPrimaryExtHdrLen =
       static_cast<uint8_t>(1U + kBleLegacyAddressLength + 2U + 3U);
@@ -1854,7 +1854,7 @@ bool BleRadio::buildExtendedScannableAdvertisingPackets(
   }
 
   const uint8_t txAdd =
-      (addressType_ == BleAddressType::kRandomStatic) ? (1U << 6U) : 0U;
+      bleAddressTypeIsRandom(addressType_) ? (1U << 6U) : 0U;
 
   constexpr uint8_t kScannablePrimaryHeaderFlags = 0x18U;   // ADI + AuxPtr
   constexpr uint8_t kScannableAuxAdvHeaderFlags = 0x09U;    // AdvA + ADI

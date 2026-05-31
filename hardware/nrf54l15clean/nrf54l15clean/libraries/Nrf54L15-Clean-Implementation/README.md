@@ -829,6 +829,7 @@ BLE examples:
   - `GATT` for services, characteristics, notifications, and central discovery flows
   - `NordicUart` for NUS bridge, console, and probe sketches
   - `Security` for pairing, encryption, and bond persistence checks
+  - `Privacy` for RPA generation/resolution helpers
   - `ChannelSounding` for two-board channel probing examples
   - `Diagnostics` for stress rigs and issue-focused debug probes
 
@@ -941,6 +942,9 @@ BLE examples:
 - `examples/BLE/Security/BleOobPairCentral/BleOobPairCentral.ino`
   - Central side of the same OOB pairing bring-up.
   - Starts scanning only after the peripheral's `peer <r> <c>` line is pasted over Serial.
+- `examples/BLE/Privacy/BleResolvablePrivateAddress/BleResolvablePrivateAddress.ino`
+  - Demonstrates BLE privacy primitives using the Bluefruit compatibility API.
+  - Generates an RPA from an IRK, resolves it through hardware AAR, sets a fresh RPA as the advertiser address, and advertises as `X54-RPA`.
 - `examples/BLE/ChannelSounding/BleChannelSoundingReflector/BleChannelSoundingReflector.ino`
   - Two-board phase-sounding reflector using `RADIO.CSTONES`/DFE capture on requested BLE channels.
   - Returns reflector-side IQ/magnitude terms for the initiator's phase-slope distance fit.
@@ -1095,6 +1099,9 @@ Examples:
     - LE Secure Connections Just Works, fixed-PIN, two-board numeric comparison,
       and mutual OOB plumbing are present; broader host interop remains a
       validation target.
+    - Privacy primitives can generate/set RPAs and resolve peer RPAs through
+      AAR; automatic rotation/resolving-list policy is not yet a controller
+      feature.
   - Optional protocol-level BLE trace path:
     - Enable Arduino Tools -> `BLE Trace` to emit LL/SMP trace markers for interop debugging
   - BLE timing:
@@ -1111,7 +1118,8 @@ Examples:
   - Asymmetric LE PHY pairs where TX and RX settle to different modes on the same link.
   - Full LL procedure/state-machine compliance (full control procedure matrix and deep corner-cases)
   - Full security feature set (host-validated passkey/OOB matrix, full key distribution matrix, signing)
-  - Privacy (RPA rotation/resolving list)
+  - Full privacy policy (automatic RPA rotation, resolving-list management,
+    identity-aware bonded reconnects)
   - Full L2CAP signaling and complete GATT server database/configuration model
 
 ## Power Profiling Workflow

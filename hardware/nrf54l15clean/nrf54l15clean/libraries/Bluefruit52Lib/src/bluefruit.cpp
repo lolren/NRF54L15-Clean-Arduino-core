@@ -2619,6 +2619,33 @@ bool BLESecurity::requestPairing() const {
   return manager().radio().requestPairing();
 }
 
+bool BLESecurity::getLocalIdentityRoot(uint8_t irk[16]) const {
+  if (irk == nullptr) return false;
+  xiao_nrf54l15::Ficr::identityRoot(irk);
+  return true;
+}
+
+bool BLESecurity::generateResolvablePrivateAddress(const uint8_t irk[16],
+                                                   uint8_t addressOut[6]) const {
+  return manager().radio().generateResolvablePrivateAddress(irk, addressOut);
+}
+
+bool BLESecurity::setResolvablePrivateAddress(const uint8_t irk[16],
+                                              uint8_t addressOut[6]) const {
+  return manager().radio().setResolvablePrivateAddress(irk, addressOut);
+}
+
+bool BLESecurity::resolveResolvablePrivateAddress(const uint8_t address[6],
+                                                  const uint8_t* irks,
+                                                  size_t irkCount,
+                                                  bool* outResolved,
+                                                  uint16_t* outIndex) const {
+  return manager().radio().resolveResolvablePrivateAddress(address, irks,
+                                                           irkCount,
+                                                           outResolved,
+                                                           outIndex);
+}
+
 void BLESecurity::setOobDataRequestCallback(oob_data_request_callback_t fp) {
   oob_data_request_callback_ = fp;
 }

@@ -1550,8 +1550,7 @@ bool BleRadio::buildL2capSmpResponse(const uint8_t* l2capPayload,
         uint8_t tk[16] = {0};
         buildLegacyTemporaryKey(tk);
         const uint8_t iat = connectionPeerAddressRandom_ ? 0x01U : 0x00U;
-        const uint8_t rat =
-            (addressType_ == BleAddressType::kRandomStatic) ? 0x01U : 0x00U;
+        const uint8_t rat = bleAddressTypeIsRandom(addressType_) ? 0x01U : 0x00U;
         if (!smpC1(tk, smpLocalRandom_, smpPairingReq_, smpPairingRsp_, iat,
                    connectionPeerAddress_, rat, address_, smpLocalConfirm_)) {
           return buildSmpPairingFailed(kSmpReasonUnspecified);
@@ -1864,8 +1863,7 @@ bool BleRadio::buildL2capSmpResponse(const uint8_t* l2capPayload,
       uint8_t tk[16] = {0};
       buildLegacyTemporaryKey(tk);
       const uint8_t iat = connectionPeerAddressRandom_ ? 0x01U : 0x00U;
-      const uint8_t rat =
-          (addressType_ == BleAddressType::kRandomStatic) ? 0x01U : 0x00U;
+      const uint8_t rat = bleAddressTypeIsRandom(addressType_) ? 0x01U : 0x00U;
       uint8_t expectedRemoteConfirm[16] = {0};
       if (!smpC1(tk, smpPeerRandom_, smpPairingReq_, smpPairingRsp_, iat,
                  connectionPeerAddress_, rat, address_, expectedRemoteConfirm)) {
@@ -2106,8 +2104,7 @@ bool BleRadio::buildL2capSmpResponse(const uint8_t* l2capPayload,
       {
         uint8_t tk[16] = {0};
         buildLegacyTemporaryKey(tk);
-        const uint8_t iat =
-            (addressType_ == BleAddressType::kRandomStatic) ? 0x01U : 0x00U;
+        const uint8_t iat = bleAddressTypeIsRandom(addressType_) ? 0x01U : 0x00U;
         const uint8_t rat = connectionPeerAddressRandom_ ? 0x01U : 0x00U;
         if (!smpC1(tk, smpLocalRandom_, smpPairingReq_, smpPairingRsp_, iat,
                    address_, rat, connectionPeerAddress_, smpLocalConfirm_)) {

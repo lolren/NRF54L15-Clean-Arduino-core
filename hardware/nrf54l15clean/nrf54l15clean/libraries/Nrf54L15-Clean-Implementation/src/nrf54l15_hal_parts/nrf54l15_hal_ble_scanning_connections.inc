@@ -535,7 +535,7 @@ bool BleRadio::scanActiveOnce(BleAdvertisingChannel channel,
   }
 
   // Active scan request: [ScanA (local)] [AdvA (remote)]
-  const bool scannerAddressRandom = (addressType_ == BleAddressType::kRandomStatic);
+  const bool scannerAddressRandom = bleAddressTypeIsRandom(addressType_);
   txPacket_[0] = static_cast<uint8_t>(kBlePduScanReq |
                                       ((scannerAddressRandom ? 1U : 0U) << 6U) |
                                       ((advertiserAddressRandom ? 1U : 0U) << 7U));
@@ -758,9 +758,7 @@ bool BleRadio::scanActiveOnceBudgeted(BleAdvertisingChannel channel,
   ++g_ble_scan_active_scan_req_count;
 
   txPacket_[0] = static_cast<uint8_t>(kBlePduScanReq |
-                                      (((addressType_ == BleAddressType::kRandomStatic)
-                                        ? 1U
-                                        : 0U)
+                                      ((bleAddressTypeIsRandom(addressType_) ? 1U : 0U)
                                        << 6U) |
                                       ((advertiserAddressRandom ? 1U : 0U) << 7U));
   txPacket_[1] = 12U;
@@ -1239,7 +1237,7 @@ bool BleRadio::scanExtendedActiveOnce(BleAdvertisingChannel channel,
     return finish(true);
   }
 
-  const bool scannerAddressRandom = (addressType_ == BleAddressType::kRandomStatic);
+  const bool scannerAddressRandom = bleAddressTypeIsRandom(addressType_);
   rxPacket_[0] = static_cast<uint8_t>(kBlePduScanReq |
                                       ((scannerAddressRandom ? 1U : 0U) << 6U) |
                                       ((out->advertiserAddressRandom ? 1U : 0U) << 7U));
@@ -1461,8 +1459,7 @@ bool BleRadio::initiateConnectionOnce(BleAdvertisingChannel channel,
   }
   g_ble_central_connect_debug_stage = 4U;
 
-  const bool initiatorAddressRandom =
-      (addressType_ == BleAddressType::kRandomStatic);
+  const bool initiatorAddressRandom = bleAddressTypeIsRandom(addressType_);
   const bool useChSel2 = useChSel2_ && advChSel2;
   uint8_t entropy[7] = {0};
   const uint32_t seed =
@@ -1624,8 +1621,7 @@ bool BleRadio::initiateConnectionOnceBudgeted(BleAdvertisingChannel channel,
   }
   g_ble_central_connect_debug_stage = 4U;
 
-  const bool initiatorAddressRandom =
-      (addressType_ == BleAddressType::kRandomStatic);
+  const bool initiatorAddressRandom = bleAddressTypeIsRandom(addressType_);
   const bool useChSel2 = useChSel2_ && advChSel2;
   uint8_t entropy[7] = {0};
   const uint32_t seed =
@@ -1776,7 +1772,7 @@ bool BleRadio::handleRequestAndMaybeRespond(BleAdvertisingChannel channel,
     const bool advertiserAddressMatch =
         bleAddressEqual(advertiserAddress, &address_[0]);
     const bool advertiserAddressTypeMatch =
-        (rxAddrRandom == (addressType_ == BleAddressType::kRandomStatic));
+        (rxAddrRandom == bleAddressTypeIsRandom(addressType_));
     addressMatch = advertiserAddressMatch && advertiserAddressTypeMatch;
     // Keep the Qualcomm/Sony RxAdd fallback consistent with the other ADV_IND
     // interaction path. Some centrals reuse the correct address bytes while
