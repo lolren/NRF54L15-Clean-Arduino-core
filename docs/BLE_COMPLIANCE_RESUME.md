@@ -43,6 +43,11 @@ not regress, and what to test first when resuming.
       `setPresentationFormatDescriptor()`, and `setReportRefDescriptor()` now
       allocate and expose read-only `0x2901`, `0x2904`, and `0x2908`
       descriptors through ATT discovery, Read By Type, Read, and Read Blob.
+- [x] Basic Bluefruit HID peripheral plumbing: `BLEHidAdafruit` and
+      `BLEHidGamepad` now create HID Information, Report Map, Protocol Mode,
+      Control Point, Report Reference descriptors, keyboard/mouse boot
+      reports, and notify keyboard, mouse, consumer-control, and gamepad
+      reports instead of only returning `connected()`.
 - [x] Low-power BLE advertising current is now close to the Zephyr reference
       for the msfujino AdvCurrent test from discussion #71
 
@@ -78,6 +83,9 @@ not regress, and what to test first when resuming.
 - [ ] Formal ATT/GATT edge cases: host-app interop for long read/write and
       prepare/execute write, descriptor write/permission variants, CCCD
       persistence, and broader error-code coverage
+- [ ] HID host interop: phone/desktop pairing behavior, OS report parsing,
+      boot-protocol switching, keyboard LED output reports, and gamepad host
+      behavior still need real-host validation.
 - [ ] LL control procedure collision handling and broader disconnect reason
       mapping
 - [ ] Multi-link stress: simultaneous central/peripheral with mixed MTU/DLE/PHY
@@ -94,6 +102,8 @@ not regress, and what to test first when resuming.
 Run these before changing BLE again:
 
 - [ ] Compile `Bluefruit52Lib` BLEUART peripheral and central examples
+- [ ] Compile `Bluefruit52Lib` HID keyboard, mouse, keyscan, camera shutter,
+      and gamepad examples
 - [ ] Compile and run the non-secure central/peripheral MTU/DLE pair at:
       MTU 23/Data Length 27, MTU 128/Data Length 132, MTU 247/Data Length 251
 - [ ] Compile and run `BlePairPeripheral` + `BlePairCentral` fresh pair

@@ -974,6 +974,25 @@ class BLEHidAdafruit : public BLEService {
  private:
   uint8_t mouse_buttons_;
   kbd_led_cb_t keyboard_led_callback_;
+  bool report_protocol_mode_;
+  BLECharacteristic protocol_mode_;
+  BLECharacteristic hid_info_;
+  BLECharacteristic report_map_;
+  BLECharacteristic hid_control_;
+  BLECharacteristic keyboard_input_;
+  BLECharacteristic keyboard_output_;
+  BLECharacteristic boot_keyboard_input_;
+  BLECharacteristic boot_keyboard_output_;
+  BLECharacteristic mouse_input_;
+  BLECharacteristic boot_mouse_input_;
+  BLECharacteristic consumer_input_;
+
+  void handleKeyboardOutput(uint16_t conn_hdl, uint8_t* data, uint16_t len);
+  void handleProtocolModeWrite(uint8_t* data, uint16_t len);
+  static void keyboardOutputWriteThunk(uint16_t conn_hdl, BLECharacteristic* chr,
+                                       uint8_t* data, uint16_t len);
+  static void protocolModeWriteThunk(uint16_t conn_hdl, BLECharacteristic* chr,
+                                     uint8_t* data, uint16_t len);
 };
 
 class BLEHidGamepad : public BLEService {
@@ -983,6 +1002,13 @@ class BLEHidGamepad : public BLEService {
   err_t begin() override;
   bool report(hid_gamepad_report_t* report);
   bool report(uint16_t conn_hdl, hid_gamepad_report_t* report);
+
+ private:
+  BLECharacteristic protocol_mode_;
+  BLECharacteristic hid_info_;
+  BLECharacteristic report_map_;
+  BLECharacteristic hid_control_;
+  BLECharacteristic gamepad_input_;
 };
 
 class BLEDis : public BLEService {

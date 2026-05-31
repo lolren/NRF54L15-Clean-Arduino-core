@@ -2325,7 +2325,7 @@ using BleGattWriteCallback = void (*)(uint16_t valueHandle, const uint8_t* value
 class BleRadio {
  public:
   static constexpr uint8_t kCustomGattMaxServices = 8U;
-  static constexpr uint8_t kCustomGattMaxCharacteristics = 16U;
+  static constexpr uint8_t kCustomGattMaxCharacteristics = 24U;
   static constexpr uint8_t kCustomGattMaxValueLength = 244U;
   static constexpr uint8_t kCustomGattMaxUserDescriptionLength = 63U;
   static constexpr uint8_t kCustomGattPresentationFormatLength = 7U;

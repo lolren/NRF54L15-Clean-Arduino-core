@@ -5408,15 +5408,229 @@ void BLEClientHidAdafruit::gamepadNotifyThunk(BLEClientCharacteristic* chr, uint
   }
 }
 
+namespace {
+
+constexpr uint8_t kHidReportTypeInput = 1U;
+constexpr uint8_t kHidReportTypeOutput = 2U;
+constexpr uint8_t kHidKeyboardReportId = 1U;
+constexpr uint8_t kHidConsumerReportId = 2U;
+constexpr uint8_t kHidMouseReportId = 3U;
+constexpr uint8_t kHidGamepadReportId = 1U;
+constexpr uint8_t kHidProtocolModeBoot = 0U;
+constexpr uint8_t kHidProtocolModeReport = 1U;
+
+const uint8_t kHidInfoValue[] = {
+    0x11U, 0x01U,  // HID v1.11
+    0x00U,         // country code: not localized
+    0x02U,         // normally connectable
+};
+
+const uint8_t kHidAdafruitReportMap[] = {
+    // Keyboard input report, plus the keyboard LED output report.
+    0x05U, 0x01U, 0x09U, 0x06U, 0xA1U, 0x01U, 0x85U, kHidKeyboardReportId,
+    0x05U, 0x07U, 0x19U, 0xE0U, 0x29U, 0xE7U, 0x15U, 0x00U, 0x25U, 0x01U,
+    0x75U, 0x01U, 0x95U, 0x08U, 0x81U, 0x02U, 0x95U, 0x01U, 0x75U, 0x08U,
+    0x81U, 0x01U, 0x95U, 0x05U, 0x75U, 0x01U, 0x05U, 0x08U, 0x19U, 0x01U,
+    0x29U, 0x05U, 0x91U, 0x02U, 0x95U, 0x01U, 0x75U, 0x03U, 0x91U, 0x01U,
+    0x95U, 0x06U, 0x75U, 0x08U, 0x15U, 0x00U, 0x25U, 0x65U, 0x05U, 0x07U,
+    0x19U, 0x00U, 0x29U, 0x65U, 0x81U, 0x00U, 0xC0U,
+
+    // Consumer-control media key report: one 16-bit usage value.
+    0x05U, 0x0CU, 0x09U, 0x01U, 0xA1U, 0x01U, 0x85U, kHidConsumerReportId,
+    0x15U, 0x00U, 0x26U, 0xFFU, 0x03U, 0x19U, 0x00U, 0x2AU, 0xFFU, 0x03U,
+    0x75U, 0x10U, 0x95U, 0x01U, 0x81U, 0x00U, 0xC0U,
+
+    // Mouse report: buttons, X/Y/wheel, and horizontal pan.
+    0x05U, 0x01U, 0x09U, 0x02U, 0xA1U, 0x01U, 0x09U, 0x01U, 0xA1U, 0x00U,
+    0x85U, kHidMouseReportId, 0x05U, 0x09U, 0x19U, 0x01U, 0x29U, 0x05U,
+    0x15U, 0x00U, 0x25U, 0x01U, 0x95U, 0x05U, 0x75U, 0x01U, 0x81U, 0x02U,
+    0x95U, 0x01U, 0x75U, 0x03U, 0x81U, 0x01U, 0x05U, 0x01U, 0x09U, 0x30U,
+    0x09U, 0x31U, 0x09U, 0x38U, 0x15U, 0x81U, 0x25U, 0x7FU, 0x75U, 0x08U,
+    0x95U, 0x03U, 0x81U, 0x06U, 0x05U, 0x0CU, 0x0AU, 0x38U, 0x02U, 0x95U,
+    0x01U, 0x81U, 0x06U, 0xC0U, 0xC0U,
+};
+
+const uint8_t kHidGamepadReportMap[] = {
+    0x05U, 0x01U, 0x09U, 0x05U, 0xA1U, 0x01U, 0x85U, kHidGamepadReportId,
+    0x09U, 0x30U, 0x09U, 0x31U, 0x09U, 0x32U, 0x09U, 0x35U, 0x09U, 0x33U,
+    0x09U, 0x34U, 0x15U, 0x81U, 0x25U, 0x7FU, 0x75U, 0x08U, 0x95U, 0x06U,
+    0x81U, 0x02U, 0x09U, 0x39U, 0x15U, 0x00U, 0x25U, 0x08U, 0x35U, 0x00U,
+    0x46U, 0x3BU, 0x01U, 0x65U, 0x14U, 0x75U, 0x04U, 0x95U, 0x01U, 0x81U,
+    0x42U, 0x75U, 0x04U, 0x95U, 0x01U, 0x81U, 0x01U, 0x05U, 0x09U, 0x19U,
+    0x01U, 0x29U, 0x20U, 0x15U, 0x00U, 0x25U, 0x01U, 0x75U, 0x01U, 0x95U,
+    0x20U, 0x81U, 0x02U, 0xC0U,
+};
+
+err_t beginFixedCharacteristic(BLECharacteristic& characteristic, uint8_t properties,
+                               SecureMode_t readPerm, SecureMode_t writePerm,
+                               const void* initialValue, uint16_t fixedLength) {
+  characteristic.setProperties(properties);
+  characteristic.setPermission(readPerm, writePerm);
+  characteristic.setFixedLen(fixedLength);
+  if (fixedLength > 0U) {
+    if (initialValue == nullptr) {
+      return ERROR_INVALID_PARAM;
+    }
+    characteristic.write(initialValue, fixedLength);
+  }
+  return characteristic.begin();
+}
+
+}  // namespace
+
 BLEHidAdafruit::BLEHidAdafruit()
     : BLEService(UUID16_SVC_HUMAN_INTERFACE_DEVICE),
       mouse_buttons_(0U),
-      keyboard_led_callback_(nullptr) {}
+      keyboard_led_callback_(nullptr),
+      report_protocol_mode_(true),
+      protocol_mode_(UUID16_CHR_PROTOCOL_MODE),
+      hid_info_(UUID16_CHR_HID_INFORMATION),
+      report_map_(UUID16_CHR_REPORT_MAP),
+      hid_control_(UUID16_CHR_HID_CONTROL_POINT),
+      keyboard_input_(UUID16_CHR_REPORT),
+      keyboard_output_(UUID16_CHR_REPORT),
+      boot_keyboard_input_(UUID16_CHR_BOOT_KEYBOARD_INPUT_REPORT),
+      boot_keyboard_output_(UUID16_CHR_BOOT_KEYBOARD_OUTPUT_REPORT),
+      mouse_input_(UUID16_CHR_REPORT),
+      boot_mouse_input_(UUID16_CHR_BOOT_MOUSE_INPUT_REPORT),
+      consumer_input_(UUID16_CHR_REPORT) {}
 
-err_t BLEHidAdafruit::begin() { return BLEService::begin(); }
+err_t BLEHidAdafruit::begin() {
+  const err_t status = BLEService::begin();
+  if (status != ERROR_NONE) {
+    return status;
+  }
+
+  report_protocol_mode_ = true;
+  const uint8_t protocol = kHidProtocolModeReport;
+  protocol_mode_.setWriteCallback(protocolModeWriteThunk);
+  err_t result =
+      beginFixedCharacteristic(protocol_mode_, CHR_PROPS_READ | CHR_PROPS_WRITE_WO_RESP,
+                               SECMODE_ENC_NO_MITM, SECMODE_ENC_NO_MITM,
+                               &protocol, sizeof(protocol));
+  if (result != ERROR_NONE) {
+    return result;
+  }
+
+  hid_info_.setProperties(CHR_PROPS_READ);
+  result = beginFixedCharacteristic(hid_info_, CHR_PROPS_READ, SECMODE_ENC_NO_MITM,
+                                    SECMODE_NO_ACCESS, kHidInfoValue,
+                                    sizeof(kHidInfoValue));
+  if (result != ERROR_NONE) {
+    return result;
+  }
+
+  result = beginFixedCharacteristic(report_map_, CHR_PROPS_READ, SECMODE_ENC_NO_MITM,
+                                    SECMODE_NO_ACCESS, kHidAdafruitReportMap,
+                                    sizeof(kHidAdafruitReportMap));
+  if (result != ERROR_NONE) {
+    return result;
+  }
+
+  hid_keyboard_report_t emptyKeyboard{};
+  keyboard_input_.setReportRefDescriptor(kHidKeyboardReportId, kHidReportTypeInput);
+  result = beginFixedCharacteristic(keyboard_input_, CHR_PROPS_READ | CHR_PROPS_NOTIFY,
+                                    SECMODE_ENC_NO_MITM, SECMODE_NO_ACCESS,
+                                    &emptyKeyboard, sizeof(emptyKeyboard));
+  if (result != ERROR_NONE) {
+    return result;
+  }
+
+  uint8_t keyboardLeds = 0U;
+  keyboard_output_.setReportRefDescriptor(kHidKeyboardReportId, kHidReportTypeOutput);
+  keyboard_output_.setWriteCallback(keyboard_led_callback_ ? keyboardOutputWriteThunk : nullptr);
+  result = beginFixedCharacteristic(
+      keyboard_output_, CHR_PROPS_READ | CHR_PROPS_WRITE | CHR_PROPS_WRITE_WO_RESP,
+      SECMODE_ENC_NO_MITM, SECMODE_ENC_NO_MITM, &keyboardLeds, sizeof(keyboardLeds));
+  if (result != ERROR_NONE) {
+    return result;
+  }
+
+  boot_keyboard_input_.setWriteCallback(nullptr);
+  result = beginFixedCharacteristic(boot_keyboard_input_, CHR_PROPS_READ | CHR_PROPS_NOTIFY,
+                                    SECMODE_ENC_NO_MITM, SECMODE_NO_ACCESS,
+                                    &emptyKeyboard, sizeof(emptyKeyboard));
+  if (result != ERROR_NONE) {
+    return result;
+  }
+
+  boot_keyboard_output_.setWriteCallback(keyboard_led_callback_ ? keyboardOutputWriteThunk
+                                                                : nullptr);
+  result = beginFixedCharacteristic(
+      boot_keyboard_output_, CHR_PROPS_READ | CHR_PROPS_WRITE | CHR_PROPS_WRITE_WO_RESP,
+      SECMODE_ENC_NO_MITM, SECMODE_ENC_NO_MITM, &keyboardLeds, sizeof(keyboardLeds));
+  if (result != ERROR_NONE) {
+    return result;
+  }
+
+  hid_mouse_report_t emptyMouse{};
+  mouse_input_.setReportRefDescriptor(kHidMouseReportId, kHidReportTypeInput);
+  result = beginFixedCharacteristic(mouse_input_, CHR_PROPS_READ | CHR_PROPS_NOTIFY,
+                                    SECMODE_ENC_NO_MITM, SECMODE_NO_ACCESS,
+                                    &emptyMouse, sizeof(emptyMouse));
+  if (result != ERROR_NONE) {
+    return result;
+  }
+
+  result = beginFixedCharacteristic(boot_mouse_input_, CHR_PROPS_READ | CHR_PROPS_NOTIFY,
+                                    SECMODE_ENC_NO_MITM, SECMODE_NO_ACCESS,
+                                    &emptyMouse, sizeof(emptyMouse));
+  if (result != ERROR_NONE) {
+    return result;
+  }
+
+  uint16_t emptyConsumer = 0U;
+  consumer_input_.setReportRefDescriptor(kHidConsumerReportId, kHidReportTypeInput);
+  result = beginFixedCharacteristic(consumer_input_, CHR_PROPS_READ | CHR_PROPS_NOTIFY,
+                                    SECMODE_ENC_NO_MITM, SECMODE_NO_ACCESS,
+                                    &emptyConsumer, sizeof(emptyConsumer));
+  if (result != ERROR_NONE) {
+    return result;
+  }
+
+  uint8_t control = 0U;
+  result = beginFixedCharacteristic(hid_control_, CHR_PROPS_WRITE_WO_RESP,
+                                    SECMODE_NO_ACCESS, SECMODE_ENC_NO_MITM,
+                                    &control, sizeof(control));
+  if (result != ERROR_NONE) {
+    return result;
+  }
+
+  Bluefruit.Periph.setConnInterval(9, 12);
+  return ERROR_NONE;
+}
 
 void BLEHidAdafruit::setKeyboardLedCallback(kbd_led_cb_t fp) {
   keyboard_led_callback_ = fp;
+  keyboard_output_.setWriteCallback(fp ? keyboardOutputWriteThunk : nullptr);
+  boot_keyboard_output_.setWriteCallback(fp ? keyboardOutputWriteThunk : nullptr);
+}
+
+void BLEHidAdafruit::handleKeyboardOutput(uint16_t conn_hdl, uint8_t* data, uint16_t len) {
+  if (keyboard_led_callback_ != nullptr && data != nullptr && len > 0U) {
+    invokeBluefruitUserCallback(keyboard_led_callback_, conn_hdl, data[0]);
+  }
+}
+
+void BLEHidAdafruit::handleProtocolModeWrite(uint8_t* data, uint16_t len) {
+  if (data != nullptr && len > 0U) {
+    report_protocol_mode_ = (data[0] != kHidProtocolModeBoot);
+  }
+}
+
+void BLEHidAdafruit::keyboardOutputWriteThunk(uint16_t conn_hdl, BLECharacteristic* chr,
+                                              uint8_t* data, uint16_t len) {
+  if (chr != nullptr) {
+    static_cast<BLEHidAdafruit&>(chr->parentService()).handleKeyboardOutput(conn_hdl, data, len);
+  }
+}
+
+void BLEHidAdafruit::protocolModeWriteThunk(uint16_t conn_hdl, BLECharacteristic* chr,
+                                            uint8_t* data, uint16_t len) {
+  (void)conn_hdl;
+  if (chr != nullptr) {
+    static_cast<BLEHidAdafruit&>(chr->parentService()).handleProtocolModeWrite(data, len);
+  }
 }
 
 bool BLEHidAdafruit::keyboardReport(hid_keyboard_report_t* report) {
@@ -5436,8 +5650,12 @@ bool BLEHidAdafruit::keySequence(const char* str, int interval) {
 }
 
 bool BLEHidAdafruit::keyboardReport(uint16_t conn_hdl, hid_keyboard_report_t* report) {
-  (void)conn_hdl;
-  return report != nullptr && Bluefruit.connected();
+  if (report == nullptr || !Bluefruit.connected()) {
+    return false;
+  }
+  BLECharacteristic& reportCharacteristic =
+      report_protocol_mode_ ? keyboard_input_ : boot_keyboard_input_;
+  return reportCharacteristic.notify(conn_hdl, report, sizeof(*report));
 }
 
 bool BLEHidAdafruit::keyboardReport(uint16_t conn_hdl, uint8_t modifier, uint8_t keycode[6]) {
@@ -5495,9 +5713,10 @@ bool BLEHidAdafruit::consumerKeyRelease(void) {
 }
 
 bool BLEHidAdafruit::consumerReport(uint16_t conn_hdl, uint16_t usage_code) {
-  (void)conn_hdl;
-  (void)usage_code;
-  return Bluefruit.connected();
+  if (!Bluefruit.connected()) {
+    return false;
+  }
+  return consumer_input_.notify(conn_hdl, &usage_code, sizeof(usage_code));
 }
 
 bool BLEHidAdafruit::consumerKeyPress(uint16_t conn_hdl, uint16_t usage_code) {
@@ -5535,12 +5754,16 @@ bool BLEHidAdafruit::mouseScroll(int8_t scroll) {
 bool BLEHidAdafruit::mousePan(int8_t pan) { return mousePan(BLE_CONN_HANDLE_INVALID, pan); }
 
 bool BLEHidAdafruit::mouseReport(uint16_t conn_hdl, hid_mouse_report_t* report) {
-  (void)conn_hdl;
-  return report != nullptr && Bluefruit.connected();
+  if (report == nullptr || !Bluefruit.connected()) {
+    return false;
+  }
+  BLECharacteristic& reportCharacteristic = report_protocol_mode_ ? mouse_input_ : boot_mouse_input_;
+  return reportCharacteristic.notify(conn_hdl, report, sizeof(*report));
 }
 
 bool BLEHidAdafruit::mouseReport(uint16_t conn_hdl, uint8_t buttons, int8_t x, int8_t y,
                                  int8_t wheel, int8_t pan) {
+  mouse_buttons_ = buttons;
   hid_mouse_report_t report{buttons, x, y, wheel, pan};
   return mouseReport(conn_hdl, &report);
 }
@@ -5567,17 +5790,73 @@ bool BLEHidAdafruit::mousePan(uint16_t conn_hdl, int8_t pan) {
   return mouseReport(conn_hdl, mouse_buttons_, 0, 0, 0, pan);
 }
 
-BLEHidGamepad::BLEHidGamepad() : BLEService(UUID16_SVC_HUMAN_INTERFACE_DEVICE) {}
+BLEHidGamepad::BLEHidGamepad()
+    : BLEService(UUID16_SVC_HUMAN_INTERFACE_DEVICE),
+      protocol_mode_(UUID16_CHR_PROTOCOL_MODE),
+      hid_info_(UUID16_CHR_HID_INFORMATION),
+      report_map_(UUID16_CHR_REPORT_MAP),
+      hid_control_(UUID16_CHR_HID_CONTROL_POINT),
+      gamepad_input_(UUID16_CHR_REPORT) {}
 
-err_t BLEHidGamepad::begin() { return BLEService::begin(); }
+err_t BLEHidGamepad::begin() {
+  const err_t status = BLEService::begin();
+  if (status != ERROR_NONE) {
+    return status;
+  }
+
+  const uint8_t protocol = kHidProtocolModeReport;
+  err_t result =
+      beginFixedCharacteristic(protocol_mode_, CHR_PROPS_READ | CHR_PROPS_WRITE_WO_RESP,
+                               SECMODE_ENC_NO_MITM, SECMODE_ENC_NO_MITM,
+                               &protocol, sizeof(protocol));
+  if (result != ERROR_NONE) {
+    return result;
+  }
+
+  result = beginFixedCharacteristic(hid_info_, CHR_PROPS_READ, SECMODE_ENC_NO_MITM,
+                                    SECMODE_NO_ACCESS, kHidInfoValue,
+                                    sizeof(kHidInfoValue));
+  if (result != ERROR_NONE) {
+    return result;
+  }
+
+  result = beginFixedCharacteristic(report_map_, CHR_PROPS_READ, SECMODE_ENC_NO_MITM,
+                                    SECMODE_NO_ACCESS, kHidGamepadReportMap,
+                                    sizeof(kHidGamepadReportMap));
+  if (result != ERROR_NONE) {
+    return result;
+  }
+
+  hid_gamepad_report_t emptyGamepad{};
+  gamepad_input_.setReportRefDescriptor(kHidGamepadReportId, kHidReportTypeInput);
+  result = beginFixedCharacteristic(gamepad_input_, CHR_PROPS_READ | CHR_PROPS_NOTIFY,
+                                    SECMODE_ENC_NO_MITM, SECMODE_NO_ACCESS,
+                                    &emptyGamepad, sizeof(emptyGamepad));
+  if (result != ERROR_NONE) {
+    return result;
+  }
+
+  uint8_t control = 0U;
+  result = beginFixedCharacteristic(hid_control_, CHR_PROPS_WRITE_WO_RESP,
+                                    SECMODE_NO_ACCESS, SECMODE_ENC_NO_MITM,
+                                    &control, sizeof(control));
+  if (result != ERROR_NONE) {
+    return result;
+  }
+
+  Bluefruit.Periph.setConnInterval(9, 12);
+  return ERROR_NONE;
+}
 
 bool BLEHidGamepad::report(hid_gamepad_report_t* report) {
   return this->report(BLE_CONN_HANDLE_INVALID, report);
 }
 
 bool BLEHidGamepad::report(uint16_t conn_hdl, hid_gamepad_report_t* report) {
-  (void)conn_hdl;
-  return report != nullptr && Bluefruit.connected();
+  if (report == nullptr || !Bluefruit.connected()) {
+    return false;
+  }
+  return gamepad_input_.notify(conn_hdl, report, sizeof(*report));
 }
 
 BLEDis::BLEDis()
