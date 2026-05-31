@@ -38,6 +38,9 @@ These same decisions are mirrored in
   - explicit Thread dependency resolution
   - Thread dataset export into staged CHIP TLV form
   - Thread restore diagnostics exposed in the on-network node snapshot
+- `MatterOnNetworkRebootRecoveryProbe` starts with no explicit Thread dataset
+  so it can show whether the underlying Thread settings restore path is feeding
+  the Matter on-network readiness state.
 - the staged on-network on/off-light examples are API/bootstrap proofs only;
   they are not a commissioned Matter runtime.
 

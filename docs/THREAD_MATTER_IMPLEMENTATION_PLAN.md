@@ -17,8 +17,8 @@ staged OpenThread and Matter foundation work landed.
 
 | Area | Claim today | Not claimed yet |
 |---|---|---|
-| Thread | Experimental staged OpenThread path with fixed dataset, leader/child/router paths, PSKc/passphrase helpers, UDP examples, and dataset-restore diagnostics. | Production Thread stack, joiner, commissioner, reference-network attach, reboot recovery validation, sleepy-device depth. |
-| Matter | Foundation-only on-network/on-off-light shape with onboarding helpers, Thread dataset export seam, Thread restore diagnostics, structured staged DNS-SD/SRP records, and publish lifecycle diagnostics for commissionable and operational discovery. | Real commissioning, real mDNS/SRP registration, commissioner/Home Assistant control, secure sessions, reboot/reconnect recovery validation. |
+| Thread | Experimental staged OpenThread path with fixed dataset, leader/child/router paths, PSKc/passphrase helpers, UDP examples, dataset-restore diagnostics, and a reboot-recovery probe. | Production Thread stack, joiner, commissioner, reference-network attach, reboot recovery validation, sleepy-device depth. |
+| Matter | Foundation-only on-network/on-off-light shape with onboarding helpers, Thread dataset export seam, Thread restore diagnostics/probe, structured staged DNS-SD/SRP records, and publish lifecycle diagnostics for commissionable and operational discovery. | Real commissioning, real mDNS/SRP registration, commissioner/Home Assistant control, secure sessions, reboot/reconnect recovery validation. |
 | VPR | Available as a future offload seam, not the first Thread/Matter owner. | VPR-owned Thread radio/controller or Matter runtime. |
 
 ## Architecture Decisions
@@ -51,6 +51,7 @@ staged OpenThread and Matter foundation work landed.
 ## Thread Next Ticks
 
 - [x] PSK Joiner/Commissioner implemented (MAC verified with PSKd derivation)
+- [x] Add self-contained saved-dataset restore probes for Thread and Matter-on-network
 - [ ] Validate attach to a reference Thread network through an external border router
 - [ ] Add two-board reboot recovery test for saved dataset/settings
 - [ ] Expand sleepy-device behavior beyond the current staged runtime

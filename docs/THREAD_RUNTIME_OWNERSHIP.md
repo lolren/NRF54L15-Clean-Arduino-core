@@ -34,6 +34,9 @@ This document records the Thread ownership decisions encoded in
 - settings-backed active-dataset restore, restore diagnostics, and TLV/hex
   import/export now exist in the experimental wrapper for reboot and
   reference-network attach work.
+- `ThreadExperimentalRebootRecoveryProbe` seeds a demo dataset only when
+  settings are empty, then reports whether the next boot restored that dataset
+  from OpenThread settings.
 - OpenThread state-change flags and attach diagnostics are now surfaced through
   the experimental wrapper for Arduino-facing attach debugging.
 - the hidden attach-state machine snapshot is now also surfaced there, so
@@ -78,7 +81,7 @@ This document records the Thread ownership decisions encoded in
 
 - [ ] validate attach against a reference Thread network.
 - [ ] validate saved dataset/settings after reboot on two boards with the new
-  restore diagnostics as evidence.
+  restore probes as evidence.
 - [ ] add or explicitly defer joiner support.
 - [ ] validate sleepy-device behavior.
 - [ ] keep Zigbee regressions green because Zigbee and Thread share the same

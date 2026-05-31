@@ -280,6 +280,14 @@ Arduino IDE organization:
 - `File -> Examples -> Nrf54L15-Clean-Implementation -> Thread`
 - `File -> Examples -> Nrf54L15-Clean-Implementation -> Zigbee`
 
+Thread/Matter recovery probes:
+
+- `Thread -> ThreadExperimentalRebootRecoveryProbe` seeds a demo Thread dataset
+  only when settings are empty, then reports `restore_restored=1` after the
+  next reset if OpenThread settings recovery worked.
+- `Matter -> MatterOnNetworkRebootRecoveryProbe` runs the same saved-dataset
+  check through the staged Matter on-network node snapshot.
+
 The VPR probes are now surfaced directly under the library example menu as
 well as the board-package `Peripherals` menu, so they are easier to find in
 Arduino IDE.

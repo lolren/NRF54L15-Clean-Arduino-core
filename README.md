@@ -155,6 +155,7 @@ The Thread stack is an early-stage port of OpenThread core that compiles, links,
 - [x] Router role upgrade
 - [x] Public child-only / router-eligible mode control through the Arduino wrapper
 - [x] Settings-backed dataset restore diagnostics for reboot/rejoin bring-up
+- [x] Reboot recovery probe example that seeds once, then checks saved settings on reset
 - [x] UDP transport — checked single-frame payloads up to 63 bytes
 - [x] Basic two-board ping/pong smoke tests
 - [x] Radio PAL support for source match, scheduled receive, CSL state, coex metrics, channel TX power limits, and one-peer enhanced-ACK probing configuration
@@ -194,6 +195,7 @@ The Matter support is a **compile-time and minimal-runtime smoke test**, not a f
       `_matterc._udp` and blocked operational `_matter._tcp` records
 - [x] Staged discovery publish lifecycle with publish/unpublish diagnostics
 - [x] Thread restore diagnostics surfaced through the on-network node snapshot
+- [x] On-network reboot recovery probe that shows Thread restore state inside Matter
 
 **What doesn't (yet):**
 - [ ] mDNS/DNS-SD commissioning advertisement (`_matterc._udp` record is
