@@ -189,9 +189,12 @@ The Matter support is a **compile-time and minimal-runtime smoke test**, not a f
 - [x] Encrypted IM layer (AES-CTR) compiles
 - [x] CASE Sigma protocol state machine (partial, compiles)
 - [x] Software secp256r1 ECC (Barrett reduction, ~0.84s sign / ~1.76s verify)
+- [x] Structured staged DNS-SD/SRP record builder for commissionable
+      `_matterc._udp` and blocked operational `_matter._tcp` records
 
 **What doesn't (yet):**
-- [ ] mDNS/DNS-SD commissioning advertisement (`_matterc._udp` service not published)
+- [ ] mDNS/DNS-SD commissioning advertisement (`_matterc._udp` record is
+      built locally but not published)
 - [ ] SRP operational service registration
 - [ ] Platform DNSSD bridge
 - [ ] Operational discovery responder
@@ -201,7 +204,7 @@ The Matter support is a **compile-time and minimal-runtime smoke test**, not a f
 - [ ] Cluster persistence across reboots
 - [ ] Multi-endpoint support (single On/Off Light endpoint only)
 
-**Honest assessment:** The build menu option is named "Experimental Compile Target" for a reason. It proves the code links and state machines initialize — nothing more. Commissioning window opens locally, but the device is invisible on the network because mDNS/SRP service discovery isn't compiled in. This is a compile-time smoke test, not a commissionable Matter device.
+**Honest assessment:** The build menu option is named "Experimental Compile Target" for a reason. It proves the code links and state machines initialize — nothing more. Commissioning window opens locally and the code can now build the DNS-SD/SRP records it would need to publish, but the device is still invisible on the network because mDNS/SRP service publication isn't compiled in. This is a compile-time smoke test, not a commissionable Matter device.
 
 ---
 

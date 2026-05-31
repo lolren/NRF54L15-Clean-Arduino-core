@@ -204,6 +204,81 @@ void printDiscoverySummary(
   Serial.println(summary.txtDeviceName);
 }
 
+void printDiscoveryRecord(
+    const xiao_nrf54l15::MatterOnNetworkDiscoveryRecord& record,
+    size_t index) {
+  Serial.print("matter_cmd_demo discovery_record[");
+  Serial.print(static_cast<unsigned>(index));
+  Serial.print("].kind=");
+  Serial.println(xiao_nrf54l15::Nrf54MatterOnNetworkOnOffLightNode::
+                     discoveryRecordKindName(record.kind));
+  Serial.print("matter_cmd_demo discovery_record[");
+  Serial.print(static_cast<unsigned>(index));
+  Serial.print("].valid=");
+  Serial.println(record.valid ? 1 : 0);
+  Serial.print("matter_cmd_demo discovery_record[");
+  Serial.print(static_cast<unsigned>(index));
+  Serial.print("].ready=");
+  Serial.println(record.readyToRegister ? 1 : 0);
+  Serial.print("matter_cmd_demo discovery_record[");
+  Serial.print(static_cast<unsigned>(index));
+  Serial.print("].staged_only=");
+  Serial.println(record.stagedOnly ? 1 : 0);
+  Serial.print("matter_cmd_demo discovery_record[");
+  Serial.print(static_cast<unsigned>(index));
+  Serial.print("].service=");
+  Serial.println(record.serviceType != nullptr ? record.serviceType : "n/a");
+  Serial.print("matter_cmd_demo discovery_record[");
+  Serial.print(static_cast<unsigned>(index));
+  Serial.print("].port=");
+  Serial.println(record.port);
+  Serial.print("matter_cmd_demo discovery_record[");
+  Serial.print(static_cast<unsigned>(index));
+  Serial.print("].instance=");
+  Serial.println(record.instanceName);
+  Serial.print("matter_cmd_demo discovery_record[");
+  Serial.print(static_cast<unsigned>(index));
+  Serial.print("].host=");
+  Serial.println(record.hostName);
+  Serial.print("matter_cmd_demo discovery_record[");
+  Serial.print(static_cast<unsigned>(index));
+  Serial.print("].blocker=");
+  Serial.println(record.blockerName);
+  for (size_t i = 0; i < record.subtypeCount; ++i) {
+    Serial.print("matter_cmd_demo discovery_record[");
+    Serial.print(static_cast<unsigned>(index));
+    Serial.print("].subtype[");
+    Serial.print(static_cast<unsigned>(i));
+    Serial.print("]=");
+    Serial.println(record.subtypes[i].value);
+  }
+  for (size_t i = 0; i < record.textEntryCount; ++i) {
+    Serial.print("matter_cmd_demo discovery_record[");
+    Serial.print(static_cast<unsigned>(index));
+    Serial.print("].txt[");
+    Serial.print(static_cast<unsigned>(i));
+    Serial.print("]=");
+    Serial.println(record.textEntries[i].value);
+  }
+}
+
+void printDiscoveryRecords() {
+  xiao_nrf54l15::MatterOnNetworkDiscoveryRecord records[2];
+  size_t recordCount = 0U;
+  if (!g_node.buildDiscoveryRecords(records, sizeof(records) / sizeof(records[0]),
+                                    &recordCount)) {
+    Serial.print("matter_cmd_demo discovery_record_count_required=");
+    Serial.println(static_cast<unsigned>(recordCount));
+    return;
+  }
+
+  Serial.print("matter_cmd_demo discovery_record_count=");
+  Serial.println(static_cast<unsigned>(recordCount));
+  for (size_t i = 0; i < recordCount; ++i) {
+    printDiscoveryRecord(records[i], i);
+  }
+}
+
 void applyIndicator() {
 #if defined(LED_BUILTIN)
   if (g_node.light().identifying()) {
@@ -516,6 +591,7 @@ void handleLine(char* line) {
     if (g_node.discoverySummary(&summary)) {
       printDiscoverySummary(summary);
     }
+    printDiscoveryRecords();
     return;
   }
   if (strcmp(line, "thread-stats") == 0) {

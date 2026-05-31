@@ -31,6 +31,39 @@ enum class MatterDiscoveryCommissioningMode : uint8_t {
   kEnhancedCommissioning = 2U,
 };
 
+enum class MatterOnNetworkDiscoveryRecordKind : uint8_t {
+  kCommissionable = 0U,
+  kOperational = 1U,
+};
+
+struct MatterOnNetworkDiscoveryTextEntry {
+  char value[32] = {0};
+};
+
+struct MatterOnNetworkDiscoverySubtype {
+  char value[32] = {0};
+};
+
+struct MatterOnNetworkDiscoveryRecord {
+  static constexpr size_t kMaxTextEntries = 10U;
+  static constexpr size_t kMaxSubtypes = 4U;
+
+  bool valid = false;
+  bool stagedOnly = true;
+  bool readyToRegister = false;
+  MatterOnNetworkDiscoveryRecordKind kind =
+      MatterOnNetworkDiscoveryRecordKind::kCommissionable;
+  const char* serviceType = nullptr;
+  uint16_t port = 0U;
+  char instanceName[33] = {0};
+  char hostName[32] = {0};
+  char blockerName[48] = {0};
+  size_t textEntryCount = 0U;
+  MatterOnNetworkDiscoveryTextEntry textEntries[kMaxTextEntries] = {};
+  size_t subtypeCount = 0U;
+  MatterOnNetworkDiscoverySubtype subtypes[kMaxSubtypes] = {};
+};
+
 struct MatterOnNetworkIdentity {
   uint32_t setupPinCode = 20202021UL;
   uint16_t discriminator = 3840U;
@@ -207,6 +240,13 @@ class Nrf54MatterOnNetworkOnOffLightNode {
   uint16_t commissioningWindowSecondsRemaining() const;
   bool readinessSummary(MatterOnNetworkReadinessSummary* outSummary) const;
   bool discoverySummary(MatterOnNetworkDiscoverySummary* outSummary) const;
+  bool buildCommissionableDiscoveryRecord(
+      MatterOnNetworkDiscoveryRecord* outRecord) const;
+  bool buildOperationalDiscoveryRecord(
+      MatterOnNetworkDiscoveryRecord* outRecord) const;
+  bool buildDiscoveryRecords(MatterOnNetworkDiscoveryRecord* outRecords,
+                             size_t recordCapacity,
+                             size_t* outRecordCount = nullptr) const;
   bool buildCommissioningBundle(
       MatterOnNetworkCommissioningBundle* outBundle) const;
   bool exportOpenThreadDatasetTlvs(otOperationalDatasetTlvs* outTlvs) const;
@@ -239,6 +279,8 @@ class Nrf54MatterOnNetworkOnOffLightNode {
   static const char* datasetSourceName(MatterOnNetworkDatasetSource source);
   static const char* commissioningWindowStateName(
       MatterCommissioningWindowState state);
+  static const char* discoveryRecordKindName(
+      MatterOnNetworkDiscoveryRecordKind kind);
 
  private:
   static constexpr uint32_t kPersistentStateMagic = 0x4D4E4554UL;
@@ -255,6 +297,13 @@ class Nrf54MatterOnNetworkOnOffLightNode {
   static int hexNibble(char value);
   static bool hexToBytes(const char* text, uint8_t* outData, size_t outCapacity,
                          size_t* outLength);
+  static bool addDiscoveryText(MatterOnNetworkDiscoveryRecord* record,
+                               const char* text);
+  static bool addDiscoverySubtype(MatterOnNetworkDiscoveryRecord* record,
+                                  const char* subtype);
+  static void buildDiscoveryHostName(const MatterOnNetworkIdentity& identity,
+                                     char* outHostName,
+                                     size_t outHostNameSize);
 
   bool loadPersistentIdentity(MatterOnNetworkIdentity* outIdentity) const;
   bool loadPersistentThreadDataset(otOperationalDatasetTlvs* outTlvs) const;

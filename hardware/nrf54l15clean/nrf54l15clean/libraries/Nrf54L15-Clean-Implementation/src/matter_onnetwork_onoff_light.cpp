@@ -136,6 +136,49 @@ bool Nrf54MatterOnNetworkOnOffLightNode::hexToBytes(
   return true;
 }
 
+bool Nrf54MatterOnNetworkOnOffLightNode::addDiscoveryText(
+    MatterOnNetworkDiscoveryRecord* record,
+    const char* text) {
+  if (record == nullptr || text == nullptr ||
+      record->textEntryCount >= MatterOnNetworkDiscoveryRecord::kMaxTextEntries) {
+    return false;
+  }
+
+  setFixedText(record->textEntries[record->textEntryCount].value,
+               sizeof(record->textEntries[record->textEntryCount].value),
+               text);
+  ++record->textEntryCount;
+  return true;
+}
+
+bool Nrf54MatterOnNetworkOnOffLightNode::addDiscoverySubtype(
+    MatterOnNetworkDiscoveryRecord* record,
+    const char* subtype) {
+  if (record == nullptr || subtype == nullptr ||
+      record->subtypeCount >= MatterOnNetworkDiscoveryRecord::kMaxSubtypes) {
+    return false;
+  }
+
+  setFixedText(record->subtypes[record->subtypeCount].value,
+               sizeof(record->subtypes[record->subtypeCount].value),
+               subtype);
+  ++record->subtypeCount;
+  return true;
+}
+
+void Nrf54MatterOnNetworkOnOffLightNode::buildDiscoveryHostName(
+    const MatterOnNetworkIdentity& identity,
+    char* outHostName,
+    size_t outHostNameSize) {
+  if (outHostName == nullptr || outHostNameSize == 0U) {
+    return;
+  }
+
+  snprintf(outHostName, outHostNameSize, "nrf54l15-%04x",
+           static_cast<unsigned>(identity.discriminator & 0x0FFFU));
+  outHostName[outHostNameSize - 1U] = '\0';
+}
+
 bool Nrf54MatterOnNetworkOnOffLightNode::begin(
     const MatterOnNetworkOnOffLightConfig* config) {
   if (storageOpen_) {
@@ -654,6 +697,114 @@ bool Nrf54MatterOnNetworkOnOffLightNode::discoverySummary(
   return true;
 }
 
+bool Nrf54MatterOnNetworkOnOffLightNode::buildCommissionableDiscoveryRecord(
+    MatterOnNetworkDiscoveryRecord* outRecord) const {
+  if (outRecord == nullptr) {
+    return false;
+  }
+
+  MatterOnNetworkDiscoverySummary summary = {};
+  if (!discoverySummary(&summary)) {
+    return false;
+  }
+
+  memset(outRecord, 0, sizeof(*outRecord));
+  outRecord->valid = summary.valid;
+  outRecord->stagedOnly = true;
+  outRecord->readyToRegister = summary.readyToRegister;
+  outRecord->kind = MatterOnNetworkDiscoveryRecordKind::kCommissionable;
+  outRecord->serviceType = summary.serviceType;
+  outRecord->port = summary.port;
+  setFixedText(outRecord->instanceName, sizeof(outRecord->instanceName),
+               summary.instanceName);
+  buildDiscoveryHostName(identity_, outRecord->hostName,
+                         sizeof(outRecord->hostName));
+  setFixedText(outRecord->blockerName, sizeof(outRecord->blockerName),
+               summary.blockerName);
+
+  char entry[32] = {0};
+  snprintf(entry, sizeof(entry), "_S%u",
+           static_cast<unsigned>((summary.discriminator >> 8U) & 0x0FU));
+  (void)addDiscoverySubtype(outRecord, entry);
+  snprintf(entry, sizeof(entry), "_L%u",
+           static_cast<unsigned>(summary.discriminator & 0x0FFFU));
+  (void)addDiscoverySubtype(outRecord, entry);
+  snprintf(entry, sizeof(entry), "_V%u",
+           static_cast<unsigned>(summary.vendorId));
+  (void)addDiscoverySubtype(outRecord, entry);
+  snprintf(entry, sizeof(entry), "_T%lu",
+           static_cast<unsigned long>(summary.deviceTypeId));
+  (void)addDiscoverySubtype(outRecord, entry);
+
+  (void)addDiscoveryText(outRecord, summary.txtDiscriminator);
+  (void)addDiscoveryText(outRecord, summary.txtVendorProduct);
+  (void)addDiscoveryText(outRecord, summary.txtCommissioningMode);
+  (void)addDiscoveryText(outRecord, summary.txtDeviceType);
+  (void)addDiscoveryText(outRecord, summary.txtDeviceName);
+  (void)addDiscoveryText(outRecord, "SII=5000");
+  (void)addDiscoveryText(outRecord, "SAI=300");
+  (void)addDiscoveryText(outRecord, "SAT=4000");
+  (void)addDiscoveryText(outRecord, "T=0");
+  return true;
+}
+
+bool Nrf54MatterOnNetworkOnOffLightNode::buildOperationalDiscoveryRecord(
+    MatterOnNetworkDiscoveryRecord* outRecord) const {
+  if (outRecord == nullptr) {
+    return false;
+  }
+
+  memset(outRecord, 0, sizeof(*outRecord));
+  outRecord->valid = true;
+  outRecord->stagedOnly = true;
+  outRecord->readyToRegister = false;
+  outRecord->kind = MatterOnNetworkDiscoveryRecordKind::kOperational;
+  outRecord->serviceType = foundation_.operationalServiceType();
+  outRecord->port = Nrf54MatterOnOffLightFoundation::kMatterUdpPort;
+  buildDiscoveryHostName(identity_, outRecord->hostName,
+                         sizeof(outRecord->hostName));
+  snprintf(outRecord->instanceName, sizeof(outRecord->instanceName),
+           "UNCOMMISSIONED-%04X",
+           static_cast<unsigned>(identity_.discriminator & 0x0FFFU));
+  outRecord->instanceName[sizeof(outRecord->instanceName) - 1U] = '\0';
+
+  MatterOnNetworkReadinessSummary readiness = {};
+  const bool haveReadiness = readinessSummary(&readiness);
+  if (!thread_.attached()) {
+    setFixedText(outRecord->blockerName, sizeof(outRecord->blockerName),
+                 "thread_not_attached");
+  } else if (!haveReadiness || !readiness.ready) {
+    setFixedText(outRecord->blockerName, sizeof(outRecord->blockerName),
+                 haveReadiness ? readiness.blockerName : "readiness_unknown");
+  } else {
+    setFixedText(outRecord->blockerName, sizeof(outRecord->blockerName),
+                 "operational_fabric_not_commissioned");
+  }
+
+  (void)addDiscoveryText(outRecord, "SII=5000");
+  (void)addDiscoveryText(outRecord, "SAI=300");
+  (void)addDiscoveryText(outRecord, "SAT=4000");
+  (void)addDiscoveryText(outRecord, "T=0");
+  return true;
+}
+
+bool Nrf54MatterOnNetworkOnOffLightNode::buildDiscoveryRecords(
+    MatterOnNetworkDiscoveryRecord* outRecords,
+    size_t recordCapacity,
+    size_t* outRecordCount) const {
+  static constexpr size_t kRequiredRecordCount = 2U;
+
+  if (outRecordCount != nullptr) {
+    *outRecordCount = kRequiredRecordCount;
+  }
+  if (outRecords == nullptr || recordCapacity < kRequiredRecordCount) {
+    return false;
+  }
+
+  return buildCommissionableDiscoveryRecord(&outRecords[0]) &&
+         buildOperationalDiscoveryRecord(&outRecords[1]);
+}
+
 bool Nrf54MatterOnNetworkOnOffLightNode::buildCommissioningBundle(
     MatterOnNetworkCommissioningBundle* outBundle) const {
   if (outBundle == nullptr) {
@@ -871,6 +1022,18 @@ const char* Nrf54MatterOnNetworkOnOffLightNode::commissioningWindowStateName(
       return "open";
     case MatterCommissioningWindowState::kExpired:
       return "expired";
+    default:
+      return "unknown";
+  }
+}
+
+const char* Nrf54MatterOnNetworkOnOffLightNode::discoveryRecordKindName(
+    MatterOnNetworkDiscoveryRecordKind kind) {
+  switch (kind) {
+    case MatterOnNetworkDiscoveryRecordKind::kCommissionable:
+      return "commissionable";
+    case MatterOnNetworkDiscoveryRecordKind::kOperational:
+      return "operational";
     default:
       return "unknown";
   }

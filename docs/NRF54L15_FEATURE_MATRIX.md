@@ -167,7 +167,7 @@ This section tracks user-facing Arduino behavior.
 | [x] | Matter platform layer | `MatterPlatform` class implemented with UDP transport, factory data, and receive callbacks. | Hardware validation. |
 | [ ] | BLE rendezvous commissioning | Not selected for first pass | Current plan is on-network Thread commissioning first. |
 | [ ] | Real commissioning | Missing | Required for product claim. |
-| [ ] | Discovery | Staged DNS-SD summary exists for `_matterc._udp`, but real mDNS/SRP registration is still disabled. | Enable and validate real discovery from a commissioner. |
+| [ ] | Discovery | Structured staged DNS-SD/SRP records now exist for commissionable `_matterc._udp` plus blocked operational `_matter._tcp`, but real mDNS/SRP registration is still disabled. | Enable and validate real discovery from a commissioner. |
 | [ ] | Control from commissioner | Missing | Required for product claim. |
 | [ ] | Home Assistant validation | Missing | Required for user-facing claim. |
 | [ ] | Reboot/reconnect recovery | Missing | Required for user-facing claim. |

@@ -72,8 +72,9 @@ Current gap:
   open.
 - Matter is foundation-only. The repo has staged `connectedhomeip` support,
   onboarding-code helpers, an on/off-light model, and a Thread dataset export
-  seam. Real commissioning, discovery, commissioner/Home Assistant control, and
-  reboot recovery remain open.
+  seam. It can build structured staged DNS-SD/SRP records for the future
+  discovery backend, but real mDNS/SRP publication, commissioning,
+  commissioner/Home Assistant control, and reboot recovery remain open.
 
 ## Current Validation And Planning Docs
 
