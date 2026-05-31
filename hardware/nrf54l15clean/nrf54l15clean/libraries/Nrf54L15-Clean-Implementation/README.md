@@ -1100,7 +1100,8 @@ Examples:
       and mutual OOB plumbing are present; broader host interop remains a
       validation target.
     - Privacy primitives can generate/set RPAs, rotate the local RPA on an
-      opt-in sketch-selected interval, and resolve peer RPAs through AAR.
+      opt-in sketch-selected interval, keep a small sketch-managed resolving
+      list of peer IRKs, and resolve peer RPAs through AAR.
   - Optional protocol-level BLE trace path:
     - Enable Arduino Tools -> `BLE Trace` to emit LL/SMP trace markers for interop debugging
   - BLE timing:
@@ -1117,7 +1118,7 @@ Examples:
   - Asymmetric LE PHY pairs where TX and RX settle to different modes on the same link.
   - Full LL procedure/state-machine compliance (full control procedure matrix and deep corner-cases)
   - Full security feature set (host-validated passkey/OOB matrix, full key distribution matrix, signing)
-  - Full privacy policy (resolving-list management, identity-aware bonded
+  - Full privacy policy (automatic resolving-list policy, identity-aware bonded
     reconnects, and host-validated privacy interop)
   - Full L2CAP signaling and complete GATT server database/configuration model
 

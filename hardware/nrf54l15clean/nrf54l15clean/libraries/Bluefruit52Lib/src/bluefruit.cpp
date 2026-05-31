@@ -2557,7 +2557,9 @@ BLESecurity::BLESecurity()
       oob_local_c_{0},
       oob_remote_r_{0},
       oob_remote_c_{0},
-      oob_data_request_callback_(nullptr) {}
+      oob_data_request_callback_(nullptr),
+      resolving_list_count_(0),
+      resolving_list_irks_{{0}} {}
 
 void BLESecurity::setSecuredCallback(secured_callback_t fp) {
   secured_callback_ = fp;
@@ -2724,6 +2726,69 @@ bool BLESecurity::resolveResolvablePrivateAddress(const uint8_t address[6],
                                                            irkCount,
                                                            outResolved,
                                                            outIndex);
+}
+
+void BLESecurity::clearResolvingList() {
+  resolving_list_count_ = 0U;
+  memset(resolving_list_irks_, 0, sizeof(resolving_list_irks_));
+}
+
+uint8_t BLESecurity::resolvingListCount() const {
+  return resolving_list_count_;
+}
+
+uint8_t BLESecurity::resolvingListCapacity() const {
+  return kResolvingListMaxEntries;
+}
+
+bool BLESecurity::addResolvingIrk(const uint8_t irk[16]) {
+  if (irk == nullptr || resolving_list_count_ >= kResolvingListMaxEntries) {
+    return false;
+  }
+
+  memcpy(resolving_list_irks_[resolving_list_count_], irk, 16U);
+  ++resolving_list_count_;
+  return true;
+}
+
+bool BLESecurity::removeResolvingIrk(uint8_t index) {
+  if (index >= resolving_list_count_) {
+    return false;
+  }
+
+  for (uint8_t i = index; (i + 1U) < resolving_list_count_; ++i) {
+    memcpy(resolving_list_irks_[i], resolving_list_irks_[i + 1U], 16U);
+  }
+  --resolving_list_count_;
+  memset(resolving_list_irks_[resolving_list_count_], 0, 16U);
+  return true;
+}
+
+bool BLESecurity::getResolvingIrk(uint8_t index, uint8_t irkOut[16]) const {
+  if (index >= resolving_list_count_ || irkOut == nullptr) {
+    return false;
+  }
+
+  memcpy(irkOut, resolving_list_irks_[index], 16U);
+  return true;
+}
+
+bool BLESecurity::resolveResolvablePrivateAddress(const uint8_t address[6],
+                                                  bool* outResolved,
+                                                  uint16_t* outIndex) const {
+  if (outResolved != nullptr) {
+    *outResolved = false;
+  }
+  if (outIndex != nullptr) {
+    *outIndex = 0xFFFFU;
+  }
+  if (resolving_list_count_ == 0U) {
+    return false;
+  }
+
+  return manager().radio().resolveResolvablePrivateAddress(
+      address, &resolving_list_irks_[0][0], resolving_list_count_,
+      outResolved, outIndex);
 }
 
 void BLESecurity::setOobDataRequestCallback(oob_data_request_callback_t fp) {

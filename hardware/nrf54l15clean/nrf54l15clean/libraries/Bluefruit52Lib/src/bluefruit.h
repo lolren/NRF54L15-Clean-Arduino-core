@@ -482,6 +482,8 @@ class BLEGatt {};
 
 class BLESecurity {
  public:
+  static constexpr uint8_t kResolvingListMaxEntries = 8U;
+
   typedef void (*secured_callback_t)(uint16_t conn_hdl);
   typedef bool (*pair_passkey_callback_t)(uint16_t conn_hdl,
                                           uint8_t const passkey[6],
@@ -547,6 +549,15 @@ class BLESecurity {
                                        size_t irkCount,
                                        bool* outResolved,
                                        uint16_t* outIndex = nullptr) const;
+  void clearResolvingList();
+  uint8_t resolvingListCount() const;
+  uint8_t resolvingListCapacity() const;
+  bool addResolvingIrk(const uint8_t irk[16]);
+  bool removeResolvingIrk(uint8_t index);
+  bool getResolvingIrk(uint8_t index, uint8_t irkOut[16]) const;
+  bool resolveResolvablePrivateAddress(const uint8_t address[6],
+                                       bool* outResolved,
+                                       uint16_t* outIndex = nullptr) const;
   // OOB data request callback — called before pairing when OOB is enabled
   typedef void (*oob_data_request_callback_t)(uint16_t conn_hdl,
                                               uint8_t const oob_r[16],
@@ -569,6 +580,8 @@ class BLESecurity {
   uint8_t oob_remote_r_[16];
   uint8_t oob_remote_c_[16];
   oob_data_request_callback_t oob_data_request_callback_;
+  uint8_t resolving_list_count_;
+  uint8_t resolving_list_irks_[kResolvingListMaxEntries][16];
 
   friend class BluefruitCompatManager;
 };

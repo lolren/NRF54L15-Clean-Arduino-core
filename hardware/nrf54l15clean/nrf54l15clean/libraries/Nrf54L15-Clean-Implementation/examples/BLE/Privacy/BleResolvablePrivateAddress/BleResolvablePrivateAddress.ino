@@ -7,10 +7,11 @@
 // - read the factory identity root as a demo IRK
 // - generate a Resolvable Private Address (RPA)
 // - resolve the RPA through the hardware AAR block
+// - keep a small application-managed resolving list of peer IRKs
 // - enable opt-in automatic local RPA rotation for advertising
 //
-// This is still not a full controller privacy policy: resolving-list
-// integration and bonded reconnect identity handling remain application-level.
+// This is still not a full controller privacy policy: the list is explicit
+// sketch state, not an automatic bonded-identity controller policy.
 
 BLEUart bleuart;
 
@@ -72,6 +73,8 @@ void setup() {
   uint8_t activeRpa[6] = {};
   bool resolved = false;
   uint16_t resolvedIndex = 0xFFFFU;
+  bool listResolved = false;
+  uint16_t listResolvedIndex = 0xFFFFU;
 
   const bool irkOk = Bluefruit.Security.getLocalIdentityRoot(irk);
   const bool generateOk =
@@ -79,6 +82,11 @@ void setup() {
   const bool resolveOk =
       Bluefruit.Security.resolveResolvablePrivateAddress(
           previewRpa, irk, 1U, &resolved, &resolvedIndex);
+  Bluefruit.Security.clearResolvingList();
+  const bool addListOk = Bluefruit.Security.addResolvingIrk(irk);
+  const bool listResolveOk =
+      Bluefruit.Security.resolveResolvablePrivateAddress(
+          previewRpa, &listResolved, &listResolvedIndex);
   const bool rotationOk =
       Bluefruit.Security.enableResolvablePrivateAddressRotation(
           irk, kDemoRpaRotationMs, true, activeRpa);
@@ -93,6 +101,11 @@ void setup() {
   Serial.println();
   Serial.print("preview_resolved=");
   Serial.println((resolveOk && resolved && resolvedIndex == 0U) ? "yes" : "no");
+  Serial.print("resolving_list_count=");
+  Serial.println(Bluefruit.Security.resolvingListCount());
+  Serial.print("resolving_list_match=");
+  Serial.println((addListOk && listResolveOk && listResolved &&
+                  listResolvedIndex == 0U) ? "yes" : "no");
   Serial.print("active_rpa=");
   printBleAddress(activeRpa);
   Serial.println();
@@ -100,7 +113,10 @@ void setup() {
   Serial.println(kDemoRpaRotationMs);
   Serial.print("result=");
   Serial.println((irkOk && generateOk && resolveOk && resolved &&
-                  resolvedIndex == 0U && rotationOk) ? "PASS" : "FAIL");
+                  resolvedIndex == 0U && addListOk && listResolveOk &&
+                  listResolved && listResolvedIndex == 0U && rotationOk)
+                     ? "PASS"
+                     : "FAIL");
   Serial.println("Advertising as X54-RPA with opt-in RPA rotation enabled");
 
   startAdvertising();

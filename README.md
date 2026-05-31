@@ -132,7 +132,7 @@ Full BLE-compliance work is paused while the remaining power and interoperabilit
 - [ ] **Channel Sounding — Mode 3 (hybrid RTT+PBR)** — data structures for hybrid steps exist, but the combined mode hasn't been tested.
 - [ ] **Channel Sounding security** — CS step encryption (AES-CCM per-step) is not yet implemented. All CS procedures run unencrypted.
 - [ ] **OOB pairing** — mutual local/remote LE SC OOB data is now wired through the HAL and Bluefruit APIs, with `BLE > Security > BleOobPairPeripheral` and `BLE > Security > BleOobPairCentral` examples for two-board bring-up. One-way OOB, NFC/QR provisioning, and host interoperability still need validation.
-- [ ] **Privacy / Resolvable Private Addresses** — sketches can now generate an RPA from an IRK, set it as the local random private address, resolve RPAs through the hardware AAR block, and opt into automatic local RPA rotation for advertising/active-scan/connection-initiation paths. See `BLE > Privacy > BleResolvablePrivateAddress`. Controller resolving-list policy, bonded reconnect identity handling, and wider phone/desktop privacy interop are still future work.
+- [ ] **Privacy / Resolvable Private Addresses** — sketches can now generate an RPA from an IRK, set it as the local random private address, resolve RPAs through the hardware AAR block, keep a small application-managed resolving list of peer IRKs, and opt into automatic local RPA rotation for advertising/active-scan/connection-initiation paths. See `BLE > Privacy > BleResolvablePrivateAddress`. Automatic controller resolving-list policy, bonded reconnect identity handling, and wider phone/desktop privacy interop are still future work.
 
 For production applications needing certification-level Bluetooth behavior, Nordic's Zephyr-based **nRF Connect SDK** is still the safer path — it ships with a fully validated Bluetooth LE controller, certified channel sounding support, and qualification listings this bare-metal core does not claim.
 
@@ -306,9 +306,12 @@ desktop, NFC, or QR-code interoperability.
 Privacy helpers are exposed through `Bluefruit.Security`. Use
 `getLocalIdentityRoot()`, `generateResolvablePrivateAddress()`,
 `setResolvablePrivateAddress()`, and `resolveResolvablePrivateAddress()` for
-manual control, or `enableResolvablePrivateAddressRotation(intervalMs)` for
-opt-in local RPA rotation. Rotation is skipped while connected; full
-resolving-list and bonded identity policy is still not claimed.
+manual control. Use `clearResolvingList()`, `addResolvingIrk()`, and the
+resolving-list overload of `resolveResolvablePrivateAddress()` when a sketch
+wants to resolve scan results against stored peer IRKs. Use
+`enableResolvablePrivateAddressRotation(intervalMs)` for opt-in local RPA
+rotation. Rotation is skipped while connected; automatic controller
+resolving-list policy and bonded identity policy are still not claimed.
 
 ---
 

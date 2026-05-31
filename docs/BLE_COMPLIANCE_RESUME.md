@@ -31,6 +31,9 @@ not regress, and what to test first when resuming.
 - [x] Opt-in local RPA rotation: HAL and Bluefruit APIs can rotate the local
       RPA on a sketch-selected interval before advertising, active scanning,
       or connection initiation while disconnected
+- [x] Application-managed privacy resolving list: `Bluefruit.Security` can
+      store up to eight peer IRKs and resolve scanned RPAs against that list
+      using the hardware AAR path
 - [x] Low-power BLE advertising current is now close to the Zephyr reference
       for the msfujino AdvCurrent test from discussion #71
 
@@ -60,7 +63,7 @@ not regress, and what to test first when resuming.
 - [ ] SMP authenticated LE Secure Connections: passkey entry against non-core
       peers, one-way OOB/NFC/QR host flows, negative/error cases, and broader
       host interoperability
-- [ ] Identity, signing, resolving-list policy, automatic peer identity
+- [ ] Identity, signing, automatic controller resolving-list policy, peer identity
       selection for bonded reconnects, and bond database behavior against
       phone/desktop hosts
 - [ ] Formal ATT/GATT edge cases: long read/write, prepare/execute write,
@@ -93,9 +96,10 @@ Run these before changing BLE again:
       both printed `peer <r> <c>` lines over Serial and confirm encrypted UART
       traffic resumes after pairing
 - [ ] Compile and run `BleResolvablePrivateAddress`; confirm `result=PASS`,
-      the printed RPA resolves to local IRK index `0`, phones still see
-      the `X54-RPA` advertiser, and the sketch-selected RPA rotation interval
-      does not interrupt an active connection
+      the printed RPA resolves directly and through `resolving_list_match=yes`
+      at index `0`, phones still see the `X54-RPA` advertiser, and the
+      sketch-selected RPA rotation interval does not interrupt an active
+      connection
 - [ ] Reboot both boards and confirm bonded encrypted reconnect without clearing
       storage
 - [ ] Run BLEUart/NUS against Makerdiary Web Device CLI and verify RX and TX
