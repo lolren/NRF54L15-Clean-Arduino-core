@@ -373,6 +373,7 @@ class BLEConnection {
   bool connected() const;
   bool bonded() const;
   bool secured() const;
+  bool authenticated() const;
   bool getPeerName(char* name, uint16_t bufsize) const;
   bool disconnect() const;
   bool requestPHY(uint8_t phy = BLE_GAP_PHY_2MBPS);
@@ -531,6 +532,8 @@ class BLESecurity {
   // Enable or disable OOB pairing
   bool setOobFlag(bool enable);
   bool requestPairing() const;
+  bool isEncrypted(uint16_t conn_hdl = 0) const;
+  bool isAuthenticated(uint16_t conn_hdl = 0) const;
   // BLE privacy helpers. Local RPA rotation is opt-in; resolving-list policy
   // and bonded identity decisions remain application-level for now.
   bool getLocalIdentityRoot(uint8_t irk[16]) const;

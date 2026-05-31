@@ -346,6 +346,16 @@ void connection_secured_callback(uint16_t conn_handle)
   else
   {
     Serial.println("Secured");
+    Serial.print("Encrypted: ");
+    Serial.println(Bluefruit.Security.isEncrypted(conn_handle) ? "yes" : "no");
+    Serial.print("Authenticated MITM: ");
+    Serial.println(conn->authenticated() ? "yes" : "no");
+    if (!conn->authenticated())
+    {
+      Serial.println("Link is encrypted but not authenticated; requesting fresh pairing");
+      conn->requestPairing();
+      return;
+    }
 
     #ifdef USE_ARCADA
     tft->setTextColor(ARCADA_YELLOW);

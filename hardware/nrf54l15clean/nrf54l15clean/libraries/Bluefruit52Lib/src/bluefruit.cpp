@@ -17,6 +17,8 @@ using xiao_nrf54l15::BleRadio;
 extern "C" uint64_t nrf54l15_core_monotonic_time_us(void);
 extern "C" uint32_t nrf54l15_core_monotonic_time_ms(void);
 
+void serviceBluefruitBeforePollingState();
+
 constexpr uint8_t kAdTypeFlags = 0x01U;
 constexpr uint8_t kAdTypeIncomplete16 = 0x02U;
 constexpr uint8_t kAdTypeComplete16 = 0x03U;
@@ -2671,6 +2673,16 @@ bool BLESecurity::requestPairing() const {
   return manager().radio().requestPairing();
 }
 
+bool BLESecurity::isEncrypted(uint16_t conn_hdl) const {
+  serviceBluefruitBeforePollingState();
+  return conn_hdl == 0U && manager().radio().isConnectionEncrypted();
+}
+
+bool BLESecurity::isAuthenticated(uint16_t conn_hdl) const {
+  serviceBluefruitBeforePollingState();
+  return conn_hdl == 0U && manager().radio().isConnectionAuthenticated();
+}
+
 bool BLESecurity::getLocalIdentityRoot(uint8_t irk[16]) const {
   if (irk == nullptr) return false;
   xiao_nrf54l15::Ficr::identityRoot(irk);
@@ -4362,6 +4374,10 @@ bool BLEConnection::bonded() const { return connected() && manager().radio().has
 
 bool BLEConnection::secured() const {
   return connected() && manager().radio().isConnectionEncrypted();
+}
+
+bool BLEConnection::authenticated() const {
+  return connected() && manager().radio().isConnectionAuthenticated();
 }
 
 bool BLEConnection::getPeerName(char* name, uint16_t bufsize) const {

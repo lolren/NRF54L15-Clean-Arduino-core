@@ -53,6 +53,8 @@ void setup()
 
   Serial.println("Setting pairing PIN to: " PAIRING_PIN);
   Bluefruit.Security.setPIN(PAIRING_PIN);
+  Bluefruit.Security.setPairCompleteCallback(pairing_complete_callback);
+  Bluefruit.Security.setSecuredCallback(connection_secured_callback);
 
   Bluefruit.Periph.setConnectCallback(connect_callback);
   Bluefruit.Periph.setDisconnectCallback(disconnect_callback);
@@ -146,4 +148,30 @@ void disconnect_callback(uint16_t conn_handle, uint8_t reason)
 
   Serial.println();
   Serial.print("Disconnected, reason = 0x"); Serial.println(reason, HEX);
+}
+
+void pairing_complete_callback(uint16_t conn_handle, uint8_t auth_status)
+{
+  (void) conn_handle;
+
+  if (auth_status == BLE_GAP_SEC_STATUS_SUCCESS)
+  {
+    Serial.println("Pairing succeeded");
+  }
+  else
+  {
+    Serial.print("Pairing failed, status = 0x");
+    Serial.println(auth_status, HEX);
+  }
+}
+
+void connection_secured_callback(uint16_t conn_handle)
+{
+  BLEConnection* conn = Bluefruit.Connection(conn_handle);
+
+  Serial.println("Secured");
+  Serial.print("Encrypted: ");
+  Serial.println(Bluefruit.Security.isEncrypted(conn_handle) ? "yes" : "no");
+  Serial.print("Authenticated MITM: ");
+  Serial.println((conn != nullptr && conn->authenticated()) ? "yes" : "no");
 }

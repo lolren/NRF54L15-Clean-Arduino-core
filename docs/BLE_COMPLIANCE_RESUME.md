@@ -25,6 +25,10 @@ not regress, and what to test first when resuming.
 - [x] LE Secure Connections mutual-OOB plumbing through HAL and Bluefruit APIs,
       with compile-tested `BleOobPairPeripheral` / `BleOobPairCentral`
       two-board examples
+- [x] Bluefruit security state queries: `BLEConnection::authenticated()`,
+      `Bluefruit.Security.isEncrypted()`, and
+      `Bluefruit.Security.isAuthenticated()` expose the HAL authenticated-link
+      state used by MITM-protected GATT permissions
 - [x] Privacy/RPA primitives: HAL and Bluefruit APIs can generate a resolvable
       private address, set it as the local random address, and resolve RPAs
       with the hardware AAR block

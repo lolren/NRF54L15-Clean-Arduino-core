@@ -51,6 +51,20 @@ void connect_callback(uint16_t conn_handle) {
 `requestPHY()` can be called directly from the connect callback. The
 compatibility layer queues it safely after the callback returns.
 
+Authenticated pairing state is also exposed for security tests:
+
+```cpp
+void connection_secured_callback(uint16_t conn_handle) {
+  BLEConnection* conn = Bluefruit.Connection(conn_handle);
+  bool encrypted = Bluefruit.Security.isEncrypted(conn_handle);
+  bool authenticated = (conn != nullptr) && conn->authenticated();
+}
+```
+
+`authenticated()` is only true after an encrypted MITM-capable link, such as
+fixed-PIN, numeric-comparison, or OOB pairing. Plain encrypted Just Works links
+remain `secured()` but not authenticated.
+
 The broader Bluefruit menus now ship the practical wrapper examples by role:
 
 - `Advertising`: `adv_advanced`, `beacon`, `eddystone_url`

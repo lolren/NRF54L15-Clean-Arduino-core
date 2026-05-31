@@ -129,7 +129,7 @@ Full BLE-compliance work is paused while the remaining power and interoperabilit
 
 ### What's partially implemented
 
-- [ ] **SMP authenticated pairing modes** — LE Secure Connections Just Works is verified on two-board setups. Fixed six-digit PIN pairing and two-board numeric comparison are now validated on the raw HAL security demos, and the Bluefruit passkey / numeric-comparison callback paths compile through `Security > pairing_pin`, `Security > pairing_passkey`, `Central > central_pairing`, and `Central > central_pairing_pin`. Broader phone/host interoperability, passkey-entry validation against non-core peers, and optional identity/signing key distribution still need more work.
+- [ ] **SMP authenticated pairing modes** — LE Secure Connections Just Works is verified on two-board setups. Fixed six-digit PIN pairing and two-board numeric comparison are now validated on the raw HAL security demos, and the Bluefruit passkey / numeric-comparison callback paths compile through `Security > pairing_pin`, `Security > pairing_passkey`, `Central > central_pairing`, and `Central > central_pairing_pin`. Sketches can query `BLEConnection::authenticated()` or `Bluefruit.Security.isAuthenticated()` to confirm that MITM security was actually reached. Broader phone/host interoperability, passkey-entry validation against non-core peers, and optional identity/signing key distribution still need more work.
 - [ ] **HID host interoperability** — `BLEHidAdafruit` and `BLEHidGamepad` now expose HID Information, Report Map, Protocol Mode, Control Point, Report Reference descriptors, boot keyboard/mouse characteristics, and notify keyboard/mouse/consumer/gamepad report data. Pairing behavior and OS host interoperability still need real-device validation.
 - [ ] **Channel Sounding — Mode 2 (PBR / phase-based ranging)** — works on two-board setups, achieving ~57–62 cm accuracy. Requires the VPR RISC-V coprocessor to handle DFE IQ sample capture and processing at radio speed. The M33 CPU alone can't keep up with the subevent timing. Initiator and reflector roles are implemented, but the procedure setup currently uses a hardcoded internal demo profile rather than the full CS configuration workflow.
 - [ ] **Channel Sounding — Mode 1 (RTT)** — radio registers configured, raw RTT subevents fire, but timing calibration and distance extraction haven't been validated. No end-to-end RTT distance measurement demo exists yet.
@@ -303,7 +303,9 @@ values on both sides before encrypted traffic resumes.
 Custom GATT permissions now distinguish encrypted-only links from authenticated
 MITM links. Bond records keep this authenticated-link state in reserved bond
 metadata, so a passkey, numeric-comparison, or OOB bond can satisfy MITM
-permissions again after reconnecting.
+permissions again after reconnecting. Bluefruit sketches can check the same
+state with `BLEConnection::authenticated()` or
+`Bluefruit.Security.isAuthenticated(conn_handle)`.
 
 Mutual OOB pairing is also wired through the HAL and Bluefruit compatibility
 layer. Use `BLE > Security > BleOobPairPeripheral` with `BLE > Security >

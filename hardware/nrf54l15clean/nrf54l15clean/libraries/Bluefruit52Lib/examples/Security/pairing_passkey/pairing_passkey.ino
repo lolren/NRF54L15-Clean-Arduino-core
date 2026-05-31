@@ -261,7 +261,13 @@ void pairing_complete_callback(uint16_t conn_handle, uint8_t auth_status)
 
 void connection_secured_callback(uint16_t conn_handle)
 {
+  BLEConnection* conn = Bluefruit.Connection(conn_handle);
+
   Serial.println("Secured");
+  Serial.print("Encrypted: ");
+  Serial.println(Bluefruit.Security.isEncrypted(conn_handle) ? "yes" : "no");
+  Serial.print("Authenticated MITM: ");
+  Serial.println((conn != nullptr && conn->authenticated()) ? "yes" : "no");
 }
 
 /**

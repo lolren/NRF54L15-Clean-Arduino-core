@@ -125,6 +125,16 @@ void connection_secured_callback(uint16_t conn_handle) {
   }
 
   Serial.println("Link secured");
+  Serial.print("Encrypted: ");
+  Serial.println(Bluefruit.Security.isEncrypted(conn_handle) ? "yes" : "no");
+  Serial.print("Authenticated MITM: ");
+  Serial.println(conn->authenticated() ? "yes" : "no");
+  if (!conn->authenticated()) {
+    Serial.println("Link is encrypted but not authenticated; requesting fresh pairing");
+    conn->requestPairing();
+    return;
+  }
+
   Serial.print("Discovering BLE UART service ... ");
   if (clientUart.discover(conn_handle)) {
     Serial.println("Found it");
