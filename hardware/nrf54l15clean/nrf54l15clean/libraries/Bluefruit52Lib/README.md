@@ -65,11 +65,25 @@ void connection_secured_callback(uint16_t conn_handle) {
 fixed-PIN, numeric-comparison, or OOB pairing. Plain encrypted Just Works links
 remain `secured()` but not authenticated.
 
+Bond identity helpers are available for host privacy debugging:
+
+```cpp
+ble_gap_addr_t identity = {};
+uint8_t peerIrk[16] = {};
+bool hasIdentity = Bluefruit.Security.getBondPeerIdentityAddress(&identity);
+bool hasIrk = Bluefruit.Security.getBondPeerIrk(peerIrk);
+bool inResolver = Bluefruit.Security.addBondedPeerIrkToResolvingList();
+```
+
+Use `Diagnostics > bond_identity_probe` to pair with a phone or desktop host
+and print the saved peer address, identity address, IRK presence, and
+authenticated bond flag.
+
 The broader Bluefruit menus now ship the practical wrapper examples by role:
 
 - `Advertising`: `adv_advanced`, `beacon`, `eddystone_url`
 - `Central`: `central_bleuart_multi`, `central_custom_hrm`, `central_hid`, `central_pairing`, `central_scan_advanced`, `central_throughput`
-- `Diagnostics`: `throughput`, `rssi_callback`, `rssi_poll`
+- `Diagnostics`: `bond_identity_probe`, `throughput`, `rssi_callback`, `rssi_poll`
 - `DualRoles`: `dual_bleuart`
 - `HID`: `blehid_keyboard`, `blehid_mouse`, `blehid_gamepad`, `blehid_camerashutter`
 - `Projects`: `rssi_proximity_central`, `rssi_proximity_peripheral`

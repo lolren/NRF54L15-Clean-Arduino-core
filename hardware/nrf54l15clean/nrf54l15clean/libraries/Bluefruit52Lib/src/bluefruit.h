@@ -534,6 +534,11 @@ class BLESecurity {
   bool requestPairing() const;
   bool isEncrypted(uint16_t conn_hdl = 0) const;
   bool isAuthenticated(uint16_t conn_hdl = 0) const;
+  bool hasBond() const;
+  bool bondAuthenticated() const;
+  bool getBondPeerAddress(ble_gap_addr_t* outAddress) const;
+  bool getBondPeerIdentityAddress(ble_gap_addr_t* outAddress) const;
+  bool getBondPeerIrk(uint8_t outIrk[16]) const;
   // BLE privacy helpers. Local RPA rotation is opt-in; resolving-list policy
   // and bonded identity decisions remain application-level for now.
   bool getLocalIdentityRoot(uint8_t irk[16]) const;
@@ -560,6 +565,7 @@ class BLESecurity {
   uint8_t resolvingListCount() const;
   uint8_t resolvingListCapacity() const;
   bool addResolvingIrk(const uint8_t irk[16]);
+  bool addBondedPeerIrkToResolvingList();
   bool removeResolvingIrk(uint8_t index);
   bool getResolvingIrk(uint8_t index, uint8_t irkOut[16]) const;
   bool resolveResolvablePrivateAddress(const uint8_t address[6],

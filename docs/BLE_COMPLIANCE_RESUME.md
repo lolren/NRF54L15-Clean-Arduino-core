@@ -38,6 +38,9 @@ not regress, and what to test first when resuming.
 - [x] Application-managed privacy resolving list: `Bluefruit.Security` can
       store up to eight peer IRKs and resolve scanned RPAs against that list
       using the hardware AAR path
+- [x] Bond identity diagnostics: `Bluefruit.Security` can expose the stored
+      peer address, peer identity address, peer IRK, authenticated bond flag,
+      and add the bonded peer IRK into the application-managed resolving list
 - [x] Custom ATT/GATT long-read path: custom characteristic values are read
       directly from bounded storage instead of the fixed 31-byte scratch buffer,
       and writable custom values support contiguous queued ATT Prepare Write /
@@ -85,9 +88,9 @@ not regress, and what to test first when resuming.
 - [ ] SMP authenticated LE Secure Connections: passkey entry against non-core
       peers, one-way OOB/NFC/QR host flows, negative/error cases, and broader
       host interoperability
-- [ ] Identity, signing, automatic controller resolving-list policy, peer identity
-      selection for bonded reconnects, and bond database behavior against
-      phone/desktop hosts
+- [ ] Identity/signing key distribution, automatic controller resolving-list
+      policy, peer identity selection for bonded reconnects, and bond database
+      behavior against phone/desktop hosts
 - [ ] Formal ATT/GATT edge cases: host-app interop for long read/write and
       prepare/execute write, descriptor write/permission variants, CCCD
       persistence, and broader error-code coverage
@@ -128,6 +131,10 @@ Run these before changing BLE again:
       at index `0`, phones still see the `X54-RPA` advertiser, and the
       sketch-selected RPA rotation interval does not interrupt an active
       connection
+- [ ] Compile and run `Bluefruit52Lib > Diagnostics > bond_identity_probe`;
+      pair with a phone/desktop host, confirm authenticated fixed-PIN pairing,
+      peer bond address logging, and `bonded_peer_irk_added=yes` when the host
+      distributes an IRK
 - [ ] Reboot both boards and confirm bonded encrypted reconnect without clearing
       storage
 - [ ] Run BLEUart/NUS against Makerdiary Web Device CLI and verify RX and TX

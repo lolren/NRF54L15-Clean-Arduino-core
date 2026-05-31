@@ -361,6 +361,28 @@ uint8_t gapAddressTypeForRandomAddress(const uint8_t address[6]) {
   return BLE_GAP_ADDR_TYPE_RANDOM_STATIC;
 }
 
+bool isNonZeroAddress(const uint8_t address[6]) {
+  if (address == nullptr) {
+    return false;
+  }
+  for (uint8_t i = 0U; i < 6U; ++i) {
+    if (address[i] != 0U) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void copyBondAddressToGapAddress(const uint8_t address[6], bool random,
+                                 ble_gap_addr_t* outAddress) {
+  if (address == nullptr || outAddress == nullptr) {
+    return;
+  }
+  memcpy(outAddress->addr, address, sizeof(outAddress->addr));
+  outAddress->addr_type =
+      random ? gapAddressTypeForRandomAddress(address) : BLE_GAP_ADDR_TYPE_PUBLIC;
+}
+
 uint8_t bluefruitAddressTypeFromHal(xiao_nrf54l15::BleAddressType type,
                                     const uint8_t address[6]) {
   (void)address;
@@ -2683,6 +2705,59 @@ bool BLESecurity::isAuthenticated(uint16_t conn_hdl) const {
   return conn_hdl == 0U && manager().radio().isConnectionAuthenticated();
 }
 
+bool BLESecurity::hasBond() const {
+  return manager().radio().hasBondRecord();
+}
+
+bool BLESecurity::bondAuthenticated() const {
+  xiao_nrf54l15::BleBondRecord record{};
+  if (!manager().radio().getBondRecord(&record)) {
+    return false;
+  }
+  return (record.reserved[0] & 0x01U) != 0U;
+}
+
+bool BLESecurity::getBondPeerAddress(ble_gap_addr_t* outAddress) const {
+  if (outAddress == nullptr) {
+    return false;
+  }
+  xiao_nrf54l15::BleBondRecord record{};
+  if (!manager().radio().getBondRecord(&record)) {
+    return false;
+  }
+  copyBondAddressToGapAddress(record.peerAddress,
+                              (record.peerAddressRandom & 0x01U) != 0U,
+                              outAddress);
+  return true;
+}
+
+bool BLESecurity::getBondPeerIdentityAddress(ble_gap_addr_t* outAddress) const {
+  if (outAddress == nullptr) {
+    return false;
+  }
+  xiao_nrf54l15::BleBondRecord record{};
+  if (!manager().radio().getBondRecord(&record) ||
+      !isNonZeroAddress(record.peerIdentityAddress)) {
+    return false;
+  }
+  copyBondAddressToGapAddress(
+      record.peerIdentityAddress,
+      (record.peerIdentityAddressRandom & 0x01U) != 0U, outAddress);
+  return true;
+}
+
+bool BLESecurity::getBondPeerIrk(uint8_t outIrk[16]) const {
+  if (outIrk == nullptr) {
+    return false;
+  }
+  xiao_nrf54l15::BleBondRecord record{};
+  if (!manager().radio().getBondRecord(&record) || record.peerIrkValid == 0U) {
+    return false;
+  }
+  memcpy(outIrk, record.peerIrk, sizeof(record.peerIrk));
+  return true;
+}
+
 bool BLESecurity::getLocalIdentityRoot(uint8_t irk[16]) const {
   if (irk == nullptr) return false;
   xiao_nrf54l15::Ficr::identityRoot(irk);
@@ -2754,13 +2829,31 @@ uint8_t BLESecurity::resolvingListCapacity() const {
 }
 
 bool BLESecurity::addResolvingIrk(const uint8_t irk[16]) {
-  if (irk == nullptr || resolving_list_count_ >= kResolvingListMaxEntries) {
+  if (irk == nullptr) {
+    return false;
+  }
+
+  for (uint8_t i = 0U; i < resolving_list_count_; ++i) {
+    if (memcmp(resolving_list_irks_[i], irk, 16U) == 0) {
+      return true;
+    }
+  }
+
+  if (resolving_list_count_ >= kResolvingListMaxEntries) {
     return false;
   }
 
   memcpy(resolving_list_irks_[resolving_list_count_], irk, 16U);
   ++resolving_list_count_;
   return true;
+}
+
+bool BLESecurity::addBondedPeerIrkToResolvingList() {
+  uint8_t irk[16] = {0};
+  if (!getBondPeerIrk(irk)) {
+    return false;
+  }
+  return addResolvingIrk(irk);
 }
 
 bool BLESecurity::removeResolvingIrk(uint8_t index) {
