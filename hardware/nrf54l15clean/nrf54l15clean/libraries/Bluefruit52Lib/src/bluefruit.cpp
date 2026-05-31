@@ -345,6 +345,50 @@ bool timeReachedUs(uint64_t now, uint64_t target) {
   return static_cast<int64_t>(now - target) >= 0;
 }
 
+uint8_t gapAddressTypeForRandomAddress(const uint8_t address[6]) {
+  if (address == nullptr) {
+    return BLE_GAP_ADDR_TYPE_RANDOM_STATIC;
+  }
+  const uint8_t topBits = static_cast<uint8_t>(address[5] & 0xC0U);
+  if (topBits == 0x40U) {
+    return BLE_GAP_ADDR_TYPE_RANDOM_PRIVATE_RESOLVABLE;
+  }
+  if (topBits == 0x00U) {
+    return BLE_GAP_ADDR_TYPE_RANDOM_PRIVATE_NON_RESOLVABLE;
+  }
+  return BLE_GAP_ADDR_TYPE_RANDOM_STATIC;
+}
+
+uint8_t bluefruitAddressTypeFromHal(xiao_nrf54l15::BleAddressType type,
+                                    const uint8_t address[6]) {
+  (void)address;
+  switch (type) {
+    case xiao_nrf54l15::BleAddressType::kRandomStatic:
+      return BLE_GAP_ADDR_TYPE_RANDOM_STATIC;
+    case xiao_nrf54l15::BleAddressType::kRandomPrivateResolvable:
+      return BLE_GAP_ADDR_TYPE_RANDOM_PRIVATE_RESOLVABLE;
+    case xiao_nrf54l15::BleAddressType::kRandomPrivateNonResolvable:
+      return BLE_GAP_ADDR_TYPE_RANDOM_PRIVATE_NON_RESOLVABLE;
+    case xiao_nrf54l15::BleAddressType::kPublic:
+    default:
+      return BLE_GAP_ADDR_TYPE_PUBLIC;
+  }
+}
+
+xiao_nrf54l15::BleAddressType halAddressTypeFromBluefruit(uint8_t type) {
+  switch (type) {
+    case BLE_GAP_ADDR_TYPE_RANDOM_STATIC:
+      return xiao_nrf54l15::BleAddressType::kRandomStatic;
+    case BLE_GAP_ADDR_TYPE_RANDOM_PRIVATE_RESOLVABLE:
+      return xiao_nrf54l15::BleAddressType::kRandomPrivateResolvable;
+    case BLE_GAP_ADDR_TYPE_RANDOM_PRIVATE_NON_RESOLVABLE:
+      return xiao_nrf54l15::BleAddressType::kRandomPrivateNonResolvable;
+    case BLE_GAP_ADDR_TYPE_PUBLIC:
+    default:
+      return xiao_nrf54l15::BleAddressType::kPublic;
+  }
+}
+
 unsigned long schedulerTimeMs() {
   return static_cast<unsigned long>(nrf54l15_core_monotonic_time_ms());
 }
@@ -893,7 +937,7 @@ class BluefruitCompatManager {
     }
     pending_connect_report_us_ = schedulerTimeUs();
     pending_connect_random_ =
-        (report->peer_addr.addr_type == BLE_GAP_ADDR_TYPE_RANDOM_STATIC) ? 1U : 0U;
+        (report->peer_addr.addr_type != BLE_GAP_ADDR_TYPE_PUBLIC) ? 1U : 0U;
     pending_connect_valid_ = true;
     Bluefruit.Scanner.paused_ = true;
     return maybeConnectCentral();
@@ -1536,8 +1580,9 @@ class BluefruitCompatManager {
     memset(&scan_report_, 0, sizeof(scan_report_));
     memcpy(scan_report_.peer_addr.addr, packet.payload, 6U);
     scan_report_.peer_addr.addr_type =
-        ((packet.pduHeader >> 6U) & 0x1U) ? BLE_GAP_ADDR_TYPE_RANDOM_STATIC
-                                          : BLE_GAP_ADDR_TYPE_PUBLIC;
+        ((packet.pduHeader >> 6U) & 0x1U)
+            ? gapAddressTypeForRandomAddress(packet.payload)
+            : BLE_GAP_ADDR_TYPE_PUBLIC;
     scan_report_.rssi = packet.rssiDbm;
     fillReportType(packet.pduHeader, &scan_report_.type);
 
@@ -1596,8 +1641,9 @@ class BluefruitCompatManager {
     memset(&scan_report_, 0, sizeof(scan_report_));
     memcpy(scan_report_.peer_addr.addr, payload, 6U);
     scan_report_.peer_addr.addr_type =
-        ((pduHeader >> 6U) & 0x1U) ? BLE_GAP_ADDR_TYPE_RANDOM_STATIC
-                                   : BLE_GAP_ADDR_TYPE_PUBLIC;
+        ((pduHeader >> 6U) & 0x1U)
+            ? gapAddressTypeForRandomAddress(payload)
+            : BLE_GAP_ADDR_TYPE_PUBLIC;
     scan_report_.rssi = rssiDbm;
     fillReportType(pduHeader, &scan_report_.type);
 
@@ -2094,6 +2140,10 @@ class BluefruitCompatManager {
       if (radio_.isBackgroundAdvertisingEnabled()) {
         radio_.stopBackgroundAdvertising();
       }
+    }
+
+    if (!radio_.serviceResolvablePrivateAddressRotation()) {
+      return;
     }
 
     uint16_t intervalUnits = Bluefruit.Advertising.interval_fast_;
@@ -2633,6 +2683,36 @@ bool BLESecurity::generateResolvablePrivateAddress(const uint8_t irk[16],
 bool BLESecurity::setResolvablePrivateAddress(const uint8_t irk[16],
                                               uint8_t addressOut[6]) const {
   return manager().radio().setResolvablePrivateAddress(irk, addressOut);
+}
+
+bool BLESecurity::enableResolvablePrivateAddressRotation(
+    uint32_t intervalMs, bool rotateNow, uint8_t addressOut[6]) const {
+  uint8_t irk[16] = {};
+  if (!getLocalIdentityRoot(irk)) {
+    return false;
+  }
+  return enableResolvablePrivateAddressRotation(irk, intervalMs, rotateNow,
+                                                addressOut);
+}
+
+bool BLESecurity::enableResolvablePrivateAddressRotation(
+    const uint8_t irk[16], uint32_t intervalMs, bool rotateNow,
+    uint8_t addressOut[6]) const {
+  return manager().radio().enableResolvablePrivateAddressRotation(
+      irk, intervalMs, rotateNow, addressOut);
+}
+
+void BLESecurity::disableResolvablePrivateAddressRotation() const {
+  manager().radio().disableResolvablePrivateAddressRotation();
+}
+
+bool BLESecurity::serviceResolvablePrivateAddressRotation(
+    uint8_t addressOut[6]) const {
+  return manager().radio().serviceResolvablePrivateAddressRotation(addressOut);
+}
+
+bool BLESecurity::resolvablePrivateAddressRotationEnabled() const {
+  return manager().radio().isResolvablePrivateAddressRotationEnabled();
 }
 
 bool BLESecurity::resolveResolvablePrivateAddress(const uint8_t address[6],
@@ -5902,9 +5982,7 @@ ble_gap_addr_t AdafruitBluefruit::getAddr() {
   ble_gap_addr_t gap_addr{};
   xiao_nrf54l15::BleAddressType type = xiao_nrf54l15::BleAddressType::kPublic;
   if (manager().radio().getDeviceAddress(gap_addr.addr, &type)) {
-    gap_addr.addr_type = (type == xiao_nrf54l15::BleAddressType::kRandomStatic)
-                             ? BLE_GAP_ADDR_TYPE_RANDOM_STATIC
-                             : BLE_GAP_ADDR_TYPE_PUBLIC;
+    gap_addr.addr_type = bluefruitAddressTypeFromHal(type, gap_addr.addr);
   }
   return gap_addr;
 }
@@ -5925,9 +6003,7 @@ bool AdafruitBluefruit::setAddr(ble_gap_addr_t* gap_addr) {
   }
 
   const xiao_nrf54l15::BleAddressType type =
-      (gap_addr->addr_type == BLE_GAP_ADDR_TYPE_RANDOM_STATIC)
-          ? xiao_nrf54l15::BleAddressType::kRandomStatic
-          : xiao_nrf54l15::BleAddressType::kPublic;
+      halAddressTypeFromBluefruit(gap_addr->addr_type);
   return manager().radio().setDeviceAddress(gap_addr->addr, type);
 }
 

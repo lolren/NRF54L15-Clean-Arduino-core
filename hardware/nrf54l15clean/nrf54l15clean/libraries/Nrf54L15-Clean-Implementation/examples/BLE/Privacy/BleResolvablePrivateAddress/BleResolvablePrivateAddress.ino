@@ -7,11 +7,10 @@
 // - read the factory identity root as a demo IRK
 // - generate a Resolvable Private Address (RPA)
 // - resolve the RPA through the hardware AAR block
-// - use a freshly generated RPA as the advertiser address
+// - enable opt-in automatic local RPA rotation for advertising
 //
-// Full automatic privacy policy (periodic RPA rotation, resolving-list
-// integration, and bonded reconnect identity handling) is intentionally not
-// enabled by this example yet.
+// This is still not a full controller privacy policy: resolving-list
+// integration and bonded reconnect identity handling remain application-level.
 
 BLEUart bleuart;
 
@@ -19,6 +18,7 @@ namespace {
 
 constexpr uint32_t kSerialWaitMs = 1500UL;
 constexpr uint32_t kPingPeriodMs = 3000UL;
+constexpr uint32_t kDemoRpaRotationMs = 60000UL;
 uint32_t lastPingMs = 0;
 uint32_t pingSeq = 0;
 
@@ -79,8 +79,9 @@ void setup() {
   const bool resolveOk =
       Bluefruit.Security.resolveResolvablePrivateAddress(
           previewRpa, irk, 1U, &resolved, &resolvedIndex);
-  const bool setOk =
-      Bluefruit.Security.setResolvablePrivateAddress(irk, activeRpa);
+  const bool rotationOk =
+      Bluefruit.Security.enableResolvablePrivateAddressRotation(
+          irk, kDemoRpaRotationMs, true, activeRpa);
 
   Serial.println();
   Serial.println("BleResolvablePrivateAddress");
@@ -95,10 +96,12 @@ void setup() {
   Serial.print("active_rpa=");
   printBleAddress(activeRpa);
   Serial.println();
+  Serial.print("rotation_ms=");
+  Serial.println(kDemoRpaRotationMs);
   Serial.print("result=");
   Serial.println((irkOk && generateOk && resolveOk && resolved &&
-                  resolvedIndex == 0U && setOk) ? "PASS" : "FAIL");
-  Serial.println("Advertising as X54-RPA with a random private resolvable address");
+                  resolvedIndex == 0U && rotationOk) ? "PASS" : "FAIL");
+  Serial.println("Advertising as X54-RPA with opt-in RPA rotation enabled");
 
   startAdvertising();
 }

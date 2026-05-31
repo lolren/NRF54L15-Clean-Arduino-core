@@ -13,6 +13,9 @@ bool BleRadio::initiateConnection(const uint8_t peerAddress[6],
       hopIncrement < 5U || hopIncrement > 16U) {
     return false;
   }
+  if (!serviceResolvablePrivateAddressRotation()) {
+    return false;
+  }
   if (!beginUnconnectedRadioActivity(1500000UL)) {
     return false;
   }
@@ -90,6 +93,9 @@ bool BleRadio::initiateConnectionBudgeted(
   if (intervalUnits < 6U || intervalUnits > 3200U ||
       supervisionTimeoutUnits < 10U ||
       hopIncrement < 5U || hopIncrement > 16U) {
+    return false;
+  }
+  if (!serviceResolvablePrivateAddressRotation()) {
     return false;
   }
   if (!beginUnconnectedRadioActivity(1500000UL)) {

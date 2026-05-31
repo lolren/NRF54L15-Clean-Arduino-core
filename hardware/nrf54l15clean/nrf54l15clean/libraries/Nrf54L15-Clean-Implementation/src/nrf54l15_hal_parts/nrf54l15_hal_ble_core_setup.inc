@@ -5,6 +5,11 @@ BleRadio::BleRadio(uint32_t radioBase, uint32_t ficrBase)
       addressType_(BleAddressType::kRandomStatic),
       pduType_(BleAdvPduType::kAdvInd),
       useChSel2_(true),
+      rpaRotationEnabled_(false),
+      rpaRotationAddressValid_(false),
+      rpaRotationIntervalMs_(900000UL),
+      rpaRotationLastMs_(0UL),
+      rpaRotationIrk_{0},
       externalAntenna_(false),
       txPowerDbm_(NRF54L15_CLEAN_BLE_DEFAULT_TX_DBM),
       address_{0},
@@ -780,6 +785,11 @@ bool BleRadio::setDeviceAddress(const uint8_t address[6], BleAddressType type) {
     address_[5] = static_cast<uint8_t>((address_[5] & 0x3FU) | 0xC0U);
   }
   addressType_ = type;
+  if (rpaRotationEnabled_) {
+    rpaRotationAddressValid_ =
+        (type == BleAddressType::kRandomPrivateResolvable) &&
+        isResolvablePrivateAddress(address_);
+  }
   const bool packetsOk = buildAdvertisingPacket() && buildScanResponsePacket();
   if (!packetsOk) {
     restoreLegacyAdvertisingConfigSnapshot(configSnapshot);
@@ -891,6 +901,86 @@ bool BleRadio::setResolvablePrivateAddress(const uint8_t irk[16],
   if (!setDeviceAddress(rpa, BleAddressType::kRandomPrivateResolvable)) {
     return false;
   }
+  if (addressOut != nullptr) {
+    memcpy(addressOut, rpa, sizeof(rpa));
+  }
+  return true;
+}
+
+bool BleRadio::enableResolvablePrivateAddressRotation(const uint8_t irk[16],
+                                                      uint32_t intervalMs,
+                                                      bool rotateNow,
+                                                      uint8_t addressOut[6]) {
+  if (irk == nullptr || intervalMs == 0U) {
+    return false;
+  }
+
+  memcpy(rpaRotationIrk_, irk, sizeof(rpaRotationIrk_));
+  rpaRotationIntervalMs_ = intervalMs;
+  rpaRotationLastMs_ = millis();
+  rpaRotationAddressValid_ =
+      rotateNow ? false : isResolvablePrivateAddress(address_);
+  rpaRotationEnabled_ = true;
+
+  if (!rotateNow) {
+    if (addressOut != nullptr) {
+      memcpy(addressOut, address_, sizeof(address_));
+    }
+    return true;
+  }
+
+  return serviceResolvablePrivateAddressRotation(addressOut);
+}
+
+void BleRadio::disableResolvablePrivateAddressRotation() {
+  rpaRotationEnabled_ = false;
+  rpaRotationAddressValid_ = false;
+  rpaRotationIntervalMs_ = 900000UL;
+  rpaRotationLastMs_ = 0UL;
+  memset(rpaRotationIrk_, 0, sizeof(rpaRotationIrk_));
+}
+
+bool BleRadio::isResolvablePrivateAddressRotationEnabled() const {
+  return rpaRotationEnabled_;
+}
+
+uint32_t BleRadio::resolvablePrivateAddressRotationIntervalMs() const {
+  return rpaRotationIntervalMs_;
+}
+
+bool BleRadio::serviceResolvablePrivateAddressRotation(uint8_t addressOut[6]) {
+  if (!rpaRotationEnabled_) {
+    if (addressOut != nullptr) {
+      memcpy(addressOut, address_, sizeof(address_));
+    }
+    return true;
+  }
+  if (connected_) {
+    if (addressOut != nullptr) {
+      memcpy(addressOut, address_, sizeof(address_));
+    }
+    return true;
+  }
+
+  const uint32_t nowMs = millis();
+  const bool due =
+      !rpaRotationAddressValid_ ||
+      (static_cast<uint32_t>(nowMs - rpaRotationLastMs_) >=
+       rpaRotationIntervalMs_);
+  if (!due) {
+    if (addressOut != nullptr) {
+      memcpy(addressOut, address_, sizeof(address_));
+    }
+    return true;
+  }
+
+  uint8_t rpa[6] = {};
+  if (!setResolvablePrivateAddress(rpaRotationIrk_, rpa)) {
+    return false;
+  }
+
+  rpaRotationLastMs_ = nowMs;
+  rpaRotationAddressValid_ = true;
   if (addressOut != nullptr) {
     memcpy(addressOut, rpa, sizeof(rpa));
   }

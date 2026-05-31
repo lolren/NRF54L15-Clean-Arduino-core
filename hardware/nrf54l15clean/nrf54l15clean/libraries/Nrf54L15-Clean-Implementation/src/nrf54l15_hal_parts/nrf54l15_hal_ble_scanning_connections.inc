@@ -432,6 +432,9 @@ bool BleRadio::scanActiveOnce(BleAdvertisingChannel channel,
                               uint32_t advListenSpinLimit,
                               uint32_t scanRspListenSpinLimit,
                               uint32_t spinLimit) {
+  if (!serviceResolvablePrivateAddressRotation()) {
+    return false;
+  }
   if (!beginUnconnectedRadioActivity(1500000UL)) {
     return false;
   }
@@ -649,6 +652,9 @@ bool BleRadio::scanActiveOnceBudgeted(BleAdvertisingChannel channel,
     endUnconnectedRadioActivity();
     return value;
   };
+  if (!serviceResolvablePrivateAddressRotation()) {
+    return false;
+  }
   if (!beginUnconnectedRadioActivity(1500000UL)) {
     return false;
   }

@@ -127,6 +127,9 @@ bool BleRadio::advertiseOncePrepared(BleAdvertisingChannel channel,
 }
 
 bool BleRadio::advertiseOnce(BleAdvertisingChannel channel, uint32_t spinLimit) {
+  if (!serviceResolvablePrivateAddressRotation()) {
+    return false;
+  }
   if (!beginUnconnectedRadioActivity(1500000UL)) {
     return false;
   }
@@ -138,6 +141,9 @@ bool BleRadio::advertiseOnce(BleAdvertisingChannel channel, uint32_t spinLimit) 
 
 bool BleRadio::advertiseEvent(uint32_t interChannelDelayUs, uint32_t spinLimit,
                               bool applyRandomDelay) {
+  if (!serviceResolvablePrivateAddressRotation()) {
+    return false;
+  }
   if (applyRandomDelay) {
     const uint32_t advDelayUs = bleAdvertisingRandomDelayUs(address_);
     bleAdvertisingDelayUs(advDelayUs);
@@ -649,6 +655,9 @@ bool BleRadio::beginBackgroundAdvertising(uint32_t intervalMs,
   if ((intervalMs == 0U) || (intervalMs > (0xFFFFFFFFUL / 1000UL))) {
     return false;
   }
+  if (!serviceResolvablePrivateAddressRotation()) {
+    return false;
+  }
 
   if (hfxoLeadUs == 0U) {
     hfxoLeadUs = kBleBackgroundAdvDefaultHfxoLeadUs;
@@ -748,6 +757,9 @@ bool BleRadio::beginBackgroundAdvertising3Channel(uint32_t intervalMs,
     return false;
   }
   if ((intervalMs == 0U) || (intervalMs > (0xFFFFFFFFUL / 1000UL))) {
+    return false;
+  }
+  if (!serviceResolvablePrivateAddressRotation()) {
     return false;
   }
   if (interChannelDelayUs < kBleBackgroundAdvMinInterChannelDelayUs) {
@@ -1494,6 +1506,9 @@ bool BleRadio::advertiseExtendedEvent(uint32_t auxOffsetUs,
   if (!initialized_ || radio_ == nullptr || connected_) {
     return false;
   }
+  if (!serviceResolvablePrivateAddressRotation()) {
+    return false;
+  }
 
   const uint32_t advDelayUs = bleAdvertisingRandomDelayUs(address_);
   bleAdvertisingDelayUs(advDelayUs);
@@ -1577,6 +1592,9 @@ bool BleRadio::advertiseExtendedScannableEvent(uint32_t auxOffsetUs,
                                                uint32_t requestListenSpinLimit,
                                                uint32_t spinLimit) {
   if (!initialized_ || radio_ == nullptr || connected_) {
+    return false;
+  }
+  if (!serviceResolvablePrivateAddressRotation()) {
     return false;
   }
 
@@ -2075,6 +2093,9 @@ bool BleRadio::advertiseInteractOnce(BleAdvertisingChannel channel,
                                      BleAdvInteraction* interaction,
                                      uint32_t requestListenSpinLimit,
                                      uint32_t spinLimit) {
+  if (!serviceResolvablePrivateAddressRotation()) {
+    return false;
+  }
   if (!beginUnconnectedRadioActivity(1500000UL)) {
     return false;
   }
@@ -2090,6 +2111,9 @@ bool BleRadio::advertiseInteractEvent(BleAdvInteraction* interaction,
                                       uint32_t requestListenSpinLimit,
                                       uint32_t spinLimit,
                                       bool applyRandomDelay) {
+  if (!serviceResolvablePrivateAddressRotation()) {
+    return false;
+  }
   if (applyRandomDelay) {
     const uint32_t advDelayUs = bleAdvertisingRandomDelayUs(address_);
     bleAdvertisingDelayUs(advDelayUs);

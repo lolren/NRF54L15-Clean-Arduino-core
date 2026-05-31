@@ -2348,6 +2348,14 @@ class BleRadio {
                                         uint8_t addressOut[6]);
   bool setResolvablePrivateAddress(const uint8_t irk[16],
                                    uint8_t addressOut[6] = nullptr);
+  bool enableResolvablePrivateAddressRotation(const uint8_t irk[16],
+                                              uint32_t intervalMs = 900000UL,
+                                              bool rotateNow = true,
+                                              uint8_t addressOut[6] = nullptr);
+  void disableResolvablePrivateAddressRotation();
+  bool isResolvablePrivateAddressRotationEnabled() const;
+  uint32_t resolvablePrivateAddressRotationIntervalMs() const;
+  bool serviceResolvablePrivateAddressRotation(uint8_t addressOut[6] = nullptr);
   bool resolveResolvablePrivateAddress(const uint8_t address[6],
                                        const uint8_t* irks,
                                        size_t irkCount,
@@ -3014,6 +3022,11 @@ class BleRadio {
   BleAddressType addressType_;
   BleAdvPduType pduType_;
   bool useChSel2_;
+  bool rpaRotationEnabled_;
+  bool rpaRotationAddressValid_;
+  uint32_t rpaRotationIntervalMs_;
+  uint32_t rpaRotationLastMs_;
+  uint8_t rpaRotationIrk_[16];
   bool externalAntenna_;
   int8_t txPowerDbm_;
   uint8_t address_[6];

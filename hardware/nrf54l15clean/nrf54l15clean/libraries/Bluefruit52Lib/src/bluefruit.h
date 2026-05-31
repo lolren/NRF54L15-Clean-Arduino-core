@@ -525,13 +525,23 @@ class BLESecurity {
   // Enable or disable OOB pairing
   bool setOobFlag(bool enable);
   bool requestPairing() const;
-  // BLE privacy helpers. These expose RPA primitives; automatic address
-  // rotation/resolving-list policy is intentionally left to the sketch for now.
+  // BLE privacy helpers. Local RPA rotation is opt-in; resolving-list policy
+  // and bonded identity decisions remain application-level for now.
   bool getLocalIdentityRoot(uint8_t irk[16]) const;
   bool generateResolvablePrivateAddress(const uint8_t irk[16],
                                         uint8_t addressOut[6]) const;
   bool setResolvablePrivateAddress(const uint8_t irk[16],
                                    uint8_t addressOut[6] = nullptr) const;
+  bool enableResolvablePrivateAddressRotation(uint32_t intervalMs = 900000UL,
+                                              bool rotateNow = true,
+                                              uint8_t addressOut[6] = nullptr) const;
+  bool enableResolvablePrivateAddressRotation(const uint8_t irk[16],
+                                              uint32_t intervalMs = 900000UL,
+                                              bool rotateNow = true,
+                                              uint8_t addressOut[6] = nullptr) const;
+  void disableResolvablePrivateAddressRotation() const;
+  bool serviceResolvablePrivateAddressRotation(uint8_t addressOut[6] = nullptr) const;
+  bool resolvablePrivateAddressRotationEnabled() const;
   bool resolveResolvablePrivateAddress(const uint8_t address[6],
                                        const uint8_t* irks,
                                        size_t irkCount,
