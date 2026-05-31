@@ -2328,6 +2328,22 @@ class BleRadio {
   static constexpr uint8_t kCustomGattMaxCharacteristics = 16U;
   static constexpr uint8_t kCustomGattMaxValueLength = 244U;
   static constexpr uint8_t kCustomGattMaxUserDescriptionLength = 63U;
+  static constexpr uint8_t kCustomGattPresentationFormatLength = 7U;
+  static constexpr uint8_t kCustomGattReportReferenceLength = 2U;
+
+  struct BleCustomGattDescriptorConfig {
+    const char* userDescription = nullptr;
+    const uint8_t* presentationFormat = nullptr;
+    uint8_t presentationFormatLength = 0U;
+    const uint8_t* reportReference = nullptr;
+    uint8_t reportReferenceLength = 0U;
+  };
+
+  struct BleCustomGattDescriptorHandles {
+    uint16_t userDescriptionHandle = 0U;
+    uint16_t presentationFormatHandle = 0U;
+    uint16_t reportReferenceHandle = 0U;
+  };
 
   explicit BleRadio(uint32_t radioBase = nrf54l15::RADIO_BASE,
                     uint32_t ficrBase = nrf54l15::FICR_BASE);
@@ -2399,6 +2415,12 @@ class BleRadio {
                                    uint16_t* outCccdHandle,
                                    uint16_t* outUserDescriptionHandle,
                                    const char* userDescription);
+  bool addCustomGattCharacteristicWithDescriptors(
+      uint16_t serviceHandle, uint16_t uuid16, uint8_t properties,
+      const uint8_t* initialValue, uint8_t initialValueLength,
+      uint16_t* outValueHandle, uint16_t* outCccdHandle,
+      const BleCustomGattDescriptorConfig* descriptors,
+      BleCustomGattDescriptorHandles* outDescriptorHandles = nullptr);
   bool addCustomGattCharacteristic128(uint16_t serviceHandle,
                                       const uint8_t uuid128[16],
                                       uint8_t properties,
@@ -2415,6 +2437,12 @@ class BleRadio {
                                       uint16_t* outCccdHandle,
                                       uint16_t* outUserDescriptionHandle,
                                       const char* userDescription);
+  bool addCustomGattCharacteristic128WithDescriptors(
+      uint16_t serviceHandle, const uint8_t uuid128[16], uint8_t properties,
+      const uint8_t* initialValue, uint8_t initialValueLength,
+      uint16_t* outValueHandle, uint16_t* outCccdHandle,
+      const BleCustomGattDescriptorConfig* descriptors,
+      BleCustomGattDescriptorHandles* outDescriptorHandles = nullptr);
   bool setCustomGattCharacteristicValue(uint16_t valueHandle,
                                         const uint8_t* value,
                                         uint8_t valueLength);
@@ -2667,10 +2695,14 @@ class BleRadio {
     uint16_t declarationHandle;
     uint16_t valueHandle;
     uint16_t userDescriptionHandle;
+    uint16_t presentationFormatHandle;
+    uint16_t reportReferenceHandle;
     uint16_t cccdHandle;
     uint16_t cccdValue;
     uint8_t userDescriptionLength;
     uint8_t userDescription[kCustomGattMaxUserDescriptionLength];
+    uint8_t presentationFormat[kCustomGattPresentationFormatLength];
+    uint8_t reportReference[kCustomGattReportReferenceLength];
     uint8_t valueLength;
     uint8_t value[kCustomGattMaxValueLength];
   };
@@ -2812,8 +2844,8 @@ class BleRadio {
                                          uint8_t initialValueLength,
                                          uint16_t* outValueHandle,
                                          uint16_t* outCccdHandle,
-                                         uint16_t* outUserDescriptionHandle,
-                                         const char* userDescription);
+                                         const BleCustomGattDescriptorConfig* descriptors,
+                                         BleCustomGattDescriptorHandles* outDescriptorHandles);
   bool pollCentralConnectionEvent(BleConnectionEvent* event,
                                   uint32_t spinLimit);
   bool buildLlControlResponse(const uint8_t* payload, uint8_t length,
@@ -2942,6 +2974,14 @@ class BleRadio {
       uint16_t userDescriptionHandle);
   const BleCustomCharacteristicState* findCustomCharacteristicByUserDescriptionHandle(
       uint16_t userDescriptionHandle) const;
+  BleCustomCharacteristicState* findCustomCharacteristicByPresentationFormatHandle(
+      uint16_t presentationFormatHandle);
+  const BleCustomCharacteristicState* findCustomCharacteristicByPresentationFormatHandle(
+      uint16_t presentationFormatHandle) const;
+  BleCustomCharacteristicState* findCustomCharacteristicByReportReferenceHandle(
+      uint16_t reportReferenceHandle);
+  const BleCustomCharacteristicState* findCustomCharacteristicByReportReferenceHandle(
+      uint16_t reportReferenceHandle) const;
   bool applyCustomGattCharacteristicValueWrite(uint16_t handle,
                                                const uint8_t* value,
                                                uint16_t valueLength,

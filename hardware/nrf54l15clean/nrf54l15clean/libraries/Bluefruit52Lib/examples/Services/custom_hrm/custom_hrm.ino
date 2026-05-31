@@ -153,6 +153,7 @@ void setupHRM(void)
   bslc.setPermission(SECMODE_OPEN, SECMODE_NO_ACCESS);
   bslc.setFixedLen(1);
   bslc.setUserDescriptor("Body sensor location");
+  bslc.setPresentationFormatDescriptor(0x04, 0, 0x2700); // UINT8, unitless
   bslc.begin();
   bslc.write8(2);    // Set the characteristic to 'Wrist' (2)
 }

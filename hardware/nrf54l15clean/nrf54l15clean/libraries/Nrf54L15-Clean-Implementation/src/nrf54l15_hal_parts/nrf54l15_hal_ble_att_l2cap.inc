@@ -202,6 +202,38 @@ uint8_t BleRadio::readAttributeValue(uint16_t handle, uint16_t offset,
     return toCopy;
   }
 
+  const BleCustomCharacteristicState* directPresentationFormat =
+      findCustomCharacteristicByPresentationFormatHandle(handle);
+  if (directPresentationFormat != nullptr) {
+    if (offset > kCustomGattPresentationFormatLength) {
+      return kAttrReadInvalidOffsetLen;
+    }
+    const uint8_t remaining =
+        static_cast<uint8_t>(kCustomGattPresentationFormatLength - offset);
+    const uint8_t toCopy = minU8(remaining, maxLen);
+    if (toCopy > 0U) {
+      memcpy(outValue, &directPresentationFormat->presentationFormat[offset],
+             toCopy);
+    }
+    return toCopy;
+  }
+
+  const BleCustomCharacteristicState* directReportReference =
+      findCustomCharacteristicByReportReferenceHandle(handle);
+  if (directReportReference != nullptr) {
+    if (offset > kCustomGattReportReferenceLength) {
+      return kAttrReadInvalidOffsetLen;
+    }
+    const uint8_t remaining =
+        static_cast<uint8_t>(kCustomGattReportReferenceLength - offset);
+    const uint8_t toCopy = minU8(remaining, maxLen);
+    if (toCopy > 0U) {
+      memcpy(outValue, &directReportReference->reportReference[offset],
+             toCopy);
+    }
+    return toCopy;
+  }
+
   uint8_t fullValue[31] = {0};
   uint8_t fullLen = 0U;
 
@@ -485,6 +517,33 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
             writeLe16(&outAttResponse[used], ch.userDescriptionHandle);
             writeLe16(&outAttResponse[used + 2U],
                       kUuidCharacteristicUserDescription);
+            used += 4U;
+            ++recordCount;
+          }
+          if (ch.presentationFormatHandle != 0U &&
+              inHandleRange(ch.presentationFormatHandle, start, end)) {
+            if (recordCount == 0U) {
+              outAttResponse[1] = 0x01U;
+            }
+            if (outAttResponse[1] != 0x01U || (used + 4U) > maxAttResponseLen) {
+              break;
+            }
+            writeLe16(&outAttResponse[used], ch.presentationFormatHandle);
+            writeLe16(&outAttResponse[used + 2U],
+                      kUuidCharacteristicPresentationFormat);
+            used += 4U;
+            ++recordCount;
+          }
+          if (ch.reportReferenceHandle != 0U &&
+              inHandleRange(ch.reportReferenceHandle, start, end)) {
+            if (recordCount == 0U) {
+              outAttResponse[1] = 0x01U;
+            }
+            if (outAttResponse[1] != 0x01U || (used + 4U) > maxAttResponseLen) {
+              break;
+            }
+            writeLe16(&outAttResponse[used], ch.reportReferenceHandle);
+            writeLe16(&outAttResponse[used + 2U], kUuidReportReference);
             used += 4U;
             ++recordCount;
           }
@@ -885,6 +944,12 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
           } else if (typeLen == kBleUuid16Size &&
                      type == kUuidCharacteristicUserDescription) {
             handle = ch.userDescriptionHandle;
+          } else if (typeLen == kBleUuid16Size &&
+                     type == kUuidCharacteristicPresentationFormat) {
+            handle = ch.presentationFormatHandle;
+          } else if (typeLen == kBleUuid16Size &&
+                     type == kUuidReportReference) {
+            handle = ch.reportReferenceHandle;
           }
           if (handle == 0U || !inHandleRange(handle, start, end)) {
             continue;

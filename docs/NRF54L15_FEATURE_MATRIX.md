@@ -120,7 +120,7 @@ This section tracks user-facing Arduino behavior.
 | [x] | Extended advertising/scanning | Implemented for practical examples. | Periodic advertising and conformance-level validation remain open. |
 | [x] | Connectable peripheral | Implemented. | More host combinations and long-lived connection tests. |
 | [x] | Central initiate/minimal client | Implemented baseline. | Multi-role and broader client discovery/write/notify stress. |
-| [x] | Dynamic 16-bit custom GATT | Implemented, including long reads, contiguous queued prepare/execute writes for bounded custom characteristic values, and read-only Characteristic User Description descriptors from Bluefruit `setUserDescriptor()`. | 128-bit dynamic service editing, writable descriptor variants, and multi-service mutation remain open. |
+| [x] | Dynamic 16-bit custom GATT | Implemented, including long reads, contiguous queued prepare/execute writes for bounded custom characteristic values, and read-only Bluefruit `setUserDescriptor()`, `setPresentationFormatDescriptor()`, and `setReportRefDescriptor()` descriptors. | 128-bit dynamic service editing, writable descriptor variants, and multi-service mutation remain open. |
 | [x] | Notifications/indications | Implemented. | More throughput and retransmission stress. |
 | [x] | ATT MTU exchange | Implemented enough for Bluefruit compatibility paths, and Bluefruit role-specific bandwidth caps now hold negotiated MTU instead of always collapsing to `247`. | More interop/edge-case testing. |
 | [x] | Data Length update / bandwidth caps | Implemented, with Bluefruit role-specific bandwidth caps now holding negotiated DLE instead of always collapsing to `251`. | More host/phone interop and explicit mixed-profile tests. |

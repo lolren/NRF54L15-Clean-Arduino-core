@@ -3522,6 +3522,10 @@ BLECharacteristic::BLECharacteristic()
       _notify_enabled(false),
       _indicate_enabled(false),
       _usr_descriptor(nullptr),
+      _report_ref_valid(false),
+      _report_ref{0},
+      _presentation_format_valid(false),
+      _presentation_format{0},
       _wr_cb(nullptr),
       _cccd_wr_cb(nullptr),
       _rd_authorize_cb(nullptr),
@@ -3579,18 +3583,20 @@ bool BLECharacteristic::isFixedLen() const { return _fixed_len; }
 void BLECharacteristic::setUserDescriptor(const char* descriptor) { _usr_descriptor = descriptor; }
 
 void BLECharacteristic::setReportRefDescriptor(uint8_t id, uint8_t type) {
-  (void)id;
-  (void)type;
+  _report_ref[0] = id;
+  _report_ref[1] = type;
+  _report_ref_valid = true;
 }
 
 void BLECharacteristic::setPresentationFormatDescriptor(uint8_t type, int8_t exponent,
                                                         uint16_t unit, uint8_t name_space,
                                                         uint16_t descriptor) {
-  (void)type;
-  (void)exponent;
-  (void)unit;
-  (void)name_space;
-  (void)descriptor;
+  _presentation_format[0] = type;
+  _presentation_format[1] = static_cast<uint8_t>(exponent);
+  writeLe16(&_presentation_format[2], unit);
+  _presentation_format[4] = name_space;
+  writeLe16(&_presentation_format[5], descriptor);
+  _presentation_format_valid = true;
 }
 
 void BLECharacteristic::setWriteCallback(write_cb_t fp, bool useAdaCallback) {
@@ -3629,18 +3635,29 @@ err_t BLECharacteristic::begin() {
 
   uint16_t valueHandle = 0U;
   uint16_t cccdHandle = 0U;
-  uint16_t userDescHandle = 0U;
+  BleRadio::BleCustomGattDescriptorConfig descriptors{};
+  BleRadio::BleCustomGattDescriptorHandles descriptorHandles{};
+  descriptors.userDescription = _usr_descriptor;
+  if (_presentation_format_valid) {
+    descriptors.presentationFormat = _presentation_format;
+    descriptors.presentationFormatLength =
+        BleRadio::kCustomGattPresentationFormatLength;
+  }
+  if (_report_ref_valid) {
+    descriptors.reportReference = _report_ref;
+    descriptors.reportReferenceLength = BleRadio::kCustomGattReportReferenceLength;
+  }
   const uint8_t initialLen = clampValueLen(_value_len);
   const uint8_t properties = mapProperties(_properties);
   bool ok = false;
   if (uuid.size() == 2U) {
-    ok = manager().radio().addCustomGattCharacteristic(
+    ok = manager().radio().addCustomGattCharacteristicWithDescriptors(
         _service->_handle, uuid.uuid16(), properties, _value, initialLen, &valueHandle,
-        &cccdHandle, &userDescHandle, _usr_descriptor);
+        &cccdHandle, &descriptors, &descriptorHandles);
   } else if (uuid.size() == 16U) {
-    ok = manager().radio().addCustomGattCharacteristic128(
+    ok = manager().radio().addCustomGattCharacteristic128WithDescriptors(
         _service->_handle, uuid.uuid128(), properties, _value, initialLen, &valueHandle,
-        &cccdHandle, &userDescHandle, _usr_descriptor);
+        &cccdHandle, &descriptors, &descriptorHandles);
   }
   if (!ok) {
     return ERROR_INVALID_STATE;
@@ -3649,7 +3666,7 @@ err_t BLECharacteristic::begin() {
   _handles.value_handle = valueHandle;
   _handles.decl_handle = (valueHandle > 0U) ? static_cast<uint16_t>(valueHandle - 1U) : 0U;
   _handles.cccd_handle = cccdHandle;
-  _handles.user_desc_handle = userDescHandle;
+  _handles.user_desc_handle = descriptorHandles.userDescriptionHandle;
   if (!manager().registerCharacteristic(this)) {
     return ERROR_NO_MEM;
   }

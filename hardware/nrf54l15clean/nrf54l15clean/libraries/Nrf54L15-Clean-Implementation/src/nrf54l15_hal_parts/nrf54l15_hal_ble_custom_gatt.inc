@@ -135,6 +135,66 @@ BleRadio::findCustomCharacteristicByUserDescriptionHandle(
   return nullptr;
 }
 
+BleRadio::BleCustomCharacteristicState*
+BleRadio::findCustomCharacteristicByPresentationFormatHandle(
+    uint16_t presentationFormatHandle) {
+  if (presentationFormatHandle == 0U) {
+    return nullptr;
+  }
+  for (uint8_t i = 0U; i < customGattCharacteristicCount_; ++i) {
+    if (customGattCharacteristics_[i].presentationFormatHandle ==
+        presentationFormatHandle) {
+      return &customGattCharacteristics_[i];
+    }
+  }
+  return nullptr;
+}
+
+const BleRadio::BleCustomCharacteristicState*
+BleRadio::findCustomCharacteristicByPresentationFormatHandle(
+    uint16_t presentationFormatHandle) const {
+  if (presentationFormatHandle == 0U) {
+    return nullptr;
+  }
+  for (uint8_t i = 0U; i < customGattCharacteristicCount_; ++i) {
+    if (customGattCharacteristics_[i].presentationFormatHandle ==
+        presentationFormatHandle) {
+      return &customGattCharacteristics_[i];
+    }
+  }
+  return nullptr;
+}
+
+BleRadio::BleCustomCharacteristicState*
+BleRadio::findCustomCharacteristicByReportReferenceHandle(
+    uint16_t reportReferenceHandle) {
+  if (reportReferenceHandle == 0U) {
+    return nullptr;
+  }
+  for (uint8_t i = 0U; i < customGattCharacteristicCount_; ++i) {
+    if (customGattCharacteristics_[i].reportReferenceHandle ==
+        reportReferenceHandle) {
+      return &customGattCharacteristics_[i];
+    }
+  }
+  return nullptr;
+}
+
+const BleRadio::BleCustomCharacteristicState*
+BleRadio::findCustomCharacteristicByReportReferenceHandle(
+    uint16_t reportReferenceHandle) const {
+  if (reportReferenceHandle == 0U) {
+    return nullptr;
+  }
+  for (uint8_t i = 0U; i < customGattCharacteristicCount_; ++i) {
+    if (customGattCharacteristics_[i].reportReferenceHandle ==
+        reportReferenceHandle) {
+      return &customGattCharacteristics_[i];
+    }
+  }
+  return nullptr;
+}
+
 bool BleRadio::addCustomGattService(uint16_t uuid16, uint16_t* outServiceHandle) {
   if (uuid16 == 0U) {
     return false;
@@ -210,12 +270,34 @@ bool BleRadio::addCustomGattCharacteristic(uint16_t serviceHandle, uint16_t uuid
   }
   uint8_t uuid[kBleUuid128Size] = {0};
   bleUuid16ToBytes(uuid16, uuid);
-  return addCustomGattCharacteristicCommon(serviceHandle, uuid, kBleUuid16Size,
-                                           properties, initialValue,
-                                           initialValueLength, outValueHandle,
-                                           outCccdHandle,
-                                           outUserDescriptionHandle,
-                                           userDescription);
+  BleCustomGattDescriptorConfig descriptors{};
+  descriptors.userDescription = userDescription;
+  BleCustomGattDescriptorHandles descriptorHandles{};
+  const bool ok = addCustomGattCharacteristicCommon(
+      serviceHandle, uuid, kBleUuid16Size, properties, initialValue,
+      initialValueLength, outValueHandle, outCccdHandle, &descriptors,
+      &descriptorHandles);
+  if (outUserDescriptionHandle != nullptr) {
+    *outUserDescriptionHandle = descriptorHandles.userDescriptionHandle;
+  }
+  return ok;
+}
+
+bool BleRadio::addCustomGattCharacteristicWithDescriptors(
+    uint16_t serviceHandle, uint16_t uuid16, uint8_t properties,
+    const uint8_t* initialValue, uint8_t initialValueLength,
+    uint16_t* outValueHandle, uint16_t* outCccdHandle,
+    const BleCustomGattDescriptorConfig* descriptors,
+    BleCustomGattDescriptorHandles* outDescriptorHandles) {
+  if (uuid16 == 0U) {
+    return false;
+  }
+  uint8_t uuid[kBleUuid128Size] = {0};
+  bleUuid16ToBytes(uuid16, uuid);
+  return addCustomGattCharacteristicCommon(
+      serviceHandle, uuid, kBleUuid16Size, properties, initialValue,
+      initialValueLength, outValueHandle, outCccdHandle, descriptors,
+      outDescriptorHandles);
 }
 
 bool BleRadio::addCustomGattCharacteristic128(uint16_t serviceHandle,
@@ -241,12 +323,29 @@ bool BleRadio::addCustomGattCharacteristic128(uint16_t serviceHandle,
                                               uint16_t* outCccdHandle,
                                               uint16_t* outUserDescriptionHandle,
                                               const char* userDescription) {
-  return addCustomGattCharacteristicCommon(serviceHandle, uuid128,
-                                           kBleUuid128Size, properties,
-                                           initialValue, initialValueLength,
-                                           outValueHandle, outCccdHandle,
-                                           outUserDescriptionHandle,
-                                           userDescription);
+  BleCustomGattDescriptorConfig descriptors{};
+  descriptors.userDescription = userDescription;
+  BleCustomGattDescriptorHandles descriptorHandles{};
+  const bool ok = addCustomGattCharacteristicCommon(
+      serviceHandle, uuid128, kBleUuid128Size, properties, initialValue,
+      initialValueLength, outValueHandle, outCccdHandle, &descriptors,
+      &descriptorHandles);
+  if (outUserDescriptionHandle != nullptr) {
+    *outUserDescriptionHandle = descriptorHandles.userDescriptionHandle;
+  }
+  return ok;
+}
+
+bool BleRadio::addCustomGattCharacteristic128WithDescriptors(
+    uint16_t serviceHandle, const uint8_t uuid128[16], uint8_t properties,
+    const uint8_t* initialValue, uint8_t initialValueLength,
+    uint16_t* outValueHandle, uint16_t* outCccdHandle,
+    const BleCustomGattDescriptorConfig* descriptors,
+    BleCustomGattDescriptorHandles* outDescriptorHandles) {
+  return addCustomGattCharacteristicCommon(
+      serviceHandle, uuid128, kBleUuid128Size, properties, initialValue,
+      initialValueLength, outValueHandle, outCccdHandle, descriptors,
+      outDescriptorHandles);
 }
 
 bool BleRadio::addCustomGattCharacteristicCommon(uint16_t serviceHandle,
@@ -257,8 +356,8 @@ bool BleRadio::addCustomGattCharacteristicCommon(uint16_t serviceHandle,
                                                  uint8_t initialValueLength,
                                                  uint16_t* outValueHandle,
                                                  uint16_t* outCccdHandle,
-                                                 uint16_t* outUserDescriptionHandle,
-                                                 const char* userDescription) {
+                                                 const BleCustomGattDescriptorConfig* descriptors,
+                                                 BleCustomGattDescriptorHandles* outDescriptorHandles) {
   constexpr uint8_t kAllowedProps = static_cast<uint8_t>(
       kBleGattPropRead | kBleGattPropWriteNoRsp | kBleGattPropWrite |
       kBleGattPropNotify | kBleGattPropIndicate);
@@ -292,6 +391,8 @@ bool BleRadio::addCustomGattCharacteristicCommon(uint16_t serviceHandle,
   }
 
   uint8_t userDescriptionLength = 0U;
+  const char* userDescription =
+      (descriptors != nullptr) ? descriptors->userDescription : nullptr;
   if (userDescription != nullptr) {
     while (userDescriptionLength < kCustomGattMaxUserDescriptionLength &&
            userDescription[userDescriptionLength] != '\0') {
@@ -300,9 +401,21 @@ bool BleRadio::addCustomGattCharacteristicCommon(uint16_t serviceHandle,
   }
 
   const bool hasUserDescription = (userDescriptionLength > 0U);
+  const bool hasPresentationFormat =
+      (descriptors != nullptr) &&
+      (descriptors->presentationFormat != nullptr) &&
+      (descriptors->presentationFormatLength ==
+       kCustomGattPresentationFormatLength);
+  const bool hasReportReference =
+      (descriptors != nullptr) &&
+      (descriptors->reportReference != nullptr) &&
+      (descriptors->reportReferenceLength ==
+       kCustomGattReportReferenceLength);
   const bool hasCccd = ((properties & (kBleGattPropNotify | kBleGattPropIndicate)) != 0U);
   const uint16_t requiredHandles =
       static_cast<uint16_t>(2U + (hasUserDescription ? 1U : 0U) +
+                            (hasPresentationFormat ? 1U : 0U) +
+                            (hasReportReference ? 1U : 0U) +
                             (hasCccd ? 1U : 0U));
   if (customGattNextHandle_ > kCustomGattHandleEnd ||
       (static_cast<uint16_t>(kCustomGattHandleEnd - customGattNextHandle_ + 1U) <
@@ -327,11 +440,23 @@ bool BleRadio::addCustomGattCharacteristicCommon(uint16_t serviceHandle,
   characteristic.valueHandle = customGattNextHandle_++;
   characteristic.userDescriptionHandle =
       hasUserDescription ? customGattNextHandle_++ : 0U;
+  characteristic.presentationFormatHandle =
+      hasPresentationFormat ? customGattNextHandle_++ : 0U;
+  characteristic.reportReferenceHandle =
+      hasReportReference ? customGattNextHandle_++ : 0U;
   characteristic.cccdHandle = hasCccd ? customGattNextHandle_++ : 0U;
   characteristic.cccdValue = 0U;
   characteristic.userDescriptionLength = userDescriptionLength;
   if (userDescriptionLength > 0U) {
     memcpy(characteristic.userDescription, userDescription, userDescriptionLength);
+  }
+  if (hasPresentationFormat) {
+    memcpy(characteristic.presentationFormat, descriptors->presentationFormat,
+           kCustomGattPresentationFormatLength);
+  }
+  if (hasReportReference) {
+    memcpy(characteristic.reportReference, descriptors->reportReference,
+           kCustomGattReportReferenceLength);
   }
   characteristic.valueLength = initialValueLength;
   if (initialValueLength > 0U) {
@@ -343,9 +468,13 @@ bool BleRadio::addCustomGattCharacteristicCommon(uint16_t serviceHandle,
   service.endHandle =
       (characteristic.cccdHandle != 0U)
           ? characteristic.cccdHandle
-          : ((characteristic.userDescriptionHandle != 0U)
-                 ? characteristic.userDescriptionHandle
-                 : characteristic.valueHandle);
+          : ((characteristic.reportReferenceHandle != 0U)
+                 ? characteristic.reportReferenceHandle
+                 : ((characteristic.presentationFormatHandle != 0U)
+                        ? characteristic.presentationFormatHandle
+                        : ((characteristic.userDescriptionHandle != 0U)
+                               ? characteristic.userDescriptionHandle
+                               : characteristic.valueHandle)));
 
   if (outValueHandle != nullptr) {
     *outValueHandle = characteristic.valueHandle;
@@ -353,8 +482,13 @@ bool BleRadio::addCustomGattCharacteristicCommon(uint16_t serviceHandle,
   if (outCccdHandle != nullptr) {
     *outCccdHandle = characteristic.cccdHandle;
   }
-  if (outUserDescriptionHandle != nullptr) {
-    *outUserDescriptionHandle = characteristic.userDescriptionHandle;
+  if (outDescriptorHandles != nullptr) {
+    outDescriptorHandles->userDescriptionHandle =
+        characteristic.userDescriptionHandle;
+    outDescriptorHandles->presentationFormatHandle =
+        characteristic.presentationFormatHandle;
+    outDescriptorHandles->reportReferenceHandle =
+        characteristic.reportReferenceHandle;
   }
   return true;
 }

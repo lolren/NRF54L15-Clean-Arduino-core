@@ -211,6 +211,10 @@ class BLECharacteristic {
   bool _notify_enabled;
   bool _indicate_enabled;
   const char* _usr_descriptor;
+  bool _report_ref_valid;
+  uint8_t _report_ref[2];
+  bool _presentation_format_valid;
+  uint8_t _presentation_format[7];
   write_cb_t _wr_cb;
   write_cccd_cb_t _cccd_wr_cb;
   read_authorize_cb_t _rd_authorize_cb;
