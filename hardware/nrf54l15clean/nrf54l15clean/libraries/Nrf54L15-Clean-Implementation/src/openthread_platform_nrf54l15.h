@@ -36,6 +36,7 @@ struct OpenThreadPlatformSkeletonSnapshot {
   bool radioRxOnWhenIdle = false;
   bool radioReceiveAtPending = false;
   bool radioReceiveAtActive = false;
+  bool radioCoexEnabled = false;
   bool radioSrcMatchEnabled = false;
   bool radioLastTxAcked = false;
   bool radioLastTxAckFramePending = false;
@@ -117,6 +118,7 @@ struct OpenThreadPlatformSkeletonSnapshot {
   uint32_t radioSrcMatchAckClearCount = 0;
   uint32_t diagTxCount = 0;
   uint32_t diagRxCount = 0;
+  otRadioCoexMetrics radioCoexMetrics = {};
 
   uint64_t radioNowUs = 0;
   uint32_t radioReceiveAtStartUs = 0;

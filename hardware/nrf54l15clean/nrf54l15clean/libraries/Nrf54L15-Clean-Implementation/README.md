@@ -379,6 +379,12 @@ Thread example organization:
   in the PAL snapshot/probe counters. This is still not a hardware-timed sleepy
   end-device claim, but it removes the old "receive immediately" shortcut that
   blocked CSL-style bring-up work.
+- Thread radio coex APIs are now wired for the current no-PTA-pin hardware path:
+  `otPlatRadioSetCoexEnabled()`, `otPlatRadioIsCoexEnabled()`, and
+  `otPlatRadioGetCoexMetrics()` return stateful software request/grant metrics.
+  Because this core does not expose external grant/request pins yet, TX/RX grants
+  are reported as immediate rather than pretending to do real hardware
+  arbitration.
 - current Thread radio probes also include:
   - `OpenThreadCoreStageProbe`
   - `OpenThreadRoleStageProbe`

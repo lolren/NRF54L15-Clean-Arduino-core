@@ -1958,6 +1958,37 @@ void publishThreadRadioReceiveAtSnapshot(OpenThreadPlatformState& state) {
   state.snapshot.radioReceiveAtDurationUs = 0U;
 }
 
+void incrementThreadCoexCounter(uint32_t& counter,
+                                otRadioCoexMetrics& metrics) {
+  if (counter == UINT32_MAX) {
+    metrics.mStopped = true;
+    return;
+  }
+  ++counter;
+}
+
+void recordThreadCoexTxRequest(OpenThreadPlatformState& state) {
+  if (!state.snapshot.radioCoexEnabled ||
+      state.snapshot.radioCoexMetrics.mStopped) {
+    return;
+  }
+
+  otRadioCoexMetrics& metrics = state.snapshot.radioCoexMetrics;
+  incrementThreadCoexCounter(metrics.mNumTxRequest, metrics);
+  incrementThreadCoexCounter(metrics.mNumTxGrantImmediate, metrics);
+}
+
+void recordThreadCoexRxRequest(OpenThreadPlatformState& state) {
+  if (!state.snapshot.radioCoexEnabled ||
+      state.snapshot.radioCoexMetrics.mStopped) {
+    return;
+  }
+
+  otRadioCoexMetrics& metrics = state.snapshot.radioCoexMetrics;
+  incrementThreadCoexCounter(metrics.mNumRxRequest, metrics);
+  incrementThreadCoexCounter(metrics.mNumRxGrantImmediate, metrics);
+}
+
 void clearThreadRadioPendingAsyncState() {
   OpenThreadPlatformState& state = gOpenThreadPlatformState;
   state.radioTxDonePending = false;
@@ -2137,6 +2168,7 @@ void serviceThreadRadioReceiveAt(otInstance* instance) {
   state.snapshot.radioChannel = state.radioReceiveAtPendingChannel;
   state.snapshot.radioState = OT_RADIO_STATE_RECEIVE;
   state.snapshot.radioLastError = OT_ERROR_NONE;
+  recordThreadCoexRxRequest(state);
   if (!state.radio.beginReceive(kThreadRadioPollSpinLimit)) {
     state.snapshot.radioReceiveAtPending = false;
     state.snapshot.radioLastError = OT_ERROR_FAILED;
@@ -3535,6 +3567,7 @@ otError otPlatRadioReceive(otInstance*, uint8_t channel) {
   state.snapshot.radioChannel = channel;
   state.snapshot.radioState = OT_RADIO_STATE_RECEIVE;
   state.snapshot.radioLastError = OT_ERROR_NONE;
+  xiao_nrf54l15::recordThreadCoexRxRequest(state);
   if (!state.radio.beginReceive(xiao_nrf54l15::kThreadRadioPollSpinLimit)) {
     state.snapshot.radioState = xiao_nrf54l15::threadRadioIdleState();
     state.snapshot.radioLastError = OT_ERROR_FAILED;
@@ -3633,6 +3666,7 @@ otError otPlatRadioTransmit(otInstance* instance, otRadioFrame* frame) {
   state.snapshot.radioState = OT_RADIO_STATE_TRANSMIT;
   state.snapshot.radioChannel = frame->mChannel;
   state.snapshot.txRequestCount++;
+  xiao_nrf54l15::recordThreadCoexTxRequest(state);
   state.snapshot.radioLastTxLength = static_cast<uint8_t>(frame->mLength);
   xiao_nrf54l15::captureThreadMacFrameSummary(
       state.snapshot, frame->mPsdu, static_cast<uint8_t>(frame->mLength), true);
@@ -3800,15 +3834,26 @@ uint32_t otPlatRadioGetSupportedChannelMask(otInstance*) { return OT_RADIO_2P4GH
 
 uint32_t otPlatRadioGetPreferredChannelMask(otInstance*) { return OT_RADIO_2P4GHZ_OQPSK_CHANNEL_MASK; }
 
-otError otPlatRadioSetCoexEnabled(otInstance*, bool) { return OT_ERROR_NOT_IMPLEMENTED; }
+otError otPlatRadioSetCoexEnabled(otInstance*, bool enabled) {
+  xiao_nrf54l15::OpenThreadPlatformState& state =
+      xiao_nrf54l15::gOpenThreadPlatformState;
+  if (enabled && !state.snapshot.radioCoexEnabled) {
+    state.snapshot.radioCoexMetrics = {};
+  }
+  state.snapshot.radioCoexEnabled = enabled;
+  return OT_ERROR_NONE;
+}
 
-bool otPlatRadioIsCoexEnabled(otInstance*) { return false; }
+bool otPlatRadioIsCoexEnabled(otInstance*) {
+  return xiao_nrf54l15::gOpenThreadPlatformState.snapshot.radioCoexEnabled;
+}
 
 otError otPlatRadioGetCoexMetrics(otInstance*, otRadioCoexMetrics* coexMetrics) {
   if (coexMetrics == nullptr) {
     return OT_ERROR_INVALID_ARGS;
   }
-  memset(coexMetrics, 0, sizeof(*coexMetrics));
+  *coexMetrics =
+      xiao_nrf54l15::gOpenThreadPlatformState.snapshot.radioCoexMetrics;
   return OT_ERROR_NONE;
 }
 

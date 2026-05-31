@@ -303,6 +303,8 @@ void setup() {
     otPlatFree(memoryBlock);
   }
 
+  const otError coexEnableError = otPlatRadioSetCoexEnabled(nullptr, true);
+  const bool coexEnabled = otPlatRadioIsCoexEnabled(nullptr);
   const otError sleepWhileDisabledError = otPlatRadioSleep(nullptr);
   const otError radioEnableError = otPlatRadioEnable(nullptr);
   otPlatRadioSetPanId(nullptr, 0x1234);
@@ -366,6 +368,9 @@ void setup() {
     OpenThreadPlatformSkeleton::process();
     delayMicroseconds(500);
   }
+  otRadioCoexMetrics coexMetrics = {};
+  const otError coexMetricsError =
+      otPlatRadioGetCoexMetrics(nullptr, &coexMetrics);
 
 #if defined(NRF54L15_CLEAN_OPENTHREAD_CORE_ENABLE) && \
     (NRF54L15_CLEAN_OPENTHREAD_CORE_ENABLE != 0)
@@ -551,6 +556,12 @@ void setup() {
   Serial.print(static_cast<int>(finalReceiveError));
   Serial.print("/");
   Serial.print(static_cast<int>(receiveAtScheduleError));
+  Serial.print("/");
+  Serial.print(static_cast<int>(coexEnableError));
+  Serial.print("/");
+  Serial.print(coexEnabled ? 1 : 0);
+  Serial.print("/");
+  Serial.print(static_cast<int>(coexMetricsError));
   Serial.print(" escan=");
   Serial.print(static_cast<int>(energyScanError));
   Serial.print("/");
@@ -577,6 +588,18 @@ void setup() {
   Serial.print(snapshot.radioReceiveAtTimeoutCount);
   Serial.print("/");
   Serial.print(snapshot.radioReceiveAtLateCount);
+  Serial.print(" coex=");
+  Serial.print(snapshot.radioCoexEnabled ? 1 : 0);
+  Serial.print("/");
+  Serial.print(coexMetrics.mNumTxRequest);
+  Serial.print("/");
+  Serial.print(coexMetrics.mNumTxGrantImmediate);
+  Serial.print("/");
+  Serial.print(coexMetrics.mNumRxRequest);
+  Serial.print("/");
+  Serial.print(coexMetrics.mNumRxGrantImmediate);
+  Serial.print("/");
+  Serial.print(coexMetrics.mStopped ? 1 : 0);
   Serial.print(" cb=");
   Serial.print(gRadioTxStartedCount);
   Serial.print("/");
