@@ -18,7 +18,7 @@ staged OpenThread and Matter foundation work landed.
 | Area | Claim today | Not claimed yet |
 |---|---|---|
 | Thread | Experimental staged OpenThread path with fixed dataset, leader/child/router paths, PSKc/passphrase helpers, and UDP examples. | Production Thread stack, joiner, commissioner, reference-network attach, reboot recovery, sleepy-device depth. |
-| Matter | Foundation-only on-network/on-off-light shape with onboarding helpers, Thread dataset export seam, and structured staged DNS-SD/SRP records for commissionable and operational discovery. | Real commissioning, real mDNS/SRP registration, commissioner/Home Assistant control, secure sessions, reboot/reconnect recovery. |
+| Matter | Foundation-only on-network/on-off-light shape with onboarding helpers, Thread dataset export seam, structured staged DNS-SD/SRP records, and publish lifecycle diagnostics for commissionable and operational discovery. | Real commissioning, real mDNS/SRP registration, commissioner/Home Assistant control, secure sessions, reboot/reconnect recovery. |
 | VPR | Available as a future offload seam, not the first Thread/Matter owner. | VPR-owned Thread radio/controller or Matter runtime. |
 
 ## Architecture Decisions

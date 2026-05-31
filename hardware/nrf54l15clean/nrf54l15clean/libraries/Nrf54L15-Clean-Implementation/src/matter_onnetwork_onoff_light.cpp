@@ -199,6 +199,7 @@ bool Nrf54MatterOnNetworkOnOffLightNode::begin(
 
   storageOpen_ = true;
   datasetSource_ = MatterOnNetworkDatasetSource::kNone;
+  resetDiscoveryPublication("not_started");
   autoRequestRouterRole_ = effectiveConfig.autoRequestRouterRole;
   routerRoleRequested_ = false;
   commissioningWindowPending_ = false;
@@ -292,6 +293,7 @@ void Nrf54MatterOnNetworkOnOffLightNode::end() {
   commissioningWindowDurationSeconds_ = 0U;
   commissioningWindowEndMs_ = 0U;
   datasetSource_ = MatterOnNetworkDatasetSource::kNone;
+  resetDiscoveryPublication("node_stopped");
   endpoint_.detach();
 }
 
@@ -328,6 +330,8 @@ void Nrf54MatterOnNetworkOnOffLightNode::process() {
         millis() + (static_cast<uint32_t>(commissioningWindowDurationSeconds_) *
                     1000UL);
   }
+
+  (void)updateDiscoveryPublication();
 }
 
 bool Nrf54MatterOnNetworkOnOffLightNode::snapshot(
@@ -349,6 +353,7 @@ bool Nrf54MatterOnNetworkOnOffLightNode::snapshot(
   (void)thread_.getAttachSummary(&outStatus->threadAttachSummary);
   (void)readinessSummary(&outStatus->readinessSummary);
   (void)discoverySummary(&outStatus->discoverySummary);
+  (void)discoveryPublicationState(&outStatus->discoveryPublication);
   outStatus->buildSeamsAligned = foundation_.buildSeamsAligned();
   outStatus->datasetSource = datasetSource_;
   outStatus->threadRole = thread_.role();
@@ -697,6 +702,30 @@ bool Nrf54MatterOnNetworkOnOffLightNode::discoverySummary(
   return true;
 }
 
+bool Nrf54MatterOnNetworkOnOffLightNode::discoveryPublicationState(
+    MatterOnNetworkDiscoveryPublicationState* outState) const {
+  if (outState == nullptr) {
+    return false;
+  }
+
+  memset(outState, 0, sizeof(*outState));
+  outState->attempted = discoveryPublicationAttempted_;
+  outState->active = discoveryPublicationActive_;
+  outState->stagedOnly = true;
+  outState->backendAvailable = discoveryPublicationBackendAvailable_;
+  outState->commissioningWindowOpen = commissioningWindowOpen();
+  outState->threadAttached = thread_.attached();
+  outState->windowState = discoveryPublicationWindowState_;
+  outState->recordsTotal = discoveryPublicationRecordsTotal_;
+  outState->recordsReady = discoveryPublicationRecordsReady_;
+  outState->recordsActive = discoveryPublicationRecordsActive_;
+  outState->publishAttempts = discoveryPublicationAttempts_;
+  outState->unpublishCount = discoveryPublicationUnpublishCount_;
+  setFixedText(outState->blockerName, sizeof(outState->blockerName),
+               discoveryPublicationBlockerName_);
+  return true;
+}
+
 bool Nrf54MatterOnNetworkOnOffLightNode::buildCommissionableDiscoveryRecord(
     MatterOnNetworkDiscoveryRecord* outRecord) const {
   if (outRecord == nullptr) {
@@ -803,6 +832,107 @@ bool Nrf54MatterOnNetworkOnOffLightNode::buildDiscoveryRecords(
 
   return buildCommissionableDiscoveryRecord(&outRecords[0]) &&
          buildOperationalDiscoveryRecord(&outRecords[1]);
+}
+
+bool Nrf54MatterOnNetworkOnOffLightNode::updateDiscoveryPublication() {
+  MatterOnNetworkDiscoveryRecord records[2] = {};
+  size_t recordCount = 0U;
+  const bool recordsOk =
+      buildDiscoveryRecords(records, sizeof(records) / sizeof(records[0]),
+                            &recordCount);
+  const MatterCommissioningWindowState windowState = commissioningWindowState();
+  const bool windowOpen = (windowState == MatterCommissioningWindowState::kOpen);
+  bool backendAvailable = false;
+  uint16_t recordsReady = 0U;
+  const char* blocker = "none";
+  bool blockerCaptured = false;
+
+  if (recordsOk) {
+    for (size_t i = 0; i < recordCount; ++i) {
+      if (records[i].readyToRegister) {
+        ++recordsReady;
+      } else if (!blockerCaptured && records[i].blockerName[0] != '\0') {
+        blocker = records[i].blockerName;
+        blockerCaptured = true;
+      }
+    }
+  } else {
+    blocker = "discovery_record_build_failed";
+  }
+
+  MatterOnNetworkDiscoverySummary summary = {};
+  if (discoverySummary(&summary)) {
+    backendAvailable = summary.capabilities.canRegisterCommissionableNode;
+    if (!backendAvailable && windowOpen) {
+      blocker = summary.capabilities.blockerName != nullptr
+                    ? summary.capabilities.blockerName
+                    : "discovery_backend_unavailable";
+    }
+  }
+
+  if (!windowOpen) {
+    if (discoveryPublicationActive_) {
+      ++discoveryPublicationUnpublishCount_;
+    }
+    discoveryPublicationActive_ = false;
+    discoveryPublicationRecordsActive_ = 0U;
+    discoveryPublicationWindowState_ = windowState;
+    discoveryPublicationBackendAvailable_ = backendAvailable;
+    discoveryPublicationRecordsTotal_ =
+        recordsOk ? static_cast<uint16_t>(recordCount) : 0U;
+    discoveryPublicationRecordsReady_ = recordsReady;
+    if (windowState == MatterCommissioningWindowState::kPendingReadiness) {
+      blocker = "commissioning_window_pending_readiness";
+    } else if (windowState == MatterCommissioningWindowState::kExpired) {
+      blocker = "commissioning_window_expired";
+    } else {
+      blocker = "commissioning_window_closed";
+    }
+    setFixedText(discoveryPublicationBlockerName_,
+                 sizeof(discoveryPublicationBlockerName_), blocker);
+    return false;
+  }
+
+  const bool active = recordsOk && backendAvailable && recordsReady > 0U;
+  const bool changed =
+      discoveryPublicationWindowState_ != windowState ||
+      discoveryPublicationBackendAvailable_ != backendAvailable ||
+      discoveryPublicationRecordsTotal_ != static_cast<uint16_t>(recordCount) ||
+      discoveryPublicationRecordsReady_ != recordsReady ||
+      discoveryPublicationActive_ != active ||
+      strcmp(discoveryPublicationBlockerName_, blocker) != 0;
+  if (changed) {
+    ++discoveryPublicationAttempts_;
+  }
+
+  discoveryPublicationAttempted_ = true;
+  discoveryPublicationActive_ = active;
+  discoveryPublicationBackendAvailable_ = backendAvailable;
+  discoveryPublicationWindowState_ = windowState;
+  discoveryPublicationRecordsTotal_ =
+      recordsOk ? static_cast<uint16_t>(recordCount) : 0U;
+  discoveryPublicationRecordsReady_ = recordsReady;
+  discoveryPublicationRecordsActive_ = active ? recordsReady : 0U;
+  setFixedText(discoveryPublicationBlockerName_,
+               sizeof(discoveryPublicationBlockerName_),
+               active ? "staged_publication_ready" : blocker);
+  return active;
+}
+
+void Nrf54MatterOnNetworkOnOffLightNode::resetDiscoveryPublication(
+    const char* blockerName) {
+  discoveryPublicationAttempted_ = false;
+  discoveryPublicationActive_ = false;
+  discoveryPublicationBackendAvailable_ = false;
+  discoveryPublicationRecordsTotal_ = 0U;
+  discoveryPublicationRecordsReady_ = 0U;
+  discoveryPublicationRecordsActive_ = 0U;
+  discoveryPublicationAttempts_ = 0U;
+  discoveryPublicationUnpublishCount_ = 0U;
+  discoveryPublicationWindowState_ = MatterCommissioningWindowState::kClosed;
+  setFixedText(discoveryPublicationBlockerName_,
+               sizeof(discoveryPublicationBlockerName_),
+               blockerName != nullptr ? blockerName : "not_started");
 }
 
 bool Nrf54MatterOnNetworkOnOffLightNode::buildCommissioningBundle(

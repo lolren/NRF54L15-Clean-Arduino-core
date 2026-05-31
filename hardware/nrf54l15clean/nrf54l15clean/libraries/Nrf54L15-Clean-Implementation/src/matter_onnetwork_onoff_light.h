@@ -131,6 +131,23 @@ struct MatterOnNetworkDiscoverySummary {
   char blockerName[48] = {0};
 };
 
+struct MatterOnNetworkDiscoveryPublicationState {
+  bool attempted = false;
+  bool active = false;
+  bool stagedOnly = true;
+  bool backendAvailable = false;
+  bool commissioningWindowOpen = false;
+  bool threadAttached = false;
+  MatterCommissioningWindowState windowState =
+      MatterCommissioningWindowState::kClosed;
+  uint16_t recordsTotal = 0U;
+  uint16_t recordsReady = 0U;
+  uint16_t recordsActive = 0U;
+  uint32_t publishAttempts = 0U;
+  uint32_t unpublishCount = 0U;
+  char blockerName[48] = {0};
+};
+
 struct MatterOnNetworkOnOffLightConfig {
   const char* storageNamespace = "matter_node";
   const char* lightStorageNamespace = "matter_onoff";
@@ -158,6 +175,7 @@ struct MatterOnNetworkOnOffLightStatus {
   Nrf54ThreadExperimental::AttachSummary threadAttachSummary = {};
   MatterOnNetworkReadinessSummary readinessSummary = {};
   MatterOnNetworkDiscoverySummary discoverySummary = {};
+  MatterOnNetworkDiscoveryPublicationState discoveryPublication = {};
   bool manualCodeReady = false;
   bool qrCodeReady = false;
   bool readyForOnNetworkCommissioning = false;
@@ -240,6 +258,8 @@ class Nrf54MatterOnNetworkOnOffLightNode {
   uint16_t commissioningWindowSecondsRemaining() const;
   bool readinessSummary(MatterOnNetworkReadinessSummary* outSummary) const;
   bool discoverySummary(MatterOnNetworkDiscoverySummary* outSummary) const;
+  bool discoveryPublicationState(
+      MatterOnNetworkDiscoveryPublicationState* outState) const;
   bool buildCommissionableDiscoveryRecord(
       MatterOnNetworkDiscoveryRecord* outRecord) const;
   bool buildOperationalDiscoveryRecord(
@@ -310,6 +330,8 @@ class Nrf54MatterOnNetworkOnOffLightNode {
   void buildManualPayload(MatterManualPairingPayload* outPayload) const;
   void buildQrPayload(MatterQrCodePayload* outPayload) const;
   bool threadDatasetExportable() const;
+  bool updateDiscoveryPublication();
+  void resetDiscoveryPublication(const char* blockerName);
 
   Preferences prefs_;
   bool storageOpen_ = false;
@@ -323,6 +345,17 @@ class Nrf54MatterOnNetworkOnOffLightNode {
   MatterOnNetworkDatasetSource datasetSource_ =
       MatterOnNetworkDatasetSource::kNone;
   MatterOnNetworkIdentity identity_ = {};
+  bool discoveryPublicationAttempted_ = false;
+  bool discoveryPublicationActive_ = false;
+  bool discoveryPublicationBackendAvailable_ = false;
+  uint16_t discoveryPublicationRecordsTotal_ = 0U;
+  uint16_t discoveryPublicationRecordsReady_ = 0U;
+  uint16_t discoveryPublicationRecordsActive_ = 0U;
+  uint32_t discoveryPublicationAttempts_ = 0U;
+  uint32_t discoveryPublicationUnpublishCount_ = 0U;
+  MatterCommissioningWindowState discoveryPublicationWindowState_ =
+      MatterCommissioningWindowState::kClosed;
+  char discoveryPublicationBlockerName_[48] = {0};
   Nrf54MatterOnOffLightFoundation foundation_;
   Nrf54MatterOnOffLightDevice light_;
   Nrf54MatterOnOffLightEndpoint endpoint_;

@@ -191,6 +191,7 @@ The Matter support is a **compile-time and minimal-runtime smoke test**, not a f
 - [x] Software secp256r1 ECC (Barrett reduction, ~0.84s sign / ~1.76s verify)
 - [x] Structured staged DNS-SD/SRP record builder for commissionable
       `_matterc._udp` and blocked operational `_matter._tcp` records
+- [x] Staged discovery publish lifecycle with publish/unpublish diagnostics
 
 **What doesn't (yet):**
 - [ ] mDNS/DNS-SD commissioning advertisement (`_matterc._udp` record is

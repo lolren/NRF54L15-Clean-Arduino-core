@@ -279,6 +279,33 @@ void printDiscoveryRecords() {
   }
 }
 
+void printDiscoveryPublication(
+    const xiao_nrf54l15::MatterOnNetworkDiscoveryPublicationState& state) {
+  Serial.print("matter_cmd_demo discovery_publish_attempted=");
+  Serial.println(state.attempted ? 1 : 0);
+  Serial.print("matter_cmd_demo discovery_publish_active=");
+  Serial.println(state.active ? 1 : 0);
+  Serial.print("matter_cmd_demo discovery_publish_staged_only=");
+  Serial.println(state.stagedOnly ? 1 : 0);
+  Serial.print("matter_cmd_demo discovery_publish_backend=");
+  Serial.println(state.backendAvailable ? 1 : 0);
+  Serial.print("matter_cmd_demo discovery_publish_window=");
+  Serial.println(xiao_nrf54l15::Nrf54MatterOnNetworkOnOffLightNode::
+                     commissioningWindowStateName(state.windowState));
+  Serial.print("matter_cmd_demo discovery_publish_records_total=");
+  Serial.println(state.recordsTotal);
+  Serial.print("matter_cmd_demo discovery_publish_records_ready=");
+  Serial.println(state.recordsReady);
+  Serial.print("matter_cmd_demo discovery_publish_records_active=");
+  Serial.println(state.recordsActive);
+  Serial.print("matter_cmd_demo discovery_publish_attempts=");
+  Serial.println(state.publishAttempts);
+  Serial.print("matter_cmd_demo discovery_unpublish_count=");
+  Serial.println(state.unpublishCount);
+  Serial.print("matter_cmd_demo discovery_publish_blocker=");
+  Serial.println(state.blockerName);
+}
+
 void applyIndicator() {
 #if defined(LED_BUILTIN)
   if (g_node.light().identifying()) {
@@ -463,6 +490,7 @@ void printState(const char* reason) {
   printThreadAttachSummary(status.threadAttachSummary);
   printReadinessSummary(status.readinessSummary);
   printDiscoverySummary(status.discoverySummary);
+  printDiscoveryPublication(status.discoveryPublication);
 
   xiao_nrf54l15::MatterAttributePath path;
   path.clusterId = xiao_nrf54l15::Nrf54MatterOnOffLightEndpoint::kOnOffClusterId;
@@ -592,6 +620,10 @@ void handleLine(char* line) {
       printDiscoverySummary(summary);
     }
     printDiscoveryRecords();
+    xiao_nrf54l15::MatterOnNetworkDiscoveryPublicationState publishState;
+    if (g_node.discoveryPublicationState(&publishState)) {
+      printDiscoveryPublication(publishState);
+    }
     return;
   }
   if (strcmp(line, "thread-stats") == 0) {
