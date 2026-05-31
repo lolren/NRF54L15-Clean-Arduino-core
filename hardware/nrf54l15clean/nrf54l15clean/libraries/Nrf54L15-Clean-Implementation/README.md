@@ -43,6 +43,7 @@ Connect SDK APIs.
 - `Watchdog`: WDT configuration, start/stop (when enabled), feed, and status reads.
 - `BoardControl`: board-level helpers for battery measurement path and antenna switch control.
 - `Pdm`: digital microphone interface setup and blocking capture with EasyDMA.
+- `Qdec`: quadrature decoder setup, debounce/input-pull control, accumulator reads, and double-transition reporting.
 - `I2sTx`: reusable TX-only `I2S20` wrapper with buffer rotation, IRQ service, optional auto-restart, and callback-based buffer refill.
 - `I2sRx`: reusable RX-only `I2S20` wrapper with double-buffer capture, IRQ service, optional auto-restart, and callback-based buffer delivery.
 - `I2sDuplex`: reusable full-duplex `I2S20` wrapper with shared stop/restart handling, TX refill callback, and RX delivery callback.
@@ -384,8 +385,11 @@ Thread example organization:
   - `OpenThreadRadioDiagInitiator`
   - `OpenThreadRadioDiagResponder`
 - the current diag path is a bring-up tool, not a full factory-diag feature set:
-  `version`, `channel`, `power`, `start`, `send`, and `stats` are wired up,
-  with hardware-validated one-way diag send/receive on two boards.
+  `version`, `channel`, `power`, `start`, `send`, `stats`, and GPIO
+  `mode/set/get/getmode` are wired up, with hardware-validated one-way diag
+  send/receive on two boards.
+- diagnostic GPIO numbers are raw nRF port/pin indexes: `gpio = port * 32 + pin`
+  (`P1.05` is `37`).
 - the staged Thread boundary is now:
   `OpenThreadRoleStageProbe` is a real hidden-seam leader/child bring-up tool,
   not just a single-board init check. The current supported staged role proof
@@ -687,6 +691,9 @@ new non-BLE parity blocks:
 
 Peripheral examples:
 
+- `examples/Peripherals/Pdm21Microphone/Pdm21Microphone.ino`
+  - Uses the public `Pdm` wrapper with `nrf54l15::PDM21_BASE` to capture a block from the second PDM instance.
+  - Keeps the example pins explicit as raw `P0.x` pins so they can be adjusted for external microphone wiring.
 - `examples/Peripherals/RawI2sTxInterrupt/RawI2sTxInterrupt.ino`
   - Uses `I2S20` with `TXPTRUPD` and `STOPPED` interrupts instead of polling.
   - Keeps the TX buffer armed from `I2S20_IRQHandler` and intentionally cycles stop/restart so both interrupt paths are visible over UART.
@@ -756,6 +763,9 @@ Callback note:
 - `examples/Peripherals/QdecRotaryReporter/QdecRotaryReporter.ino`
   - Uses the hardware `QDEC` block to decode a rotary encoder on `D0/D1`.
   - Prints signed movement deltas and accumulated position without software edge decoding.
+- `examples/Peripherals/Qdec21Encoder/Qdec21Encoder.ino`
+  - Uses the public `Qdec` wrapper with `nrf54l15::QDEC21_BASE` for a second hardware encoder instance.
+  - Demonstrates wrapper-managed pulls, debounce, accumulator reads, and double-transition reporting without raw register offsets in the sketch.
 - `examples/Peripherals/DppicHardwareBlink/DppicHardwareBlink.ino`
   - Wires `TIMER -> DPPIC -> GPIOTE` so the LED toggles in hardware.
   - Demonstrates the useful part of DPPI: precise work with no CPU in the timing loop.

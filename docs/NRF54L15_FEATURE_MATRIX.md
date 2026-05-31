@@ -2,8 +2,8 @@
 
 Status baseline:
 
-- Repository release line: `0.6.80`
-- Audit date: `2026-04-28`
+- Repository release line: `0.8.6`
+- Audit date: `2026-05-31`
 - Silicon source: `Nordic_nRF54L15_Datasheet_v1.0.pdf`
 - Core source: `hardware/nrf54l15clean/nrf54l15clean`
 - Main library source: `hardware/nrf54l15clean/nrf54l15clean/libraries/Nrf54L15-Clean-Implementation`
@@ -57,9 +57,9 @@ intentionally silicon-oriented, not just Arduino API oriented.
 | [ ] | `I3C` | Not present on nRF54L15 | Not silicon | This SoC exposes `TWIM/TWIS` I2C controller/target blocks, not an I3C peripheral block. |
 | [x] | `LPCOMP` | `LPCOMP` | Done | Threshold, millivolt threshold, System ON/OFF wake, and meter-pulse examples exist. |
 | [x] | `NFCT` | `NFCT` | Partial | Register/HAL wrapper now uses the correct nRF54L15 NFCT map and exposes sense/activate/disable, NFCID1, SENS_RES/SEL_RES, EasyDMA packet buffer, frame events, field state, modulation output, and interrupts. Board-level antenna validation is still required for real phone/tag-reader interoperability on non-XIAO hardware. |
-| [x] | `PDM` | `PDM20`, `PDM21` | Partial | Wrapper and microphone examples exist; validate/expose `PDM21` explicitly before marking full. |
+| [x] | `PDM` | `PDM20`, `PDM21` | Mostly done | Base-selectable wrapper covers `PDM20`/`PDM21`; `Pdm21Microphone` now uses the public `Pdm` wrapper instead of raw register pokes. External microphone hardware validation remains open. |
 | [x] | `PWM` | `PWM20`, `PWM21`, `PWM22` | Mostly done | `analogWrite`, per-pin frequency fallback, hardware PWM examples, and stress test exist. |
-| [x] | `QDEC` | `QDEC20`, `QDEC21` | Partial | QDEC wrapper and example exist; validate `QDEC21` explicitly before marking full. |
+| [x] | `QDEC` | `QDEC20`, `QDEC21` | Mostly done | Base-selectable wrapper covers `QDEC20`/`QDEC21`; `Qdec21Encoder` now uses the public `Qdec` wrapper instead of raw register pokes. External encoder hardware validation remains open. |
 | [x] | `RADIO BLE` | `RADIO` | Partial | Practical BLE paths exist, but not a complete Bluetooth controller. |
 | [x] | `RADIO IEEE 802.15.4` | `RADIO` | Partial | Raw 802.15.4, Zigbee-lite, and Thread PAL paths exist; full Zigbee/Thread product support remains open. |
 | [x] | `RADIO proprietary/raw` | `RADIO` | Done | Raw packet TX/RX/ACK examples exist. |
@@ -105,7 +105,7 @@ This section tracks user-facing Arduino behavior.
 | [x] | `EEPROM` / `Preferences` style persistence | Implemented enough for bond/Thread/Matter staging. | Capacity/fragmentation docs and stress tests. |
 | [x] | Board Manager install/update | Implemented. | Keep release index checksum testing mandatory. |
 | [x] | Upload tooling | Implemented with packaged tools. | Continue fresh Linux/Windows/macOS smoke tests. |
-| [x] | Tools menu: BLE / VPR / Zigbee / power / CPU / RAM reclaim | Implemented. | Keep options visible for all supported boards after package updates. |
+| [x] | Tools menu: BLE / VPR RAM reclaim / Zigbee / Thread / Matter / antenna / serial routing | Implemented. | Keep options visible for all supported boards after package updates without reintroducing redundant power-profile choices. |
 | [ ] | Public Tools menu: production Thread | Experimental only. | Remove experimental label only after validation matrix is green. |
 | [ ] | Public Tools menu: production Matter | Experimental compile/bootstrap only. | Remove experimental label only after real commissioning/control works. |
 
@@ -136,7 +136,7 @@ This section tracks user-facing Arduino behavior.
 
 | Box | Thread capability | Current state | What remains |
 |---|---|---|---|
-| [x] | OpenThread PAL skeleton | Implemented. | Keep compile coverage. |
+| [x] | OpenThread PAL skeleton | Implemented with settings, alarms, entropy/crypto, radio, source match, CSL state tracking, and diagnostic GPIO commands. | Keep compile coverage and continue expanding real radio conformance. |
 | [x] | 802.15.4 TX/RX PAL | Implemented and two-board proven. | More stress and reference sniff validation. |
 | [x] | Fixed dataset attach | Implemented in experimental stage mode. | Reference-network attach validation. |
 | [x] | Leader/child role path | Implemented in experimental stage mode; default wrapper uses child-first attach with deterministic leader fallback to avoid two-board demo partition races. | Reboot recovery and longer soak. |

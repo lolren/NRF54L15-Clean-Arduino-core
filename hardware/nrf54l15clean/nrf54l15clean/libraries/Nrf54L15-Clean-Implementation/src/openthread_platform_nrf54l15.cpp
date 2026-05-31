@@ -68,6 +68,9 @@ constexpr otShortAddress kDiagBroadcastShort = 0xFFFFU;
 constexpr otShortAddress kDiagInvalidShort = OT_RADIO_INVALID_SHORT_ADDR;
 constexpr uint8_t kDiagDefaultPayloadPattern = 0xA0U;
 constexpr uint8_t kDiagMaxPayloadLength = 100U;
+constexpr size_t kDiagGpioPortCount = 3U;
+constexpr size_t kDiagGpioPinsPerPort = 32U;
+constexpr size_t kDiagGpioCount = kDiagGpioPortCount * kDiagGpioPinsPerPort;
 
 enum class CryptoContextKind : uint8_t {
   kNone = 0U,
@@ -179,6 +182,8 @@ struct OpenThreadPlatformState {
 
   otPlatDiagOutputCallback diagCallback = nullptr;
   void* diagCallbackContext = nullptr;
+  bool diagGpioConfigured[kDiagGpioCount] = {};
+  otGpioMode diagGpioModes[kDiagGpioCount] = {};
   OpenThreadPlatformRadioHooks radioHooks = {};
   CracenRng cryptoRng;
   bool cryptoRngReady = false;
@@ -997,6 +1002,26 @@ void emitDiagOutput(const char* format, ...) {
   va_end(argsCopy);
 }
 
+bool decodeDiagGpio(uint32_t gpio, Pin* outPin, size_t* outIndex) {
+  if (gpio >= kDiagGpioCount) {
+    return false;
+  }
+
+  const Pin pin{static_cast<uint8_t>(gpio / kDiagGpioPinsPerPort),
+                static_cast<uint8_t>(gpio % kDiagGpioPinsPerPort)};
+  if (!isConnected(pin)) {
+    return false;
+  }
+
+  if (outPin != nullptr) {
+    *outPin = pin;
+  }
+  if (outIndex != nullptr) {
+    *outIndex = static_cast<size_t>(gpio);
+  }
+  return true;
+}
+
 bool parseLongArg(const char* text, long* outValue) {
   if (text == nullptr || outValue == nullptr || *text == '\0') {
     return false;
@@ -1008,6 +1033,32 @@ bool parseLongArg(const char* text, long* outValue) {
   }
   *outValue = value;
   return true;
+}
+
+bool parseDiagGpioMode(const char* text, otGpioMode* outMode) {
+  if (text == nullptr || outMode == nullptr) {
+    return false;
+  }
+  if (strcmp(text, "input") == 0 || strcmp(text, "in") == 0) {
+    *outMode = OT_GPIO_MODE_INPUT;
+    return true;
+  }
+  if (strcmp(text, "output") == 0 || strcmp(text, "out") == 0) {
+    *outMode = OT_GPIO_MODE_OUTPUT;
+    return true;
+  }
+  return false;
+}
+
+const char* diagGpioModeName(otGpioMode mode) {
+  switch (mode) {
+    case OT_GPIO_MODE_INPUT:
+      return "input";
+    case OT_GPIO_MODE_OUTPUT:
+      return "output";
+    default:
+      return "unknown";
+  }
 }
 
 otShortAddress defaultDiagShortAddress() {
@@ -3690,6 +3741,68 @@ otError otPlatDiagProcess(otInstance* instance, uint8_t argc, char** argv) {
     return OT_ERROR_NONE;
   }
 
+  if (strcmp(command, "gpio") == 0) {
+    long gpioValue = 0;
+    if (argc < 3U || !parseLongArg(argv[2], &gpioValue) || gpioValue < 0L ||
+        static_cast<uint32_t>(gpioValue) >= kDiagGpioCount) {
+      return OT_ERROR_INVALID_ARGS;
+    }
+
+    const uint32_t gpio = static_cast<uint32_t>(gpioValue);
+    if (strcmp(argv[1], "mode") == 0) {
+      otGpioMode mode = OT_GPIO_MODE_INPUT;
+      if (argc < 4U || !parseDiagGpioMode(argv[3], &mode)) {
+        return OT_ERROR_INVALID_ARGS;
+      }
+
+      const otError error = otPlatDiagGpioSetMode(gpio, mode);
+      if (error == OT_ERROR_NONE) {
+        emitDiagOutput("diag gpio %lu mode %s\n",
+                       static_cast<unsigned long>(gpio),
+                       diagGpioModeName(mode));
+      }
+      return error;
+    }
+
+    if (strcmp(argv[1], "set") == 0) {
+      long value = 0;
+      if (argc < 4U || !parseLongArg(argv[3], &value) ||
+          (value != 0L && value != 1L)) {
+        return OT_ERROR_INVALID_ARGS;
+      }
+
+      const otError error = otPlatDiagGpioSet(gpio, value != 0L);
+      if (error == OT_ERROR_NONE) {
+        emitDiagOutput("diag gpio %lu set %ld\n",
+                       static_cast<unsigned long>(gpio), value);
+      }
+      return error;
+    }
+
+    if (strcmp(argv[1], "get") == 0) {
+      bool value = false;
+      const otError error = otPlatDiagGpioGet(gpio, &value);
+      if (error == OT_ERROR_NONE) {
+        emitDiagOutput("diag gpio %lu get %u\n",
+                       static_cast<unsigned long>(gpio), value ? 1U : 0U);
+      }
+      return error;
+    }
+
+    if (strcmp(argv[1], "getmode") == 0) {
+      otGpioMode mode = OT_GPIO_MODE_INPUT;
+      const otError error = otPlatDiagGpioGetMode(gpio, &mode);
+      if (error == OT_ERROR_NONE) {
+        emitDiagOutput("diag gpio %lu mode %s\n",
+                       static_cast<unsigned long>(gpio),
+                       diagGpioModeName(mode));
+      }
+      return error;
+    }
+
+    return OT_ERROR_INVALID_COMMAND;
+  }
+
   if (strcmp(command, "send") == 0) {
     long payloadLength = 0;
     long pattern = kDiagDefaultPayloadPattern;
@@ -3741,13 +3854,89 @@ __attribute__((weak)) void otPlatDiagRadioReceived(otInstance*, otRadioFrame*,
 
 __attribute__((weak)) void otPlatDiagAlarmCallback(otInstance*) {}
 
-otError otPlatDiagGpioSet(uint32_t, bool) { return OT_ERROR_NOT_IMPLEMENTED; }
+otError otPlatDiagGpioSet(uint32_t gpio, bool value) {
+  using namespace xiao_nrf54l15;
 
-otError otPlatDiagGpioGet(uint32_t, bool*) { return OT_ERROR_NOT_IMPLEMENTED; }
+  Pin pin = kPinDisconnected;
+  size_t index = 0U;
+  if (!decodeDiagGpio(gpio, &pin, &index)) {
+    return OT_ERROR_INVALID_ARGS;
+  }
+  if (!gOpenThreadPlatformState.snapshot.diagModeEnabled ||
+      !gOpenThreadPlatformState.diagGpioConfigured[index] ||
+      gOpenThreadPlatformState.diagGpioModes[index] != OT_GPIO_MODE_OUTPUT) {
+    return OT_ERROR_INVALID_STATE;
+  }
 
-otError otPlatDiagGpioSetMode(uint32_t, otGpioMode) { return OT_ERROR_NOT_IMPLEMENTED; }
+  return Gpio::write(pin, value) ? OT_ERROR_NONE : OT_ERROR_FAILED;
+}
 
-otError otPlatDiagGpioGetMode(uint32_t, otGpioMode*) { return OT_ERROR_NOT_IMPLEMENTED; }
+otError otPlatDiagGpioGet(uint32_t gpio, bool* value) {
+  using namespace xiao_nrf54l15;
+
+  if (value == nullptr) {
+    return OT_ERROR_INVALID_ARGS;
+  }
+
+  Pin pin = kPinDisconnected;
+  size_t index = 0U;
+  if (!decodeDiagGpio(gpio, &pin, &index)) {
+    return OT_ERROR_INVALID_ARGS;
+  }
+  if (!gOpenThreadPlatformState.snapshot.diagModeEnabled ||
+      !gOpenThreadPlatformState.diagGpioConfigured[index] ||
+      gOpenThreadPlatformState.diagGpioModes[index] != OT_GPIO_MODE_INPUT) {
+    return OT_ERROR_INVALID_STATE;
+  }
+
+  return Gpio::read(pin, value) ? OT_ERROR_NONE : OT_ERROR_FAILED;
+}
+
+otError otPlatDiagGpioSetMode(uint32_t gpio, otGpioMode mode) {
+  using namespace xiao_nrf54l15;
+
+  Pin pin = kPinDisconnected;
+  size_t index = 0U;
+  if (!decodeDiagGpio(gpio, &pin, &index) ||
+      (mode != OT_GPIO_MODE_INPUT && mode != OT_GPIO_MODE_OUTPUT)) {
+    return OT_ERROR_INVALID_ARGS;
+  }
+  if (!gOpenThreadPlatformState.snapshot.diagModeEnabled) {
+    return OT_ERROR_INVALID_STATE;
+  }
+
+  const bool configured =
+      (mode == OT_GPIO_MODE_OUTPUT)
+          ? Gpio::configure(pin, GpioDirection::kOutput, GpioPull::kDisabled)
+          : Gpio::configure(pin, GpioDirection::kInput, GpioPull::kDisabled);
+  if (!configured) {
+    return OT_ERROR_FAILED;
+  }
+
+  gOpenThreadPlatformState.diagGpioConfigured[index] = true;
+  gOpenThreadPlatformState.diagGpioModes[index] = mode;
+  return OT_ERROR_NONE;
+}
+
+otError otPlatDiagGpioGetMode(uint32_t gpio, otGpioMode* mode) {
+  using namespace xiao_nrf54l15;
+
+  if (mode == nullptr) {
+    return OT_ERROR_INVALID_ARGS;
+  }
+
+  size_t index = 0U;
+  if (!decodeDiagGpio(gpio, nullptr, &index)) {
+    return OT_ERROR_INVALID_ARGS;
+  }
+  if (!gOpenThreadPlatformState.snapshot.diagModeEnabled ||
+      !gOpenThreadPlatformState.diagGpioConfigured[index]) {
+    return OT_ERROR_INVALID_STATE;
+  }
+
+  *mode = gOpenThreadPlatformState.diagGpioModes[index];
+  return OT_ERROR_NONE;
+}
 
 otError otPlatDiagRadioSetRawPowerSetting(otInstance*, const uint8_t*, uint16_t) {
   return OT_ERROR_NOT_IMPLEMENTED;
