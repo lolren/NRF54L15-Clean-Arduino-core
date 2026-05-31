@@ -187,6 +187,21 @@ uint8_t BleRadio::readAttributeValue(uint16_t handle, uint16_t offset,
     return toCopy;
   }
 
+  const BleCustomCharacteristicState* directUserDescription =
+      findCustomCharacteristicByUserDescriptionHandle(handle);
+  if (directUserDescription != nullptr) {
+    if (offset > directUserDescription->userDescriptionLength) {
+      return kAttrReadInvalidOffsetLen;
+    }
+    const uint8_t remaining =
+        static_cast<uint8_t>(directUserDescription->userDescriptionLength - offset);
+    const uint8_t toCopy = minU8(remaining, maxLen);
+    if (toCopy > 0U) {
+      memcpy(outValue, &directUserDescription->userDescription[offset], toCopy);
+    }
+    return toCopy;
+  }
+
   uint8_t fullValue[31] = {0};
   uint8_t fullLen = 0U;
 
@@ -457,6 +472,20 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
               writeLe16(&outAttResponse[used + 2U], bleUuidRead16(ch.uuid, ch.uuidSize));
               used += 4U;
             }
+            ++recordCount;
+          }
+          if (ch.userDescriptionHandle != 0U &&
+              inHandleRange(ch.userDescriptionHandle, start, end)) {
+            if (recordCount == 0U) {
+              outAttResponse[1] = 0x01U;
+            }
+            if (outAttResponse[1] != 0x01U || (used + 4U) > maxAttResponseLen) {
+              break;
+            }
+            writeLe16(&outAttResponse[used], ch.userDescriptionHandle);
+            writeLe16(&outAttResponse[used + 2U],
+                      kUuidCharacteristicUserDescription);
+            used += 4U;
             ++recordCount;
           }
           if (ch.cccdHandle != 0U &&
@@ -785,6 +814,13 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
           ++recordCount;
         }
       } else {
+        constexpr uint8_t kReadByTypeScratchLen = 31U;
+        const uint8_t readByTypeValueLimit =
+            static_cast<uint8_t>(minU16(
+                kReadByTypeScratchLen,
+                (maxAttResponseLen > 4U)
+                    ? static_cast<uint16_t>(maxAttResponseLen - 4U)
+                    : 0U));
         uint16_t handles[6] = {0U, 0U, 0U, 0U, 0U, 0U};
         uint8_t handleCount = 0U;
         if (typeLength == kBleUuidLength16 && type16 == kUuidDeviceName) {
@@ -808,8 +844,9 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
           if (!inHandleRange(handle, start, end)) {
             continue;
           }
-          uint8_t temp[31] = {0};
-          const uint8_t vlen = readAttributeValue(handle, 0U, temp, maxAttValueLen);
+          uint8_t temp[kReadByTypeScratchLen] = {0};
+          const uint8_t vlen =
+              readAttributeValue(handle, 0U, temp, readByTypeValueLimit);
           if (vlen == kAttrReadInvalidHandleLen || vlen == kAttrReadInvalidOffsetLen) {
             continue;
           }
@@ -845,13 +882,17 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
           } else if (typeLen == kBleUuid16Size &&
                      type == kUuidClientCharacteristicConfig) {
             handle = ch.cccdHandle;
+          } else if (typeLen == kBleUuid16Size &&
+                     type == kUuidCharacteristicUserDescription) {
+            handle = ch.userDescriptionHandle;
           }
           if (handle == 0U || !inHandleRange(handle, start, end)) {
             continue;
           }
 
-          uint8_t temp[31] = {0};
-          const uint8_t vlen = readAttributeValue(handle, 0U, temp, maxAttValueLen);
+          uint8_t temp[kReadByTypeScratchLen] = {0};
+          const uint8_t vlen =
+              readAttributeValue(handle, 0U, temp, readByTypeValueLimit);
           if (vlen == kAttrReadInvalidHandleLen ||
               vlen == kAttrReadInvalidOffsetLen ||
               vlen == kAttrReadNotPermittedLen) {

@@ -1083,6 +1083,8 @@ Examples:
     - Characteristic discovery
     - Basic read/read-blob on GAP, Battery, and custom characteristic values
       (including long reads above the 31-byte legacy advertising payload size)
+    - Custom Characteristic User Description descriptors (`0x2901`) generated
+      from Bluefruit `BLECharacteristic::setUserDescriptor()`
     - Read By Group Type edge-case handling (`Unsupported Group Type` vs `Invalid PDU`)
     - Discovery boundary-handle validation (`start=0`/invalid ranges -> `Invalid Handle`)
     - Service Changed CCCD writes + Handle Value indication confirmation handling

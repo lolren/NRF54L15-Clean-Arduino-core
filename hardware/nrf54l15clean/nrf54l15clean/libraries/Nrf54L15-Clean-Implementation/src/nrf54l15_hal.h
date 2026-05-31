@@ -2327,6 +2327,7 @@ class BleRadio {
   static constexpr uint8_t kCustomGattMaxServices = 8U;
   static constexpr uint8_t kCustomGattMaxCharacteristics = 16U;
   static constexpr uint8_t kCustomGattMaxValueLength = 244U;
+  static constexpr uint8_t kCustomGattMaxUserDescriptionLength = 63U;
 
   explicit BleRadio(uint32_t radioBase = nrf54l15::RADIO_BASE,
                     uint32_t ficrBase = nrf54l15::FICR_BASE);
@@ -2390,6 +2391,14 @@ class BleRadio {
                                    uint8_t initialValueLength = 0U,
                                    uint16_t* outValueHandle = nullptr,
                                    uint16_t* outCccdHandle = nullptr);
+  bool addCustomGattCharacteristic(uint16_t serviceHandle, uint16_t uuid16,
+                                   uint8_t properties,
+                                   const uint8_t* initialValue,
+                                   uint8_t initialValueLength,
+                                   uint16_t* outValueHandle,
+                                   uint16_t* outCccdHandle,
+                                   uint16_t* outUserDescriptionHandle,
+                                   const char* userDescription);
   bool addCustomGattCharacteristic128(uint16_t serviceHandle,
                                       const uint8_t uuid128[16],
                                       uint8_t properties,
@@ -2397,6 +2406,15 @@ class BleRadio {
                                       uint8_t initialValueLength = 0U,
                                       uint16_t* outValueHandle = nullptr,
                                       uint16_t* outCccdHandle = nullptr);
+  bool addCustomGattCharacteristic128(uint16_t serviceHandle,
+                                      const uint8_t uuid128[16],
+                                      uint8_t properties,
+                                      const uint8_t* initialValue,
+                                      uint8_t initialValueLength,
+                                      uint16_t* outValueHandle,
+                                      uint16_t* outCccdHandle,
+                                      uint16_t* outUserDescriptionHandle,
+                                      const char* userDescription);
   bool setCustomGattCharacteristicValue(uint16_t valueHandle,
                                         const uint8_t* value,
                                         uint8_t valueLength);
@@ -2648,8 +2666,11 @@ class BleRadio {
     uint8_t properties;
     uint16_t declarationHandle;
     uint16_t valueHandle;
+    uint16_t userDescriptionHandle;
     uint16_t cccdHandle;
     uint16_t cccdValue;
+    uint8_t userDescriptionLength;
+    uint8_t userDescription[kCustomGattMaxUserDescriptionLength];
     uint8_t valueLength;
     uint8_t value[kCustomGattMaxValueLength];
   };
@@ -2790,7 +2811,9 @@ class BleRadio {
                                          const uint8_t* initialValue,
                                          uint8_t initialValueLength,
                                          uint16_t* outValueHandle,
-                                         uint16_t* outCccdHandle);
+                                         uint16_t* outCccdHandle,
+                                         uint16_t* outUserDescriptionHandle,
+                                         const char* userDescription);
   bool pollCentralConnectionEvent(BleConnectionEvent* event,
                                   uint32_t spinLimit);
   bool buildLlControlResponse(const uint8_t* payload, uint8_t length,
@@ -2915,6 +2938,10 @@ class BleRadio {
   BleCustomCharacteristicState* findCustomCharacteristicByCccdHandle(uint16_t cccdHandle);
   const BleCustomCharacteristicState* findCustomCharacteristicByCccdHandle(
       uint16_t cccdHandle) const;
+  BleCustomCharacteristicState* findCustomCharacteristicByUserDescriptionHandle(
+      uint16_t userDescriptionHandle);
+  const BleCustomCharacteristicState* findCustomCharacteristicByUserDescriptionHandle(
+      uint16_t userDescriptionHandle) const;
   bool applyCustomGattCharacteristicValueWrite(uint16_t handle,
                                                const uint8_t* value,
                                                uint16_t valueLength,

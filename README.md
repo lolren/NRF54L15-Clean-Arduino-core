@@ -117,7 +117,7 @@ Full BLE-compliance work is paused while the remaining power and interoperabilit
 - [x] LE 1M, LE 2M, and LE Coded PHY (S2 and S8 coding)
 - [x] PHY update procedure (negotiate 1M ↔ 2M ↔ Coded mid-connection)
 - [x] Data Length Extension — up to 251-byte payloads
-- [x] ATT/GATT server and client — full Bluefruit API (services, characteristics, descriptors)
+- [x] ATT/GATT server and client — full Bluefruit API (services, characteristics, CCCD and user-description descriptors)
 - [x] Custom GATT long reads and contiguous queued prepare/execute writes for bounded characteristic values
 - [x] L2CAP connection-oriented channels
 - [x] LE Ping and connection parameter update

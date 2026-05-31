@@ -38,6 +38,10 @@ not regress, and what to test first when resuming.
       directly from bounded storage instead of the fixed 31-byte scratch buffer,
       and writable custom values support contiguous queued ATT Prepare Write /
       Execute Write up to `BleRadio::kCustomGattMaxValueLength`.
+- [x] Custom GATT Characteristic User Description descriptors: Bluefruit
+      `BLECharacteristic::setUserDescriptor()` now allocates and exposes the
+      standard read-only `0x2901` descriptor through ATT discovery, Read By Type,
+      Read, and Read Blob.
 - [x] Low-power BLE advertising current is now close to the Zephyr reference
       for the msfujino AdvCurrent test from discussion #71
 
@@ -71,8 +75,8 @@ not regress, and what to test first when resuming.
       selection for bonded reconnects, and bond database behavior against
       phone/desktop hosts
 - [ ] Formal ATT/GATT edge cases: host-app interop for long read/write and
-      prepare/execute write, descriptor permissions, CCCD persistence, and
-      broader error-code coverage
+      prepare/execute write, descriptor write/permission variants, CCCD
+      persistence, and broader error-code coverage
 - [ ] LL control procedure collision handling and broader disconnect reason
       mapping
 - [ ] Multi-link stress: simultaneous central/peripheral with mixed MTU/DLE/PHY

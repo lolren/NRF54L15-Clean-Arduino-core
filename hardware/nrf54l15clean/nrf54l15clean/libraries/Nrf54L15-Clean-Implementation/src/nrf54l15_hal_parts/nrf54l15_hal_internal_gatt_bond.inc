@@ -111,6 +111,7 @@ constexpr uint8_t kAttErrAttributeNotFound = 0x0AU;
 
 constexpr uint16_t kUuidPrimaryService = 0x2800U;
 constexpr uint16_t kUuidCharacteristic = 0x2803U;
+constexpr uint16_t kUuidCharacteristicUserDescription = 0x2901U;
 constexpr uint16_t kUuidClientCharacteristicConfig = 0x2902U;
 constexpr uint16_t kUuidGapService = 0x1800U;
 constexpr uint16_t kUuidGattService = 0x1801U;

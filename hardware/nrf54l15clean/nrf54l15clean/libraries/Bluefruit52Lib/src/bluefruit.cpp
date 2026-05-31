@@ -3629,17 +3629,18 @@ err_t BLECharacteristic::begin() {
 
   uint16_t valueHandle = 0U;
   uint16_t cccdHandle = 0U;
+  uint16_t userDescHandle = 0U;
   const uint8_t initialLen = clampValueLen(_value_len);
   const uint8_t properties = mapProperties(_properties);
   bool ok = false;
   if (uuid.size() == 2U) {
     ok = manager().radio().addCustomGattCharacteristic(
         _service->_handle, uuid.uuid16(), properties, _value, initialLen, &valueHandle,
-        &cccdHandle);
+        &cccdHandle, &userDescHandle, _usr_descriptor);
   } else if (uuid.size() == 16U) {
     ok = manager().radio().addCustomGattCharacteristic128(
         _service->_handle, uuid.uuid128(), properties, _value, initialLen, &valueHandle,
-        &cccdHandle);
+        &cccdHandle, &userDescHandle, _usr_descriptor);
   }
   if (!ok) {
     return ERROR_INVALID_STATE;
@@ -3648,6 +3649,7 @@ err_t BLECharacteristic::begin() {
   _handles.value_handle = valueHandle;
   _handles.decl_handle = (valueHandle > 0U) ? static_cast<uint16_t>(valueHandle - 1U) : 0U;
   _handles.cccd_handle = cccdHandle;
+  _handles.user_desc_handle = userDescHandle;
   if (!manager().registerCharacteristic(this)) {
     return ERROR_NO_MEM;
   }

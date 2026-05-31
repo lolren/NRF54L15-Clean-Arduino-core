@@ -129,6 +129,7 @@ void setupHRM(void)
   hrmc.setProperties(CHR_PROPS_NOTIFY);
   hrmc.setPermission(SECMODE_OPEN, SECMODE_NO_ACCESS);
   hrmc.setFixedLen(2);
+  hrmc.setUserDescriptor("Heart rate measurement");
   hrmc.setCccdWriteCallback(cccd_callback);  // Optionally capture CCCD updates
   hrmc.begin();
   uint8_t hrmdata[2] = { 0b00000110, 0x40 }; // Set the characteristic to use 8-bit values, with the sensor connected and detected
@@ -151,6 +152,7 @@ void setupHRM(void)
   bslc.setProperties(CHR_PROPS_READ);
   bslc.setPermission(SECMODE_OPEN, SECMODE_NO_ACCESS);
   bslc.setFixedLen(1);
+  bslc.setUserDescriptor("Body sensor location");
   bslc.begin();
   bslc.write8(2);    // Set the characteristic to 'Wrist' (2)
 }
