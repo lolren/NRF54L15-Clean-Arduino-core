@@ -1142,6 +1142,63 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
       return true;
     }
 
+    case kAttOpReadMultipleVariableReq: {
+      if (requestLength < 5U || ((requestLength & 0x01U) == 0U)) {
+        return buildAttErrorResponse(opcode, 0U, kAttErrInvalidPdu, outAttResponse,
+                                     outAttResponseLength);
+      }
+
+      outAttResponse[0] = kAttOpReadMultipleVariableRsp;
+      uint16_t used = 1U;
+      const uint16_t handleCount = static_cast<uint16_t>((requestLength - 1U) / 2U);
+      for (uint16_t i = 0U; i < handleCount; ++i) {
+        const uint16_t handle = readLe16(&attRequest[1U + (i * 2U)]);
+        if (handle == 0U) {
+          return buildAttErrorResponse(opcode, handle, kAttErrInvalidHandle,
+                                       outAttResponse, outAttResponseLength);
+        }
+
+        uint8_t temp[kCustomGattMaxValueLength] = {0};
+        const uint8_t vlen =
+            readAttributeValue(handle, 0U, temp, sizeof(temp));
+        const uint8_t readError =
+            attReadSentinelToError(vlen, kAttErrReadNotPermitted);
+        if (readError != 0U) {
+          return buildAttErrorResponse(opcode, handle, readError,
+                                       outAttResponse, outAttResponseLength);
+        }
+
+        // Do not split the two-octet Value Length field. If the response is
+        // full here, the next tuple is simply omitted from this PDU.
+        if ((used + 2U) > maxAttResponseLen) {
+          break;
+        }
+
+        writeLe16(&outAttResponse[used], vlen);
+        used = static_cast<uint16_t>(used + 2U);
+
+        const uint16_t available =
+            static_cast<uint16_t>(maxAttResponseLen - used);
+        const uint8_t toCopy =
+            (vlen < available) ? vlen : static_cast<uint8_t>(available);
+        if (toCopy > 0U) {
+          memcpy(&outAttResponse[used], temp, toCopy);
+          used = static_cast<uint16_t>(used + toCopy);
+        }
+
+        if (toCopy < vlen || used >= maxAttResponseLen) {
+          break;
+        }
+      }
+
+      if (used <= 1U) {
+        return buildAttErrorResponse(opcode, 0U, kAttErrAttributeNotFound,
+                                     outAttResponse, outAttResponseLength);
+      }
+      *outAttResponseLength = used;
+      return true;
+    }
+
     case kAttOpPrepareWriteReq: {
       if (requestLength < 5U) {
         return buildAttErrorResponse(opcode, 0U, kAttErrInvalidPdu, outAttResponse,

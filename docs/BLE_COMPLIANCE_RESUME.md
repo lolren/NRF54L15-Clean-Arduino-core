@@ -45,6 +45,10 @@ not regress, and what to test first when resuming.
       directly from bounded storage instead of the fixed 31-byte scratch buffer,
       and writable custom values support contiguous queued ATT Prepare Write /
       Execute Write up to `BleRadio::kCustomGattMaxValueLength`.
+- [x] ATT Read Multiple Variable (`0x20/0x21`): the server returns
+      little-endian Value Length plus Attribute Value tuples for variable or
+      unknown-length multi-handle reads, preserves request handle order, reports
+      the first failing handle, and truncates only after the ATT MTU boundary.
 - [x] Bluefruit custom characteristic permissions: `BLECharacteristic::setPermission()`
       is propagated to the HAL for custom GATT value reads/writes, including
       encrypted-link and authenticated/MITM access checks for secured

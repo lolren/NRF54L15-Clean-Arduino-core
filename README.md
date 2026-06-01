@@ -119,6 +119,7 @@ Full BLE-compliance work is paused while the remaining power and interoperabilit
 - [x] Data Length Extension — up to 251-byte payloads
 - [x] ATT/GATT server and client — full Bluefruit API (services, characteristics, CCCD, user-description, presentation-format, and report-reference descriptors)
 - [x] Custom GATT long reads and contiguous queued prepare/execute writes for bounded characteristic values and writable user-description descriptors
+- [x] ATT Read Multiple Variable — variable-length multi-handle reads return length/value tuples with first-error-handle behavior
 - [x] Bonded CCCD persistence — notification/indication subscriptions are restored for matching bonded peers
 - [x] Bluefruit custom characteristic permissions — `setPermission()` now reaches the HAL for custom GATT read/write access checks, including separate encrypted-only and MITM/authenticated requirements
 - [x] Bluefruit HID report plumbing — keyboard, mouse, consumer-control, and gamepad report characteristics now notify real HID payloads; host Protocol Mode writes switch between report/boot paths and are visible through `BLEHidAdafruit::setProtocolModeCallback()`
