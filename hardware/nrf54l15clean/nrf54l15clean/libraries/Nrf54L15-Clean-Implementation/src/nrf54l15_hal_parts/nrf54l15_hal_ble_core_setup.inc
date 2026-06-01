@@ -125,7 +125,7 @@ BleRadio::BleRadio(uint32_t radioBase, uint32_t ficrBase)
       connectionPreparedWriteValue_{0},
       connectionPreparedWriteLength_(0U),
       connectionPreparedWriteMask_(0U),
-      connectionPreparedWriteIsCustomValue_(false),
+      connectionPreparedWriteIsCustomVariable_(false),
       connectionRxL2capReassemblyActive_(false),
       connectionRxL2capReassemblyExpectedLength_(0U),
       connectionRxL2capReassemblyReceivedLength_(0U),

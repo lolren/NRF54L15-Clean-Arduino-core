@@ -52,8 +52,11 @@ not regress, and what to test first when resuming.
 - [x] Custom GATT standard descriptors: Bluefruit
       `BLECharacteristic::setUserDescriptor()`,
       `setPresentationFormatDescriptor()`, and `setReportRefDescriptor()` now
-      allocate and expose read-only `0x2901`, `0x2904`, and `0x2908`
-      descriptors through ATT discovery, Read By Type, Read, and Read Blob.
+      allocate and expose `0x2901`, `0x2904`, and `0x2908` descriptors
+      through ATT discovery, Read By Type, Read, and Read Blob. User
+      Description (`0x2901`) descriptors can be written and read back when the
+      parent characteristic write permission allows it; Presentation Format
+      (`0x2904`) and Report Reference (`0x2908`) remain read-only.
 - [x] Basic Bluefruit HID peripheral plumbing: `BLEHidAdafruit` and
       `BLEHidGamepad` now create HID Information, Report Map, Protocol Mode,
       Control Point, Report Reference descriptors, keyboard/mouse boot
@@ -95,8 +98,8 @@ not regress, and what to test first when resuming.
       policy, peer identity selection for bonded reconnects, and bond database
       behavior against phone/desktop hosts
 - [ ] Formal ATT/GATT edge cases: host-app interop for long read/write and
-      prepare/execute write, descriptor write/permission variants, CCCD
-      persistence, and broader error-code coverage
+      prepare/execute write, descriptor host-app interop, CCCD persistence,
+      and broader error-code coverage
 - [ ] HID host interop: phone/desktop pairing behavior, OS report parsing,
       keyboard LED output behavior, boot-protocol switching against real hosts,
       and gamepad host behavior still need real-host validation.

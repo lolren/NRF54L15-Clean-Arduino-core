@@ -79,6 +79,11 @@ Use `Diagnostics > bond_identity_probe` to pair with a phone or desktop host
 and print the saved peer address, identity address, IRK presence, and
 authenticated bond flag.
 
+Use `Diagnostics > gatt_descriptor_helpers` to inspect custom GATT descriptor
+helpers. It exposes readable `0x2901`, `0x2904`, and `0x2908` descriptors plus a
+writable `0x2901` User Description descriptor that can be written and read back
+from a BLE scanner.
+
 HID Protocol Mode changes are visible to sketches. `BLEHidAdafruit` switches
 keyboard/mouse notifications between Report and Boot characteristics when a host
 writes Protocol Mode:
@@ -95,7 +100,7 @@ The broader Bluefruit menus now ship the practical wrapper examples by role:
 
 - `Advertising`: `adv_advanced`, `beacon`, `eddystone_url`
 - `Central`: `central_bleuart_multi`, `central_custom_hrm`, `central_hid`, `central_pairing`, `central_scan_advanced`, `central_throughput`
-- `Diagnostics`: `bond_identity_probe`, `throughput`, `rssi_callback`, `rssi_poll`
+- `Diagnostics`: `bond_identity_probe`, `gatt_descriptor_helpers`, `throughput`, `rssi_callback`, `rssi_poll`
 - `DualRoles`: `dual_bleuart`
 - `HID`: `blehid_keyboard`, `blehid_mouse`, `blehid_gamepad`, `blehid_camerashutter`
 - `Projects`: `rssi_proximity_central`, `rssi_proximity_peripheral`

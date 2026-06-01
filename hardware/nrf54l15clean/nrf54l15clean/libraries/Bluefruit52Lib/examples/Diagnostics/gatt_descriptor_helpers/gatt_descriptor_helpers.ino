@@ -10,6 +10,8 @@
   Use a BLE scanner and inspect service 0xFFF0. The Report Reference descriptor
   is normally used by HID Report characteristics; it is included here only to
   verify that the descriptor API is visible through ATT discovery and reads.
+  Characteristic 0xFFF3 exposes a writable User Description descriptor so a
+  scanner can write a short label to 0x2901 and read it back.
 */
 
 #include <bluefruit.h>
@@ -17,6 +19,7 @@
 BLEService descriptorService(0xFFF0);
 BLECharacteristic temperatureChar(0xFFF1);
 BLECharacteristic reportLikeChar(0xFFF2);
+BLECharacteristic writableLabelChar(0xFFF3);
 
 void setup() {
   Serial.begin(115200);
@@ -43,6 +46,13 @@ void setup() {
   reportLikeChar.setUserDescriptor("Report reference demo");
   reportLikeChar.setReportRefDescriptor(1, 1);
   reportLikeChar.begin();
+
+  writableLabelChar.setProperties(CHR_PROPS_READ | CHR_PROPS_WRITE);
+  writableLabelChar.setPermission(SECMODE_OPEN, SECMODE_OPEN);
+  writableLabelChar.setFixedLen(1);
+  writableLabelChar.write8(0x42);
+  writableLabelChar.setUserDescriptor("Writable label");
+  writableLabelChar.begin();
 
   Bluefruit.Advertising.addFlags(BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE);
   Bluefruit.Advertising.addService(descriptorService);

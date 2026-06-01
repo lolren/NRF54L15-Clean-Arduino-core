@@ -33,13 +33,26 @@ static uint8_t attReadSentinelToError(uint8_t readLength,
   return 0U;
 }
 
+static uint8_t attPermissionErrorToReadSentinel(uint8_t errorCode) {
+  if (errorCode == kAttErrInsufficientEncryption) {
+    return kAttrReadInsufficientEncryptionLen;
+  }
+  if (errorCode == kAttErrInsufficientAuthentication) {
+    return kAttrReadInsufficientAuthenticationLen;
+  }
+  if (errorCode == kAttErrInvalidHandle) {
+    return kAttrReadInvalidHandleLen;
+  }
+  return kAttrReadNotPermittedLen;
+}
+
 void BleRadio::clearPreparedWriteState() {
   connectionPreparedWriteActive_ = false;
   connectionPreparedWriteHandle_ = 0U;
   memset(connectionPreparedWriteValue_, 0, sizeof(connectionPreparedWriteValue_));
   connectionPreparedWriteLength_ = 0U;
   connectionPreparedWriteMask_ = 0U;
-  connectionPreparedWriteIsCustomValue_ = false;
+  connectionPreparedWriteIsCustomVariable_ = false;
 }
 
 void BleRadio::clearIncomingL2capReassembly() {
@@ -220,6 +233,11 @@ uint8_t BleRadio::readAttributeValue(uint16_t handle, uint16_t offset,
   const BleCustomCharacteristicState* directUserDescription =
       findCustomCharacteristicByUserDescriptionHandle(handle);
   if (directUserDescription != nullptr) {
+    uint8_t permissionError = kAttErrReadNotPermitted;
+    if (!customGattReadPermissionSatisfied(directUserDescription,
+                                           &permissionError)) {
+      return attPermissionErrorToReadSentinel(permissionError);
+    }
     if (offset > directUserDescription->userDescriptionLength) {
       return kAttrReadInvalidOffsetLen;
     }
@@ -235,6 +253,11 @@ uint8_t BleRadio::readAttributeValue(uint16_t handle, uint16_t offset,
   const BleCustomCharacteristicState* directPresentationFormat =
       findCustomCharacteristicByPresentationFormatHandle(handle);
   if (directPresentationFormat != nullptr) {
+    uint8_t permissionError = kAttErrReadNotPermitted;
+    if (!customGattReadPermissionSatisfied(directPresentationFormat,
+                                           &permissionError)) {
+      return attPermissionErrorToReadSentinel(permissionError);
+    }
     if (offset > kCustomGattPresentationFormatLength) {
       return kAttrReadInvalidOffsetLen;
     }
@@ -251,6 +274,11 @@ uint8_t BleRadio::readAttributeValue(uint16_t handle, uint16_t offset,
   const BleCustomCharacteristicState* directReportReference =
       findCustomCharacteristicByReportReferenceHandle(handle);
   if (directReportReference != nullptr) {
+    uint8_t permissionError = kAttErrReadNotPermitted;
+    if (!customGattReadPermissionSatisfied(directReportReference,
+                                           &permissionError)) {
+      return attPermissionErrorToReadSentinel(permissionError);
+    }
     if (offset > kCustomGattReportReferenceLength) {
       return kAttrReadInvalidOffsetLen;
     }
@@ -1132,8 +1160,14 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
       BleCustomCharacteristicState* customValueTarget =
           findCustomCharacteristicByValueHandle(handle);
       const bool isCustomValueHandle = (customValueTarget != nullptr);
+      BleCustomCharacteristicState* customUserDescriptionTarget =
+          findCustomCharacteristicByUserDescriptionHandle(handle);
+      const bool isCustomUserDescriptionHandle =
+          (customUserDescriptionTarget != nullptr);
+      const bool isCustomVariableHandle =
+          isCustomValueHandle || isCustomUserDescriptionHandle;
 
-      if (!isCccdHandle && !isCustomValueHandle) {
+      if (!isCccdHandle && !isCustomVariableHandle) {
         return buildAttErrorResponse(opcode, handle, kAttErrWriteNotPermitted,
                                      outAttResponse, outAttResponseLength);
       }
@@ -1142,9 +1176,11 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
         return buildAttErrorResponse(opcode, handle, kAttErrWriteNotPermitted,
                                      outAttResponse, outAttResponseLength);
       }
-      if (isCustomValueHandle) {
+      if (isCustomVariableHandle) {
+        const BleCustomCharacteristicState* permissionTarget =
+            isCustomValueHandle ? customValueTarget : customUserDescriptionTarget;
         uint8_t permissionError = kAttErrWriteNotPermitted;
-        if (!customGattWritePermissionSatisfied(customValueTarget,
+        if (!customGattWritePermissionSatisfied(permissionTarget,
                                                 &permissionError)) {
           return buildAttErrorResponse(opcode, handle, permissionError,
                                        outAttResponse, outAttResponseLength);
@@ -1154,7 +1190,10 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
       const uint16_t offset = readLe16(&attRequest[3]);
       const uint16_t valueLen = static_cast<uint16_t>(requestLength - 5U);
       const uint16_t maxQueuedValueLen =
-          isCustomValueHandle ? kCustomGattMaxValueLength : 2U;
+          isCustomValueHandle
+              ? kCustomGattMaxValueLength
+              : (isCustomUserDescriptionHandle ? kCustomGattMaxUserDescriptionLength
+                                               : 2U);
       if (offset > maxQueuedValueLen) {
         return buildAttErrorResponse(opcode, handle, kAttErrInvalidOffset,
                                      outAttResponse, outAttResponseLength);
@@ -1168,16 +1207,16 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
         clearPreparedWriteState();
         connectionPreparedWriteActive_ = true;
         connectionPreparedWriteHandle_ = handle;
-        connectionPreparedWriteIsCustomValue_ = isCustomValueHandle;
+        connectionPreparedWriteIsCustomVariable_ = isCustomVariableHandle;
       } else if (connectionPreparedWriteHandle_ != handle) {
         return buildAttErrorResponse(opcode, handle, kAttErrPrepareQueueFull,
                                      outAttResponse, outAttResponseLength);
-      } else if (connectionPreparedWriteIsCustomValue_ != isCustomValueHandle) {
+      } else if (connectionPreparedWriteIsCustomVariable_ != isCustomVariableHandle) {
         return buildAttErrorResponse(opcode, handle, kAttErrPrepareQueueFull,
                                      outAttResponse, outAttResponseLength);
       }
 
-      if (isCustomValueHandle && offset > connectionPreparedWriteLength_) {
+      if (isCustomVariableHandle && offset > connectionPreparedWriteLength_) {
         return buildAttErrorResponse(opcode, handle, kAttErrInvalidOffset,
                                      outAttResponse, outAttResponseLength);
       }
@@ -1185,11 +1224,11 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
       for (uint16_t i = 0U; i < valueLen; ++i) {
         const uint16_t pos = static_cast<uint16_t>(offset + i);
         connectionPreparedWriteValue_[pos] = attRequest[5U + i];
-        if (!isCustomValueHandle) {
+        if (!isCustomVariableHandle) {
           connectionPreparedWriteMask_ |= static_cast<uint8_t>(1U << pos);
         }
       }
-      if (isCustomValueHandle &&
+      if (isCustomVariableHandle &&
           static_cast<uint16_t>(offset + valueLen) > connectionPreparedWriteLength_) {
         connectionPreparedWriteLength_ = static_cast<uint16_t>(offset + valueLen);
       }
@@ -1220,7 +1259,7 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
 
       if (connectionPreparedWriteActive_) {
         const uint16_t handle = connectionPreparedWriteHandle_;
-        if (connectionPreparedWriteIsCustomValue_) {
+        if (connectionPreparedWriteIsCustomVariable_) {
           uint8_t errorCode = kAttErrWriteNotPermitted;
           if (!writeCustomGattCharacteristic(handle, connectionPreparedWriteValue_,
                                              connectionPreparedWriteLength_, true,

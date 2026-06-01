@@ -3238,7 +3238,7 @@ class BleRadio {
   uint8_t connectionPreparedWriteValue_[kCustomGattMaxValueLength];
   uint16_t connectionPreparedWriteLength_;
   uint8_t connectionPreparedWriteMask_;
-  bool connectionPreparedWriteIsCustomValue_;
+  bool connectionPreparedWriteIsCustomVariable_;
   bool connectionRxL2capReassemblyActive_;
   uint16_t connectionRxL2capReassemblyExpectedLength_;
   uint16_t connectionRxL2capReassemblyReceivedLength_;

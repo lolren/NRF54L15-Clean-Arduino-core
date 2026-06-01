@@ -1765,6 +1765,35 @@ bool BleRadio::writeCustomGattCharacteristic(uint16_t handle, const uint8_t* val
     return true;
   }
 
+  BleCustomCharacteristicState* userDescriptionTarget =
+      findCustomCharacteristicByUserDescriptionHandle(handle);
+  if (userDescriptionTarget != nullptr) {
+    if ((valueLength > kCustomGattMaxUserDescriptionLength) ||
+        (valueLength > 0U && value == nullptr)) {
+      if (outErrorCode != nullptr) {
+        *outErrorCode = kAttErrInvalidAttrValueLen;
+      }
+      return false;
+    }
+    uint8_t permissionError = kAttErrWriteNotPermitted;
+    if (!customGattWritePermissionSatisfied(userDescriptionTarget,
+                                            &permissionError)) {
+      if (outErrorCode != nullptr) {
+        *outErrorCode = permissionError;
+      }
+      return false;
+    }
+
+    userDescriptionTarget->userDescriptionLength =
+        static_cast<uint8_t>(valueLength);
+    memset(userDescriptionTarget->userDescription, 0,
+           sizeof(userDescriptionTarget->userDescription));
+    if (valueLength > 0U) {
+      memcpy(userDescriptionTarget->userDescription, value, valueLength);
+    }
+    return true;
+  }
+
   BleCustomCharacteristicState* cccdTarget =
       findCustomCharacteristicByCccdHandle(handle);
   if (cccdTarget == nullptr) {
