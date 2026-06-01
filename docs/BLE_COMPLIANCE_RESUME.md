@@ -74,7 +74,8 @@ not regress, and what to test first when resuming.
       `BLEHidAdafruit::protocolMode()`, `isBootProtocolMode()`, and
       `setProtocolModeCallback()`. Host keyboard LED output reports now update
       `keyboardLedState()` before the optional `setKeyboardLedCallback()`
-      callback fires.
+      callback fires, and central HID sketches can write Boot Keyboard Output
+      LEDs through `BLEClientHidAdafruit::setKeyboardLedState()`.
 - [x] Low-power BLE advertising current is now close to the Zephyr reference
       for the msfujino AdvCurrent test from discussion #71
 

@@ -5369,6 +5369,7 @@ BLEClientHidAdafruit::BLEClientHidAdafruit()
       last_keyboard_report_{0},
       last_mouse_report_{0},
       last_gamepad_report_{0},
+      keyboard_led_state_(0U),
       protocol_mode_(UUID16_CHR_PROTOCOL_MODE),
       hid_info_(UUID16_CHR_HID_INFORMATION),
       hid_control_(UUID16_CHR_HID_CONTROL_POINT),
@@ -5428,6 +5429,21 @@ void BLEClientHidAdafruit::getKeyboardReport(hid_keyboard_report_t* report) {
   if (report != nullptr) {
     memcpy(report, &last_keyboard_report_, sizeof(last_keyboard_report_));
   }
+}
+
+bool BLEClientHidAdafruit::setKeyboardLedState(uint8_t leds_bitmap) {
+  if (!keyboard_boot_output_.discovered()) {
+    return false;
+  }
+  if (keyboard_boot_output_.write8(leds_bitmap) != 1U) {
+    return false;
+  }
+  keyboard_led_state_ = leds_bitmap;
+  return true;
+}
+
+uint8_t BLEClientHidAdafruit::keyboardLedState() const {
+  return keyboard_led_state_;
 }
 
 bool BLEClientHidAdafruit::mousePresent(void) {

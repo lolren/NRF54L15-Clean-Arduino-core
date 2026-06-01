@@ -141,7 +141,14 @@ void connection_secured_callback(uint16_t conn_handle)
     hid.setBootMode(true);
 
     // Enable Keyboard report notification if present on prph
-    if ( hid.keyboardPresent() ) hid.enableKeyboard();
+    if ( hid.keyboardPresent() )
+    {
+      hid.enableKeyboard();
+
+      // Start with all keyboard LEDs off. This writes the Boot Keyboard Output
+      // report back to the peripheral if it exposes one.
+      hid.setKeyboardLedState(0);
+    }
 
     // Enable Mouse report notification if present on prph
     if ( hid.mousePresent() ) hid.enableMouse();

@@ -905,6 +905,8 @@ class BLEClientHidAdafruit : public BLEClientService {
   bool enableKeyboard(void);
   bool disableKeyboard(void);
   void getKeyboardReport(hid_keyboard_report_t* report);
+  bool setKeyboardLedState(uint8_t leds_bitmap);
+  uint8_t keyboardLedState() const;
   bool mousePresent(void);
   bool enableMouse(void);
   bool disableMouse(void);
@@ -924,6 +926,7 @@ class BLEClientHidAdafruit : public BLEClientService {
   hid_keyboard_report_t last_keyboard_report_;
   hid_mouse_report_t last_mouse_report_;
   hid_gamepad_report_t last_gamepad_report_;
+  uint8_t keyboard_led_state_;
   BLEClientCharacteristic protocol_mode_;
   BLEClientCharacteristic hid_info_;
   BLEClientCharacteristic hid_control_;

@@ -114,6 +114,17 @@ blehid.setKeyboardLedCallback([](uint16_t conn, uint8_t leds) {
 uint8_t leds = blehid.keyboardLedState();
 ```
 
+Central HID sketches can also drive a keyboard peripheral's Boot Keyboard
+Output report after discovery:
+
+```cpp
+BLEClientHidAdafruit hid;
+if (hid.keyboardPresent()) {
+  hid.setKeyboardLedState(KEYBOARD_LED_CAPSLOCK);
+  uint8_t lastSent = hid.keyboardLedState();
+}
+```
+
 The broader Bluefruit menus now ship the practical wrapper examples by role:
 
 - `Advertising`: `adv_advanced`, `beacon`, `eddystone_url`
