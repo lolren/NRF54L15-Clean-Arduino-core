@@ -949,6 +949,7 @@ class BLEHidAdafruit : public BLEService {
 
   err_t begin() override;
   void setKeyboardLedCallback(kbd_led_cb_t fp);
+  uint8_t keyboardLedState() const;
   void setProtocolModeCallback(protocol_mode_cb_t fp);
   uint8_t protocolMode() const;
   bool isBootProtocolMode() const;
@@ -987,6 +988,7 @@ class BLEHidAdafruit : public BLEService {
 
  private:
   uint8_t mouse_buttons_;
+  uint8_t keyboard_led_state_;
   kbd_led_cb_t keyboard_led_callback_;
   protocol_mode_cb_t protocol_mode_callback_;
   bool report_protocol_mode_;

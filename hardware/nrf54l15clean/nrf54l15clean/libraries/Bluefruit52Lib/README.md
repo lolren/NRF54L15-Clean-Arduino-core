@@ -101,6 +101,19 @@ blehid.setProtocolModeCallback([](uint16_t conn, uint8_t mode) {
 uint8_t mode = blehid.protocolMode();
 ```
 
+Keyboard LED output reports are also visible. Hosts write NumLock, CapsLock,
+ScrollLock, Compose, and Kana bits to the HID output report or boot keyboard
+output report. Sketches can use a callback or poll the last received state:
+
+```cpp
+blehid.setKeyboardLedCallback([](uint16_t conn, uint8_t leds) {
+  (void) conn;
+  Serial.print("Keyboard LEDs: 0x");
+  Serial.println(leds, HEX);
+});
+uint8_t leds = blehid.keyboardLedState();
+```
+
 The broader Bluefruit menus now ship the practical wrapper examples by role:
 
 - `Advertising`: `adv_advanced`, `beacon`, `eddystone_url`

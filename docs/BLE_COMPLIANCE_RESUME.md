@@ -72,7 +72,9 @@ not regress, and what to test first when resuming.
       reports instead of only returning `connected()`. Host Protocol Mode
       writes now update the active report/boot path and are visible through
       `BLEHidAdafruit::protocolMode()`, `isBootProtocolMode()`, and
-      `setProtocolModeCallback()`.
+      `setProtocolModeCallback()`. Host keyboard LED output reports now update
+      `keyboardLedState()` before the optional `setKeyboardLedCallback()`
+      callback fires.
 - [x] Low-power BLE advertising current is now close to the Zephyr reference
       for the msfujino AdvCurrent test from discussion #71
 
@@ -109,8 +111,8 @@ not regress, and what to test first when resuming.
       prepare/execute write, descriptor host-app interop, and broader
       error-code coverage
 - [ ] HID host interop: phone/desktop pairing behavior, OS report parsing,
-      keyboard LED output behavior, boot-protocol switching against real hosts,
-      and gamepad host behavior still need real-host validation.
+      boot-protocol switching against real hosts, and gamepad host behavior
+      still need real-host validation.
 - [ ] LL control procedure collision handling and broader disconnect reason
       mapping
 - [ ] Multi-link stress: simultaneous central/peripheral with mixed MTU/DLE/PHY

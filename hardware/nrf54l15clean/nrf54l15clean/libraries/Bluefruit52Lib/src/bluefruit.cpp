@@ -5592,6 +5592,7 @@ err_t beginFixedCharacteristic(BLECharacteristic& characteristic, uint8_t proper
 BLEHidAdafruit::BLEHidAdafruit()
     : BLEService(UUID16_SVC_HUMAN_INTERFACE_DEVICE),
       mouse_buttons_(0U),
+      keyboard_led_state_(0U),
       keyboard_led_callback_(nullptr),
       protocol_mode_callback_(nullptr),
       report_protocol_mode_(true),
@@ -5614,6 +5615,7 @@ err_t BLEHidAdafruit::begin() {
   }
 
   report_protocol_mode_ = true;
+  keyboard_led_state_ = 0U;
   const uint8_t protocol = kHidProtocolModeReport;
   protocol_mode_.setWriteCallback(protocolModeWriteThunk);
   err_t result =
@@ -5648,12 +5650,12 @@ err_t BLEHidAdafruit::begin() {
     return result;
   }
 
-  uint8_t keyboardLeds = 0U;
   keyboard_output_.setReportRefDescriptor(kHidKeyboardReportId, kHidReportTypeOutput);
   keyboard_output_.setWriteCallback(keyboard_led_callback_ ? keyboardOutputWriteThunk : nullptr);
   result = beginFixedCharacteristic(
       keyboard_output_, CHR_PROPS_READ | CHR_PROPS_WRITE | CHR_PROPS_WRITE_WO_RESP,
-      SECMODE_ENC_NO_MITM, SECMODE_ENC_NO_MITM, &keyboardLeds, sizeof(keyboardLeds));
+      SECMODE_ENC_NO_MITM, SECMODE_ENC_NO_MITM, &keyboard_led_state_,
+      sizeof(keyboard_led_state_));
   if (result != ERROR_NONE) {
     return result;
   }
@@ -5670,7 +5672,8 @@ err_t BLEHidAdafruit::begin() {
                                                                 : nullptr);
   result = beginFixedCharacteristic(
       boot_keyboard_output_, CHR_PROPS_READ | CHR_PROPS_WRITE | CHR_PROPS_WRITE_WO_RESP,
-      SECMODE_ENC_NO_MITM, SECMODE_ENC_NO_MITM, &keyboardLeds, sizeof(keyboardLeds));
+      SECMODE_ENC_NO_MITM, SECMODE_ENC_NO_MITM, &keyboard_led_state_,
+      sizeof(keyboard_led_state_));
   if (result != ERROR_NONE) {
     return result;
   }
@@ -5718,6 +5721,10 @@ void BLEHidAdafruit::setKeyboardLedCallback(kbd_led_cb_t fp) {
   boot_keyboard_output_.setWriteCallback(fp ? keyboardOutputWriteThunk : nullptr);
 }
 
+uint8_t BLEHidAdafruit::keyboardLedState() const {
+  return keyboard_led_state_;
+}
+
 void BLEHidAdafruit::setProtocolModeCallback(protocol_mode_cb_t fp) {
   protocol_mode_callback_ = fp;
 }
@@ -5736,8 +5743,12 @@ bool BLEHidAdafruit::isReportProtocolMode() const {
 }
 
 void BLEHidAdafruit::handleKeyboardOutput(uint16_t conn_hdl, uint8_t* data, uint16_t len) {
-  if (keyboard_led_callback_ != nullptr && data != nullptr && len > 0U) {
-    invokeBluefruitUserCallback(keyboard_led_callback_, conn_hdl, data[0]);
+  if (data != nullptr && len > 0U) {
+    keyboard_led_state_ = data[0];
+    if (keyboard_led_callback_ != nullptr) {
+      invokeBluefruitUserCallback(keyboard_led_callback_, conn_hdl,
+                                  keyboard_led_state_);
+    }
   }
 }
 

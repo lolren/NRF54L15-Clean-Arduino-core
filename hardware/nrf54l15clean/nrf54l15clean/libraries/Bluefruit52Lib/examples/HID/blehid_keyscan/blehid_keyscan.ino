@@ -198,9 +198,13 @@ void loop()
 void set_keyboard_led(uint16_t conn_handle, uint8_t led_bitmap)
 {
   (void) conn_handle;
+  (void) led_bitmap;
+
+  // keyboardLedState() is updated before this callback runs.
+  uint8_t current_leds = blehid.keyboardLedState();
   
   // light up Red Led if any bits is set
-  if ( led_bitmap )
+  if ( current_leds )
   {
     ledOn( LED_RED );
   }
