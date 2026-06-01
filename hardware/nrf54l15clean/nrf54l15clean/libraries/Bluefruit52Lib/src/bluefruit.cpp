@@ -5593,6 +5593,7 @@ BLEHidAdafruit::BLEHidAdafruit()
     : BLEService(UUID16_SVC_HUMAN_INTERFACE_DEVICE),
       mouse_buttons_(0U),
       keyboard_led_callback_(nullptr),
+      protocol_mode_callback_(nullptr),
       report_protocol_mode_(true),
       protocol_mode_(UUID16_CHR_PROTOCOL_MODE),
       hid_info_(UUID16_CHR_HID_INFORMATION),
@@ -5717,15 +5718,39 @@ void BLEHidAdafruit::setKeyboardLedCallback(kbd_led_cb_t fp) {
   boot_keyboard_output_.setWriteCallback(fp ? keyboardOutputWriteThunk : nullptr);
 }
 
+void BLEHidAdafruit::setProtocolModeCallback(protocol_mode_cb_t fp) {
+  protocol_mode_callback_ = fp;
+}
+
+uint8_t BLEHidAdafruit::protocolMode() const {
+  return report_protocol_mode_ ? BLE_HID_PROTOCOL_MODE_REPORT
+                               : BLE_HID_PROTOCOL_MODE_BOOT;
+}
+
+bool BLEHidAdafruit::isBootProtocolMode() const {
+  return protocolMode() == BLE_HID_PROTOCOL_MODE_BOOT;
+}
+
+bool BLEHidAdafruit::isReportProtocolMode() const {
+  return protocolMode() == BLE_HID_PROTOCOL_MODE_REPORT;
+}
+
 void BLEHidAdafruit::handleKeyboardOutput(uint16_t conn_hdl, uint8_t* data, uint16_t len) {
   if (keyboard_led_callback_ != nullptr && data != nullptr && len > 0U) {
     invokeBluefruitUserCallback(keyboard_led_callback_, conn_hdl, data[0]);
   }
 }
 
-void BLEHidAdafruit::handleProtocolModeWrite(uint8_t* data, uint16_t len) {
+void BLEHidAdafruit::handleProtocolModeWrite(uint16_t conn_hdl, uint8_t* data,
+                                             uint16_t len) {
   if (data != nullptr && len > 0U) {
-    report_protocol_mode_ = (data[0] != kHidProtocolModeBoot);
+    const uint8_t mode = (data[0] == kHidProtocolModeBoot)
+                             ? BLE_HID_PROTOCOL_MODE_BOOT
+                             : BLE_HID_PROTOCOL_MODE_REPORT;
+    report_protocol_mode_ = (mode == BLE_HID_PROTOCOL_MODE_REPORT);
+    if (protocol_mode_callback_ != nullptr) {
+      invokeBluefruitUserCallback(protocol_mode_callback_, conn_hdl, mode);
+    }
   }
 }
 
@@ -5738,9 +5763,9 @@ void BLEHidAdafruit::keyboardOutputWriteThunk(uint16_t conn_hdl, BLECharacterist
 
 void BLEHidAdafruit::protocolModeWriteThunk(uint16_t conn_hdl, BLECharacteristic* chr,
                                             uint8_t* data, uint16_t len) {
-  (void)conn_hdl;
   if (chr != nullptr) {
-    static_cast<BLEHidAdafruit&>(chr->parentService()).handleProtocolModeWrite(data, len);
+    static_cast<BLEHidAdafruit&>(chr->parentService())
+        .handleProtocolModeWrite(conn_hdl, data, len);
   }
 }
 

@@ -79,6 +79,18 @@ Use `Diagnostics > bond_identity_probe` to pair with a phone or desktop host
 and print the saved peer address, identity address, IRK presence, and
 authenticated bond flag.
 
+HID Protocol Mode changes are visible to sketches. `BLEHidAdafruit` switches
+keyboard/mouse notifications between Report and Boot characteristics when a host
+writes Protocol Mode:
+
+```cpp
+blehid.setProtocolModeCallback([](uint16_t conn, uint8_t mode) {
+  (void) conn;
+  Serial.println(mode == BLE_HID_PROTOCOL_MODE_BOOT ? "Boot" : "Report");
+});
+uint8_t mode = blehid.protocolMode();
+```
+
 The broader Bluefruit menus now ship the practical wrapper examples by role:
 
 - `Advertising`: `adv_advanced`, `beacon`, `eddystone_url`

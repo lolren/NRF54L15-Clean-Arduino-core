@@ -46,6 +46,7 @@ void setup()
 
   // BLE HID
   blehid.begin();
+  blehid.setProtocolModeCallback(set_protocol_mode);
 
   // Set up and start advertising
   startAdv();
@@ -142,3 +143,9 @@ void loop()
   }
 }
 
+void set_protocol_mode(uint16_t conn_handle, uint8_t mode)
+{
+  (void) conn_handle;
+  Serial.print("HID protocol mode: ");
+  Serial.println(mode == BLE_HID_PROTOCOL_MODE_BOOT ? "Boot" : "Report");
+}

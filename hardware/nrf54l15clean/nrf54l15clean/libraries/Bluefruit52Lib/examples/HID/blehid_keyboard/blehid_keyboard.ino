@@ -53,6 +53,7 @@ void setup()
 
   // Set callback for set LED from central
   blehid.setKeyboardLedCallback(set_keyboard_led);
+  blehid.setProtocolModeCallback(set_protocol_mode);
 
   /* Set connection interval (min, max) to your perferred value.
    * Note: It is already set by BLEHidAdafruit::begin() to 11.25ms - 15ms
@@ -140,4 +141,11 @@ void set_keyboard_led(uint16_t conn_handle, uint8_t led_bitmap)
   {
     ledOff( LED_RED );
   }
+}
+
+void set_protocol_mode(uint16_t conn_handle, uint8_t mode)
+{
+  (void) conn_handle;
+  Serial.print("HID protocol mode: ");
+  Serial.println(mode == BLE_HID_PROTOCOL_MODE_BOOT ? "Boot" : "Report");
 }

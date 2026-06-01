@@ -58,7 +58,10 @@ not regress, and what to test first when resuming.
       `BLEHidGamepad` now create HID Information, Report Map, Protocol Mode,
       Control Point, Report Reference descriptors, keyboard/mouse boot
       reports, and notify keyboard, mouse, consumer-control, and gamepad
-      reports instead of only returning `connected()`.
+      reports instead of only returning `connected()`. Host Protocol Mode
+      writes now update the active report/boot path and are visible through
+      `BLEHidAdafruit::protocolMode()`, `isBootProtocolMode()`, and
+      `setProtocolModeCallback()`.
 - [x] Low-power BLE advertising current is now close to the Zephyr reference
       for the msfujino AdvCurrent test from discussion #71
 
@@ -95,8 +98,8 @@ not regress, and what to test first when resuming.
       prepare/execute write, descriptor write/permission variants, CCCD
       persistence, and broader error-code coverage
 - [ ] HID host interop: phone/desktop pairing behavior, OS report parsing,
-      boot-protocol switching, keyboard LED output reports, and gamepad host
-      behavior still need real-host validation.
+      keyboard LED output behavior, boot-protocol switching against real hosts,
+      and gamepad host behavior still need real-host validation.
 - [ ] LL control procedure collision handling and broader disconnect reason
       mapping
 - [ ] Multi-link stress: simultaneous central/peripheral with mixed MTU/DLE/PHY

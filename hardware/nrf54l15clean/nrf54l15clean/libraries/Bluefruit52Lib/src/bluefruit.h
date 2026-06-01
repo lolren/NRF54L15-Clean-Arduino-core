@@ -943,11 +943,16 @@ class BLEClientHidAdafruit : public BLEClientService {
 class BLEHidAdafruit : public BLEService {
  public:
   typedef void (*kbd_led_cb_t)(uint16_t conn_hdl, uint8_t leds_bitmap);
+  typedef void (*protocol_mode_cb_t)(uint16_t conn_hdl, uint8_t mode);
 
   BLEHidAdafruit();
 
   err_t begin() override;
   void setKeyboardLedCallback(kbd_led_cb_t fp);
+  void setProtocolModeCallback(protocol_mode_cb_t fp);
+  uint8_t protocolMode() const;
+  bool isBootProtocolMode() const;
+  bool isReportProtocolMode() const;
   bool keyboardReport(hid_keyboard_report_t* report);
   bool keyboardReport(uint8_t modifier, uint8_t keycode[6]);
   bool keyPress(char ch);
@@ -983,6 +988,7 @@ class BLEHidAdafruit : public BLEService {
  private:
   uint8_t mouse_buttons_;
   kbd_led_cb_t keyboard_led_callback_;
+  protocol_mode_cb_t protocol_mode_callback_;
   bool report_protocol_mode_;
   BLECharacteristic protocol_mode_;
   BLECharacteristic hid_info_;
@@ -997,7 +1003,7 @@ class BLEHidAdafruit : public BLEService {
   BLECharacteristic consumer_input_;
 
   void handleKeyboardOutput(uint16_t conn_hdl, uint8_t* data, uint16_t len);
-  void handleProtocolModeWrite(uint8_t* data, uint16_t len);
+  void handleProtocolModeWrite(uint16_t conn_hdl, uint8_t* data, uint16_t len);
   static void keyboardOutputWriteThunk(uint16_t conn_hdl, BLECharacteristic* chr,
                                        uint8_t* data, uint16_t len);
   static void protocolModeWriteThunk(uint16_t conn_hdl, BLECharacteristic* chr,
