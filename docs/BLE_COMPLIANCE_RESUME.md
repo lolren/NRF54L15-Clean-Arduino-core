@@ -57,6 +57,10 @@ not regress, and what to test first when resuming.
       Description (`0x2901`) descriptors can be written and read back when the
       parent characteristic write permission allows it; Presentation Format
       (`0x2904`) and Report Reference (`0x2908`) remain read-only.
+- [x] Bonded CCCD persistence: CCCD writes are saved in the BLE bond storage
+      page, restored only for the matching bonded peer/local identity, and
+      cleared with the bond record. This covers Service Changed, Battery
+      Level, and custom notify/indicate characteristics.
 - [x] Basic Bluefruit HID peripheral plumbing: `BLEHidAdafruit` and
       `BLEHidGamepad` now create HID Information, Report Map, Protocol Mode,
       Control Point, Report Reference descriptors, keyboard/mouse boot
@@ -98,8 +102,8 @@ not regress, and what to test first when resuming.
       policy, peer identity selection for bonded reconnects, and bond database
       behavior against phone/desktop hosts
 - [ ] Formal ATT/GATT edge cases: host-app interop for long read/write and
-      prepare/execute write, descriptor host-app interop, CCCD persistence,
-      and broader error-code coverage
+      prepare/execute write, descriptor host-app interop, and broader
+      error-code coverage
 - [ ] HID host interop: phone/desktop pairing behavior, OS report parsing,
       keyboard LED output behavior, boot-protocol switching against real hosts,
       and gamepad host behavior still need real-host validation.

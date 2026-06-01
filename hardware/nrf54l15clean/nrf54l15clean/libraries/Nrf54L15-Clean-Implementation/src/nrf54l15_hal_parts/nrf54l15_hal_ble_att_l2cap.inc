@@ -1284,6 +1284,7 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
           return buildAttErrorResponse(opcode, handle, kAttErrWriteNotPermitted,
                                        outAttResponse, outAttResponseLength);
         } else {
+          persistBondedCccdState();
           clearPreparedWriteState();
         }
       }
@@ -1326,6 +1327,7 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
           return buildAttErrorResponse(opcode, handle, kAttErrWriteNotPermitted,
                                        outAttResponse, outAttResponseLength);
         }
+        persistBondedCccdState();
         if (connectionPreparedWriteActive_ &&
             connectionPreparedWriteHandle_ == handle) {
           clearPreparedWriteState();
@@ -1358,6 +1360,7 @@ bool BleRadio::buildAttResponse(const uint8_t* attRequest, uint16_t requestLengt
         if (isCccdHandle && valueLen == 2U) {
           const uint16_t cccd = readLe16(&attRequest[3]);
           if (applyCccdState(handle, cccd)) {
+            persistBondedCccdState();
             if (connectionPreparedWriteActive_ &&
                 connectionPreparedWriteHandle_ == handle) {
               clearPreparedWriteState();

@@ -12,9 +12,9 @@ namespace {
 
 constexpr uint32_t kPrefsMagic = 0x50524653UL;  // "PFRS"
 constexpr uint16_t kPrefsVersion = 1U;
-// 35 entries is the largest blob that still fits in the shared FLASH_BOND page
-// alongside EEPROM emulation and BLE bond retention when all three are linked.
-constexpr uint16_t kPrefsEntryCount = 35U;
+// 33 entries keeps the shared FLASH_BOND page within 4 KB alongside EEPROM
+// emulation, BLE bond retention, and bonded CCCD retention.
+constexpr uint16_t kPrefsEntryCount = 33U;
 constexpr uint16_t kPrefsMinSupportedEntryCount = 28U;
 constexpr size_t kPrefsNamespaceMaxLen = 15U;
 constexpr size_t kPrefsKeyMaxLen = 15U;

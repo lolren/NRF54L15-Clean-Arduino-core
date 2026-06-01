@@ -19,9 +19,40 @@ struct BleBondRetentionBlob {
   xiao_nrf54l15::BleBondRecord record;
 };
 
+struct BleCccdBondEntry {
+  uint16_t handle;
+  uint16_t value;
+};
+
+constexpr uint8_t kBleCccdBondEntryCapacity =
+    static_cast<uint8_t>(2U + xiao_nrf54l15::BleRadio::kCustomGattMaxCharacteristics);
+
+struct BleCccdBondRecord {
+  uint8_t peerAddress[6];
+  uint8_t peerAddressRandom;
+  uint8_t peerIdentityAddress[6];
+  uint8_t peerIdentityAddressRandom;
+  uint8_t localAddress[6];
+  uint8_t localAddressRandom;
+  uint8_t entryCount;
+  uint8_t reserved[2];
+  BleCccdBondEntry entries[kBleCccdBondEntryCapacity];
+};
+
+struct BleCccdRetentionBlob {
+  uint32_t magic;
+  uint16_t version;
+  uint16_t recordLength;
+  uint32_t crc32;
+  BleCccdBondRecord record;
+};
+
 __attribute__((section(".noinit"))) BleBondRetentionBlob g_bleBondRetention;
+__attribute__((section(".noinit"))) BleCccdRetentionBlob g_bleCccdRetention;
 __attribute__((section(".bond_storage"), aligned(4)))
 volatile BleBondRetentionBlob g_bleBondFlashStorage;
+__attribute__((section(".bond_storage"), aligned(4)))
+volatile BleCccdRetentionBlob g_bleCccdFlashStorage;
 
 constexpr uint8_t kAttOpErrorRsp = 0x01U;
 constexpr uint8_t kAttOpExchangeMtuReq = 0x02U;
@@ -576,15 +607,15 @@ void copyFromVolatileMemory(const volatile uint8_t* src, uint8_t* dst, size_t le
   }
 }
 
-bool writeBondBlobToRram(const BleBondRetentionBlob& blob) {
+bool writeBondStorageToRram(volatile void* target, const void* src, size_t len) {
   NRF_RRAMC_Type* const rramc = bondRramc();
-  if (rramc == nullptr) {
+  if (rramc == nullptr || target == nullptr || src == nullptr || len == 0U) {
     return false;
   }
 
   const uint32_t targetAddress =
-      static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&g_bleBondFlashStorage));
-  const uint8_t* const src = reinterpret_cast<const uint8_t*>(&blob);
+      static_cast<uint32_t>(reinterpret_cast<uintptr_t>(target));
+  const uint8_t* const source = reinterpret_cast<const uint8_t*>(src);
   const uint32_t prevConfig = rramc->CONFIG;
   const uint32_t writeConfig = prevConfig | RRAMC_CONFIG_WEN_Msk;
   bool writeOk = true;
@@ -596,12 +627,13 @@ bool writeBondBlobToRram(const BleBondRetentionBlob& blob) {
 
   if (writeOk) {
     rramc->EVENTS_ACCESSERROR = 0U;
-    for (size_t i = 0U; i < sizeof(blob); ++i) {
+    for (size_t i = 0U; i < len; ++i) {
       if (!waitForBondRramcReadyNext(rramc, kBleBondRramcSpinLimit)) {
         writeOk = false;
         break;
       }
-      *reinterpret_cast<volatile uint8_t*>(targetAddress + static_cast<uint32_t>(i)) = src[i];
+      *reinterpret_cast<volatile uint8_t*>(targetAddress + static_cast<uint32_t>(i)) =
+          source[i];
     }
     if (rramc->EVENTS_ACCESSERROR != 0U) {
       writeOk = false;
@@ -619,6 +651,10 @@ bool writeBondBlobToRram(const BleBondRetentionBlob& blob) {
     writeOk = false;
   }
   return writeOk;
+}
+
+bool writeBondBlobToRram(const BleBondRetentionBlob& blob) {
+  return writeBondStorageToRram(&g_bleBondFlashStorage, &blob, sizeof(blob));
 }
 
 void clearFlashBondBlobImage(BleBondRetentionBlob* blob) {
@@ -768,6 +804,250 @@ bool readRetainedBondRecord(xiao_nrf54l15::BleBondRecord* outRecord) {
   }
   return false;
 }
+
+void clearCccdBondBlobImage(BleCccdRetentionBlob* blob) {
+  if (blob == nullptr) {
+    return;
+  }
+  memset(blob, 0, sizeof(*blob));
+}
+
+bool cccdBondRecordLooksSane(const BleCccdBondRecord& record) {
+  if (record.peerAddressRandom > 1U ||
+      record.peerIdentityAddressRandom > 1U ||
+      record.localAddressRandom > 1U ||
+      record.entryCount > (sizeof(record.entries) / sizeof(record.entries[0]))) {
+    return false;
+  }
+  for (uint8_t i = 0U; i < record.entryCount; ++i) {
+    if (record.entries[i].handle == 0U ||
+        (record.entries[i].value & ~0x0003U) != 0U) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool cccdBondRecordMatchesBond(const BleCccdBondRecord& cccdRecord,
+                               const xiao_nrf54l15::BleBondRecord& bondRecord) {
+  return cccdRecord.peerAddressRandom == bondRecord.peerAddressRandom &&
+         cccdRecord.peerIdentityAddressRandom ==
+             bondRecord.peerIdentityAddressRandom &&
+         cccdRecord.localAddressRandom == bondRecord.localAddressRandom &&
+         memcmp(cccdRecord.peerAddress, bondRecord.peerAddress,
+                sizeof(cccdRecord.peerAddress)) == 0 &&
+         memcmp(cccdRecord.peerIdentityAddress, bondRecord.peerIdentityAddress,
+                sizeof(cccdRecord.peerIdentityAddress)) == 0 &&
+         memcmp(cccdRecord.localAddress, bondRecord.localAddress,
+                sizeof(cccdRecord.localAddress)) == 0;
+}
+
+void seedCccdRecordIdentityFromBond(const xiao_nrf54l15::BleBondRecord& bondRecord,
+                                    BleCccdBondRecord* outRecord) {
+  if (outRecord == nullptr) {
+    return;
+  }
+  memset(outRecord, 0, sizeof(*outRecord));
+  memcpy(outRecord->peerAddress, bondRecord.peerAddress,
+         sizeof(outRecord->peerAddress));
+  outRecord->peerAddressRandom = bondRecord.peerAddressRandom;
+  memcpy(outRecord->peerIdentityAddress, bondRecord.peerIdentityAddress,
+         sizeof(outRecord->peerIdentityAddress));
+  outRecord->peerIdentityAddressRandom = bondRecord.peerIdentityAddressRandom;
+  memcpy(outRecord->localAddress, bondRecord.localAddress,
+         sizeof(outRecord->localAddress));
+  outRecord->localAddressRandom = bondRecord.localAddressRandom;
+}
+
+bool appendCccdBondEntry(BleCccdBondRecord* record, uint16_t handle,
+                         uint16_t value) {
+  if (record == nullptr || handle == 0U || value == 0U ||
+      (value & ~0x0003U) != 0U) {
+    return false;
+  }
+  const uint8_t capacity =
+      static_cast<uint8_t>(sizeof(record->entries) / sizeof(record->entries[0]));
+  if (record->entryCount >= capacity) {
+    return false;
+  }
+  record->entries[record->entryCount].handle = handle;
+  record->entries[record->entryCount].value = value;
+  ++record->entryCount;
+  return true;
+}
+
+void buildCccdFlashBlob(const BleCccdBondRecord& record,
+                        BleCccdRetentionBlob* blob) {
+  if (blob == nullptr) {
+    return;
+  }
+  memset(blob, 0, sizeof(*blob));
+  blob->magic = kBleCccdRetentionMagic;
+  blob->version = kBleCccdRetentionVersion;
+  blob->recordLength = static_cast<uint16_t>(sizeof(record));
+  memcpy(&blob->record, &record, sizeof(record));
+  blob->crc32 = crc32(reinterpret_cast<const uint8_t*>(&blob->record),
+                      sizeof(blob->record));
+}
+
+bool readFlashCccdBondBlob(BleCccdRetentionBlob* outBlob) {
+  if (outBlob == nullptr) {
+    return false;
+  }
+  copyFromVolatileMemory(reinterpret_cast<const volatile uint8_t*>(
+                             &g_bleCccdFlashStorage),
+                         reinterpret_cast<uint8_t*>(outBlob), sizeof(*outBlob));
+  return true;
+}
+
+bool writeFlashCccdBondBlob(const BleCccdRetentionBlob& blob) {
+  if (!writeBondStorageToRram(&g_bleCccdFlashStorage, &blob, sizeof(blob))) {
+    return false;
+  }
+  BleCccdRetentionBlob verify{};
+  if (!readFlashCccdBondBlob(&verify)) {
+    return false;
+  }
+  return memcmp(&verify, &blob, sizeof(blob)) == 0;
+}
+
+bool writeFlashCccdBondRecord(const BleCccdBondRecord& record) {
+  if (!cccdBondRecordLooksSane(record)) {
+    return false;
+  }
+  BleCccdRetentionBlob blob{};
+  buildCccdFlashBlob(record, &blob);
+  return writeFlashCccdBondBlob(blob);
+}
+
+bool readFlashCccdBondRecord(BleCccdBondRecord* outRecord) {
+  if (outRecord == nullptr) {
+    return false;
+  }
+  BleCccdRetentionBlob blob{};
+  if (!readFlashCccdBondBlob(&blob) ||
+      blob.magic != kBleCccdRetentionMagic ||
+      blob.version != kBleCccdRetentionVersion ||
+      blob.recordLength != sizeof(blob.record)) {
+    return false;
+  }
+  const uint32_t computedCrc =
+      crc32(reinterpret_cast<const uint8_t*>(&blob.record), sizeof(blob.record));
+  if (computedCrc != blob.crc32 || !cccdBondRecordLooksSane(blob.record)) {
+    return false;
+  }
+  memcpy(outRecord, &blob.record, sizeof(*outRecord));
+  return true;
+}
+
+void clearRetainedCccdBondBlob() {
+  memset(&g_bleCccdRetention, 0, sizeof(g_bleCccdRetention));
+}
+
+bool writeRetainedCccdBondRecord(const BleCccdBondRecord& record) {
+  if (!cccdBondRecordLooksSane(record)) {
+    return false;
+  }
+  g_bleCccdRetention.magic = kBleCccdRetentionMagic;
+  g_bleCccdRetention.version = kBleCccdRetentionVersion;
+  g_bleCccdRetention.recordLength = static_cast<uint16_t>(sizeof(record));
+  memcpy(&g_bleCccdRetention.record, &record, sizeof(record));
+  g_bleCccdRetention.crc32 =
+      crc32(reinterpret_cast<const uint8_t*>(&g_bleCccdRetention.record),
+            sizeof(g_bleCccdRetention.record));
+  return true;
+}
+
+bool readRetainedCccdBondRecord(BleCccdBondRecord* outRecord) {
+  if (outRecord == nullptr ||
+      g_bleCccdRetention.magic != kBleCccdRetentionMagic ||
+      g_bleCccdRetention.version != kBleCccdRetentionVersion ||
+      g_bleCccdRetention.recordLength != sizeof(g_bleCccdRetention.record)) {
+    return false;
+  }
+  const uint32_t computedCrc =
+      crc32(reinterpret_cast<const uint8_t*>(&g_bleCccdRetention.record),
+            sizeof(g_bleCccdRetention.record));
+  if (computedCrc != g_bleCccdRetention.crc32 ||
+      !cccdBondRecordLooksSane(g_bleCccdRetention.record)) {
+    return false;
+  }
+  memcpy(outRecord, &g_bleCccdRetention.record, sizeof(*outRecord));
+  return true;
+}
+
+bool clearFlashCccdBondRecord() {
+  BleCccdRetentionBlob blob{};
+  clearCccdBondBlobImage(&blob);
+  return writeFlashCccdBondBlob(blob);
+}
+
+}  // namespace
+
+namespace xiao_nrf54l15 {
+
+bool BleRadio::clearPersistentCccdRecord() {
+  clearRetainedCccdBondBlob();
+  return clearFlashCccdBondRecord();
+}
+
+bool BleRadio::persistBondedCccdState() {
+  if (!bondRecordValid_) {
+    return false;
+  }
+
+  BleCccdBondRecord record{};
+  seedCccdRecordIdentityFromBond(bondRecord_, &record);
+  if (connectionServiceChangedIndicationsEnabled_) {
+    appendCccdBondEntry(&record, kHandleGattServiceChangedCccd, 0x0002U);
+  }
+  if (connectionBatteryNotificationsEnabled_) {
+    appendCccdBondEntry(&record, kHandleBatteryLevelCccd, 0x0001U);
+  }
+  for (uint8_t i = 0U; i < customGattCharacteristicCount_; ++i) {
+    const BleCustomCharacteristicState& ch = customGattCharacteristics_[i];
+    if (ch.cccdHandle != 0U && ch.cccdValue != 0U) {
+      appendCccdBondEntry(&record, ch.cccdHandle, ch.cccdValue);
+    }
+  }
+
+  const bool retentionOk = writeRetainedCccdBondRecord(record);
+  const bool flashOk = writeFlashCccdBondRecord(record);
+  if (retentionOk || flashOk) {
+    emitBleTrace("CCCD_SAVED");
+  }
+  return retentionOk || flashOk;
+}
+
+bool BleRadio::restoreBondedCccdState() {
+  if (!bondRecordValid_) {
+    return false;
+  }
+
+  BleCccdBondRecord record{};
+  bool loaded = readFlashCccdBondRecord(&record);
+  if (!loaded) {
+    loaded = readRetainedCccdBondRecord(&record);
+  }
+  if (!loaded || !cccdBondRecordMatchesBond(record, bondRecord_)) {
+    return false;
+  }
+
+  bool appliedAny = false;
+  for (uint8_t i = 0U; i < record.entryCount; ++i) {
+    if (applyCccdState(record.entries[i].handle, record.entries[i].value)) {
+      appliedAny = true;
+    }
+  }
+  if (appliedAny) {
+    emitBleTrace("CCCD_RESTORED");
+  }
+  return appliedAny || record.entryCount == 0U;
+}
+
+}  // namespace xiao_nrf54l15
+
+namespace {
 
 constexpr uint8_t kAesSbox[256] = {
     0x63, 0x7C, 0x77, 0x7B, 0xF2, 0x6B, 0x6F, 0xC5, 0x30, 0x01, 0x67, 0x2B,

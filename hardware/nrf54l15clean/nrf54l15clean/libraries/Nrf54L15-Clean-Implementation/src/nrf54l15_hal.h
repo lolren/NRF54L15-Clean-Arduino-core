@@ -2961,6 +2961,9 @@ class BleRadio {
   bool clearPersistentBondRecord();
   bool buildCurrentBondRecord(BleBondRecord* outRecord) const;
   bool primeBondForCurrentPeer();
+  bool persistBondedCccdState();
+  bool restoreBondedCccdState();
+  bool clearPersistentCccdRecord();
   void clearCustomGattConnectionState();
   bool addCustomGattServiceUuid(const uint8_t* uuidBytes, uint8_t uuidLength,
                                 uint16_t* outServiceHandle);

@@ -1893,6 +1893,7 @@ bool BleRadio::persistBondRecord(const BleBondRecord& record) {
     memcpy(&bondRecord_, &record, sizeof(bondRecord_));
     bondRecordValid_ = true;
     bondStorageLoaded_ = true;
+    persistBondedCccdState();
     emitBleTrace("BOND_SAVED");
   }
   return (retentionOk || flashOk) && callbackOk;
@@ -1900,13 +1901,14 @@ bool BleRadio::persistBondRecord(const BleBondRecord& record) {
 
 bool BleRadio::clearPersistentBondRecord() {
   clearRetainedBondBlob();
+  const bool cccdOk = clearPersistentCccdRecord();
   const bool flashOk = clearFlashBondRecord();
   bool callbackOk = true;
   if (bondClearCallback_ != nullptr) {
     callbackOk = bondClearCallback_(bondCallbackContext_);
   }
   emitBleTrace("BOND_CLEARED");
-  return flashOk && callbackOk;
+  return flashOk && cccdOk && callbackOk;
 }
 
 bool BleRadio::primeBondForCurrentPeer() {
@@ -1984,6 +1986,7 @@ bool BleRadio::primeBondForCurrentPeer() {
   smpExpectInitiatorEncKey_ = false;
   bondKeyPrimedForConnection_ = true;
   connectionBondedEncryptionRequested_ = false;
+  restoreBondedCccdState();
   return true;
 }
 

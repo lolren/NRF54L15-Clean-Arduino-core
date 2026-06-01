@@ -65,6 +65,11 @@ void connection_secured_callback(uint16_t conn_handle) {
 fixed-PIN, numeric-comparison, or OOB pairing. Plain encrypted Just Works links
 remain `secured()` but not authenticated.
 
+For bonded peers, CCCD subscriptions are restored automatically when the saved
+bond identity matches the reconnecting peer. This lets notify/indicate
+characteristics keep the same Bluefruit callback behavior after a bonded
+reconnect without requiring the central to rewrite every CCCD immediately.
+
 Bond identity helpers are available for host privacy debugging:
 
 ```cpp
